@@ -1,0 +1,12 @@
+src/
+test/
+scripts/
+.github/
+.husky/
+*.test.ts
+tsconfig.json
+eslint.config.*
+.prettierrc*
+.commitlintrc*
+docker*
+Dockerfile*
