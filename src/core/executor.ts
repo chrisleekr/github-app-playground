@@ -1,7 +1,17 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { query, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 
 import { config } from "../config";
 import type { BotContext, ExecutionResult, McpServerConfig } from "../types";
+
+/** Narrows an unknown streamed SDK message to the final result shape. */
+function isResultMessage(msg: unknown): msg is SDKResultMessage {
+  return (
+    typeof msg === "object" &&
+    msg !== null &&
+    "type" in msg &&
+    (msg as { type: unknown }).type === "result"
+  );
+}
 
 /**
  * Build the subprocess environment for the Claude Code CLI.
@@ -44,14 +54,7 @@ export async function executeAgent(
   );
 
   const startTime = Date.now();
-  let result:
-    | {
-        subtype?: string;
-        total_cost_usd?: number;
-        duration_ms?: number;
-        num_turns?: number;
-      }
-    | undefined;
+  let result: SDKResultMessage | undefined;
 
   // Build query options. model is only included when set (exactOptionalPropertyTypes
   // forbids assigning undefined to optional properties).
@@ -77,8 +80,10 @@ export async function executeAgent(
     // eventually exhaust MAX_CONCURRENT_REQUESTS for all subsequent requests.
     const agentLoop = (async (): Promise<void> => {
       for await (const message of query({ prompt, options: queryOptions })) {
-        // Capture the final result message for metadata
-        if (message.type === "result") {
+        // Capture the final result message for metadata.
+        // isResultMessage guards against the SDK message union resolving to
+        // `any` in ESLint's type graph — ensures safe property access.
+        if (isResultMessage(message)) {
           result = message;
         }
       }

@@ -67,7 +67,7 @@ const configSchema = z
       // Direct Anthropic API requires a non-empty API key
       if (data.anthropicApiKey === undefined || data.anthropicApiKey === "") {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: "custom",
           message: "ANTHROPIC_API_KEY is required when CLAUDE_PROVIDER=anthropic",
           path: ["anthropicApiKey"],
         });
@@ -77,7 +77,7 @@ const configSchema = z
       // Bedrock always needs a region to construct the endpoint
       if (data.awsRegion === undefined || data.awsRegion === "") {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: "custom",
           message: "AWS_REGION is required when CLAUDE_PROVIDER=bedrock",
           path: ["awsRegion"],
         });
@@ -87,7 +87,7 @@ const configSchema = z
       // default that the Bedrock API will reject.
       if (data.model === undefined) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: "custom",
           message:
             "CLAUDE_MODEL is required when CLAUDE_PROVIDER=bedrock (e.g. us.anthropic.claude-sonnet-4-6)",
           path: ["model"],
