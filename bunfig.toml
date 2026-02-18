@@ -1,0 +1,11 @@
+[test]
+# Preload test environment setup before each test file
+preload = ["./test/preload.ts"]
+
+# Test timeout (ms) -- prevent hung tests in CI
+timeout = 30000
+
+# Coverage configuration
+coverage = true
+coverageReporter = ["text", "lcov"]
+coverageDir = "coverage"

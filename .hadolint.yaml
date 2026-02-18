@@ -1,0 +1,7 @@
+# Hadolint configuration for Dockerfile linting
+# https://github.com/hadolint/hadolint
+ignored:
+  # DL3008: Pin versions in apt-get install -- not practical for system packages in CI
+  - DL3008
+  # DL3016: Pin versions in npm install -- Claude Code CLI version managed upstream
+  - DL3016

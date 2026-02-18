@@ -1,0 +1,6 @@
+dist/
+coverage/
+node_modules/
+.env*
+CHANGELOG.md
+bun.lockb

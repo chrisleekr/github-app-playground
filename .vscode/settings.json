@@ -1,0 +1,73 @@
+{
+  "editor.insertSpaces": true,
+  "editor.tabSize": 2,
+  "files.trimTrailingWhitespace": true,
+  "files.exclude": {},
+  "files.insertFinalNewline": true,
+  "search.exclude": {
+    ".git": true,
+    ".build": true,
+    "**/.DS_Store": true,
+    "**/.vscode": true,
+    "**/coverage": true,
+    "**/dist": true,
+    "**/node_modules": true
+  },
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  "typescript.preferences.importModuleSpecifier": "relative",
+  "js/ts.implicitProjectConfig.checkJs": true,
+  "[markdown]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[shellscript]": {
+    "editor.defaultFormatter": "foxundermoon.shell-format"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[yaml]": {
+    "editor.defaultFormatter": "redhat.vscode-yaml"
+  },
+  "[sql]": {
+    "editor.defaultFormatter": "bradymholt.pgformatter"
+  },
+  "cSpell.language": "en-US",
+  "cSpell.words": [
+    "AWSECS",
+    "AWSS",
+    "buildkitd",
+    "buildx",
+    "bunfig",
+    "bunx",
+    "CERTDIR",
+    "chrislee",
+    "chrisleekr",
+    "containerinsights",
+    "CWLI",
+    "dbsize",
+    "dind",
+    "dpop",
+    "interruptible",
+    "iovalkey",
+    "ispresent",
+    "localise",
+    "loglevel",
+    "modelcontextprotocol",
+    "oninitialized",
+    "PKCE",
+    "resumability",
+    "Streamable",
+    "tsparser",
+    "uuidv",
+    "valkey"
+  ]
+}

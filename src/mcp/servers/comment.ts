@@ -1,0 +1,116 @@
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { Octokit } from "octokit";
+import { z } from "zod";
+
+import { sanitizeContent } from "../../utils/sanitize";
+
+/**
+ * MCP server for tracking comment updates.
+ * Provides update_claude_comment tool used by Claude to communicate progress.
+ *
+ * Ported from claude-code-action's src/mcp/github-comment-server.ts
+ *
+ * The tracking comment is always created via issues.createComment, so updates
+ * always use the issues API regardless of event type. Issue comment IDs are
+ * not valid in the pulls review comments namespace.
+ * See: https://docs.github.com/en/rest/issues/comments
+ *
+ * Environment variables (passed by the executor):
+ * - GITHUB_TOKEN: Installation access token
+ * - REPO_OWNER: Repository owner
+ * - REPO_NAME: Repository name
+ * - CLAUDE_COMMENT_ID: The tracking comment ID to update
+ */
+// Validate all required env vars at startup for fail-fast behavior.
+// Errors here surface immediately in logs rather than on the first tool call.
+const REPO_OWNER = process.env["REPO_OWNER"];
+const REPO_NAME = process.env["REPO_NAME"];
+const GITHUB_TOKEN = process.env["GITHUB_TOKEN"];
+const CLAUDE_COMMENT_ID = process.env["CLAUDE_COMMENT_ID"];
+const DELIVERY_ID = process.env["DELIVERY_ID"];
+
+if (
+  REPO_OWNER === undefined ||
+  REPO_OWNER === "" ||
+  REPO_NAME === undefined ||
+  REPO_NAME === "" ||
+  GITHUB_TOKEN === undefined ||
+  GITHUB_TOKEN === "" ||
+  CLAUDE_COMMENT_ID === undefined ||
+  CLAUDE_COMMENT_ID === "" ||
+  DELIVERY_ID === undefined ||
+  DELIVERY_ID === ""
+) {
+  console.error(
+    "Error: REPO_OWNER, REPO_NAME, GITHUB_TOKEN, CLAUDE_COMMENT_ID, and DELIVERY_ID are required",
+  );
+  process.exit(1);
+}
+
+// Create Octokit once at startup — GITHUB_TOKEN is constant for the server lifetime.
+const octokit = new Octokit({ auth: GITHUB_TOKEN });
+const commentId = parseInt(CLAUDE_COMMENT_ID, 10);
+
+// Guard against non-numeric CLAUDE_COMMENT_ID (parseInt returns NaN for non-integer strings).
+if (isNaN(commentId)) {
+  console.error(`Error: CLAUDE_COMMENT_ID must be a valid integer, got: ${CLAUDE_COMMENT_ID}`);
+  process.exit(1);
+}
+
+const server = new McpServer({
+  name: "GitHub Comment Server",
+  version: "1.0.0",
+});
+
+server.tool(
+  "update_claude_comment",
+  "Update the Claude comment with progress and results (automatically handles both issue and PR comments)",
+  {
+    body: z.string().describe("The updated comment content"),
+  },
+  async ({ body }) => {
+    try {
+      const sanitizedBody = sanitizeContent(body);
+
+      // Re-prepend the delivery marker after sanitizeContent strips it (stripHtmlComments).
+      // The marker is required for the durable idempotency check in isAlreadyProcessed().
+      // DELIVERY_ID is validated non-empty at process startup so the cast is safe.
+      const markerPrefix = `<!-- delivery:${DELIVERY_ID} -->`;
+      const bodyWithMarker = `${markerPrefix}\n${sanitizedBody}`;
+
+      // Always use issues API -- tracking comment is created via issues.createComment
+      const result = await octokit.rest.issues.updateComment({
+        owner: REPO_OWNER,
+        repo: REPO_NAME,
+        comment_id: commentId,
+        body: bodyWithMarker,
+      });
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({ success: true, id: result.data.id }),
+          },
+        ],
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return {
+        content: [{ type: "text" as const, text: `Error: ${errorMessage}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
+async function runServer(): Promise<void> {
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  process.on("exit", () => {
+    void server.close();
+  });
+}
+
+void runServer().catch(console.error);
