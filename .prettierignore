@@ -4,3 +4,10 @@ node_modules/
 .env*
 CHANGELOG.md
 bun.lockb
+
+# Speckit-managed files (formatting controlled by Speckit)
+.claude/skills/
+.cursor/commands/
+.github/agents/
+.github/prompts/
+.specify/
