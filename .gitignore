@@ -98,3 +98,9 @@ Thumbs.db
 .prettierrc.cache
 
 mcp-config.json
+
+
+# Spec Kit — ephemeral/local artifacts only
+.specify/extensions/.cache/
+.specify/extensions/.backup/
+.specify/extensions/*/local-config.yml
