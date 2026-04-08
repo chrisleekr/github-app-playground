@@ -53,6 +53,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --check .",
     "format:fix": "prettier --write .",
+    "check": "bun run typecheck && bun run lint && bun run format && bun test",
     "docker:build": "docker build -t chrisleekr/github-app-playground:local . --progress=plain",
     "docker:run": "bun run docker:build && docker run -p 3000:3000 --env-file .env -v $HOME/.aws:/home/bun/.aws:ro --rm --name github-app-playground chrisleekr/github-app-playground:local",
     "prepare": "husky"
