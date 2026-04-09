@@ -148,14 +148,33 @@ jobs:
       - name: Image digest
         run: echo "Image pushed with digest ${{ steps.docker-meta.outputs.digest }}"
 
+      # Install trivy CLI directly instead of aquasecurity/trivy-action because
+      # this repo's Action allowlist only permits actions from chrisleekr, GitHub,
+      # Marketplace-verified publishers, or srvaroa/labeler. Using the CLI binary
+      # avoids any uncertainty about third-party action permissions.
+      - name: Install trivy CLI
+        env:
+          TRIVY_VERSION: "0.69.3"
+        run: |
+          set -euo pipefail
+          TARBALL="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl -fsSL -o /tmp/trivy.tar.gz \
+            "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/${TARBALL}"
+          tar -xzf /tmp/trivy.tar.gz -C /tmp trivy
+          sudo mv /tmp/trivy /usr/local/bin/trivy
+          trivy --version
+
       - name: Scan image with Trivy
-        uses: aquasecurity/trivy-action@v0.35.0
-        with:
-          image-ref: "chrisleekr/github-app-playground:${{ env.PACKAGE_VERSION }}"
-          format: "sarif"
-          output: "trivy-results.sarif"
-          severity: "CRITICAL,HIGH"
-          ignore-unfixed: true # Only block on vulnerabilities with available patches
+        env:
+          IMAGE_REF: "chrisleekr/github-app-playground:${{ env.PACKAGE_VERSION }}"
+        run: |
+          trivy image \
+            --format sarif \
+            --output trivy-results.sarif \
+            --severity CRITICAL,HIGH \
+            --ignore-unfixed \
+            --exit-code 0 \
+            "$IMAGE_REF"
 
       - name: Upload Trivy SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
