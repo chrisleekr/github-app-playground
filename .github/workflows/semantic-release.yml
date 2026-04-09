@@ -93,6 +93,10 @@ jobs:
         if: ${{ !inputs.skip-checks }}
         run: bun test
 
+      - name: Run dependency audit
+        if: ${{ !inputs.skip-checks }}
+        run: bun audit
+
       - name: Build project
         run: bun run build
 

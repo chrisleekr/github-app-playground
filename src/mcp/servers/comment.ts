@@ -63,6 +63,7 @@ const server = new McpServer({
   version: "1.0.0",
 });
 
+// eslint-disable-next-line @typescript-eslint/no-deprecated -- MCP SDK migration to registerTool is tracked separately; out of scope for housekeeping
 server.tool(
   "update_claude_comment",
   "Update the Claude comment with progress and results (automatically handles both issue and PR comments)",

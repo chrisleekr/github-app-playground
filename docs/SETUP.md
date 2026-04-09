@@ -379,12 +379,15 @@ bun run test:coverage    # with coverage report
 ### Other useful commands
 
 ```bash
+bun run check            # Unified quality gate: typecheck + lint + format + test
 bun run typecheck        # TypeScript strict type check (no emit)
 bun run lint             # ESLint check
 bun run lint:fix         # ESLint auto-fix
 bun run format           # Prettier format check
 bun run format:fix       # Prettier auto-fix
 ```
+
+`bun run check` is the single command to run before opening a pull request.
 
 ### Expose the local server for webhook delivery
 

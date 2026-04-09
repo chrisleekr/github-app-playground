@@ -1,11 +1,10 @@
 import js from "@eslint/js";
-import tseslint from "@typescript-eslint/eslint-plugin";
-import tsparser from "@typescript-eslint/parser";
 import prettierConfig from "eslint-config-prettier";
 import security from "eslint-plugin-security";
 import simpleImportSort from "eslint-plugin-simple-import-sort";
+import tseslint from "typescript-eslint";
 
-export default [
+export default tseslint.config(
   {
     ignores: [
       "dist/**",
@@ -15,13 +14,15 @@ export default [
       "*.config.js",
       "*.config.mjs",
       "*.config.cjs",
+      "release.config.mjs",
+      "release.config.dev.mjs",
     ],
   },
   js.configs.recommended,
   {
     files: ["**/*.ts"],
+    extends: [...tseslint.configs.strictTypeChecked, ...tseslint.configs.stylisticTypeChecked],
     languageOptions: {
-      parser: tsparser,
       parserOptions: {
         ecmaVersion: 2022,
         sourceType: "module",
@@ -42,13 +43,10 @@ export default [
       },
     },
     plugins: {
-      "@typescript-eslint": tseslint,
       "simple-import-sort": simpleImportSort,
       security: security,
     },
     rules: {
-      ...tseslint.configs.recommended.rules,
-      ...tseslint.configs["recommended-requiring-type-checking"].rules,
       ...security.configs.recommended.rules,
 
       // Import sorting (auto-fixable)
@@ -56,7 +54,7 @@ export default [
       "simple-import-sort/imports": "error",
       "simple-import-sort/exports": "error",
 
-      // TypeScript strict rules
+      // TypeScript rules — overrides / extensions on strictTypeChecked preset
       "@typescript-eslint/no-unused-vars": [
         "error",
         {
@@ -68,23 +66,17 @@ export default [
       "@typescript-eslint/explicit-function-return-type": "warn",
       "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/strict-boolean-expressions": "error",
-      "@typescript-eslint/prefer-nullish-coalescing": "error",
-      "@typescript-eslint/prefer-optional-chain": "error",
       "@typescript-eslint/no-unnecessary-condition": "warn",
-      "@typescript-eslint/no-floating-promises": "error",
-      "@typescript-eslint/await-thenable": "error",
-      "@typescript-eslint/no-misused-promises": "error",
-      "@typescript-eslint/require-await": "error",
-      "@typescript-eslint/return-await": "error",
       "@typescript-eslint/no-non-null-assertion": "warn",
-      "@typescript-eslint/no-var-requires": "error",
+      "@typescript-eslint/no-require-imports": "error",
+      // Allow numbers in template literals (safe and idiomatic for logging)
+      "@typescript-eslint/restrict-template-expressions": ["error", { allowNumber: true }],
 
       // Consistent type imports (auto-fixable)
       "@typescript-eslint/consistent-type-imports": [
         "error",
         { prefer: "type-imports", fixStyle: "inline-type-imports" },
       ],
-      "@typescript-eslint/switch-exhaustiveness-check": "error",
 
       // Complexity reduction rules
       complexity: ["warn", { max: 15 }],
@@ -136,20 +128,25 @@ export default [
       "no-debugger": "error",
     },
   },
-  // Prettier config must come last to override conflicting rules
-  prettierConfig,
   {
     // Relaxed rules for test files
     files: ["**/*.test.ts", "**/test/**/*.ts"],
     rules: {
       "@typescript-eslint/no-require-imports": "off",
-      "@typescript-eslint/no-var-requires": "off",
       "@typescript-eslint/no-unsafe-call": "off",
       "@typescript-eslint/no-unsafe-member-access": "off",
       "@typescript-eslint/no-unsafe-assignment": "off",
       "@typescript-eslint/no-unsafe-argument": "off",
       "@typescript-eslint/no-unsafe-return": "off",
       "@typescript-eslint/unbound-method": "off",
+      // Empty arrow functions are common placeholders in test mocks
+      "@typescript-eslint/no-empty-function": "off",
+      // Dot notation not enforced for process.env in tests
+      "@typescript-eslint/dot-notation": "off",
+      // Test describe blocks can legitimately be long
+      "max-lines-per-function": "off",
     },
   },
-];
+  // Prettier config must come last to override conflicting rules
+  prettierConfig,
+);

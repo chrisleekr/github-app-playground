@@ -161,12 +161,12 @@ interface PrQueryResult {
       state: string;
       commits: { totalCount: number };
       files: {
-        nodes: Array<{
+        nodes: {
           path: string;
           additions: number;
           deletions: number;
           changeType: string;
-        }>;
+        }[];
       };
       comments: { nodes: GqlComment[] };
       reviews: { nodes: GqlReview[] };

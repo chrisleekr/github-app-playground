@@ -27,6 +27,7 @@ on:
 # Refer: https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds#generating-artifact-attestations-for-your-builds
 permissions:
   contents: read
+  security-events: write # Required: upload Trivy SARIF to GitHub Security tab
 
 env:
   BUN_VERSION: "1.3.8"
@@ -146,3 +147,19 @@ jobs:
 
       - name: Image digest
         run: echo "Image pushed with digest ${{ steps.docker-meta.outputs.digest }}"
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          image-ref: "chrisleekr/github-app-playground:${{ env.PACKAGE_VERSION }}"
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH"
+          ignore-unfixed: true # Only block on vulnerabilities with available patches
+
+      - name: Upload Trivy SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always() # Upload even if the scan found issues
+        with:
+          sarif_file: "trivy-results.sarif"
+          category: "trivy-container-scan"

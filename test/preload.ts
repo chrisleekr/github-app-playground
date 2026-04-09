@@ -5,10 +5,10 @@
  */
 
 // Force test environment
-process.env["NODE_ENV"] = "test";
+process.env.NODE_ENV = "test";
 
 // Consistent timezone for date-dependent tests
-process.env["TZ"] = "UTC";
+process.env.TZ = "UTC";
 
 // Always use the Anthropic provider in tests so the config singleton resolves
 // without needing AWS credentials. This overrides any CLAUDE_PROVIDER value

@@ -128,7 +128,7 @@ function loadConfig(): Config {
     triggerPhrase: process.env["TRIGGER_PHRASE"],
     port: process.env["PORT"],
     logLevel: process.env["LOG_LEVEL"],
-    nodeEnv: process.env["NODE_ENV"],
+    nodeEnv: process.env.NODE_ENV,
     maxConcurrentRequests: process.env["MAX_CONCURRENT_REQUESTS"],
     agentTimeoutMs: process.env["AGENT_TIMEOUT_MS"],
     cloneDepth: process.env["CLONE_DEPTH"],

@@ -58,32 +58,67 @@ Paste the generated URL into the GitHub App webhook settings.
 ## Testing
 
 ```bash
-bun test                  # run all tests once
+bun test                  # run all tests once (with coverage by default via bunfig.toml)
 bun run test:watch        # re-run on file changes
-bun run test:coverage     # with coverage report (output in coverage/)
+bun run test:coverage     # explicit coverage report (output in coverage/)
 ```
 
 Test files live in `test/` and mirror the `src/` directory structure.
+
+**Coverage threshold**: `bunfig.toml` enforces a per-file minimum of **90%
+lines and 90% functions** via Bun's native `coverageThreshold`. Any PR that
+drops a file below either threshold will fail `bun test` locally and in CI.
+
+**Mocking**: External dependencies (GitHub API, Claude Agent SDK, git CLI)
+MUST be mocked in tests — no real API calls in the test suite. See the
+existing `test/webhook/router.test.ts` for the project's mocking patterns
+using Bun's `mock.module()`.
 
 ---
 
 ## Code Quality
 
-Run all checks before opening a pull request:
+Before opening a pull request, run the unified quality gate — it runs
+typecheck, lint, format check, and tests sequentially:
+
+```bash
+bun run check
+```
+
+Equivalent to running these four commands in order:
 
 ```bash
 bun run typecheck     # TypeScript strict type check (no emit)
 bun run lint          # ESLint check
-bun run lint:fix      # ESLint auto-fix
 bun run format        # Prettier format check
+bun test              # Tests with coverage threshold enforcement
+```
+
+Auto-fix helpers (run individually as needed):
+
+```bash
+bun run lint:fix      # ESLint auto-fix
 bun run format:fix    # Prettier auto-fix
 ```
 
-These checks are also enforced by Husky on every commit:
+### Pre-commit hooks
 
-- **pre-commit**: `lint-staged` runs Prettier + ESLint on staged `.ts`/`.js` files and
-  Prettier on staged `.json`/`.md`/`.yml` files.
+These checks are enforced by Husky on every commit:
+
+- **pre-commit** runs, in order:
+  1. `gitleaks protect --verbose --staged --config .gitleaks.toml` scans
+     staged files for secrets (API keys, tokens, private keys). Requires the
+     `gitleaks` binary — install via `brew install gitleaks` on macOS, `apt
+install gitleaks` on Debian/Ubuntu, or
+     `go install github.com/gitleaks/gitleaks/v8@latest`. If gitleaks is not
+     installed the hook prints a warning and continues (rather than silently
+     skipping); install it before committing sensitive changes.
+  2. `lint-staged` runs Prettier + ESLint on staged `.ts`/`.js` files and
+     Prettier on staged `.json`/`.md`/`.yml` files.
 - **commit-msg**: `commitlint` validates the commit message format.
+
+Allowlist false positives in `.gitleaks.toml` rather than bypassing the hook
+with `--no-verify`.
 
 ---
 

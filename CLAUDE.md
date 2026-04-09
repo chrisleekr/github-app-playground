@@ -66,3 +66,11 @@ Single HTTP server (`src/app.ts`) using `octokit` App class. Webhook events arri
 - Strict TypeScript: `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `useUnknownInCatchVariables`, etc.
 - Pre-commit hooks via Husky + lint-staged (auto-format + lint on staged files).
 - Conventional commits enforced via commitlint.
+
+## Active Technologies
+
+- TypeScript (strict mode) on Bun >=1.3.8 + `octokit`, `@anthropic-ai/claude-agent-sdk`, `@modelcontextprotocol/sdk`, `pino`, `zod`
+
+## Recent Changes
+
+- 20260409-081113-project-housekeeping: Housekeeping — test coverage raised to 90% global threshold (funcs + lines), ESLint migrated to unified `typescript-eslint` with `strictTypeChecked` preset, CI security scanning added (`bun audit`, `trivy` container scan, `gitleaks` history scan), Docker HEALTHCHECK on `/healthz`, gitleaks pre-commit hook, retry.ts latent bug fix (`maxAttempts: 0` no longer throws `undefined`).

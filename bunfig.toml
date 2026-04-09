@@ -5,7 +5,10 @@ preload = ["./test/preload.ts"]
 # Test timeout (ms) -- prevent hung tests in CI
 timeout = 30000
 
-# Coverage configuration
+# Coverage configuration.
+# coverageThreshold is applied per-file: every file must meet both minimums.
+# See https://bun.sh/docs/test/code-coverage#coverage-thresholds
 coverage = true
 coverageReporter = ["text", "lcov"]
 coverageDir = "coverage"
+coverageThreshold = { lines = 0.9, functions = 0.9 }

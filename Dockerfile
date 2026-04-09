@@ -12,6 +12,7 @@ WORKDIR /app
 # Node.js required by Claude Code CLI; git required for repo checkout
 # Uses GPG-based NodeSource installation (avoids curl-pipe-bash pattern).
 # ca-certificates and gnupg are required for GPG key verification.
+# curl is REQUIRED by the production HEALTHCHECK (see end of Dockerfile) — do not remove.
 # See: https://github.com/nodesource/distributions#installation-instructions-deb
 RUN apt-get update && apt-get install -y --no-install-recommends \
   curl git ca-certificates gnupg && \
@@ -69,4 +70,6 @@ COPY --from=deps --chown=bun:bun /app/node_modules ./node_modules
 
 USER bun
 EXPOSE 3000/tcp
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:3000/healthz || exit 1
 ENTRYPOINT ["bun", "run", "dist/app.js"]

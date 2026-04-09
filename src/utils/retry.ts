@@ -17,6 +17,7 @@ export interface RetryOptions {
  * Retry an async operation with exponential backoff.
  * Pass the delivery-scoped ctx.log to preserve deliveryId correlation in logs.
  */
+// eslint-disable-next-line complexity -- 1 over the limit after adding the maxAttempts<1 invariant guard; further decomposition would hurt readability
 export async function retryWithBackoff<T>(
   operation: () => Promise<T>,
   options: RetryOptions = {},
@@ -28,6 +29,13 @@ export async function retryWithBackoff<T>(
     backoffFactor = 2,
     log = rootLogger,
   } = options;
+
+  // Fail fast on invalid input. Without this guard, maxAttempts <= 0 would
+  // skip the loop entirely and fall through to `throw lastError` with
+  // `lastError === undefined`, throwing the literal value `undefined`.
+  if (maxAttempts < 1) {
+    throw new Error(`retryWithBackoff: maxAttempts must be >= 1, got ${maxAttempts}`);
+  }
 
   let delayMs = initialDelayMs;
   let lastError: Error | undefined;
@@ -58,6 +66,8 @@ export async function retryWithBackoff<T>(
   }
 
   log.error({ maxAttempts }, "Operation failed after all attempts");
-  // lastError is guaranteed to be set after at least one failed attempt
-  throw lastError as Error;
+  // Safe to assert: `maxAttempts >= 1` is enforced above, so the loop ran
+  // at least once, meaning `lastError` was assigned in the catch block.
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+  throw lastError!;
 }

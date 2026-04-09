@@ -90,10 +90,9 @@ export async function executeAgent(
     })();
 
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(
-        () => reject(new Error(`Agent execution timed out after ${config.agentTimeoutMs}ms`)),
-        config.agentTimeoutMs,
-      );
+      setTimeout(() => {
+        reject(new Error(`Agent execution timed out after ${config.agentTimeoutMs}ms`));
+      }, config.agentTimeoutMs);
     });
 
     await Promise.race([agentLoop, timeoutPromise]);

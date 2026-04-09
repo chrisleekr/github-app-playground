@@ -1,0 +1,51 @@
+# Gitleaks configuration
+# Extends the default gitleaks ruleset and adds project-specific allowlists.
+# Docs: https://github.com/gitleaks/gitleaks
+
+# Inherit all default detection rules (100+ secret types).
+# Explicit extend makes project intent clear and future-proofs against version bumps.
+[extend]
+useDefault = true
+
+# ── Global allowlist: paths and patterns to exclude from scanning.
+# Uses the canonical v8 [[allowlists]] plural syntax. The legacy singular
+# [allowlist] form is NOT used because gitleaks rejects mixing the two
+# in the same file ("[allowlist] is deprecated, it cannot be used alongside
+# [[allowlists]]") — see https://github.com/gitleaks/gitleaks v8.21.0 release notes.
+# Keep entries narrow and explanatory — broad allowlists defeat the purpose.
+
+# Paths where secret-like content is intentional (examples, test fixtures).
+# Note: bun.lock is NOT here — it gets a scoped allowlist below that only
+# suppresses integrity hashes, preserving scanning for embedded tokens.
+[[allowlists]]
+description = "Project paths with documented placeholder content"
+paths = [
+  '''\.env\.example''',   # Documented placeholder values, not real secrets
+  '''\.gitleaks\.toml''', # This file may contain example patterns
+  '''^specs/''',          # Feature specs may contain example tokens for documentation
+  '''^docs/''',           # Documentation examples
+]
+
+# Regex patterns that should never trigger a finding (test/example placeholders)
+[[allowlists]]
+description = "Test and example placeholder tokens"
+regexTarget = "match"
+regexes = [
+  '''test-app-id''',
+  '''test-private-key''',
+  '''test-webhook-secret''',
+  '''test-anthropic-key''',
+  '''ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA''', # sanitizer test fixture
+]
+
+# Scoped allowlist for Bun lockfile integrity hashes only.
+# This suppresses the known false positive for "integrity": "sha512-..." entries
+# without blanket-allowlisting the whole lockfile (which would defeat
+# supply-chain detection for embedded auth tokens in "resolved" URLs).
+[[allowlists]]
+description = "Bun lockfile integrity hashes (scoped false positive)"
+paths = ['''bun\.lock''']
+regexTarget = "match"
+regexes = [
+  '''"integrity":\s*"sha(256|384|512)-[A-Za-z0-9+/=]+"''',
+]
