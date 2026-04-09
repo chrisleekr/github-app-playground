@@ -95,7 +95,6 @@
     ]
   },
   "overrides": {
-    "//": "Security CVE pins — exact versions (no caret). See specs/20260409-081113-project-housekeeping/plan.md Phase 8.F for rationale. Dependabot still opens PRs for exact-version bumps.",
     "@anthropic-ai/sdk": "0.86.1",
     "@hono/node-server": "1.19.13",
     "express-rate-limit": "8.3.2",

@@ -222,8 +222,8 @@
 
 **Fixes**: M3 (validator — caret ranges defeat the purpose of security-motivated pins).
 
-- [x] T052 [P] Edited `package.json` `overrides` block. Verified each currently-resolved version via `bun pm ls --all`: all 8 overrides matched the caret minimum exactly, so removing the `^` prefix produced no actual version change. Added `"//"` rationale key pointing at plan Phase 8.F.
-- [x] T053 Ran `bun install` — **"Resolved, downloaded and extracted [0]" / "no changes"**. Lockfile is stable; the only `bun.lock` diff is the cosmetic override block mirror (caret removal + new `//` key), confirming zero resolution changes.
+- [x] T052 [P] Edited `package.json` `overrides` block. Verified each currently-resolved version via `bun pm ls --all`: all 8 overrides matched the caret minimum exactly, so removing the `^` prefix produced no actual version change. **Did NOT add a nested `"//"` rationale key** — initial attempt included it but CI semantic-release bootstraps via `npm install` which rejects unknown keys inside `overrides` with `npm error Override without name: //`. The nested key was removed in a follow-up commit (`fix(deps): remove nested "//" key from overrides block`). Rationale now lives in the commit message + plan.md Phase 8.F + this tasks entry.
+- [x] T053 Ran `bun install` — **"Resolved, downloaded and extracted [0]" / "no changes"**. Lockfile is stable; zero package resolution changes.
 - [x] T054 Ran `bun audit` — **`No vulnerabilities found`** unchanged. Exact pins did not reveal any previously-masked advisory.
 
 **Checkpoint**: `bun install` idempotent (no package changes); `bun audit` clean.
