@@ -95,13 +95,14 @@
     ]
   },
   "overrides": {
-    "@anthropic-ai/sdk": "^0.86.1",
-    "@hono/node-server": "^1.19.13",
-    "express-rate-limit": "^8.3.2",
-    "flatted": "^3.4.2",
-    "hono": "^4.12.12",
-    "path-to-regexp": "^8.4.2",
-    "picomatch": "^4.0.4",
-    "yaml": "^2.8.3"
+    "//": "Security CVE pins — exact versions (no caret). See specs/20260409-081113-project-housekeeping/plan.md Phase 8.F for rationale. Dependabot still opens PRs for exact-version bumps.",
+    "@anthropic-ai/sdk": "0.86.1",
+    "@hono/node-server": "1.19.13",
+    "express-rate-limit": "8.3.2",
+    "flatted": "3.4.2",
+    "hono": "4.12.12",
+    "path-to-regexp": "8.4.2",
+    "picomatch": "4.0.4",
+    "yaml": "2.8.3"
   }
 }
