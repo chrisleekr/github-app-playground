@@ -219,8 +219,11 @@ describe("formatAllSections", () => {
     expect(result.body).toBe("No description provided");
   });
 
-  it("handles undefined body (null-like) with fallback text", () => {
-    // body type is string but empty-string path exercises the `?` fallback branch
+  it("handles empty body in PR context with fallback text", () => {
+    // body type is string but empty-string path exercises the `?` fallback branch.
+    // isPR=true here distinguishes this test from the sibling at line 216 which
+    // uses isPR=false; both exercise the same fallback but from different code
+    // paths in formatAllSections.
     const data: FetchedData = { ...baseData, body: "" };
     const result = formatAllSections(data, true);
     expect(result.body).toBe("No description provided");

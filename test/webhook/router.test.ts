@@ -19,6 +19,7 @@ import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { Octokit } from "octokit";
 
 import type { BotContext } from "../../src/types";
+import { waitFor } from "../utils/assertions";
 
 // ─── Mock only modules without dedicated test files ────────────────────────
 
@@ -384,8 +385,11 @@ describe("processRequest — concurrency limiting", () => {
     const req1 = processRequest(ctx1);
 
     try {
-      // Wait a microtask for req1 to reach executeAgent and increment activeCount
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      // Deterministic sync: wait until req1 actually enters executeAgent and
+      // increments activeCount. Replaces a 10ms setTimeout that was flaky on
+      // slow CI runners. `mock.calls.length >= 1` is the exact condition we
+      // need before launching the concurrent request 2.
+      await waitFor(() => mockExecuteAgent.mock.calls.length >= 1);
 
       // Launch request 2 — should hit concurrency limit and be rejected
       await processRequest(ctx2);
@@ -429,7 +433,9 @@ describe("processRequest — concurrency limiting", () => {
     const req1 = processRequest(ctx1);
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      // Deterministic sync: wait until req1 actually enters executeAgent
+      // (see sibling test above for rationale).
+      await waitFor(() => mockExecuteAgent.mock.calls.length >= 1);
 
       // Must not throw even though capacity comment post fails
       let didThrow = false;
