@@ -147,3 +147,65 @@ describe("retryWithBackoff — exhaustion", () => {
     expect(op).toHaveBeenCalledTimes(3);
   });
 });
+
+describe("retryWithBackoff — input validation", () => {
+  /**
+   * Helper: invoke retryWithBackoff with an invalid option and capture the
+   * rejection. Asserts that the operation was NEVER called (validation must
+   * run before any attempt) and returns the caught error message.
+   */
+  async function expectValidationError(
+    options: Parameters<typeof retryWithBackoff>[1],
+    expectedSubstring: string,
+  ): Promise<void> {
+    const op = mock(() => Promise.resolve("should-not-run"));
+    let caught: unknown;
+    try {
+      await retryWithBackoff(op, { log: silentLog, ...options });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toContain(expectedSubstring);
+    expect(op).toHaveBeenCalledTimes(0);
+  }
+
+  it("rejects maxAttempts: 0 with descriptive error", async () => {
+    await expectValidationError({ maxAttempts: 0 }, "maxAttempts must be >= 1");
+  });
+
+  it("rejects maxAttempts: -1 with descriptive error", async () => {
+    await expectValidationError({ maxAttempts: -1 }, "maxAttempts must be >= 1");
+  });
+
+  it("rejects maxAttempts: NaN (bypasses naive < comparison)", async () => {
+    await expectValidationError({ maxAttempts: NaN }, "maxAttempts must be a finite number");
+  });
+
+  it("rejects maxAttempts: Infinity", async () => {
+    await expectValidationError(
+      { maxAttempts: Number.POSITIVE_INFINITY },
+      "maxAttempts must be a finite number",
+    );
+  });
+
+  it("rejects maxAttempts: 1.5 (non-integer)", async () => {
+    await expectValidationError({ maxAttempts: 1.5 }, "maxAttempts must be an integer");
+  });
+
+  it("rejects initialDelayMs: NaN", async () => {
+    await expectValidationError({ initialDelayMs: NaN }, "initialDelayMs must be a finite number");
+  });
+
+  it("rejects maxDelayMs: NaN", async () => {
+    await expectValidationError({ maxDelayMs: NaN }, "maxDelayMs must be a finite number");
+  });
+
+  it("rejects backoffFactor: NaN", async () => {
+    await expectValidationError({ backoffFactor: NaN }, "backoffFactor must be a finite number");
+  });
+
+  it("rejects backoffFactor: 0.5 (below min 1)", async () => {
+    await expectValidationError({ backoffFactor: 0.5 }, "backoffFactor must be >= 1");
+  });
+});
