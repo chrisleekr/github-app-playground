@@ -156,6 +156,12 @@ jobs:
           output: "trivy-results.sarif"
           severity: "CRITICAL,HIGH"
           ignore-unfixed: true # Only block on vulnerabilities with available patches
+          # trivy-action defaults exit-code: 0 (non-blocking). Combined with
+          # ignore-unfixed: true above, exit-code: "1" makes the step fail
+          # ONLY on HIGH/CRITICAL findings with available patches — matching
+          # the spec's edge-case statement that exploitable vulnerabilities
+          # with available fixes should be blocking.
+          exit-code: "1"
 
       - name: Upload Trivy SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@v3

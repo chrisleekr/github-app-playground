@@ -33,6 +33,11 @@ jobs:
     steps:
       - name: Checkout source code
         uses: actions/checkout@v6
+        with:
+          # Full history required so the gitleaks step below can scan all
+          # commits via `git log -p`. Default fetch-depth: 1 limits gitleaks
+          # to the latest commit and defeats the "scan git history" purpose.
+          fetch-depth: 0
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
