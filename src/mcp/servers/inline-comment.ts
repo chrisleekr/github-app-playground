@@ -43,6 +43,7 @@ const server = new McpServer({
   version: "1.0.0",
 });
 
+// eslint-disable-next-line @typescript-eslint/no-deprecated -- MCP SDK migration to registerTool is tracked separately; out of scope for housekeeping
 server.tool(
   "create_inline_comment",
   "Create an inline comment on a specific line or lines in a PR file",

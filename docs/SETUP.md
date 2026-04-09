@@ -273,18 +273,17 @@ The private key is used to sign JWT tokens that authenticate the app to the GitH
 
 ### What the private key looks like
 
-```
+```text
 -----BEGIN RSA PRIVATE KEY-----
-MIIEowIBAAKCAQEA2a2rwplBQLF29amygykEMmYz0+Kcj3bKBp29R2rFTmMjP8sP
-...  (many lines of base64)
+<YOUR_BASE64_ENCODED_KEY_CONTENT_HERE>
 -----END RSA PRIVATE KEY-----
 ```
 
 The entire content of the file — including the `-----BEGIN` and `-----END` header/footer lines — must be stored as the `GITHUB_APP_PRIVATE_KEY` environment variable. When setting this in a single-line environment file, replace each newline with a literal `\n`:
 
 ```bash
-# Single-line format for .env files
-GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\nMIIEow...\n-----END RSA PRIVATE KEY-----\n"
+# Single-line format for .env files (replace <YOUR_KEY> with the real content)
+GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n<YOUR_BASE64_KEY>\n-----END RSA PRIVATE KEY-----\n"
 ```
 
 Or keep the file on disk and read it at runtime:
@@ -379,12 +378,15 @@ bun run test:coverage    # with coverage report
 ### Other useful commands
 
 ```bash
+bun run check            # Unified quality gate: typecheck + lint + format + test
 bun run typecheck        # TypeScript strict type check (no emit)
 bun run lint             # ESLint check
 bun run lint:fix         # ESLint auto-fix
 bun run format           # Prettier format check
 bun run format:fix       # Prettier auto-fix
 ```
+
+`bun run check` is the single command to run before opening a pull request.
 
 ### Expose the local server for webhook delivery
 

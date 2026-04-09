@@ -32,7 +32,7 @@ export function handleIssueComment(
   const ctx = parseIssueCommentEvent(payload, octokit, deliveryId);
 
   // Fire-and-forget: don't await (webhook must respond < 10s)
-  processRequest(ctx).catch((err) => {
+  processRequest(ctx).catch((err: unknown) => {
     ctx.log.error({ err }, "Async processing failed for issue_comment");
   });
 }

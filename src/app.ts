@@ -194,5 +194,9 @@ function shutdown(signal: string): void {
   }, 290_000); // 290 s force-exit timeout; allows in-flight requests to finish
 }
 
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => {
+  shutdown("SIGTERM");
+});
+process.on("SIGINT", () => {
+  shutdown("SIGINT");
+});

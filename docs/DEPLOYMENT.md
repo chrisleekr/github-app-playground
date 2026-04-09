@@ -70,6 +70,26 @@ The server exposes two HTTP endpoints on the same port as the webhook listener:
 `/readyz` returns `503` once the server receives `SIGTERM`, signalling the load
 balancer to stop routing new requests while in-flight work completes.
 
+### Docker HEALTHCHECK
+
+The production `Dockerfile` ships with a built-in `HEALTHCHECK` that calls
+`/healthz` via `curl` every 30 seconds:
+
+```dockerfile
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:3000/healthz || exit 1
+```
+
+This makes the container self-describing for orchestrators that honour Docker
+healthcheck metadata (Docker Compose, ECS with `HealthCheck` block, Nomad,
+Swarm). Kubernetes ignores the Docker `HEALTHCHECK` and uses the probe
+configuration below instead — both mechanisms work without conflict because
+they target the same `/healthz` endpoint.
+
+The `curl` binary is installed in the Dockerfile base stage specifically for
+this healthcheck. Do not remove it unless you migrate the `HEALTHCHECK` to a
+different probe mechanism.
+
 ### Kubernetes example
 
 ```yaml

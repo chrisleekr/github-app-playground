@@ -19,6 +19,7 @@ import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { Octokit } from "octokit";
 
 import type { BotContext } from "../../src/types";
+import { waitFor } from "../utils/assertions";
 
 // ─── Mock only modules without dedicated test files ────────────────────────
 
@@ -27,23 +28,18 @@ const mockCheckoutRepo = mock(() =>
   Promise.resolve({ workDir: "/tmp/test", cleanup: mockCleanup }),
 );
 const mockExecuteAgent = mock(() => Promise.resolve({ success: true, durationMs: 100 }));
-const mockBuildPrompt = mock(() => "test prompt");
-const mockResolveAllowedTools = mock(() => ["Bash", "Read"]);
 const mockResolveMcpServers = mock(() => ({}));
 
 // mock.module() returns void in Bun's runtime but ESLint infers a Promise from the factory.
 // The void operator suppresses the no-floating-promises rule for these static mock registrations.
+// NOTE: prompt-builder is NOT mocked here — it has its own dedicated test file and is a pure
+// function with no side effects, so running the real implementation in router tests is safe.
 void mock.module("../../src/core/checkout", () => ({
   checkoutRepo: mockCheckoutRepo,
 }));
 
 void mock.module("../../src/core/executor", () => ({
   executeAgent: mockExecuteAgent,
-}));
-
-void mock.module("../../src/core/prompt-builder", () => ({
-  buildPrompt: mockBuildPrompt,
-  resolveAllowedTools: mockResolveAllowedTools,
 }));
 
 void mock.module("../../src/mcp/registry", () => ({
@@ -99,7 +95,7 @@ function makeGraphqlResponse(): {
  */
 function makeOctokit(
   opts: {
-    listCommentsBodies?: Array<string | undefined>;
+    listCommentsBodies?: (string | undefined)[];
     createCommentId?: number;
     existingBody?: string;
     createCommentFn?: () => Promise<{ data: { id: number } }>;
@@ -180,15 +176,11 @@ beforeEach(() => {
   mockCleanup.mockClear();
   mockCheckoutRepo.mockClear();
   mockExecuteAgent.mockClear();
-  mockBuildPrompt.mockClear();
-  mockResolveAllowedTools.mockClear();
   mockResolveMcpServers.mockClear();
 
   mockCleanup.mockResolvedValue(undefined);
   mockCheckoutRepo.mockResolvedValue({ workDir: "/tmp/test", cleanup: mockCleanup });
   mockExecuteAgent.mockResolvedValue({ success: true, durationMs: 100 });
-  mockBuildPrompt.mockReturnValue("test prompt");
-  mockResolveAllowedTools.mockReturnValue(["Bash", "Read"]);
   mockResolveMcpServers.mockReturnValue({});
 });
 
@@ -282,15 +274,25 @@ describe("processRequest — error handling", () => {
     await processRequest(ctx);
 
     // finalizeTrackingComment calls updateComment with the final comment body.
-    const calls = updateCommentSpy.mock.calls as Array<[{ body: string }]>;
+    const calls = updateCommentSpy.mock.calls as [{ body: string }][];
     expect(calls.length).toBeGreaterThan(0);
     // calls.length > 0 is asserted above; the non-null cast is safe.
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const finalBody = calls[calls.length - 1]![0].body;
-    expect(finalBody).not.toContain("sk-ant-secret");
-    expect(finalBody).not.toContain("invalid API key");
-    expect(finalBody).not.toContain("401");
-    expect(finalBody).toContain("internal error");
+
+    // Extract ONLY the `**Error:** ...` line. The surrounding body also
+    // contains an HTML comment metadata marker (`<!-- delivery:...-TIMESTAMP -->`)
+    // whose random Date.now() digits can accidentally contain probe strings
+    // like "401" and produce a flaky false positive. The user-facing leak
+    // surface is the rendered error line, not the metadata marker.
+    const errorLine = finalBody.split("\n").find((line) => line.startsWith("**Error:**"));
+    expect(errorLine).toBeDefined();
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const line = errorLine!;
+    expect(line).not.toContain("sk-ant-secret");
+    expect(line).not.toContain("invalid API key");
+    expect(line).not.toContain("401");
+    expect(line).toContain("internal error");
   });
 
   it("does not crash when createTrackingComment fails", async () => {
@@ -319,7 +321,7 @@ describe("processRequest — successful execution", () => {
 
     await processRequest(ctx);
 
-    const calls = updateCommentSpy.mock.calls as Array<[{ body: string }]>;
+    const calls = updateCommentSpy.mock.calls as [{ body: string }][];
     expect(calls.length).toBeGreaterThan(0);
     // calls.length > 0 is asserted above; the non-null cast is safe.
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
@@ -365,5 +367,130 @@ describe("processRequest — successful execution", () => {
       "checkoutRepo",
       "executeAgent",
     ]);
+  });
+});
+
+describe("processRequest — concurrency limiting", () => {
+  it("rejects requests and posts capacity comment when activeCount >= limit", async () => {
+    // Import the real config singleton and temporarily lower the concurrency limit.
+    // The router reads `config.maxConcurrentRequests` on each call (not cached at import).
+    const { config } = await import("../../src/config");
+    const originalLimit = config.maxConcurrentRequests;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (config as any).maxConcurrentRequests = 1;
+
+    // Deferred promise to hold the first request's executeAgent open,
+    // keeping activeCount at 1 while the second request attempts to enter.
+    let resolveFirst: (value: { success: boolean; durationMs: number }) => void = () => undefined;
+    const firstExecution = new Promise<{ success: boolean; durationMs: number }>((resolve) => {
+      resolveFirst = resolve;
+    });
+    mockExecuteAgent.mockImplementationOnce(() => firstExecution);
+
+    const ctx1 = makeCtx();
+    const ctx2 = makeCtx();
+    const ctx2CreateCommentSpy = ctx2.octokit.rest.issues.createComment as ReturnType<typeof mock>;
+
+    // Launch request 1 (will hang at executeAgent, activeCount = 1)
+    const req1 = processRequest(ctx1);
+
+    try {
+      // Deterministic sync: wait until req1 actually enters executeAgent and
+      // increments activeCount. Replaces a 10ms setTimeout that was flaky on
+      // slow CI runners. `mock.calls.length >= 1` is the exact condition we
+      // need before launching the concurrent request 2.
+      await waitFor(() => mockExecuteAgent.mock.calls.length >= 1);
+
+      // Launch request 2 — should hit concurrency limit and be rejected
+      await processRequest(ctx2);
+
+      // Capacity comment should have been posted by request 2
+      const capacityCall = ctx2CreateCommentSpy.mock.calls.find((call) => {
+        const body = (call[0] as { body?: string }).body;
+        return typeof body === "string" && body.includes("at capacity");
+      });
+      expect(capacityCall).toBeDefined();
+    } finally {
+      // ALWAYS restore config and drain req1, even on assertion failure.
+      // Without this, a failing assertion would leave config.maxConcurrentRequests=1
+      // and a hanging request 1 → cascading failures in subsequent tests.
+      resolveFirst({ success: true, durationMs: 100 });
+      await req1;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (config as any).maxConcurrentRequests = originalLimit;
+    }
+  });
+
+  it("does not crash when capacity comment post fails", async () => {
+    const { config } = await import("../../src/config");
+    const originalLimit = config.maxConcurrentRequests;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (config as any).maxConcurrentRequests = 1;
+
+    let resolveFirst: (value: { success: boolean; durationMs: number }) => void = () => undefined;
+    const firstExecution = new Promise<{ success: boolean; durationMs: number }>((resolve) => {
+      resolveFirst = resolve;
+    });
+    mockExecuteAgent.mockImplementationOnce(() => firstExecution);
+
+    const ctx1 = makeCtx();
+    const ctx2 = makeCtx({
+      octokitOpts: {
+        createCommentFn: () => Promise.reject(new Error("API down")),
+      },
+    });
+
+    const req1 = processRequest(ctx1);
+
+    try {
+      // Deterministic sync: wait until req1 actually enters executeAgent
+      // (see sibling test above for rationale).
+      await waitFor(() => mockExecuteAgent.mock.calls.length >= 1);
+
+      // Must not throw even though capacity comment post fails
+      let didThrow = false;
+      try {
+        await processRequest(ctx2);
+      } catch {
+        didThrow = true;
+      }
+      expect(didThrow).toBe(false);
+    } finally {
+      resolveFirst({ success: true, durationMs: 100 });
+      await req1;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (config as any).maxConcurrentRequests = originalLimit;
+    }
+  });
+});
+
+describe("cleanupStaleIdempotencyEntries", () => {
+  it("removes entries older than the TTL and preserves fresh entries", async () => {
+    const { cleanupStaleIdempotencyEntries } = await import("../../src/webhook/router");
+
+    const now = Date.now();
+    const ttlMs = 60 * 60 * 1000; // 1 hour
+    const entries = new Map<string, number>();
+    entries.set("stale-2h", now - 2 * 60 * 60 * 1000); // 2h ago → delete
+    entries.set("stale-edge", now - ttlMs - 1); // just past TTL → delete
+    entries.set("fresh", now); // now → keep
+    entries.set("fresh-minus-5min", now - 5 * 60 * 1000); // 5m ago → keep
+
+    cleanupStaleIdempotencyEntries(entries, ttlMs);
+
+    expect(entries.has("stale-2h")).toBe(false);
+    expect(entries.has("stale-edge")).toBe(false);
+    expect(entries.has("fresh")).toBe(true);
+    expect(entries.has("fresh-minus-5min")).toBe(true);
+    expect(entries.size).toBe(2);
+  });
+
+  it("is a no-op when the map is empty", async () => {
+    const { cleanupStaleIdempotencyEntries } = await import("../../src/webhook/router");
+
+    const entries = new Map<string, number>();
+    cleanupStaleIdempotencyEntries(entries, 60 * 60 * 1000);
+
+    expect(entries.size).toBe(0);
   });
 });

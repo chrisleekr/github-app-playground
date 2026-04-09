@@ -32,7 +32,7 @@ export function handleReviewComment(
   const ctx = parseReviewCommentEvent(payload, octokit, deliveryId);
 
   // Fire-and-forget
-  processRequest(ctx).catch((err) => {
+  processRequest(ctx).catch((err: unknown) => {
     ctx.log.error({ err }, "Async processing failed for review_comment");
   });
 }

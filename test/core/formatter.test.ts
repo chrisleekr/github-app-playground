@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test";
 
 import {
+  formatAllSections,
+  formatBody,
   formatChangedFiles,
   formatComments,
   formatContext,
@@ -151,5 +153,79 @@ describe("formatChangedFiles", () => {
 
   it("returns 'No files changed' for empty array", () => {
     expect(formatChangedFiles([])).toBe("No files changed");
+  });
+});
+
+describe("formatBody", () => {
+  it("sanitizes body content", () => {
+    const token = `ghp_${"A".repeat(36)}`;
+    const result = formatBody(`Body with ${token}`);
+    expect(result).toContain("[REDACTED_GITHUB_TOKEN]");
+    expect(result).not.toContain(token);
+  });
+
+  it("returns sanitized content unchanged when safe", () => {
+    expect(formatBody("Hello world")).toBe("Hello world");
+  });
+
+  it("handles empty strings", () => {
+    expect(formatBody("")).toBe("");
+  });
+});
+
+describe("formatAllSections", () => {
+  const baseData: FetchedData = {
+    title: "Test",
+    body: "Body content",
+    state: "OPEN",
+    author: "user",
+    comments: [{ author: "alice", body: "Comment", createdAt: "2025-01-01T00:00:00Z" }],
+    reviewComments: [
+      {
+        author: "bob",
+        body: "Review",
+        path: "a.ts",
+        line: 1,
+        createdAt: "2025-01-01T00:00:00Z",
+      },
+    ],
+    changedFiles: [{ filename: "a.ts", status: "modified", additions: 1, deletions: 0 }],
+  };
+
+  it("formats all sections for a PR", () => {
+    const data: FetchedData = {
+      ...baseData,
+      headBranch: "feat/x",
+      baseBranch: "main",
+    };
+    const result = formatAllSections(data, true);
+    expect(result.context).toContain("PR Title: Test");
+    expect(result.body).toBe("Body content");
+    expect(result.comments).toContain("alice");
+    expect(result.reviewComments).toContain("Review");
+    expect(result.changedFiles).toContain("a.ts");
+  });
+
+  it("omits review comments and changed files for issues", () => {
+    const result = formatAllSections(baseData, false);
+    expect(result.context).toContain("Issue Title: Test");
+    expect(result.reviewComments).toBe("");
+    expect(result.changedFiles).toBe("");
+  });
+
+  it("handles missing body with fallback text", () => {
+    const data: FetchedData = { ...baseData, body: "" };
+    const result = formatAllSections(data, false);
+    expect(result.body).toBe("No description provided");
+  });
+
+  it("handles empty body in PR context with fallback text", () => {
+    // body type is string but empty-string path exercises the `?` fallback branch.
+    // isPR=true here distinguishes this test from the sibling at line 216 which
+    // uses isPR=false; both exercise the same fallback but from different code
+    // paths in formatAllSections.
+    const data: FetchedData = { ...baseData, body: "" };
+    const result = formatAllSections(data, true);
+    expect(result.body).toBe("No description provided");
   });
 });

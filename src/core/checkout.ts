@@ -80,10 +80,10 @@ export async function checkoutRepo(
       },
     };
   } catch (error) {
-    // Cleanup on clone failure (both workDir and the helper script)
+    // Cleanup on clone failure (best-effort: swallow cleanup errors)
     await Promise.all([
-      rm(workDir, { recursive: true, force: true }).catch(() => {}),
-      rm(helperPath, { force: true }).catch(() => {}),
+      rm(workDir, { recursive: true, force: true }).catch(() => undefined),
+      rm(helperPath, { force: true }).catch(() => undefined),
     ]);
     throw error;
   }

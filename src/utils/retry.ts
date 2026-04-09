@@ -14,6 +14,40 @@ export interface RetryOptions {
 }
 
 /**
+ * Validate a numeric retry option. Throws a descriptive Error identifying the
+ * offending option name and value when the value is not finite, optionally not
+ * an integer, or below the allowed minimum.
+ *
+ * Guards against the NaN/Infinity bypass of a naive `value < min` check:
+ * `NaN < 1` is `false`, so a plain comparison would silently accept NaN and
+ * later cause `throw undefined` in the exhaustion path.
+ *
+ * @param name - Option name used in the error message (e.g. "maxAttempts").
+ * @param value - The numeric value to validate.
+ * @param opts - Validation constraints: `min` (inclusive lower bound) and
+ *   optional `requireInteger` flag for options that must be whole numbers.
+ * @throws Error when the value is not finite, not an integer (when required),
+ *   or below `min`.
+ */
+function validateNumberOption(
+  name: string,
+  value: number,
+  opts: { min: number; requireInteger?: boolean },
+): void {
+  if (!Number.isFinite(value)) {
+    throw new Error(`retryWithBackoff: ${name} must be a finite number, got ${String(value)}`);
+  }
+  if (opts.requireInteger === true && !Number.isInteger(value)) {
+    throw new Error(`retryWithBackoff: ${name} must be an integer, got ${String(value)}`);
+  }
+  if (value < opts.min) {
+    throw new Error(
+      `retryWithBackoff: ${name} must be >= ${String(opts.min)}, got ${String(value)}`,
+    );
+  }
+}
+
+/**
  * Retry an async operation with exponential backoff.
  * Pass the delivery-scoped ctx.log to preserve deliveryId correlation in logs.
  */
@@ -28,6 +62,14 @@ export async function retryWithBackoff<T>(
     backoffFactor = 2,
     log = rootLogger,
   } = options;
+
+  // Fail fast on invalid input. Each check names the offending option and
+  // value. Without these guards, NaN/Infinity/below-min values could bypass
+  // the loop entirely and cause `throw lastError` to throw literal `undefined`.
+  validateNumberOption("maxAttempts", maxAttempts, { min: 1, requireInteger: true });
+  validateNumberOption("initialDelayMs", initialDelayMs, { min: 0 });
+  validateNumberOption("maxDelayMs", maxDelayMs, { min: 0 });
+  validateNumberOption("backoffFactor", backoffFactor, { min: 1 });
 
   let delayMs = initialDelayMs;
   let lastError: Error | undefined;
@@ -58,6 +100,8 @@ export async function retryWithBackoff<T>(
   }
 
   log.error({ maxAttempts }, "Operation failed after all attempts");
-  // lastError is guaranteed to be set after at least one failed attempt
-  throw lastError as Error;
+  // Safe to assert: `maxAttempts >= 1` is enforced above, so the loop ran
+  // at least once, meaning `lastError` was assigned in the catch block.
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+  throw lastError!;
 }
