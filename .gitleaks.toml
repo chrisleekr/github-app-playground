@@ -49,3 +49,14 @@ regexTarget = "match"
 regexes = [
   '''"integrity":\s*"sha(256|384|512)-[A-Za-z0-9+/=]+"''',
 ]
+
+# docs/SETUP.md documents the GitHub App private key format as part of
+# setup instructions (showing the -----BEGIN RSA PRIVATE KEY----- envelope
+# with a placeholder body). The gitleaks `private-key` rule correctly
+# matches this format marker even on placeholder content, so allowlist
+# the rule specifically for that one file. We use `targetRules` to scope
+# narrowly rather than blanket-allowlisting the whole file.
+[[allowlists]]
+description = "docs/SETUP.md private-key format documentation"
+paths = ['''^docs/SETUP\.md$''']
+targetRules = ["private-key"]

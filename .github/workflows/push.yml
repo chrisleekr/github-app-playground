@@ -59,6 +59,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_CONFIG: .gitleaks.toml
+          # Pin the gitleaks binary version explicitly; gitleaks-action@v2.3.9
+          # bundles an older gitleaks (8.24.3) whose [[allowlists]] v8 syntax
+          # handling has bugs that surface on docs/SETUP.md false positives.
+          GITLEAKS_VERSION: "8.30.1"
 
       - name: Run test
         run: bun test
