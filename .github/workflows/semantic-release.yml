@@ -94,10 +94,8 @@ jobs:
         if: ${{ !inputs.skip-checks }}
         run: bun test
 
-      # continue-on-error: see push.yml rationale for the same step
       - name: Run dependency audit
         if: ${{ !inputs.skip-checks }}
-        continue-on-error: true
         run: bun audit
 
       - name: Build project
