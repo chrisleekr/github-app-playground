@@ -20,6 +20,18 @@
 - Q: Should ESLint config be modernized to unified `typescript-eslint` with `strictTypeChecked`? → A: Yes — migrate to unified package, use `strictTypeChecked` preset, fix deprecated `no-var-requires` rule.
 - Q: Should Docker HEALTHCHECK be added to the Dockerfile? → A: Yes — add HEALTHCHECK using the existing `/healthz` endpoint.
 
+### Session 2026-04-10 — Post-Review additions
+
+After Phase 6 completed and PR #6 was opened, a senior code review (Phase 7) and automated PR reviewers (Copilot + CodeRabbit; Phase 8) surfaced additional scope. These clarifications are the authoritative record of the scope deltas.
+
+- Q: Are `src/core/checkout.ts` and `src/core/executor.ts` required to have module-level unit tests for this housekeeping effort? → A: No — **deferred**. Bun runtime limitations prevent mocking the `bun` builtin (`$` template tag) and prevent `mock.module()` isolation across test files in the same process. Both modules remain transitively exercised through `router.test.ts` with module-level mocks. A follow-up issue MUST be filed before merge to track a dependency-injection refactor. FR-007/FR-008 updated inline with the waiver rationale.
+- Q: Should security-motivated `package.json` `overrides` use caret ranges or exact version pins? → A: Exact version pins. Caret ranges defeat the purpose of CVE remediation because a future compatible release could reintroduce an advisory that auto-lands via `bun install`. Dependabot still opens PRs for exact-version bumps.
+- Q: Should `aquasecurity/trivy-action` be pinned to a tag or used on `@master`? → A: Pinned tag (`@v0.35.0`). `@master` is a supply-chain risk, especially in a security-hardening PR.
+- Q: Must trivy actually BLOCK the build on HIGH/CRITICAL CVEs, not just scan? → A: Yes. The step MUST set `exit-code: "1"` combined with `ignore-unfixed: true` so it blocks only on vulnerabilities that have available patches.
+- Q: Must the gitleaks CI step scan the full git history or just the latest commit? → A: Full history. The checkout step MUST set `fetch-depth: 0` so `gitleaks detect` can scan all commits via `git log -p`.
+- Q: Must `retryWithBackoff` validate its numeric options at call time? → A: Yes. `maxAttempts`, `initialDelayMs`, `maxDelayMs`, and `backoffFactor` MUST reject `NaN`, `Infinity`, values below their respective minimums, and (for `maxAttempts`) non-integers, with an error message that names the offending option and value. A prior latent bug allowed `maxAttempts: NaN` to throw literal `undefined`.
+- Q: What threshold does Bun's `coverageThreshold` enforce — per-file or global? → A: Per-file. Any documentation claiming "global threshold" is inaccurate and MUST be corrected.
+
 ## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - Contributor Runs Tests with Confidence (Priority: P1)
@@ -28,7 +40,7 @@ A developer contributing to the project runs the test suite and gets meaningful 
 
 **Why this priority**: Untested code in the core pipeline (prompt-builder, fetcher, checkout, executor) is the highest-risk gap. A regression in prompt construction or data fetching silently breaks the entire bot without any test signal.
 
-**Independent Test**: Can be validated by running `bun run test:coverage` and verifying that all modules meet the >=90% global line coverage threshold enforced by Bun's native `coverageThreshold`.
+**Independent Test**: Can be validated by running `bun run test:coverage` and verifying that all tested files meet the >=90% per-file line coverage threshold enforced by Bun's native `coverageThreshold`.
 
 **Acceptance Scenarios**:
 
@@ -56,8 +68,8 @@ A maintainer merges a PR and the CI pipeline automatically enforces minimum test
 
 **Acceptance Scenarios**:
 
-1. **Given** test coverage thresholds are configured in CI, **When** a PR reduces line coverage below 90% for any module, **Then** the CI pipeline fails with a clear message
-2. **Given** any module, **When** coverage drops below 90%, **Then** the CI pipeline fails via Bun's native threshold enforcement
+1. **Given** test coverage thresholds are configured in CI, **When** a PR reduces line coverage below 90% for any file with tests, **Then** the CI pipeline fails with a clear message (Bun's `coverageThreshold` enforces per-file)
+2. **Given** any tested file, **When** line or function coverage drops below 90%, **Then** the CI pipeline fails via Bun's native per-file threshold enforcement
 3. **Given** a dependency has a known vulnerability, **When** the CI pipeline runs, **Then** the dependency audit step flags it
 4. **Given** the Docker image is built, **When** the container scan runs, **Then** known CVEs are reported
 
@@ -102,12 +114,12 @@ A developer cloning the repository finds all tooling version-pinned, CI labels p
 - **FR-004**: The data fetcher module MUST have unit tests covering response parsing and error handling paths, achieving >=90% line coverage (up from current ~9%)
 - **FR-005**: The formatter module MUST have additional unit tests covering all conditional branches, achieving >=90% line coverage (up from current ~67%)
 - **FR-006**: The webhook router MUST have additional tests covering concurrency limiting and capacity rejection paths, achieving >=90% line coverage (up from current ~84%)
-- **FR-007**: The checkout module MUST have unit tests covering credential setup, clone operations, and cleanup paths, achieving >=90% line coverage
-- **FR-008**: The executor module MUST have unit tests with mocked AI agent SDK covering result handling and error paths, achieving >=90% line coverage
+- **FR-007**: The checkout module MUST have unit tests covering credential setup, clone operations, and cleanup paths, achieving >=90% line coverage — **DEFERRED** (see Clarifications Session 2026-04-10): Bun's built-in `$` template tag and `bun` module cannot be mocked via `mock.module("bun", ...)` because `bun` is a runtime builtin. Module-level unit testing requires a source refactor for dependency injection that is out of scope for housekeeping. The module is transitively exercised by `router.test.ts` (mocked). A follow-up issue MUST be filed before merge to track the DI refactor.
+- **FR-008**: The executor module MUST have unit tests with mocked AI agent SDK covering result handling and error paths, achieving >=90% line coverage — **DEFERRED** (see Clarifications Session 2026-04-10): `mock.module("@anthropic-ai/claude-agent-sdk", ...)` persists across Bun test files in the same process, conflicting with `router.test.ts`'s module-level mock. The module is transitively exercised by `router.test.ts`. Same follow-up issue as FR-007.
 
 **CI Pipeline — Coverage Gating**:
 
-- **FR-009**: Bun's native `coverageThreshold` MUST be configured in `bunfig.toml` to enforce >=90% line coverage globally
+- **FR-009**: Bun's native `coverageThreshold` MUST be configured in `bunfig.toml` to enforce >=90% line coverage and >=90% function coverage **per-file** (Bun applies `coverageThreshold` per-file, not to the aggregated global number — verified empirically during Phase 7)
 - **FR-010**: The CI pipeline MUST fail when `bun test` detects coverage below the configured threshold
 
 **CI Pipeline — Security Scanning**:
@@ -136,13 +148,13 @@ A developer cloning the repository finds all tooling version-pinned, CI labels p
 ### Key Entities
 
 - **Exported Symbol**: Any function, class, interface, or type exported from a source module that forms part of the public API surface. Must have JSDoc per constitution Principle VIII.
-- **Coverage Threshold**: A configured minimum percentage of line coverage enforced globally. Attributes: threshold level (90%), enforcement mechanism (Bun native `coverageThreshold` in bunfig.toml).
+- **Coverage Threshold**: A configured minimum percentage of line and function coverage enforced per-file by Bun's native `coverageThreshold`. Attributes: line threshold (90%), function threshold (90%), enforcement scope (per-file), enforcement mechanism (Bun native `coverageThreshold` in bunfig.toml).
 
 ## Success Criteria _(mandatory)_
 
 ### Measurable Outcomes
 
-- **SC-001**: All modules maintain >=90% line coverage enforced natively by Bun's `coverageThreshold`
+- **SC-001**: All tested modules maintain >=90% line coverage and >=90% function coverage on a **per-file** basis, enforced natively by Bun's `coverageThreshold` in `bunfig.toml`
 - **SC-002**: 100% of exported functions across the codebase have JSDoc comments (pre-satisfied)
 - **SC-003**: ESLint config uses the unified `typescript-eslint` package with `strictTypeChecked` preset and no deprecated rules
 - **SC-004**: The unified quality gate passes with zero errors after all housekeeping changes
@@ -150,12 +162,14 @@ A developer cloning the repository finds all tooling version-pinned, CI labels p
 - **SC-006**: CI pipeline includes dependency audit and container scan steps that execute on every PR and Docker build respectively
 - **SC-007**: Pre-commit hook detects and blocks commits containing secret patterns (API keys, private keys, tokens)
 - **SC-008**: Node.js version is pinned via `.nvmrc` and CI labeler workflow has a valid configuration file
+- **SC-009**: `package.json` `overrides` for security CVE remediation use exact version pins (not caret ranges) with an inline rationale comment
+- **SC-010**: `retryWithBackoff` rejects invalid numeric options (`NaN`, `Infinity`, below-minimum, non-integer `maxAttempts`) with a descriptive synchronous error that names the offending option and value
 
 ## Assumptions
 
 - Existing test infrastructure (test runner, directory structure, mocking patterns) will be reused without changes to the test framework
 - External dependencies (GitHub API, AI agent SDK, git CLI) will be mocked in all new tests per constitution Principle V
-- Bun's built-in `coverageThreshold` in bunfig.toml will enforce a global 90% line coverage floor natively; no custom script needed
+- Bun's built-in `coverageThreshold` in bunfig.toml will enforce a per-file 90% line and function coverage floor natively; no custom script needed. (Bun applies `coverageThreshold` per-file, not as an aggregated global percentage.)
 - JSDoc additions will not change any runtime behavior; they are documentation-only changes
 - Security scanning tools will be open-source or GitHub-native (no paid third-party dependencies)
 - The secret scanning pre-commit hook will use `gitleaks` (Go binary) integrated into the existing Husky pipeline, with `.gitleaks.toml` for allowlist configuration

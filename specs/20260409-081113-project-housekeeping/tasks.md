@@ -59,7 +59,7 @@
 
 ### Validation for User Story 1
 
-- [x] T016 [US1] Ran `bun run check` — all 145 tests pass, coverage is 99.36% lines / 98.61% funcs globally. `bunfig.toml` threshold set to `{ lines = 0.9, functions = 0.8 }` to accommodate the untestable `setInterval` cleanup callback in router.ts
+- [x] T016 [US1] Ran `bun run check` — all 145 tests pass, coverage is 99.36% lines / 98.61% funcs globally. `bunfig.toml` threshold set to `{ lines = 0.9, functions = 0.8 }` to accommodate the untestable `setInterval` cleanup callback in router.ts. **(Threshold later raised to `{ lines = 0.9, functions = 0.9 }` in T032 after the Phase 7.B router refactor eliminated the gap.)**
 
 **Checkpoint**: `bun test --coverage` passes with >=90% global line coverage. All 108+ existing tests still pass. `bun run check` passes.
 
@@ -164,6 +164,93 @@
 
 ---
 
+## Phase 8: Post-PR-Review Fix-ups
+
+**Purpose**: Address 8 verified review comments from Copilot + CodeRabbit on PR #6, plus 3 validator-found missed issues (M1/M2/M3) that are in scope to fix now. Full rationale in `plan.md` Phase 8.
+
+**Trigger**: PR #6 is open and CI is green. These fixes land BEFORE merge.
+
+**CRITICAL**: Phase 8.E runs LAST as the validation gate. Phases 8.A–8.D + 8.F are independent (no shared files) and can run in any order / parallel.
+
+### Phase 8.A: retry.ts input validation + tests (HIGH)
+
+**Fixes**: RV4 (Copilot — missing test for `maxAttempts<1` guard), RV6 (CodeRabbit — guard bypassed by NaN), M1 (validator — same NaN class affects other numeric options).
+
+- [x] T042 Added private helper `validateNumberOption(name, value, { min, requireInteger? })` in `src/utils/retry.ts` above `retryWithBackoff`. Throws descriptive `Error` when value is not `Number.isFinite`, optionally not `Number.isInteger`, or below `opts.min`. Error messages name the offending option and the actual value (`String(value)` to format NaN/Infinity safely).
+- [x] T043 Applied the helper in `retryWithBackoff` to all four numeric options: `maxAttempts` (`min: 1, requireInteger: true`), `initialDelayMs` (`min: 0`), `maxDelayMs` (`min: 0`), `backoffFactor` (`min: 1`). Removed the ad-hoc `if (maxAttempts < 1)` guard — the helper replaces it and additionally catches NaN/Infinity that the plain comparison would silently accept.
+- [x] T044 [P] Added `describe("retryWithBackoff — input validation")` block with **9 tests** in `test/utils/retry.test.ts`. Tests cover: `maxAttempts: 0`, `maxAttempts: -1`, `maxAttempts: NaN`, `maxAttempts: Infinity`, `maxAttempts: 1.5` (non-integer), `initialDelayMs: NaN`, `maxDelayMs: NaN`, `backoffFactor: NaN`, `backoffFactor: 0.5` (below-min). Each asserts a descriptive Error message substring AND that the operation function was never called (validation runs before any attempt). Total test count in file: 19 (was 10).
+- [x] T045 Complexity directive removed. The helper extraction dropped the per-branch count inside `retryWithBackoff` below the 15 limit, so the `// eslint-disable-next-line complexity` comment was removed during T042. `bun run lint` reports zero errors.
+
+**Checkpoint**: `bun test test/utils/retry.test.ts` passes with 9 new tests. `bun run lint src/utils/retry.ts` reports zero errors.
+
+---
+
+### Phase 8.B: CI enforcement (HIGH)
+
+**Fixes**: RV3 (Copilot+CodeRabbit — gitleaks needs full history), RV5 (CodeRabbit — trivy needs explicit `exit-code: "1"`).
+
+- [x] T046 [P] Added `with: fetch-depth: 0` to the `Checkout source code` step in `.github/workflows/push.yml`. Inline comment explains that default `fetch-depth: 1` would limit gitleaks `git log -p` scan to a single commit. YAML parse verified.
+- [x] T047 [P] Added `exit-code: "1"` to the `Scan image with Trivy` step in `.github/workflows/docker-build.yml`. Inline comment explains the combination with existing `ignore-unfixed: true` produces the spec's "block only on vulnerabilities with available fixes" semantics. YAML parse verified.
+
+**Checkpoint**: YAML files parse. Push to feature branch; verify (a) gitleaks step logs "N commits scanned" where N > 1, (b) trivy step behavior unchanged on chore: commits (still skipped via semantic-release gate).
+
+---
+
+### Phase 8.C: Test hygiene (MEDIUM/LOW)
+
+**Fixes**: RV1 (Copilot — flaky setTimeout sync), RV2 (Copilot — misleading test name), M2 (validator — `expectToReject` narrow contract).
+
+- [x] T048 Added `waitFor(predicate, opts?)` to `test/utils/assertions.ts` with defaults `timeoutMs: 2000`, `intervalMs: 5`. Migrated both concurrency test sync points in `test/webhook/router.test.ts` from `setTimeout(resolve, 10)` to `waitFor(() => mockExecuteAgent.mock.calls.length >= 1)` — deterministic condition wait, no fixed delay. Added `waitFor` import to router test.
+- [x] T049 [P] Renamed `test/core/formatter.test.ts` line 222 from `"handles undefined body (null-like) with fallback text"` to `"handles empty body in PR context with fallback text"`. Added a comment clarifying the distinction from the sibling test at line 216 (isPR=true vs isPR=false).
+- [x] T050 Improved `expectToReject` in `test/utils/assertions.ts`: (a) extended JSDoc to document the narrow Error-instance contract and the diagnostic-throwing behavior; (b) rewrote the `instanceof Error` check to `throw new Error(...)` before the `expect().toContain()` assertion so a non-Error rejection produces an actionable diagnostic identifying the actual type and serialized value. Also **created `test/utils/assertions.test.ts`** with 6 tests covering both helpers (expectToReject success path, string rejection, object rejection; waitFor instant true, flip to true, timeout). Required to keep `test/utils/assertions.ts` at ≥90% per-file coverage after the new code paths were added.
+
+**Checkpoint**: `bun test` still passes all tests. Flaky concurrency test runs deterministically in a 100-iteration loop (`for i in {1..100}; do bun test test/webhook/router.test.ts || break; done`).
+
+---
+
+### Phase 8.D: Documentation (LOW)
+
+**Fixes**: RV7 (CodeRabbit — "global threshold" wording is inaccurate).
+
+- [x] T051 [P] Rewrote the Phase 7 bullet in `CLAUDE.md:76` to replace "90% global threshold (funcs + lines)" with "90% per-file threshold (lines + functions; Bun's `coverageThreshold` is applied per-file, not aggregated)". Also expanded the bullet to accurately describe Phase 8 additions (trivy blocking `exit-code: "1"`, gitleaks `fetch-depth: 0`, retry input validation, exact override pins). Grep confirmed all remaining "global threshold" strings are inside spec artifacts that document the historical inaccuracy — no stale references remain in active documentation.
+
+**Checkpoint**: `rg "global threshold" .` returns no matches (or only matches inside quoted text that accurately describes a historical inaccuracy).
+
+---
+
+### Phase 8.F: Security overrides pinning (LOW)
+
+**Fixes**: M3 (validator — caret ranges defeat the purpose of security-motivated pins).
+
+- [x] T052 [P] Edited `package.json` `overrides` block. Verified each currently-resolved version via `bun pm ls --all`: all 8 overrides matched the caret minimum exactly, so removing the `^` prefix produced no actual version change. Added `"//"` rationale key pointing at plan Phase 8.F.
+- [x] T053 Ran `bun install` — **"Resolved, downloaded and extracted [0]" / "no changes"**. Lockfile is stable; the only `bun.lock` diff is the cosmetic override block mirror (caret removal + new `//` key), confirming zero resolution changes.
+- [x] T054 Ran `bun audit` — **`No vulnerabilities found`** unchanged. Exact pins did not reveal any previously-masked advisory.
+
+**Checkpoint**: `bun install` idempotent (no package changes); `bun audit` clean.
+
+---
+
+### Phase 8.E: Final validation
+
+**Runs LAST** — all other Phase 8 sub-phases must complete first.
+
+- [x] T055 Ran `bun run check` — **exit 0**, zero errors, zero warnings, **164 tests pass** (149 existing + 9 new retry validation tests from T044 + 6 new `assertions.ts` helper tests needed to keep `test/utils/assertions.ts` at ≥90% per-file coverage after `waitFor`/improved `expectToReject` were added in T048/T050). Coverage: 100% funcs, 99.68% lines globally; every file meets per-file threshold.
+- [x] T056 Ran `bun audit` — **`No vulnerabilities found`** (confirmed after T052 override pin changes).
+- [ ] T057 Commit Phase 8 changes and push. Watch the CI pipeline via `gh run watch`. Verify: (a) `Lint & Test` job passes, (b) gitleaks step logs show `N commits scanned` with N > 1 (full history), (c) Semantic Release runs for `fix:` commits but skips docker-build job on `chore:` commits, (d) all required checks green on PR #6.
+- [ ] T058 Reply to each of the 8 PR review comments from Copilot + CodeRabbit via `gh api --method POST repos/chrisleekr/github-app-playground/pulls/6/comments/<comment_id>/replies -f body="Fixed in <commit_sha>."`. Comment IDs: 3057387965 (Copilot router), 3057388024 (Copilot formatter), 3057388055 (Copilot push.yml fetch-depth), 3057388084 (Copilot retry.ts), 3057426573 (CodeRabbit trivy), 3057426607 (CodeRabbit push.yml fetch-depth dup), 3057426614 (CodeRabbit CLAUDE.md), 3057426631 (CodeRabbit retry.ts NaN). After replying, click **Resolve conversation** on each thread in the GitHub web UI. Do NOT force-resolve without a reply — the reply is the audit trail.
+
+**Checkpoint**: PR #6 has all checks green, all 8 review comment threads resolved, ready to merge.
+
+---
+
+### Phase 8.E.5: Follow-up tracking (audit trail for deferred FRs)
+
+- [ ] T059 Before merging PR #6, file a follow-up GitHub issue tracking the FR-007/FR-008 deferral. Title: `chore(test): DI refactor for checkout.ts and executor.ts to enable module-level unit tests`. Body MUST cite: (a) the Bun runtime limitations that block `mock.module("bun", ...)` and cross-file `mock.module` isolation; (b) the housekeeping PR (#6) where the deferral originated; (c) spec.md Clarifications Session 2026-04-10 as the authoritative rationale; (d) the acceptance criterion (module-level `*.test.ts` files for both modules hitting ≥90% per-file coverage). Record the issue number in the PR #6 description before clicking merge so the audit trail survives the branch deletion.
+
+**Checkpoint**: Follow-up issue filed and referenced in PR #6 description. FR-007/FR-008 deferral has a durable audit trail outside the feature branch.
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
@@ -179,6 +266,13 @@
 - **Phase 7.C (test hygiene)**: Depends on Phase 7.A completion, parallelizable with 7.B and 7.D
 - **Phase 7.D (code quality)**: Depends on Phase 7.A completion, parallelizable with 7.B and 7.C
 - **Phase 7.E (final validation)**: Depends on ALL Phase 7 sub-phases
+- **Phase 8.A (retry.ts validation)**: Depends on Phase 7 merged/on-branch. T042/T043/T045 sequential (same file); T044 parallel with T042/T043 (different file, but depends on T042-T043 completing for assertions to match)
+- **Phase 8.B (CI enforcement)**: No dependencies within Phase 8; parallelizable with 8.A/8.C/8.D/8.F
+- **Phase 8.C (test hygiene)**: T048 and T050 both touch `test/utils/assertions.ts` — sequential. T049 is parallel with the others.
+- **Phase 8.D (docs)**: No dependencies; parallelizable with everything else
+- **Phase 8.F (overrides pinning)**: T052 → T053 → T054 sequential (lockfile depends on package.json; audit depends on lockfile)
+- **Phase 8.E (final validation)**: Depends on ALL Phase 8 sub-phases (A through D + F)
+- **Phase 8.E.5 / T059 (follow-up issue)**: Depends on T055-T058 completing cleanly; MUST precede PR #6 merge
 
 ### User Story Dependencies
 
@@ -207,6 +301,20 @@
   - T032 must wait for T027, T028, T029 to complete (it measures their outcome)
   - T036 touches three files in sequence (create `test/utils/assertions.ts`, migrate `test/core/fetcher.test.ts`, update `eslint.config.mjs`); treat as one atomic task
 
+**Phase-level parallelism in Phase 8**: Sub-phases 8.A, 8.B, 8.C, 8.D, and 8.F are all independent (no shared files) and can run in any order. Phase 8.E runs LAST as the validation gate.
+
+**Task-level parallelism within Phase 8** (single developer):
+
+- **Parallelizable** (marked [P] on tasks): T044 (`test/utils/retry.test.ts`), T046 (`push.yml`), T047 (`docker-build.yml`), T049 (`formatter.test.ts`), T051 (`CLAUDE.md`), T052 (`package.json`) — all touch distinct files and have no cross-dependencies until T055 (final check).
+- **Sequential within the same file**:
+  - T042 → T043 → T045 (all edit `src/utils/retry.ts`)
+  - T048 → T050 (both edit `test/utils/assertions.ts`)
+- **Sequential by internal dependency**:
+  - T044 depends on T042+T043 (the helper and its application must exist before the tests can assert on them)
+  - T053 depends on T052 (lockfile after package.json edit)
+  - T054 depends on T053 (audit after install)
+  - T055-T058 depend on ALL other Phase 8 tasks (final validation gate)
+
 ```mermaid
 graph LR
     classDef config fill:#2D5A27,color:#FFFFFF
@@ -225,6 +333,12 @@ graph LR
     P7C["Phase 7.C<br/>Test Hygiene"]:::test
     P7D["Phase 7.D<br/>Code Quality"]:::config
     P7E["Phase 7.E<br/>Final Validation"]:::gate
+    P8A["Phase 8.A<br/>retry.ts Validation"]:::test
+    P8B["Phase 8.B<br/>CI Enforcement"]:::ci
+    P8C["Phase 8.C<br/>Test Hygiene"]:::test
+    P8D["Phase 8.D<br/>Doc Wording"]:::config
+    P8F["Phase 8.F<br/>Overrides Pinning"]:::config
+    P8E["Phase 8.E<br/>Final Validation"]:::gate
 
     P1 --> P2 --> P3 --> P6
     P1 --> P4 --> P6
@@ -233,6 +347,11 @@ graph LR
     P7A --> P7B --> P7E
     P7A --> P7C --> P7E
     P7A --> P7D --> P7E
+    P7E --> P8A --> P8E
+    P7E --> P8B --> P8E
+    P7E --> P8C --> P8E
+    P7E --> P8D --> P8E
+    P7E --> P8F --> P8E
 ```
 
 ---
@@ -284,7 +403,6 @@ Recommended execution order (sequential, maximizing safety):
 
 ## Notes
 
-- T001 is already partially done (init-options.json was changed earlier in this session)
 - User Story 2 (JSDoc) is pre-satisfied — all exported functions already have JSDoc comments
 - T003 (coverageThreshold) will cause `bun test` to fail until T010-T015 raise coverage. During development, temporarily lower the threshold or run tests without coverage enforcement
 - T007 (ESLint migration) may surface new lint errors — budget time for T008 fixes
@@ -296,3 +414,11 @@ Recommended execution order (sequential, maximizing safety):
 - T032 is conditional on T027-T029 outcome. Do NOT raise the threshold blindly; measure first.
 - T035 is a latent bug fix (not cosmetic): `maxAttempts: 0` currently throws literal `undefined`.
 - T037 (CLAUDE.md) is a per-feature manual cleanup — the script will re-add the noise on future features until `.specify/scripts/bash/update-agent-context.sh` is patched (out of scope).
+- **Phase 8 context**: Tasks T042-T058 address 8 PR review comments from Copilot+CodeRabbit on PR #6 plus 3 validator-found missed issues. See `plan.md` Phase 8 for full rationale, finding severity, and dependency graph.
+- T042+T043+T045 all modify `src/utils/retry.ts` — apply as sequential edit passes.
+- T048+T050 both modify `test/utils/assertions.ts` — apply as sequential edit passes.
+- T044 depends on T042+T043 being complete (tests assert on the new helper's behavior).
+- T052→T053→T054 must run in order (package.json → lockfile → audit).
+- T047 (trivy `exit-code: "1"`) will make future `feat:` / `fix:` commits fail docker-build when new CVEs are disclosed against the container base image. This is the stated housekeeping intent — document in PR description.
+- T058 requires PR comment IDs recorded in Phase 8.E of tasks.md. Do NOT force-resolve without a reply; the reply is the audit trail.
+- T059 (Phase 8.E.5) is the durable audit trail for the FR-007/FR-008 deferral documented in spec Clarifications Session 2026-04-10. The issue number MUST be linked in the PR #6 description BEFORE merge so the branch-delete does not orphan the context.
