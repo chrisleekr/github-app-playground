@@ -279,10 +279,20 @@ describe("processRequest — error handling", () => {
     // calls.length > 0 is asserted above; the non-null cast is safe.
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const finalBody = calls[calls.length - 1]![0].body;
-    expect(finalBody).not.toContain("sk-ant-secret");
-    expect(finalBody).not.toContain("invalid API key");
-    expect(finalBody).not.toContain("401");
-    expect(finalBody).toContain("internal error");
+
+    // Extract ONLY the `**Error:** ...` line. The surrounding body also
+    // contains an HTML comment metadata marker (`<!-- delivery:...-TIMESTAMP -->`)
+    // whose random Date.now() digits can accidentally contain probe strings
+    // like "401" and produce a flaky false positive. The user-facing leak
+    // surface is the rendered error line, not the metadata marker.
+    const errorLine = finalBody.split("\n").find((line) => line.startsWith("**Error:**"));
+    expect(errorLine).toBeDefined();
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const line = errorLine!;
+    expect(line).not.toContain("sk-ant-secret");
+    expect(line).not.toContain("invalid API key");
+    expect(line).not.toContain("401");
+    expect(line).toContain("internal error");
   });
 
   it("does not crash when createTrackingComment fails", async () => {
