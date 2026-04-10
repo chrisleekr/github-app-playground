@@ -22,7 +22,7 @@ As the maintainer of `github-app-playground`, I want a workflow that runs on a f
 
 **Why this priority**: This is the entire purpose of the feature. Without automatic recurring execution producing a concrete, reviewable artefact (an issue), the feature delivers no value. A single-run MVP satisfies the core problem.
 
-**Independent Test**: Trigger the workflow once (manually) on a branch, wait for it to complete, and verify that:
+**Independent Test**: After merging the workflow file to the default branch, trigger the workflow once manually against `main` (`workflow_dispatch` requires the workflow definition to exist on the default branch — the very first introduction of any new workflow file therefore cannot be smoke-tested before merge; subsequent changes to an existing workflow can be smoke-tested on a feature branch via `gh workflow run --ref <branch>`). Wait for the run to complete or hit the 60-minute ceiling, then verify that:
 
 1. The workflow completed without errors.
 2. Exactly one new GitHub issue exists in the repository, labelled as a research finding, containing a verified finding, a rationale, a diagram, and references.

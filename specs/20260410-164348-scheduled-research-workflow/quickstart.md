@@ -115,42 +115,59 @@ actionlint .github/workflows/research.yml
 
 Expected: zero output (any output is a warning/error to fix before merge).
 
-### 4. Run the manual smoke test
-
-This is the **mandatory** end-to-end check. Per the spec's User Story 1 acceptance scenario and the mitigation in `plan.md`'s Complexity Tracking row.
-
-#### Step 4a — push the branch
+### 4. Push the branch and open the PR
 
 ```sh
 git push -u origin 20260410-164348-scheduled-research-workflow
+gh pr create --title "feat(ci): add scheduled research workflow with claude-code-action" --body-file <path-to-pr-description>
 ```
 
-#### Step 4b — manually trigger the workflow against the branch
+The PR description should reference this feature directory and call out the four checklist items below.
 
-The trigger MUST run against the feature branch, not against `main`, so a malfunction does not pollute the default branch's issue list.
+### 5. Pre-merge gate (everything that **can** be tested before merge)
+
+For the **first introduction** of any new GitHub Actions workflow, the actual `gh workflow run` smoke test is **not possible before merge**. GitHub Actions requires `workflow_dispatch` workflow definitions to exist on the default branch (`main`) before they can be invoked, even when targeting a different ref. The REST `/dispatches` endpoint enforces the same constraint and returns `404 Not Found` for workflows that aren't yet on `main`. See the [GitHub docs](https://docs.github.com/en/actions/using-workflows/manually-running-a-workflow): _"To trigger the workflow_dispatch event, your workflow must be in the default branch."_
+
+Therefore, the pre-merge gate for **this** PR is the **static checks only**:
+
+- ✅ §1 — Required secrets provisioned (`gh secret list --repo chrisleekr/github-app-playground` shows both `CLAUDE_CODE_OAUTH_TOKEN` and `PERSONAL_ACCESS_TOKEN`)
+- ✅ §2 — GitHub Actions failure-email notifications enabled at the user level
+- ✅ §3 — `actionlint .github/workflows/research.yml` returns zero output
+- ✅ Code review of the workflow file diff — verify the tool allow-list, the input validation, the secret handling, and the prompt template against `contracts/`
+
+If all four pre-merge items pass, **approve and merge the PR**. Subsequent introductions of changes to this workflow (after it exists on `main`) **can** be smoke-tested on a feature branch via `gh workflow run --ref <branch>` per §6 below — only the very first introduction requires the merge-first pattern.
+
+### 6. Post-merge smoke test (mandatory)
+
+Immediately after merging, run the smoke test against `main` to verify the workflow actually works end-to-end with `claude-code-action` and the real GitHub API.
+
+#### Step 6a — trigger the workflow on `main`
 
 ```sh
 gh workflow run research.yml \
-  --ref 20260410-164348-scheduled-research-workflow \
-  --field focus_area=docs
+  --ref main \
+  --field focus_area=docs \
+  --repo chrisleekr/github-app-playground
 ```
 
 `focus_area=docs` is chosen deliberately: documentation findings are the lowest-blast-radius outcome, so any misfire is easy to triage and close.
 
-#### Step 4c — watch the run
+#### Step 6b — watch the run
 
 ```sh
-gh run watch --exit-status
+sleep 5  # let the run register
+RUN_ID=$(gh run list --workflow research.yml --limit 1 --json databaseId --jq '.[0].databaseId' --repo chrisleekr/github-app-playground)
+gh run watch "$RUN_ID" --exit-status --repo chrisleekr/github-app-playground
 ```
 
 The run is expected to take 5–30 minutes typically. The hard ceiling is 60 minutes (FR-005).
 
-#### Step 4d — verify the outcome
+#### Step 6c — verify the outcome
 
 **Successful outcome A** — exactly one new issue exists:
 
 ```sh
-gh issue list --label research --label "area: docs" --state open --json number,title,labels,createdAt
+gh issue list --label research --label "area: docs" --state open --json number,title,labels,createdAt --repo chrisleekr/github-app-playground
 ```
 
 You should see exactly one issue, with both labels, created within the last hour. Open it in the browser and verify it conforms to `contracts/issue-body.md`:
@@ -166,32 +183,45 @@ You should see exactly one issue, with both labels, created within the last hour
 **Successful outcome B** — no issue, but the run completed cleanly:
 
 ```sh
-gh run view <run-id> --log | grep -A20 "No Finding"
+gh run view "$RUN_ID" --log --repo chrisleekr/github-app-playground | grep -A20 "No Finding"
 ```
 
 You should see a "No Finding" block in the agent's log explaining what was evaluated and why nothing qualified. This is also a valid outcome (per FR-014).
 
 **Either outcome A or B is a passing smoke test.**
 
-#### Step 4e — verify zero side effects
+#### Step 6d — verify zero side effects from the run
 
 ```sh
-# Zero new commits on the default branch since the run started:
+# Zero new commits on main attributable to the run:
 git fetch origin main
-git log origin/main..origin/main --oneline   # should print nothing
+git log --since="2 hours ago" --oneline origin/main
 
-# Zero new branches created by the run:
+# Zero new branches:
 gh api repos/chrisleekr/github-app-playground/branches --jq '.[].name' | sort
 
-# Zero new PRs created by the run:
-gh pr list --state all --search "created:>$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ)" --json number,title,createdAt
+# Zero new PRs:
+gh pr list --state all --search "created:>$(date -u -v-2H +%Y-%m-%dT%H:%M:%SZ)" --json number,title,createdAt --repo chrisleekr/github-app-playground
 ```
 
-All three commands should report no new artefacts attributable to the workflow run. (If outcome was A, the only new artefact in the entire repo should be the single new issue from step 4d.)
+The only new artefact in the entire repo should be the single new issue from step 6c (if outcome A).
 
-#### Step 4f — only after 4a–4e all pass, merge the PR
+#### Step 6e — if the smoke test FAILS
 
-If any step fails, **do not merge**. See `Troubleshooting` below.
+If the smoke test fails (technical error, malformed issue body, side-effect detected, etc.), do **not** wait for the next scheduled run to fix it. Instead:
+
+1. Disable the workflow immediately to stop the next scheduled tick from firing:
+   ```sh
+   gh workflow disable research.yml --repo chrisleekr/github-app-playground
+   ```
+2. Open a fix-up PR with the corrections.
+3. After the fix-up PR merges, re-enable the workflow and re-run the smoke test:
+   ```sh
+   gh workflow enable research.yml --repo chrisleekr/github-app-playground
+   gh workflow run research.yml --ref main --field focus_area=docs --repo chrisleekr/github-app-playground
+   ```
+
+This is the **rollback procedure** that compensates for not being able to smoke-test before merge.
 
 ---
 
@@ -309,24 +339,24 @@ If you decide to retire the feature:
 
 For audit purposes, the following maps each spec requirement to the verification step in this quickstart:
 
-| Spec FR / SC                                      | Verified by                                                                                                |
-| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| FR-001 (recurring schedule)                       | Cron line in workflow + verified empirically by waiting one full day after merge                           |
-| FR-002 (manual trigger)                           | Pre-merge §4b                                                                                              |
-| FR-003 (optional focus_area, fallback to random)  | Pre-merge §4b (with input) + post-merge "Random focus area" command                                        |
-| FR-004 (concurrency control)                      | Concurrency block in workflow (not directly testable in smoke test; verified by inspecting workflow file)  |
-| FR-005 (1-hour wall-clock)                        | `timeout-minutes: 60` in workflow + Pre-merge §4c (smoke test must complete or fail by the 60-minute mark) |
-| FR-006 (validate secrets, fail fast)              | Pre-merge §1 + Troubleshooting "missing secrets" row                                                       |
-| FR-007 (no commits/branches/PRs)                  | Pre-merge §4e                                                                                              |
-| FR-008 (constrained tool surface)                 | Tool allow-list in workflow (research.md §6)                                                               |
-| FR-009 (single focus area per run)                | Pre-merge §4d (smoke test issue carries exactly one area label)                                            |
-| FR-010 (duplicate detection)                      | Verified empirically across multiple runs (SC-006 measures it)                                             |
-| FR-011 (issue body completeness)                  | Pre-merge §4d body checklist                                                                               |
-| FR-012 (verified internal references)             | Pre-merge §4d body checklist + manual spot-check that cited paths exist                                    |
-| FR-013 (feasibility + extends existing)           | Manual triage during day-2 operations                                                                      |
-| FR-014 (no issue when nothing qualifies)          | Pre-merge §4d outcome B                                                                                    |
-| FR-015 (at most 1 issue per run)                  | Pre-merge §4d (`gh issue list` returns exactly one)                                                        |
-| FR-016 (correct labelling)                        | Pre-merge §4d body checklist                                                                               |
-| FR-017 (label creation idempotency)               | `gh label create --force` calls in workflow                                                                |
-| FR-018 (structured run log)                       | `gh run view <run-id> --log`                                                                               |
-| FR-019 (failure visibility via platform defaults) | Pre-merge §2 + Troubleshooting "failure email never arrives" row                                           |
+| Spec FR / SC                                      | Verified by                                                                                                   |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| FR-001 (recurring schedule)                       | Cron line in workflow + verified empirically by waiting one full day after merge                              |
+| FR-002 (manual trigger)                           | Post-merge §6a                                                                                                |
+| FR-003 (optional focus_area, fallback to random)  | Post-merge §6a (with input) + Day-2 ops "Random focus area" command                                           |
+| FR-004 (concurrency control)                      | Concurrency block in workflow (not directly testable in a single smoke test; verified by inspecting the diff) |
+| FR-005 (1-hour wall-clock)                        | `timeout-minutes: 60` in workflow + Post-merge §6b (smoke test must complete or fail by the 60-minute mark)   |
+| FR-006 (validate secrets, fail fast)              | Pre-merge §1 + Troubleshooting "missing secrets" row                                                          |
+| FR-007 (no commits/branches/PRs)                  | Post-merge §6d                                                                                                |
+| FR-008 (constrained tool surface)                 | Tool allow-list in workflow (research.md §6) + static audit before merge                                      |
+| FR-009 (single focus area per run)                | Post-merge §6c (smoke test issue carries exactly one area label)                                              |
+| FR-010 (duplicate detection)                      | Verified empirically across multiple runs (SC-006 measures it)                                                |
+| FR-011 (issue body completeness)                  | Post-merge §6c body checklist                                                                                 |
+| FR-012 (verified internal references)             | Post-merge §6c body checklist + manual spot-check that cited paths exist                                      |
+| FR-013 (feasibility + extends existing)           | Manual triage during day-2 operations                                                                         |
+| FR-014 (no issue when nothing qualifies)          | Post-merge §6c outcome B                                                                                      |
+| FR-015 (at most 1 issue per run)                  | Post-merge §6c (`gh issue list` returns exactly one)                                                          |
+| FR-016 (correct labelling)                        | Post-merge §6c body checklist                                                                                 |
+| FR-017 (label creation idempotency)               | `gh label create --force` calls in workflow                                                                   |
+| FR-018 (structured run log)                       | `gh run view <run-id> --log`                                                                                  |
+| FR-019 (failure visibility via platform defaults) | Pre-merge §2 + Troubleshooting "failure email never arrives" row                                              |
