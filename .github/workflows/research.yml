@@ -1,0 +1,386 @@
+# Scheduled research workflow for github-app-playground.
+# Runs daily + on-demand; produces at most one research-labelled GitHub issue per run.
+# Spec, plan, contracts: specs/20260410-164348-scheduled-research-workflow/
+
+name: Scheduled Research
+
+on:
+  schedule:
+    - cron: "0 5 * * *" # 05:00 UTC = 15:00 AEST / 16:00 AEDT (3pm Australia time, drifts +1h during AEDT)
+  workflow_dispatch:
+    inputs:
+      focus_area:
+        description: "Optional focus area for this manual run. Leave blank for a randomly chosen area. Constrained free-text: lowercase letters, digits, and hyphens only; must start with a letter; 1–32 characters. See the predefined list in research.md §12 for the conventional values."
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read # actions/checkout
+  issues: write # gh issue create + gh label create
+  id-token: write # required by claude-code-action even with PAT auth
+
+concurrency:
+  group: research-workflow
+  cancel-in-progress: false # queue, never cancel in-flight
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60 # hard 1-hour wall-clock ceiling
+
+    steps:
+      - name: Validate required secrets
+        id: validate-secrets
+        env:
+          HAS_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+          HAS_PAT: ${{ secrets.PERSONAL_ACCESS_TOKEN != '' }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          missing=""
+          if [ "$HAS_OAUTH_TOKEN" != "true" ]; then
+            missing="${missing} CLAUDE_CODE_OAUTH_TOKEN"
+          fi
+          if [ "$HAS_PAT" != "true" ]; then
+            missing="${missing} PERSONAL_ACCESS_TOKEN"
+          fi
+          if [ -n "$missing" ]; then
+            echo "::error::Missing required secrets:${missing}. Add at Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          echo "trigger_type=$EVENT_NAME"
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      # User input passed via env: (never interpolated into run:) and validated
+      # against a strict regex. Rejected values fall back to a random pick and
+      # log only their length, never the value itself.
+      - name: Pick focus area
+        id: area
+        env:
+          FOCUS_AREA_INPUT: ${{ github.event.inputs.focus_area || '' }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          input="$(printf '%s' "$FOCUS_AREA_INPUT" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          areas=("webhook" "pipeline" "mcp" "idempotency" "security" "observability" "testing" "docs" "infrastructure" "agent-sdk")
+
+          if [ -z "$input" ]; then
+            random_index=$((RANDOM % ${#areas[@]}))
+            selected="${areas[$random_index]}"
+            echo "Randomly selected area: $selected"
+          elif [[ "$input" =~ ^[a-z][a-z0-9-]{0,31}$ ]]; then
+            selected="$input"
+            echo "Selected area from input: $selected"
+          else
+            echo "focus_area_rejected=invalid_format input_length=${#input}"
+            random_index=$((RANDOM % ${#areas[@]}))
+            selected="${areas[$random_index]}"
+            echo "Randomly selected area: $selected"
+          fi
+
+          echo "trigger_type=$EVENT_NAME"
+          echo "selected_focus_area=$selected"
+          echo "area=$selected" >> "$GITHUB_OUTPUT"
+
+      # Workarounds inherited from anthropics/claude-code-action:
+      # - PAT auth (not OIDC) — cron triggers fail OIDC token exchange (#814)
+      # - allowed_bots: '*' — checkHumanActor blocks scheduled triggers (#900)
+      # - --disallowedTools "" — WebSearch/WebFetch are denied by default (#690)
+      - name: Run research with Claude Code
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          allowed_bots: "*"
+          claude_args: |
+            --model opus
+            --max-turns 80
+            --allowedTools "WebSearch,WebFetch,Read,Glob,Grep,Bash(gh issue create:*),Bash(gh issue list:*),Bash(gh label create:*),Bash(git log:*),Bash(cat:*),Bash(date:*)"
+            --disallowedTools ""
+          prompt: |
+            REPO: ${{ github.repository }}
+            FOCUS_AREA: ${{ steps.area.outputs.area }}
+            RUN_ID: ${{ github.run_id }}
+
+            ## Mission
+
+            You are a principal software engineer improving the
+            **github-app-playground** GitHub App (a TypeScript/Bun webhook
+            server that responds to `@chrisleekr-bot` mentions on PRs and
+            issues using the Claude Agent SDK). Your mission this run:
+            research how an existing feature within the **FOCUS_AREA**
+            subsystem can be improved, then create AT MOST ONE deeply
+            researched GitHub issue.
+
+            ## Quality Gate (HARD — failures discard the finding)
+
+            Every finding MUST satisfy ALL of the following before becoming an
+            issue:
+
+            1. **Feasible**: implementable within the current
+               TypeScript/Bun/octokit codebase as it stands. No rewrites, no
+               rip-and-replace.
+            2. **Extends existing architecture**: builds on the existing
+               `src/` structure and conventions in CLAUDE.md.
+            3. **100% accurate references**: every cited file path, function
+               name, and line number is VERIFIED by reading the actual files
+               in this repo (use Read/Glob/Grep — the repo is checked out at
+               the working directory).
+            4. **Non-duplicate**: does not materially overlap with any
+               existing research-labelled issue (open OR closed) in the same
+               area.
+            5. **Has both internal AND external references** in the issue body.
+            6. **Has a Mermaid diagram** that EXPLAINS the finding (not
+               decoration).
+
+            If a candidate finding fails ANY criterion, DISCARD it and look
+            for a different finding within the SAME FOCUS_AREA. Do not switch
+            areas.
+
+            ## Strict Workflow — Follow In Order
+
+            You have a LIMITED turn budget (~80 turns). Do NOT read every file.
+
+            ### Step 1 — Architecture overview (2-3 turns max)
+
+            - Read `CLAUDE.md` for the project overview, conventions, and
+              recent changes.
+            - Run `git log --oneline -20` for recent change context.
+            - If FOCUS_AREA is `infrastructure` or `docs`, ALSO read
+              `specs/20260410-164348-scheduled-research-workflow/spec.md` so
+              you do not file a meta-finding about this very workflow.
+
+            ### Step 2 — Duplicate check (1 turn)
+
+            Run:
+
+            ```
+            gh issue list --label research --state all --limit 100 --json title,state,labels,body
+            ```
+
+            Mentally filter for issues labelled `area: ${{ steps.area.outputs.area }}`.
+            If your candidate finding overlaps with any existing one, find a
+            DIFFERENT finding within the same FOCUS_AREA. Do NOT switch areas.
+
+            ### Step 3 — Subsystem deep-dive (5-15 turns)
+
+            Read the key files for the FOCUS_AREA. Mappings:
+
+            | FOCUS_AREA       | Key paths to read first                                              |
+            |------------------|----------------------------------------------------------------------|
+            | webhook          | src/webhook/router.ts, src/webhook/events/                           |
+            | pipeline         | src/core/ (context, fetcher, formatter, prompt-builder, executor)    |
+            | mcp              | src/mcp/registry.ts, src/mcp/servers/                                |
+            | idempotency      | src/webhook/router.ts, src/core/tracking-comment.ts                  |
+            | security         | src/utils/, src/config.ts                                            |
+            | observability    | src/logger.ts (and grep for logger usage across src/)                |
+            | testing          | src/**/*.test.ts (sample 3-5; do not read all)                       |
+            | docs             | CLAUDE.md, top-level README.md if present, specs/                    |
+            | infrastructure   | .github/workflows/, Dockerfile, package.json                         |
+            | agent-sdk        | src/core/prompt-builder.ts, src/core/executor.ts                     |
+
+            Understand the CURRENT behaviour before proposing improvements.
+
+            ### Step 4 — External research (3-8 turns)
+
+            Use WebSearch / WebFetch to find current best practices for the
+            FOCUS_AREA. Look for: new patterns, libraries, security
+            advisories, performance techniques, recent CVEs, etc.
+
+            ### Step 5 — Create the issue (3-5 turns)
+
+            First, create the labels (idempotent — `--force` makes this a
+            no-op if they already exist):
+
+            ```
+            gh label create research --description "Automated research finding from the scheduled research workflow" --color 0e8a16 --force
+            gh label create "area: ${{ steps.area.outputs.area }}" --description "Focus area: ${{ steps.area.outputs.area }}" --color 1d76db --force
+            ```
+
+            Then write the COMPLETE issue body to /tmp/issue-body.md FIRST,
+            using the template below. Only after the body is fully written,
+            call `gh issue create` EXACTLY ONCE.
+
+            ## Issue Body Template (mandatory structure)
+
+            Use a heredoc to write the body to `/tmp/issue-body.md`. The body
+            MUST contain (in this exact order):
+
+            1. `## Finding` — 1-3 paragraphs of plain prose. Cite exact file
+               paths and line numbers. Explain current behaviour and how it
+               can be improved.
+            2. `## Diagram` — a fenced ` ```mermaid ` code block containing a
+               Mermaid diagram that EXPLAINS the finding. See Mermaid Rules
+               below.
+            3. `## Rationale` — 1-3 paragraphs explaining why this matters.
+               Include metrics or quantitative estimates where possible.
+            4. `## References` — both `**Internal**:` and `**External**:`
+               sub-bullets, each with at least one entry. Internal entries
+               cite verified file paths; external entries are URLs from
+               WebSearch/WebFetch.
+            5. `## Suggested Next Steps` — a numbered list with at least one
+               concrete action.
+            6. `## Areas Evaluated` — what you looked at this run.
+            7. Footer line: `*Generated by scheduled research workflow run
+               #${{ github.run_id }} on YYYY-MM-DD*` (use `$(date -u
+               +%Y-%m-%d)` for the date).
+
+            Then create the issue (EXACTLY ONCE):
+
+            ```
+            gh issue create \
+              --title "<type>(${{ steps.area.outputs.area }}): <summary>" \
+              --label "research,area: ${{ steps.area.outputs.area }}" \
+              --body-file /tmp/issue-body.md
+            ```
+
+            Where:
+            - `<type>` is one of: `fix`, `feat`, `perf`, `refactor`,
+              `security`, `test`, `docs`, `chore`, `build`, `ci` (matches the
+              repo's `.github/labeler.yml` regex set). Pick the type that
+              best describes your finding.
+            - `<summary>` is <=120 characters, imperative mood preferred.
+
+            Title examples:
+            - `fix(idempotency): tracking-comment lookup misses runs that crashed before posting the comment`
+            - `feat(observability): emit per-request token-cost histogram via pino child logger`
+            - `perf(pipeline): cache git-clone in a per-installation work-tree pool`
+            - `security(mcp): prompt-injection via user-supplied PR body when constructing inline-review markdown`
+            - `test(webhook): no test for the concurrent-trigger rejection path`
+
+            ## Mermaid Diagram Rules (CRITICAL for the GitHub renderer)
+
+            - `classDef` properties MUST be separated by SEMICOLONS, not
+              commas:
+              - GOOD: `classDef foo fill:#196f3d;color:#ffffff`
+              - BAD:  `classDef foo fill:#196f3d,color:#ffffff` (silently
+                breaks)
+            - Use `<br/>` for line breaks inside node labels — NEVER literal
+              `\n`.
+            - NO parentheses inside node labels — they break the parser.
+              - GOOD: `nodeA["label without parens"]`
+              - BAD:  `nodeA["foo(bar)"]`
+            - Use `:::className` inline syntax with `classDef`. Separate
+              `class NodeId className` statements fail in GitHub's renderer.
+            - Avoid multiple `subgraph` blocks — flatten or use one.
+            - Node IDs must be >=3 characters (avoid Mermaid reserved-word
+              collisions).
+            - Use WCAG AA contrast colour pairs (>=4.5:1).
+            - Diagram MUST EXPLAIN the finding, not decorate it.
+            - Wrap the diagram in a fenced ` ```mermaid ` code block —
+              required for GitHub Markdown to render it.
+
+            ## If No Finding Qualifies
+
+            If after Step 4 no candidate finding passes the quality gate, DO
+            NOT create an issue. Instead, output a `## No Finding` block to
+            your reply explaining what you analysed and why nothing
+            qualified. This is a valid run outcome (FR-014).
+
+            ## Hard Rules
+
+            - NEVER modify any file in the repo. No `Write`, no `Edit`, no
+              `git commit`, no `git push`.
+            - NEVER create branches, pull requests, or tags.
+            - NEVER modify, edit, or close existing issues.
+            - Create AT MOST ONE issue per run via `gh issue create` exactly
+              once.
+            - Write the FULL issue body to `/tmp/issue-body.md` BEFORE
+              calling `gh issue create`.
+            - VERIFY every cited file path, function name, and line number by
+              reading the file with `Read`/`Glob`/`Grep` BEFORE citing it.
+            - ALWAYS include a Mermaid diagram in the body.
+            - ALWAYS include BOTH internal AND external references in the
+              body.
+            - DO NOT create test or placeholder issues. Only the final issue
+              with the complete body via `--body-file /tmp/issue-body.md`.
+
+      # FR-018 (structured outcome log) + FR-015 enforcement (technical guard
+      # against the agent creating more than one issue per run). Outcome
+      # categories match data-model.md §1's ScheduledRun.outcome enum exactly.
+      # The fr_015_violation outcome is a safety net — it should never fire
+      # in practice because the prompt forbids multiple issues, but if it
+      # does, the workflow fails so the maintainer is notified via the
+      # standard GHA workflow-failure email.
+      - name: Verify outcome and emit structured result
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          JOB_STATUS: ${{ job.status }}
+          AREA: ${{ steps.area.outputs.area }}
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_ID: ${{ github.run_id }}
+          SECRET_OUTCOME: ${{ steps.validate-secrets.outcome }}
+          AGENT_OUTCOME: ${{ steps.claude.outcome }}
+        run: |
+          # Failure-mode classification (data-model.md §1 ScheduledRun.outcome)
+          if [ "$SECRET_OUTCOME" = "failure" ]; then
+            echo "outcome=secret_validation_failed"
+            echo "failure_reason=missing_required_secret"
+            echo "selected_focus_area="
+            echo "trigger_type=$EVENT_NAME"
+            echo "run_id=$RUN_ID"
+            exit 0
+          fi
+
+          if [ "$JOB_STATUS" = "cancelled" ]; then
+            echo "outcome=timeout_reached"
+            echo "failure_reason=job_cancelled_likely_timeout_or_manual_cancel"
+            echo "selected_focus_area=$AREA"
+            echo "trigger_type=$EVENT_NAME"
+            echo "run_id=$RUN_ID"
+            exit 0
+          fi
+
+          if [ "$AGENT_OUTCOME" = "failure" ]; then
+            echo "outcome=agent_error"
+            echo "failure_reason=claude_code_action_step_failed"
+            echo "selected_focus_area=$AREA"
+            echo "trigger_type=$EVENT_NAME"
+            echo "run_id=$RUN_ID"
+            exit 0
+          fi
+
+          # Success path: count issues whose body contains this run's footer.
+          # The agent's prompt template requires the footer
+          # "*Generated by scheduled research workflow run #<run_id> ...*"
+          # at the end of every issue body, so the contains() check is the
+          # canonical way to find issues this run produced. Brief delay so
+          # GitHub's issue indexing catches up with the agent's gh issue
+          # create call (typically <2s; 5s for safety).
+          sleep 5
+          matches=$(gh issue list \
+            --label research \
+            --state open \
+            --limit 50 \
+            --json url,body \
+            --jq "[.[] | select(.body | contains(\"run #$RUN_ID\")) | .url]")
+          count=$(echo "$matches" | jq 'length')
+
+          if [ "$count" -gt 1 ]; then
+            # FR-015 hard invariant: at most one issue per run.
+            echo "::error::FR-015 violation: $count issues created in this run (expected 0 or 1)"
+            echo "outcome=fr_015_violation"
+            echo "failure_reason=multiple_issues_filed_for_single_run"
+            echo "produced_issue_urls=$(echo "$matches" | jq -c '.')"
+            echo "selected_focus_area=$AREA"
+            echo "trigger_type=$EVENT_NAME"
+            echo "run_id=$RUN_ID"
+            exit 1
+          elif [ "$count" -eq 1 ]; then
+            url=$(echo "$matches" | jq -r '.[0]')
+            echo "outcome=issue_created"
+            echo "produced_issue_url=$url"
+          else
+            echo "outcome=nothing_qualified"
+            echo "produced_issue_url="
+          fi
+
+          echo "selected_focus_area=$AREA"
+          echo "trigger_type=$EVENT_NAME"
+          echo "run_id=$RUN_ID"
+          echo "Inspect agent log for token cost and duration: gh run view $RUN_ID --log"
