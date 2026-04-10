@@ -13,10 +13,10 @@ The "interface" of a GitHub Actions workflow is its `on:` block plus any `inputs
 
 ## Triggers
 
-| Trigger             | Frequency                                                                                | Inputs                                                                    | Purpose                                    |
-| ------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------ |
-| `schedule`          | Once every 24 hours, fired at `cron: "0 22 * * *"` (22:00 UTC = 08:00 AEST / 09:00 AEDT) | None — `schedule` triggers cannot accept inputs by GitHub Actions' design | Automatic recurring research (FR-001)      |
-| `workflow_dispatch` | On demand, initiated by any user with `workflow_dispatch` permission on the repo         | `focus_area` (optional, see below)                                        | Manual on-demand research (FR-002, FR-003) |
+| Trigger             | Frequency                                                                                                                     | Inputs                                                                    | Purpose                                    |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------ |
+| `schedule`          | Once every 24 hours, fired at `cron: "0 5 * * *"` (05:00 UTC = 15:00 AEST / 16:00 AEDT — 3pm Australia time, +1h during AEDT) | None — `schedule` triggers cannot accept inputs by GitHub Actions' design | Automatic recurring research (FR-001)      |
+| `workflow_dispatch` | On demand, initiated by any user with `workflow_dispatch` permission on the repo                                              | `focus_area` (optional, see below)                                        | Manual on-demand research (FR-002, FR-003) |
 
 **Decision rationale**: see `research.md` §8.
 

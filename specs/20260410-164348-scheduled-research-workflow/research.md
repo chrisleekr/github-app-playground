@@ -148,21 +148,22 @@ Every decision is grounded in one of: (a) the reference workflow at [`chrisleekr
 
 ## 8. Cron schedule (wall-clock hour for the daily run)
 
-**Decision**: `cron: "0 22 * * *"` (22:00 UTC daily).
+**Decision**: `cron: "0 5 * * *"` (05:00 UTC daily — **3pm AEST** / 4pm AEDT). The hour was directly specified by the maintainer.
 
 **Rationale**:
 
 - The spec fixes the cadence at **once per 24 hours** (FR-001, Q3 clarification) and defers only the wall-clock hour to planning.
-- 22:00 UTC = **08:00 AEST** (UTC+10) and **09:00 AEDT** (UTC+11). The maintainer's recent commits (`6e41688`, `dad6278`, `c2838d0`, `84564a8`, `0524a48`) and the `~/.claude/CLAUDE.md` reference Australian timezones, so AEST/AEDT is the correct local frame.
-- 08:00 local is a sensible "morning briefing" slot — the maintainer wakes up to a freshly-filed issue ready for triage with their first coffee.
-- 22:00 UTC is also outside the GitHub Actions peak load window (typically 14:00–18:00 UTC, when US workdays are in full swing and cron schedules are most likely to be silently delayed).
-- This matches the morning slot of the reference workflow's two daily runs (the reference fires at both `0 22 * * *` and `0 2 * * *`); we are keeping only the morning slot since the spec mandates one run per day.
+- The maintainer specified "3pm Australia time" as the target local hour. 3pm AEST (UTC+10) = **05:00 UTC**, so the cron is `0 5 * * *`. The maintainer's recent commits (`6e41688`, `dad6278`, `c2838d0`, `84564a8`, `0524a48`) and the `~/.claude/CLAUDE.md` reference Australian timezones, so AEST/AEDT is the correct local frame.
+- 15:00 local is a "mid-afternoon triage" slot — the maintainer can review the day's finding during the afternoon work window rather than letting it sit overnight.
+- **DST drift acknowledgment**: GitHub Actions cron is fixed in UTC and does not auto-adjust for DST. During AEDT (first Sunday of October to first Sunday of April), `05:00 UTC` corresponds to **16:00 AEDT** (4pm local), not 3pm. This is a 1-hour summer drift the maintainer accepts; if 3pm during AEDT becomes important later, the cron can be re-tuned to `0 4 * * *` for the AEDT half of the year (manual change, since cron expressions don't support DST).
+- 05:00 UTC is comfortably outside the GitHub Actions peak load window (typically 14:00–18:00 UTC, when US workdays are in full swing and cron schedules are most likely to be silently delayed).
 
 **Alternatives considered**:
 
-- `0 0 * * *` (midnight UTC): rejected — falls in the middle of the maintainer's evening (10 AM following day in AEST is not as useful as fresh-morning-of).
-- `0 14 * * *` (14:00 UTC = midnight AEST): rejected — the run completes overnight and the maintainer sees the issue mid-morning anyway, but the issue is "older" by ~2 hours of triage backlog and 14:00 UTC is in the platform's peak window.
-- A "weekdays only" cron like `0 22 * * 1-5`: rejected — the spec's Q3 clarification chose Option A ("once daily"), not Option C ("weekdays only").
+- `0 4 * * *` (04:00 UTC = 3pm AEDT / 2pm AEST): rejected as the primary choice because the current local time at planning is AEST (post-DST-end on 2026-04-05), so "3pm today" naturally maps to AEST. Recorded as the seasonal alternative if the maintainer prefers AEDT-accurate firing during the southern-hemisphere summer.
+- `0 22 * * *` (22:00 UTC = 8am AEST / 9am AEDT): the original choice from the first design pass. Rejected after the maintainer requested a 3pm target instead of the morning slot — the morning slot was a planner-chosen default, not a maintainer requirement.
+- `0 0 * * *` (midnight UTC = 10am AEST): rejected — not the requested hour.
+- A "weekdays only" cron like `0 5 * * 1-5`: rejected — the spec's Q3 clarification chose Option A ("once daily"), not Option C ("weekdays only").
 
 ---
 
@@ -445,7 +446,7 @@ Where `<type>` is one of `fix`, `feat`, `perf`, `refactor`, `security`, `test`, 
 | Agent turn budget                                     | §5                  | `--max-turns 80`                                                                                                                           |
 | Tool allow-list                                       | §6                  | Read + WebSearch/Fetch + `gh issue/label create` + read-only Bash                                                                          |
 | `allowed_bots` workaround                             | §7                  | `'*'`                                                                                                                                      |
-| Cron hour                                             | §8                  | `0 22 * * *` (8 AM AEST / 9 AM AEDT)                                                                                                       |
+| Cron hour                                             | §8                  | `0 5 * * *` (3pm AEST / 4pm AEDT — maintainer-specified)                                                                                   |
 | Concurrency group                                     | §9                  | `research-workflow`, `cancel-in-progress: false`                                                                                           |
 | `timeout-minutes`                                     | §10                 | `60`                                                                                                                                       |
 | `permissions:` block                                  | §11                 | `contents: read`, `issues: write`, `id-token: write`                                                                                       |
