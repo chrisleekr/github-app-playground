@@ -9,8 +9,9 @@ import {
   isAlreadyProcessed,
 } from "../core/tracking-comment";
 import { resolveMcpServers } from "../mcp/registry";
-import type { BotContext, EnrichedBotContext } from "../types";
+import type { BotContext, EnrichedBotContext, ExecutionResult } from "../types";
 import { retryWithBackoff } from "../utils/retry";
+import { isOwnerAllowed } from "./authorize";
 
 /**
  * In-memory idempotency guard using X-GitHub-Delivery header.
@@ -58,6 +59,31 @@ const cleanupInterval = setInterval(
   IDEMPOTENCY_TTL_MS,
 );
 cleanupInterval.unref();
+
+/**
+ * Build the options object passed to `finalizeTrackingComment` on success.
+ *
+ * Exists because `exactOptionalPropertyTypes` forbids assigning `undefined` to
+ * optional properties — we have to omit them instead. Extracted so the two
+ * conditional branches don't count against processRequest's cyclomatic
+ * complexity budget.
+ */
+function buildFinalOpts(result: ExecutionResult): {
+  success: boolean;
+  durationMs?: number;
+  costUsd?: number;
+} {
+  const opts: { success: boolean; durationMs?: number; costUsd?: number } = {
+    success: result.success,
+  };
+  if (result.durationMs !== undefined) {
+    opts.durationMs = result.durationMs;
+  }
+  if (result.costUsd !== undefined) {
+    opts.costUsd = result.costUsd;
+  }
+  return opts;
+}
 
 /**
  * Main async processing pipeline.
@@ -117,6 +143,20 @@ export async function processRequest(ctx: BotContext): Promise<void> {
     }
     return;
   }
+
+  // Owner allowlist check: silently skip events from repositories whose owner
+  // is not in ALLOWED_OWNERS. No rejection comment is posted, because that
+  // would leak the bot's existence and allowlist behavior to anyone who can
+  // install the GitHub App. Operators see rejections via logger.warn.
+  //
+  // This is a ToS prerequisite when running on CLAUDE_CODE_OAUTH_TOKEN:
+  // https://code.claude.com/docs/en/agent-sdk/overview
+  const authResult = isOwnerAllowed(ctx.owner, ctx.log);
+  if (!authResult.allowed) {
+    ctx.log.info({ reason: authResult.reason }, "skipping request — owner not allowlisted");
+    return;
+  }
+
   activeCount++;
 
   let trackingCommentId: number | undefined;
@@ -175,16 +215,7 @@ export async function processRequest(ctx: BotContext): Promise<void> {
       const result = await executeAgent(enrichedCtx, prompt, mcpServers, workDir, allowedTools);
 
       // Step 9: Finalize tracking comment with results
-      // Build opts conditionally (exactOptionalPropertyTypes forbids explicit undefined)
-      const finalOpts: { success: boolean; durationMs?: number; costUsd?: number } = {
-        success: result.success,
-      };
-      if (result.durationMs !== undefined) {
-        finalOpts.durationMs = result.durationMs;
-      }
-      if (result.costUsd !== undefined) {
-        finalOpts.costUsd = result.costUsd;
-      }
+      const finalOpts = buildFinalOpts(result);
       await retryWithBackoff(
         () => finalizeTrackingComment(enrichedCtx, resolvedTrackingCommentId, finalOpts),
         {

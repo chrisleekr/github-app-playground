@@ -14,8 +14,14 @@ const configSchema = z
     // AI provider selection: "anthropic" (default) or "bedrock"
     provider: z.enum(["anthropic", "bedrock"]).default("anthropic"),
 
-    // Claude API — required when provider=anthropic
+    // Claude API credentials — when provider=anthropic, exactly one of these is required.
+    // Either Console API key (pay-as-you-go) or Max/Pro subscription OAuth token
+    // (generated via `claude setup-token`, sk-ant-oat... prefix).
+    // The Claude CLI subprocess picks between them via its own auth precedence chain
+    // (ANTHROPIC_API_KEY at position 3 beats CLAUDE_CODE_OAUTH_TOKEN at position 5).
+    // See https://code.claude.com/docs/en/authentication#authentication-precedence
     anthropicApiKey: z.string().optional(),
+    claudeCodeOauthToken: z.string().optional(),
 
     // Model override — required when provider=bedrock (Bedrock uses different model ID format),
     // optional for anthropic (SDK uses its default)
@@ -61,14 +67,41 @@ const configSchema = z
     // local node_modules dependency, because the SDK defaults to {cwd}/dist/cli.js.
     // Set via CLAUDE_CODE_PATH env var (e.g. /usr/lib/node_modules/@anthropic-ai/claude-code/cli.js).
     claudeCodePath: z.string().optional(),
+
+    // Owner allowlist — when set, the bot only processes events from repositories
+    // owned by one of these GitHub accounts (case-insensitive). Empty/unset means
+    // no restriction. REQUIRED for single-tenant deployments using
+    // CLAUDE_CODE_OAUTH_TOKEN, because the Agent SDK Note prohibits serving other
+    // users' repos from a personal subscription quota.
+    // See https://code.claude.com/docs/en/agent-sdk/overview
+    // Set via ALLOWED_OWNERS env var (comma-separated list, e.g. "chrisleekr,acme").
+    allowedOwners: z
+      .string()
+      .optional()
+      .transform((v): string[] | undefined => {
+        if (v === undefined || v === "") return undefined;
+        const parsed = v
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        return parsed.length === 0 ? undefined : parsed;
+      }),
   })
   .superRefine((data, ctx) => {
     if (data.provider === "anthropic") {
-      // Direct Anthropic API requires a non-empty API key
-      if (data.anthropicApiKey === undefined || data.anthropicApiKey === "") {
+      // Direct Anthropic API requires a non-empty credential:
+      //   - ANTHROPIC_API_KEY (Console pay-as-you-go), OR
+      //   - CLAUDE_CODE_OAUTH_TOKEN (Max/Pro subscription, sk-ant-oat... prefix)
+      // If both are set, the Claude CLI's own auth precedence chain picks one
+      // (API key wins). Rejecting "both set" would duplicate CLI-side logic.
+      const hasApiKey = data.anthropicApiKey !== undefined && data.anthropicApiKey !== "";
+      const hasOauthToken =
+        data.claudeCodeOauthToken !== undefined && data.claudeCodeOauthToken !== "";
+      if (!hasApiKey && !hasOauthToken) {
         ctx.addIssue({
           code: "custom",
-          message: "ANTHROPIC_API_KEY is required when CLAUDE_PROVIDER=anthropic",
+          message:
+            "When CLAUDE_PROVIDER=anthropic, either ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN is required.",
           path: ["anthropicApiKey"],
         });
       }
@@ -115,6 +148,7 @@ function loadConfig(): Config {
     webhookSecret: process.env["GITHUB_WEBHOOK_SECRET"],
     provider: process.env["CLAUDE_PROVIDER"],
     anthropicApiKey: process.env["ANTHROPIC_API_KEY"],
+    claudeCodeOauthToken: process.env["CLAUDE_CODE_OAUTH_TOKEN"],
     model: process.env["CLAUDE_MODEL"],
     awsRegion: process.env["AWS_REGION"],
     awsProfile: process.env["AWS_PROFILE"],
@@ -133,6 +167,7 @@ function loadConfig(): Config {
     agentTimeoutMs: process.env["AGENT_TIMEOUT_MS"],
     cloneDepth: process.env["CLONE_DEPTH"],
     claudeCodePath: process.env["CLAUDE_CODE_PATH"],
+    allowedOwners: process.env["ALLOWED_OWNERS"],
   });
 }
 

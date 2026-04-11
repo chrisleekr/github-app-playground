@@ -464,6 +464,52 @@ describe("processRequest — concurrency limiting", () => {
   });
 });
 
+describe("processRequest — owner allowlist", () => {
+  it("silently skips requests when the repository owner is not in ALLOWED_OWNERS", async () => {
+    // Sets config.allowedOwners to a value that excludes the default ctx.owner="myorg".
+    // The rejection path must return BEFORE createTrackingComment, so no comment
+    // is posted to the unauthorized repo (silent skip — see router.ts comment).
+    const { config } = await import("../../src/config");
+    const originalAllowedOwners = config.allowedOwners;
+    config.allowedOwners = ["different-owner"];
+
+    try {
+      const ctx = makeCtx();
+      const createCommentSpy = ctx.octokit.rest.issues.createComment as ReturnType<typeof mock>;
+
+      await processRequest(ctx);
+
+      // No tracking comment should be created for a rejected request
+      expect(createCommentSpy).not.toHaveBeenCalled();
+      // And the agent should never be invoked
+      expect(mockExecuteAgent).not.toHaveBeenCalled();
+    } finally {
+      config.allowedOwners = originalAllowedOwners;
+    }
+  });
+
+  it("processes requests normally when the owner is in ALLOWED_OWNERS (case-insensitive)", async () => {
+    // Owner matching is case-insensitive (GitHub login identity semantics).
+    // ctx.owner defaults to "myorg"; the allowlist uses "MyOrg".
+    const { config } = await import("../../src/config");
+    const originalAllowedOwners = config.allowedOwners;
+    config.allowedOwners = ["MyOrg"];
+
+    try {
+      const ctx = makeCtx();
+      const createCommentSpy = ctx.octokit.rest.issues.createComment as ReturnType<typeof mock>;
+
+      await processRequest(ctx);
+
+      // Pipeline must run end-to-end: createTrackingComment + executeAgent.
+      expect(createCommentSpy).toHaveBeenCalled();
+      expect(mockExecuteAgent).toHaveBeenCalled();
+    } finally {
+      config.allowedOwners = originalAllowedOwners;
+    }
+  });
+});
+
 describe("cleanupStaleIdempotencyEntries", () => {
   it("removes entries older than the TTL and preserves fresh entries", async () => {
     const { cleanupStaleIdempotencyEntries } = await import("../../src/webhook/router");
