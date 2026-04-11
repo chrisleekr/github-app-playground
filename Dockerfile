@@ -36,6 +36,14 @@ RUN apt-get update && \
     openssl libssl3t64 openssl-provider-legacy && \
   rm -rf /var/lib/apt/lists/*
 
+# NodeSource node_20.x bundles npm 10.x, whose vendored tar/minimatch/
+# glob/cross-spawn/brace-expansion have HIGH CVEs that Trivy blocks on.
+# npm 11.x ships patched vendored deps and replaces them in
+# /usr/lib/node_modules/npm/ in place. Tracks the 11.x major (unlike the
+# exact pins elsewhere in this file) so future vendored-dep patches land
+# automatically; the CI Trivy gate catches any regression.
+RUN npm install -g npm@11
+
 # Claude Code CLI required by @anthropic-ai/claude-agent-sdk
 # Pinned to a specific version for reproducible builds.
 # See: https://www.npmjs.com/package/@anthropic-ai/claude-code
