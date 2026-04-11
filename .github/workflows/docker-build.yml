@@ -162,6 +162,12 @@ jobs:
           # the spec's edge-case statement that exploitable vulnerabilities
           # with available fixes should be blocking.
           exit-code: "1"
+          # Time-boxed CVE allowlist. The action does NOT auto-discover a
+          # .trivyignore(.yaml) at repo root — it must be passed explicitly
+          # via this input. Every entry in the file must carry a statement
+          # and an expired_at forcing re-review. See .trivyignore.yaml and
+          # https://trivy.dev/latest/docs/configuration/filtering/#trivyignoreyaml
+          trivyignores: ".trivyignore.yaml"
 
       - name: Upload Trivy SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@v4
