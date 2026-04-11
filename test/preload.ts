@@ -15,6 +15,14 @@ process.env.TZ = "UTC";
 // that Bun auto-loads from a local .env file (e.g. "bedrock" for local dev).
 process.env["CLAUDE_PROVIDER"] = "anthropic";
 
+// Clear owner-allowlist and OAuth vars so a developer's local .env can't leak
+// into the config singleton and skew tests. Individual tests that need to
+// exercise allowlist or OAuth behavior must set these explicitly (typically
+// via mutation of the config singleton with save/restore in try/finally),
+// never by relying on ambient process.env.
+delete process.env["ALLOWED_OWNERS"];
+delete process.env["CLAUDE_CODE_OAUTH_TOKEN"];
+
 // Helper: set env var to a fallback when absent or empty.
 // ?? (nullish coalescing) only replaces null/undefined, not "". A local .env
 // file may contain KEY= (empty string), which Bun loads as "" into process.env.

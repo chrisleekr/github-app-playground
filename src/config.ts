@@ -14,11 +14,11 @@ const configSchema = z
     // AI provider selection: "anthropic" (default) or "bedrock"
     provider: z.enum(["anthropic", "bedrock"]).default("anthropic"),
 
-    // Claude API credentials — when provider=anthropic, exactly one of these is required.
+    // Claude API credentials — when provider=anthropic, at least one of these is required
+    // (both may be set; the Claude CLI's own auth precedence chain picks one at runtime:
+    // ANTHROPIC_API_KEY at position 3 beats CLAUDE_CODE_OAUTH_TOKEN at position 5).
     // Either Console API key (pay-as-you-go) or Max/Pro subscription OAuth token
     // (generated via `claude setup-token`, sk-ant-oat... prefix).
-    // The Claude CLI subprocess picks between them via its own auth precedence chain
-    // (ANTHROPIC_API_KEY at position 3 beats CLAUDE_CODE_OAUTH_TOKEN at position 5).
     // See https://code.claude.com/docs/en/authentication#authentication-precedence
     anthropicApiKey: z.string().optional(),
     claudeCodeOauthToken: z.string().optional(),
@@ -94,9 +94,10 @@ const configSchema = z
       //   - CLAUDE_CODE_OAUTH_TOKEN (Max/Pro subscription, sk-ant-oat... prefix)
       // If both are set, the Claude CLI's own auth precedence chain picks one
       // (API key wins). Rejecting "both set" would duplicate CLI-side logic.
-      const hasApiKey = data.anthropicApiKey !== undefined && data.anthropicApiKey !== "";
-      const hasOauthToken =
-        data.claudeCodeOauthToken !== undefined && data.claudeCodeOauthToken !== "";
+      // `.trim()` guards against whitespace-only values pasted into .env files —
+      // those would otherwise pass startup and fail later on the first API call.
+      const hasApiKey = (data.anthropicApiKey?.trim().length ?? 0) > 0;
+      const hasOauthToken = (data.claudeCodeOauthToken?.trim().length ?? 0) > 0;
       if (!hasApiKey && !hasOauthToken) {
         ctx.addIssue({
           code: "custom",
@@ -138,11 +139,35 @@ export type Config = z.infer<typeof configSchema>;
 export { configSchema };
 
 /**
+ * ToS guard: CLAUDE_CODE_OAUTH_TOKEN is a personal Max/Pro subscription credential.
+ * The Agent SDK Note prohibits serving other users' repos from that quota, so OAuth
+ * mode requires an owner allowlist as a hard startup precondition — not just a
+ * documentation warning. API-key deployments remain unrestricted (in-policy for
+ * pay-as-you-go). See https://code.claude.com/docs/en/agent-sdk/overview
+ *
+ * Lives outside `.superRefine` so the schema stays lean and the policy rule is
+ * expressed as one clear assertion — exported so tests can exercise it directly
+ * against a parsed `Config` without round-tripping env vars.
+ */
+export function assertOauthRequiresAllowlist(cfg: Config): void {
+  if (
+    cfg.provider === "anthropic" &&
+    (cfg.claudeCodeOauthToken?.trim().length ?? 0) > 0 &&
+    cfg.allowedOwners === undefined
+  ) {
+    throw new Error(
+      "ALLOWED_OWNERS is required when CLAUDE_CODE_OAUTH_TOKEN is set. " +
+        "See https://code.claude.com/docs/en/agent-sdk/overview",
+    );
+  }
+}
+
+/**
  * Parse and validate config from environment variables.
  * Throws on invalid/missing required values -- fail fast at startup.
  */
 function loadConfig(): Config {
-  return configSchema.parse({
+  const cfg = configSchema.parse({
     appId: process.env["GITHUB_APP_ID"],
     privateKey: process.env["GITHUB_APP_PRIVATE_KEY"],
     webhookSecret: process.env["GITHUB_WEBHOOK_SECRET"],
@@ -169,6 +194,8 @@ function loadConfig(): Config {
     claudeCodePath: process.env["CLAUDE_CODE_PATH"],
     allowedOwners: process.env["ALLOWED_OWNERS"],
   });
+  assertOauthRequiresAllowlist(cfg);
+  return cfg;
 }
 
 export const config = loadConfig();

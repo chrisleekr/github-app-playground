@@ -122,6 +122,20 @@ export async function processRequest(ctx: BotContext): Promise<void> {
     return;
   }
 
+  // Owner allowlist check — MUST run before any GitHub side effects (including
+  // the capacity comment posted by the concurrency guard below). Otherwise a
+  // non-allowlisted repo could receive the "at capacity" comment and thereby
+  // learn the bot exists, defeating the "silent skip" guarantee.
+  //
+  // No rejection comment is posted for non-allowlisted owners — operators see
+  // rejections via logger.warn. This is a ToS prerequisite when running on
+  // CLAUDE_CODE_OAUTH_TOKEN: https://code.claude.com/docs/en/agent-sdk/overview
+  const authResult = isOwnerAllowed(ctx.owner, ctx.log);
+  if (!authResult.allowed) {
+    ctx.log.info({ reason: authResult.reason }, "skipping request — owner not allowlisted");
+    return;
+  }
+
   // Concurrency guard: reject when too many Claude executions are active to
   // prevent Anthropic API budget exhaustion and pod resource saturation.
   if (activeCount >= config.maxConcurrentRequests) {
@@ -141,19 +155,6 @@ export async function processRequest(ctx: BotContext): Promise<void> {
     } catch (commentError) {
       ctx.log.error({ err: commentError }, "Failed to post capacity comment");
     }
-    return;
-  }
-
-  // Owner allowlist check: silently skip events from repositories whose owner
-  // is not in ALLOWED_OWNERS. No rejection comment is posted, because that
-  // would leak the bot's existence and allowlist behavior to anyone who can
-  // install the GitHub App. Operators see rejections via logger.warn.
-  //
-  // This is a ToS prerequisite when running on CLAUDE_CODE_OAUTH_TOKEN:
-  // https://code.claude.com/docs/en/agent-sdk/overview
-  const authResult = isOwnerAllowed(ctx.owner, ctx.log);
-  if (!authResult.allowed) {
-    ctx.log.info({ reason: authResult.reason }, "skipping request — owner not allowlisted");
     return;
   }
 

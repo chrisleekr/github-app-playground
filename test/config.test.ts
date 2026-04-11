@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { configSchema } from "../src/config";
+import { assertOauthRequiresAllowlist, type Config, configSchema } from "../src/config";
 
 // Minimal required GitHub App fields shared by all test cases
 const BASE = {
@@ -80,6 +80,22 @@ describe("configSchema — Anthropic provider", () => {
       const messages = result.error.issues.map((i) => i.message).join(" ");
       expect(messages).toContain("ANTHROPIC_API_KEY");
       expect(messages).toContain("CLAUDE_CODE_OAUTH_TOKEN");
+    }
+  });
+
+  it("rejects when both credentials are whitespace-only strings", () => {
+    // `"   "` would previously slip past `!== ""` and produce a "valid" config
+    // that fails at first API call. `.trim()` in the schema guards against this.
+    const result = configSchema.safeParse({
+      ...BASE,
+      provider: "anthropic",
+      anthropicApiKey: "   ",
+      claudeCodeOauthToken: "   ",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const paths = result.error.issues.map((i) => i.path.join("."));
+      expect(paths).toContain("anthropicApiKey");
     }
   });
 });
@@ -230,5 +246,113 @@ describe("configSchema — allowedOwners parsing", () => {
     if (result.success) {
       expect(result.data.allowedOwners).toBeUndefined();
     }
+  });
+});
+
+describe("assertOauthRequiresAllowlist", () => {
+  // ToS guard: CLAUDE_CODE_OAUTH_TOKEN is a personal Max/Pro subscription credential.
+  // The Agent SDK Note prohibits serving other users' repos from that quota, so
+  // OAuth mode requires an owner allowlist as a hard startup precondition. These
+  // tests exercise the exported helper directly against a parsed `Config` so the
+  // rule can be verified without round-tripping env vars through loadConfig().
+  function parse(input: Record<string, unknown>): Config {
+    const result = configSchema.parse(input);
+    return result;
+  }
+
+  it("throws when OAuth token is set without ALLOWED_OWNERS (the ToS gap)", () => {
+    const cfg = parse({
+      ...BASE,
+      provider: "anthropic",
+      claudeCodeOauthToken: "sk-ant-oat-test",
+      // allowedOwners intentionally omitted
+    });
+    expect(() => {
+      assertOauthRequiresAllowlist(cfg);
+    }).toThrow(/ALLOWED_OWNERS is required/);
+  });
+
+  it("throws when OAuth token is set and ALLOWED_OWNERS is whitespace-only", () => {
+    // The zod transform treats whitespace-only as `undefined`, so this exercises
+    // the same branch but via a different user mistake (setting ALLOWED_OWNERS="   ").
+    const cfg = parse({
+      ...BASE,
+      provider: "anthropic",
+      claudeCodeOauthToken: "sk-ant-oat-test",
+      allowedOwners: "   ",
+    });
+    expect(() => {
+      assertOauthRequiresAllowlist(cfg);
+    }).toThrow(/ALLOWED_OWNERS is required/);
+  });
+
+  it("allows OAuth token with a non-empty ALLOWED_OWNERS (single-tenant in-policy)", () => {
+    const cfg = parse({
+      ...BASE,
+      provider: "anthropic",
+      claudeCodeOauthToken: "sk-ant-oat-test",
+      allowedOwners: "chrisleekr",
+    });
+    expect(() => {
+      assertOauthRequiresAllowlist(cfg);
+    }).not.toThrow();
+  });
+
+  it("allows API-key-only deployments with no ALLOWED_OWNERS (multi-tenant in-policy)", () => {
+    // Pay-as-you-go API key has its own billing boundary; the ToS guard only
+    // applies to subscription OAuth tokens. This must remain unrestricted.
+    const cfg = parse({
+      ...BASE,
+      provider: "anthropic",
+      anthropicApiKey: "sk-ant-test",
+    });
+    expect(() => {
+      assertOauthRequiresAllowlist(cfg);
+    }).not.toThrow();
+  });
+
+  it("allows OAuth token + API key together when ALLOWED_OWNERS is set", () => {
+    // If both credentials are set, the CLI precedence picks API key at runtime.
+    // The assertion still requires the allowlist because OAuth is *present* —
+    // defense-in-depth against upstream precedence changes.
+    const cfg = parse({
+      ...BASE,
+      provider: "anthropic",
+      anthropicApiKey: "sk-ant-test",
+      claudeCodeOauthToken: "sk-ant-oat-test",
+      allowedOwners: "chrisleekr",
+    });
+    expect(() => {
+      assertOauthRequiresAllowlist(cfg);
+    }).not.toThrow();
+  });
+
+  it("throws when OAuth + API key are BOTH set but ALLOWED_OWNERS is missing", () => {
+    // Defense-in-depth: presence of OAuth triggers the rule regardless of which
+    // credential the CLI ultimately uses at runtime.
+    const cfg = parse({
+      ...BASE,
+      provider: "anthropic",
+      anthropicApiKey: "sk-ant-test",
+      claudeCodeOauthToken: "sk-ant-oat-test",
+    });
+    expect(() => {
+      assertOauthRequiresAllowlist(cfg);
+    }).toThrow(/ALLOWED_OWNERS is required/);
+  });
+
+  it("does not apply to Bedrock deployments", () => {
+    // OAuth token is Anthropic-only; Bedrock has its own AWS credential chain
+    // and is not subject to the Agent SDK subscription Note.
+    const cfg = parse({
+      ...BASE,
+      provider: "bedrock",
+      awsRegion: "us-east-1",
+      model: "us.anthropic.claude-sonnet-4-6",
+      // No allowlist required for Bedrock.
+    });
+    expect(() => {
+      assertOauthRequiresAllowlist(cfg);
+    }).not.toThrow();
   });
 });
