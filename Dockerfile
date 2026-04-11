@@ -6,7 +6,7 @@
 # Per Claude Agent SDK hosting guide: https://platform.claude.com/docs/en/agent-sdk/hosting
 # Pattern adapted from mcp-server-playground
 
-FROM oven/bun:1.3.8 AS base
+FROM oven/bun:1.3.12 AS base
 WORKDIR /app
 
 # Node.js required by Claude Code CLI; git required for repo checkout
@@ -25,10 +25,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   apt-get install -y --no-install-recommends nodejs && \
   rm -rf /var/lib/apt/lists/*
 
+# Base-image CVE patches: oven/bun:1.3.12 bakes in openssl 3.5.4-1~deb13u2
+# (Trivy flags CVE-2026-28390 HIGH, fix in 3.5.5). The apt-get install
+# above only touches *requested* packages — it does not upgrade libs
+# already baked into the base layer — so we force a targeted upgrade here.
+# Targeted rather than dist-upgrade keeps rebuilds reproducible; the CI
+# Trivy gate catches any new flagged package once the vuln DB updates.
+RUN apt-get update && \
+  apt-get upgrade -y --no-install-recommends \
+    openssl libssl3t64 openssl-provider-legacy && \
+  rm -rf /var/lib/apt/lists/*
+
 # Claude Code CLI required by @anthropic-ai/claude-agent-sdk
 # Pinned to a specific version for reproducible builds.
 # See: https://www.npmjs.com/package/@anthropic-ai/claude-code
-RUN npm install -g @anthropic-ai/claude-code@2.1.45
+RUN npm install -g @anthropic-ai/claude-code@2.1.101
 
 # Stage 1: Build — install all deps and bundle the main app
 FROM base AS development
