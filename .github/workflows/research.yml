@@ -6,7 +6,7 @@ name: Scheduled Research
 
 on:
   schedule:
-    - cron: "0 5 * * *" # 05:00 UTC = 15:00 AEST / 16:00 AEDT (3pm Australia time, drifts +1h during AEDT)
+    - cron: "0 17 * * *" # 3 AM AEST
   workflow_dispatch:
     inputs:
       focus_area:
