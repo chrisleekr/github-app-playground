@@ -464,6 +464,98 @@ describe("processRequest — concurrency limiting", () => {
   });
 });
 
+describe("processRequest — owner allowlist", () => {
+  it("silently skips requests when the repository owner is not in ALLOWED_OWNERS", async () => {
+    // Sets config.allowedOwners to a value that excludes the default ctx.owner="myorg".
+    // The rejection path must return BEFORE createTrackingComment, so no comment
+    // is posted to the unauthorized repo (silent skip — see router.ts comment).
+    const { config } = await import("../../src/config");
+    const originalAllowedOwners = config.allowedOwners;
+    config.allowedOwners = ["different-owner"];
+
+    try {
+      const ctx = makeCtx();
+      const createCommentSpy = ctx.octokit.rest.issues.createComment as ReturnType<typeof mock>;
+
+      await processRequest(ctx);
+
+      // No tracking comment should be created for a rejected request
+      expect(createCommentSpy).not.toHaveBeenCalled();
+      // And the agent should never be invoked
+      expect(mockExecuteAgent).not.toHaveBeenCalled();
+    } finally {
+      config.allowedOwners = originalAllowedOwners;
+    }
+  });
+
+  it("processes requests normally when the owner is in ALLOWED_OWNERS (case-insensitive)", async () => {
+    // Owner matching is case-insensitive (GitHub login identity semantics).
+    // ctx.owner defaults to "myorg"; the allowlist uses "MyOrg".
+    const { config } = await import("../../src/config");
+    const originalAllowedOwners = config.allowedOwners;
+    config.allowedOwners = ["MyOrg"];
+
+    try {
+      const ctx = makeCtx();
+      const createCommentSpy = ctx.octokit.rest.issues.createComment as ReturnType<typeof mock>;
+
+      await processRequest(ctx);
+
+      // Pipeline must run end-to-end: createTrackingComment + executeAgent.
+      expect(createCommentSpy).toHaveBeenCalled();
+      expect(mockExecuteAgent).toHaveBeenCalled();
+    } finally {
+      config.allowedOwners = originalAllowedOwners;
+    }
+  });
+
+  it("does not post a capacity comment when a non-allowlisted owner hits the concurrency limit", async () => {
+    // Regression test for the ordering bug: previously the concurrency guard
+    // ran BEFORE the allowlist check, so a non-allowlisted repo hitting the
+    // limit would receive an "at capacity" comment and learn the bot exists.
+    // After the fix, the allowlist check runs first — the unauthorized repo
+    // must see zero comments of any kind (silent skip).
+    const { config } = await import("../../src/config");
+    const originalLimit = config.maxConcurrentRequests;
+    const originalAllowedOwners = config.allowedOwners;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (config as any).maxConcurrentRequests = 1;
+    config.allowedOwners = ["only-allowed-org"];
+
+    // Hold request 1 open at executeAgent so activeCount stays at 1.
+    let resolveFirst: (value: { success: boolean; durationMs: number }) => void = () => undefined;
+    const firstExecution = new Promise<{ success: boolean; durationMs: number }>((resolve) => {
+      resolveFirst = resolve;
+    });
+    mockExecuteAgent.mockImplementationOnce(() => firstExecution);
+
+    // ctx1 uses an allowlisted owner so it enters the pipeline and occupies
+    // the sole concurrency slot. ctx2 uses a non-allowlisted owner.
+    const ctx1 = makeCtx({ owner: "only-allowed-org" });
+    const ctx2 = makeCtx({ owner: "rejected-org" });
+    const ctx2CreateCommentSpy = ctx2.octokit.rest.issues.createComment as ReturnType<typeof mock>;
+
+    const req1 = processRequest(ctx1);
+
+    try {
+      await waitFor(() => mockExecuteAgent.mock.calls.length >= 1);
+
+      await processRequest(ctx2);
+
+      // The critical assertion: NO comment of any kind (tracking OR capacity)
+      // was posted to the non-allowlisted repo, even though activeCount was
+      // at the limit when request 2 arrived.
+      expect(ctx2CreateCommentSpy).not.toHaveBeenCalled();
+    } finally {
+      resolveFirst({ success: true, durationMs: 100 });
+      await req1;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (config as any).maxConcurrentRequests = originalLimit;
+      config.allowedOwners = originalAllowedOwners;
+    }
+  });
+});
+
 describe("cleanupStaleIdempotencyEntries", () => {
   it("removes entries older than the TTL and preserves fresh entries", async () => {
     const { cleanupStaleIdempotencyEntries } = await import("../../src/webhook/router");

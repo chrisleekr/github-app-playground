@@ -21,6 +21,12 @@ function isResultMessage(msg: unknown): msg is SDKResultMessage {
  * For Bedrock, injects CLAUDE_CODE_USE_BEDROCK=1 which the CLI binary reads
  * to switch from the Anthropic API to the Bedrock runtime endpoint.
  * We avoid mutating process.env directly so the main process stays unaffected.
+ *
+ * Anthropic credentials (ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN, etc.) are
+ * forwarded as part of the `...process.env` spread — no explicit handling here.
+ * The Claude CLI subprocess picks between them via its own documented auth
+ * precedence chain (API key at position 3 beats OAuth token at position 5).
+ * See https://code.claude.com/docs/en/authentication#authentication-precedence
  */
 function buildProviderEnv(): Record<string, string | undefined> {
   if (config.provider === "bedrock") {

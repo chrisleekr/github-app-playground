@@ -1,0 +1,75 @@
+# Trivy ignore policy for github-app-playground.
+#
+# Format reference (YAML schema):
+#   https://trivy.dev/latest/docs/configuration/filtering/#trivyignoreyaml
+#
+# Wired into CI via the `trivyignores:` input on aquasecurity/trivy-action
+# (see .github/workflows/docker-build.yml). The action does NOT auto-discover
+# this file — it is only read when passed explicitly. See:
+#   https://github.com/aquasecurity/trivy-action/blob/v0.35.0/action.yaml
+#   https://github.com/aquasecurity/trivy-action/blob/v0.35.0/entrypoint.sh
+#
+# POLICY: every entry MUST have a `statement` explaining reachability and an
+# `expired_at` forcing a re-review. No permanent ignores. Scope each entry
+# with `paths:` so the ignore only masks the exact file Trivy flagged, not
+# future occurrences of the same CVE in a different location (e.g. if the
+# Claude Code CLI later ships its own vulnerable copy).
+
+vulnerabilities:
+  # HIGH — picomatch ReDoS via crafted extglob patterns (`+(...)` / `*(...)`).
+  # Present at: /usr/lib/node_modules/npm/node_modules/tinyglobby/node_modules/picomatch@4.0.3
+  # Shipped by npm's bundled tinyglobby@0.2.15 dep. Fix floor: picomatch@4.0.4.
+  # npm@11 latest (11.12.1 as of 2026-04-12) has NOT yet released a version
+  # that rebundles tinyglobby with the patched picomatch — verified by
+  # inspecting the npm-11.12.1.tgz tarball on 2026-04-12.
+  #
+  # Reachability: the npm CLI is not invoked by the runtime ENTRYPOINT
+  # (`bun run dist/app.js`). It runs only during image build under
+  # developer-controlled inputs (e.g. `npm install -g @anthropic-ai/claude-code`).
+  # The Claude Code CLI subprocess spawned at runtime loads its own bundled
+  # JavaScript directly via node and does not re-enter the npm CLI; if it
+  # needs picomatch it resolves to a different path outside `usr/lib/node_modules/npm/`,
+  # so this path-scoped ignore does not mask that copy.
+  #
+  # Action: re-evaluate on 2026-05-12. If npm@11 has released an unbundled
+  # tinyglobby by then, delete this entry and let the CI gate reassert.
+  - id: CVE-2026-33671
+    paths:
+      - "usr/lib/node_modules/npm/node_modules/tinyglobby/node_modules/picomatch/package.json"
+    statement: >-
+      npm-bundled picomatch@4.0.3. npm@11.12.1 has not yet re-released
+      tinyglobby with the 4.0.4 fix. Not reachable from the runtime entrypoint;
+      npm CLI only runs at image build time under trusted inputs.
+    expired_at: 2026-05-12
+
+  # MEDIUM — picomatch method injection via POSIX bracket expressions
+  # (e.g. `[[:constructor:]]`). Same package, same file, same reachability
+  # analysis as CVE-2026-33671 above.
+  #
+  # Listed here because CI currently blocks on MEDIUMs too: the trivy-action
+  # entrypoint unsets TRIVY_SEVERITY when `format: sarif` is set without
+  # `limit-severities-for-sarif: true`, so the workflow's `severity: "CRITICAL,HIGH"`
+  # input is silently ignored at the exit-code stage. If that workflow bug is
+  # fixed (set `limit-severities-for-sarif: true` in docker-build.yml), this
+  # entry becomes redundant and can be removed.
+  # Reference: https://github.com/aquasecurity/trivy-action/blob/v0.35.0/entrypoint.sh
+  - id: CVE-2026-33672
+    paths:
+      - "usr/lib/node_modules/npm/node_modules/tinyglobby/node_modules/picomatch/package.json"
+    statement: >-
+      Same npm-bundled picomatch as CVE-2026-33671. Not reachable from the
+      runtime entrypoint.
+    expired_at: 2026-05-12
+
+  # MEDIUM — brace-expansion DoS via zero step value (e.g. `{1..2..0}`).
+  # Present at: /usr/lib/node_modules/npm/node_modules/brace-expansion@5.0.4
+  # Bundled transitively by npm via minimatch. Fix floor: 5.0.5 / 3.0.2 /
+  # 2.0.3 / 1.1.13; npm@11.12.1 still ships 5.0.4. Same reachability analysis
+  # as the picomatch entries above — npm CLI is not on the runtime path.
+  # Same note re: trivy-action SARIF severity behavior (see CVE-2026-33672).
+  - id: CVE-2026-33750
+    paths:
+      - "usr/lib/node_modules/npm/node_modules/brace-expansion/package.json"
+    statement: >-
+      npm-bundled brace-expansion@5.0.4. Not reachable from the runtime entrypoint.
+    expired_at: 2026-05-12
