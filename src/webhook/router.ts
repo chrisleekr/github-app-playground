@@ -124,6 +124,16 @@ export async function processRequest(ctx: BotContext): Promise<void> {
         { agentJobMode: config.agentJobMode },
         "Non-inline AGENT_JOB_MODE is not yet implemented; only 'inline' is supported",
       );
+      try {
+        await ctx.octokit.rest.issues.createComment({
+          owner: ctx.owner,
+          repo: ctx.repo,
+          issue_number: ctx.entityNumber,
+          body: `**${config.triggerPhrase}** is configured for \`${config.agentJobMode}\` mode, which is not yet implemented. Please contact the administrator.`,
+        });
+      } catch (commentError) {
+        ctx.log.error({ err: commentError }, "Failed to post unsupported mode comment");
+      }
       return;
     }
     await runInlinePipeline(ctx);

@@ -563,7 +563,7 @@ describe("processRequest — owner allowlist", () => {
 });
 
 describe("processRequest — agentJobMode fail-fast guard", () => {
-  it("logs error and returns without executing pipeline for non-inline modes", async () => {
+  it("posts user comment and returns without executing pipeline for non-inline modes", async () => {
     const { config } = await import("../../src/config");
     const originalMode = config.agentJobMode;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -571,12 +571,20 @@ describe("processRequest — agentJobMode fail-fast guard", () => {
 
     const ctx = makeCtx();
     const executorCallsBefore = mockExecuteAgent.mock.calls.length;
+    const createCommentSpy = ctx.octokit.rest.issues.createComment as ReturnType<typeof mock>;
 
     try {
       await processRequest(ctx);
 
       // Pipeline should NOT have been invoked (no executeAgent call)
       expect(mockExecuteAgent.mock.calls.length).toBe(executorCallsBefore);
+
+      // User should be notified via a comment
+      const modeCall = createCommentSpy.mock.calls.find((call) => {
+        const body = (call[0] as { body?: string }).body;
+        return typeof body === "string" && body.includes("not yet implemented");
+      });
+      expect(modeCall).toBeDefined();
     } finally {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (config as any).agentJobMode = originalMode;
