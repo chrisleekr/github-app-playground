@@ -1,6 +1,12 @@
 import { describe, expect, it } from "bun:test";
 
-import { assertOauthRequiresAllowlist, type Config, configSchema } from "../src/config";
+import {
+  assertOauthRequiresAllowlist,
+  type Config,
+  configSchema,
+  parseBooleanEnv,
+  parseMaxTurnsEnv,
+} from "../src/config";
 
 // Minimal required GitHub App fields shared by all test cases
 const BASE = {
@@ -249,6 +255,266 @@ describe("configSchema — allowedOwners parsing", () => {
   });
 });
 
+describe("configSchema — daemon orchestration defaults", () => {
+  const ANTHROPIC_BASE = {
+    ...BASE,
+    provider: "anthropic" as const,
+    anthropicApiKey: "sk-ant-test",
+  };
+
+  it("defaults agentJobMode to 'inline' when AGENT_JOB_MODE is absent", () => {
+    const result = configSchema.safeParse(ANTHROPIC_BASE);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.agentJobMode).toBe("inline");
+    }
+  });
+
+  it("accepts all valid agentJobMode enum values", () => {
+    for (const mode of ["inline", "shared-runner", "ephemeral-job", "auto"] as const) {
+      const input =
+        mode === "inline"
+          ? { ...ANTHROPIC_BASE, agentJobMode: mode }
+          : {
+              ...ANTHROPIC_BASE,
+              agentJobMode: mode,
+              databaseUrl: "postgres://localhost/test",
+              valkeyUrl: "redis://localhost:6379",
+            };
+      const result = configSchema.safeParse(input);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.agentJobMode).toBe(mode);
+      }
+    }
+  });
+
+  it("rejects invalid agentJobMode values", () => {
+    const result = configSchema.safeParse({ ...ANTHROPIC_BASE, agentJobMode: "invalid" });
+    expect(result.success).toBe(false);
+  });
+
+  it("defaults defaultDispatchMode to 'shared-runner'", () => {
+    const result = configSchema.safeParse(ANTHROPIC_BASE);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.defaultDispatchMode).toBe("shared-runner");
+    }
+  });
+
+  it("defaults wsPort to 3002", () => {
+    const result = configSchema.safeParse(ANTHROPIC_BASE);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.wsPort).toBe(3002);
+    }
+  });
+
+  it("defaults jobMaxCostUsd to 80", () => {
+    const result = configSchema.safeParse(ANTHROPIC_BASE);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.jobMaxCostUsd).toBe(80);
+    }
+  });
+
+  it("defaults triageEnabled to true", () => {
+    const result = configSchema.safeParse(ANTHROPIC_BASE);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.triageEnabled).toBe(true);
+    }
+  });
+
+  it("defaults triageConfidenceThreshold to 1.0", () => {
+    const result = configSchema.safeParse(ANTHROPIC_BASE);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.triageConfidenceThreshold).toBe(1.0);
+    }
+  });
+
+  it("defaults maxTurnsPerComplexity to {trivial:10, moderate:30, complex:50}", () => {
+    const result = configSchema.safeParse(ANTHROPIC_BASE);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.maxTurnsPerComplexity).toEqual({ trivial: 10, moderate: 30, complex: 50 });
+    }
+  });
+
+  it("defaults jobTtlSeconds to 300", () => {
+    const result = configSchema.safeParse(ANTHROPIC_BASE);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.jobTtlSeconds).toBe(300);
+    }
+  });
+
+  it("defaults triageModel to 'haiku-3-5'", () => {
+    const result = configSchema.safeParse(ANTHROPIC_BASE);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.triageModel).toBe("haiku-3-5");
+    }
+  });
+});
+
+describe("configSchema — non-inline mode requires data layer", () => {
+  const ANTHROPIC_BASE = {
+    ...BASE,
+    provider: "anthropic" as const,
+    anthropicApiKey: "sk-ant-test",
+  };
+
+  it("rejects agentJobMode='shared-runner' without DATABASE_URL", () => {
+    const result = configSchema.safeParse({
+      ...ANTHROPIC_BASE,
+      agentJobMode: "shared-runner",
+      valkeyUrl: "redis://localhost:6379",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const paths = result.error.issues.map((i) => i.path.join("."));
+      expect(paths).toContain("databaseUrl");
+    }
+  });
+
+  it("rejects agentJobMode='auto' without VALKEY_URL", () => {
+    const result = configSchema.safeParse({
+      ...ANTHROPIC_BASE,
+      agentJobMode: "auto",
+      databaseUrl: "postgres://localhost/test",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const paths = result.error.issues.map((i) => i.path.join("."));
+      expect(paths).toContain("valkeyUrl");
+    }
+  });
+
+  it("accepts agentJobMode='shared-runner' with both DATABASE_URL and VALKEY_URL", () => {
+    const result = configSchema.safeParse({
+      ...ANTHROPIC_BASE,
+      agentJobMode: "shared-runner",
+      databaseUrl: "postgres://localhost/test",
+      valkeyUrl: "redis://localhost:6379",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.agentJobMode).toBe("shared-runner");
+    }
+  });
+
+  it("does not require DATABASE_URL or VALKEY_URL in inline mode", () => {
+    const result = configSchema.safeParse(ANTHROPIC_BASE);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.agentJobMode).toBe("inline");
+      expect(result.data.databaseUrl).toBeUndefined();
+      expect(result.data.valkeyUrl).toBeUndefined();
+    }
+  });
+});
+
+describe("configSchema — maxTurnsPerComplexity", () => {
+  it("accepts valid object for maxTurnsPerComplexity", () => {
+    const result = configSchema.safeParse({
+      ...BASE,
+      anthropicApiKey: "sk-ant-test",
+      maxTurnsPerComplexity: { trivial: 5, moderate: 15, complex: 25 },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.maxTurnsPerComplexity).toEqual({ trivial: 5, moderate: 15, complex: 25 });
+    }
+  });
+});
+
+describe("parseMaxTurnsEnv", () => {
+  it("returns undefined when input is undefined", () => {
+    expect(parseMaxTurnsEnv(undefined)).toBeUndefined();
+  });
+
+  it("parses valid JSON into an object", () => {
+    const result = parseMaxTurnsEnv('{"trivial":5,"moderate":15,"complex":25}');
+    expect(result).toEqual({ trivial: 5, moderate: 15, complex: 25 });
+  });
+
+  it("throws a descriptive error for malformed JSON", () => {
+    expect(() => parseMaxTurnsEnv("{bad json")).toThrow(
+      /MAX_TURNS_PER_COMPLEXITY must be valid JSON/,
+    );
+  });
+
+  it("includes the raw value in the error message for debugging", () => {
+    expect(() => parseMaxTurnsEnv("{oops}")).toThrow("{oops}");
+  });
+});
+
+describe("parseBooleanEnv", () => {
+  it("returns undefined when input is undefined", () => {
+    expect(parseBooleanEnv("TEST", undefined)).toBeUndefined();
+  });
+
+  it.each(["true", "TRUE", "True", "1", "yes", "YES"])("returns true for '%s'", (val) => {
+    expect(parseBooleanEnv("TEST", val)).toBe(true);
+  });
+
+  it.each(["false", "FALSE", "False", "0", "no", "NO"])("returns false for '%s'", (val) => {
+    expect(parseBooleanEnv("TEST", val)).toBe(false);
+  });
+
+  it("trims whitespace before parsing", () => {
+    expect(parseBooleanEnv("TEST", "  true  ")).toBe(true);
+  });
+
+  it("throws on unrecognized values like 'tru'", () => {
+    expect(() => parseBooleanEnv("TRIAGE_ENABLED", "tru")).toThrow(
+      /TRIAGE_ENABLED must be one of: true, false, 1, 0, yes, no/,
+    );
+  });
+
+  it("throws on empty string", () => {
+    expect(() => parseBooleanEnv("TEST", "")).toThrow(/TEST must be one of/);
+  });
+});
+
+describe("configSchema — non-inline mode rejects whitespace-only data-layer URLs", () => {
+  const ANTHROPIC_BASE = {
+    ...BASE,
+    provider: "anthropic" as const,
+    anthropicApiKey: "sk-ant-test",
+  };
+
+  it("rejects whitespace-only DATABASE_URL in non-inline mode", () => {
+    const result = configSchema.safeParse({
+      ...ANTHROPIC_BASE,
+      agentJobMode: "shared-runner",
+      databaseUrl: "   ",
+      valkeyUrl: "redis://localhost:6379",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const paths = result.error.issues.map((i) => i.path.join("."));
+      expect(paths).toContain("databaseUrl");
+    }
+  });
+
+  it("rejects whitespace-only VALKEY_URL in non-inline mode", () => {
+    const result = configSchema.safeParse({
+      ...ANTHROPIC_BASE,
+      agentJobMode: "shared-runner",
+      databaseUrl: "postgres://localhost/test",
+      valkeyUrl: "   ",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const paths = result.error.issues.map((i) => i.path.join("."));
+      expect(paths).toContain("valkeyUrl");
+    }
+  });
+});
+
 describe("assertOauthRequiresAllowlist", () => {
   // ToS guard: CLAUDE_CODE_OAUTH_TOKEN is a personal Max/Pro subscription credential.
   // The Agent SDK Note prohibits serving other users' repos from that quota, so
@@ -269,7 +535,7 @@ describe("assertOauthRequiresAllowlist", () => {
     });
     expect(() => {
       assertOauthRequiresAllowlist(cfg);
-    }).toThrow(/ALLOWED_OWNERS is required/);
+    }).toThrow(/ALLOWED_OWNERS must contain exactly one owner/);
   });
 
   it("throws when OAuth token is set and ALLOWED_OWNERS is whitespace-only", () => {
@@ -283,7 +549,19 @@ describe("assertOauthRequiresAllowlist", () => {
     });
     expect(() => {
       assertOauthRequiresAllowlist(cfg);
-    }).toThrow(/ALLOWED_OWNERS is required/);
+    }).toThrow(/ALLOWED_OWNERS must contain exactly one owner/);
+  });
+
+  it("throws when OAuth token is set with multiple ALLOWED_OWNERS (must be single-tenant)", () => {
+    const cfg = parse({
+      ...BASE,
+      provider: "anthropic",
+      claudeCodeOauthToken: "sk-ant-oat-test",
+      allowedOwners: "owner-a,owner-b",
+    });
+    expect(() => {
+      assertOauthRequiresAllowlist(cfg);
+    }).toThrow(/ALLOWED_OWNERS must contain exactly one owner/);
   });
 
   it("allows OAuth token with a non-empty ALLOWED_OWNERS (single-tenant in-policy)", () => {
@@ -338,7 +616,7 @@ describe("assertOauthRequiresAllowlist", () => {
     });
     expect(() => {
       assertOauthRequiresAllowlist(cfg);
-    }).toThrow(/ALLOWED_OWNERS is required/);
+    }).toThrow(/ALLOWED_OWNERS must contain exactly one owner/);
   });
 
   it("does not apply to Bedrock deployments", () => {

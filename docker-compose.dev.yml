@@ -1,0 +1,36 @@
+# Development infrastructure only — not for production.
+# Usage: bun run dev:deps
+#
+# Provides Postgres (with pgvector) and Valkey for local development/testing.
+# The app itself is NOT containerised here — run it with `bun run dev`.
+
+services:
+  postgres:
+    image: ankane/pgvector:pg17
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: bot
+      POSTGRES_PASSWORD: bot
+      POSTGRES_DB: github_app
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bot -d github_app"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  valkey:
+    image: valkey/valkey:8
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:

@@ -20,6 +20,7 @@ See [docs/SETUP.md](./docs/SETUP.md) for the full GitHub App creation and config
 ```bash
 cp .env.example .env   # Fill in credentials (see SETUP.md for details)
 bun install
+bun run dev:deps       # Start local Valkey + Postgres (optional, for non-inline modes)
 bun run dev
 ```
 

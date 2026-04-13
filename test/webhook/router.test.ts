@@ -1,5 +1,10 @@
 /**
- * Tests for the processRequest pipeline in src/webhook/router.ts.
+ * Tests for processRequest in src/webhook/router.ts.
+ *
+ * Covers both routing concerns (idempotency, auth, concurrency) and the inline
+ * execution pipeline (src/core/inline-pipeline.ts). After the pipeline extraction,
+ * router.ts delegates to runInlinePipeline() — tests exercise the full path through
+ * both modules via processRequest().
  *
  * Design decisions:
  * - mock.module() in Bun persists across ALL test files in the same process run.
@@ -161,6 +166,7 @@ function makeCtx(
     commentId: 1,
     deliveryId,
     defaultBranch: "main",
+    labels: [],
     octokit: makeOctokit(octokitOpts),
     log: silentLog,
     ...ctxOverrides,
@@ -253,7 +259,7 @@ describe("processRequest — race condition prevention", () => {
   });
 });
 
-describe("processRequest — error handling", () => {
+describe("processRequest — error handling (pipeline)", () => {
   it("always calls cleanup even when executeAgent throws", async () => {
     mockExecuteAgent.mockRejectedValue(new Error("agent blew up"));
     const ctx = makeCtx();
@@ -313,7 +319,7 @@ describe("processRequest — error handling", () => {
   });
 });
 
-describe("processRequest — successful execution", () => {
+describe("processRequest — successful execution (pipeline)", () => {
   it("finalizes comment with success content after a successful run", async () => {
     mockExecuteAgent.mockResolvedValue({ success: true, durationMs: 3000, costUsd: 0.05 });
     const ctx = makeCtx();
@@ -552,6 +558,36 @@ describe("processRequest — owner allowlist", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (config as any).maxConcurrentRequests = originalLimit;
       config.allowedOwners = originalAllowedOwners;
+    }
+  });
+});
+
+describe("processRequest — agentJobMode fail-fast guard", () => {
+  it("posts user comment and returns without executing pipeline for non-inline modes", async () => {
+    const { config } = await import("../../src/config");
+    const originalMode = config.agentJobMode;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (config as any).agentJobMode = "shared-runner";
+
+    const ctx = makeCtx();
+    const executorCallsBefore = mockExecuteAgent.mock.calls.length;
+    const createCommentSpy = ctx.octokit.rest.issues.createComment as ReturnType<typeof mock>;
+
+    try {
+      await processRequest(ctx);
+
+      // Pipeline should NOT have been invoked (no executeAgent call)
+      expect(mockExecuteAgent.mock.calls.length).toBe(executorCallsBefore);
+
+      // User should be notified via a comment
+      const modeCall = createCommentSpy.mock.calls.find((call) => {
+        const body = (call[0] as { body?: string }).body;
+        return typeof body === "string" && body.includes("not yet implemented");
+      });
+      expect(modeCall).toBeDefined();
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (config as any).agentJobMode = originalMode;
     }
   });
 });

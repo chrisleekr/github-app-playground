@@ -17,12 +17,12 @@ flowchart TD
         EH -->|review_comment.created| RC[handleReviewComment]
     end
 
-    subgraph processing [Async Pipeline - src/webhook/router.ts]
+    subgraph processing [Async Processing]
         IC --> CTX[Parse BotContext]
         RC --> CTX
-        CTX --> IDEM{Idempotency Check}
+        CTX --> IDEM{Router: Idempotency Check}
         IDEM -->|duplicate| SKIP[Skip]
-        IDEM -->|new| TRACK[Create Tracking Comment]
+        IDEM -->|new| TRACK[Pipeline: Create Tracking Comment]
         TRACK --> FETCH[Fetch via GraphQL]
         FETCH --> PROMPT[Build Prompt]
         PROMPT --> CLONE[Clone Repo to /tmp]
@@ -51,6 +51,7 @@ src/
 ├── logger.ts           # Pino structured logging
 ├── types.ts            # Core interfaces (BotContext, FetchedData, etc.)
 ├── core/               # Processing pipeline
+│   ├── inline-pipeline.ts # Main execution pipeline (extracted from router.ts)
 │   ├── checkout.ts     # Clone repo to temp directory
 │   ├── context.ts      # Parse webhook payloads → BotContext
 │   ├── executor.ts     # Run Claude Agent SDK
@@ -59,6 +60,10 @@ src/
 │   ├── prompt-builder.ts # Build full Claude prompt
 │   ├── tracking-comment.ts # Manage progress comment
 │   └── trigger.ts      # Detect @chrisleekr-bot mention
+├── db/                 # Database layer (Postgres via Bun.sql)
+│   ├── index.ts        # Connection pool singleton (lazy, null when unconfigured)
+│   ├── migrate.ts      # SQL migration runner with _migrations tracking
+│   └── migrations/     # Ordered .sql files (001_initial.sql, ...)
 ├── mcp/                # MCP server definitions
 │   ├── registry.ts     # Resolve active servers per request
 │   └── servers/
@@ -69,7 +74,7 @@ src/
 │   ├── retry.ts        # Exponential backoff
 │   └── sanitize.ts     # Content sanitization pipeline
 └── webhook/
-    ├── router.ts       # Async pipeline orchestrator + idempotency
+    ├── router.ts       # Routing: idempotency, auth, concurrency → delegates to inline-pipeline
     └── events/         # One file per event type
 ```
 

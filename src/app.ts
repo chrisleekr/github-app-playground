@@ -13,6 +13,8 @@ import type {
 import { App } from "octokit";
 
 import { config } from "./config";
+import { closeDb, getDb } from "./db";
+import { runMigrations } from "./db/migrate";
 import { logger } from "./logger";
 import { handleIssueComment } from "./webhook/events/issue-comment";
 import { handlePullRequest } from "./webhook/events/pull-request";
@@ -94,6 +96,12 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Reject non-health traffic until startup checks (including DB migrations) finish.
+  if (!isReady) {
+    res.writeHead(503, { "Content-Type": "text/plain" }).end("not ready");
+    return;
+  }
+
   // All other routes go through webhook middleware
   void webhookMiddleware(req, res);
 });
@@ -164,6 +172,13 @@ async function runStartupChecks(): Promise<void> {
     // Non-fatal: cloneBaseDir may not exist yet on a fresh pod
   }
 
+  // --- Database migration (only when DATABASE_URL is configured) ---
+  const db = getDb();
+  if (db !== null) {
+    await runMigrations(db);
+    logger.info("Database migrations completed");
+  }
+
   isReady = true;
   logger.info("Startup checks passed, server is ready");
 }
@@ -183,8 +198,16 @@ function shutdown(signal: string): void {
   isReady = false;
 
   server.close(() => {
-    logger.info("Server closed, exiting");
-    process.exit(0);
+    void (async (): Promise<void> => {
+      try {
+        await closeDb();
+        logger.info("Server closed, exiting");
+        process.exit(0);
+      } catch (err) {
+        logger.error({ err }, "Failed to close database pool during shutdown");
+        process.exit(1);
+      }
+    })();
   });
 
   // Force exit after terminationGracePeriodSeconds if server.close hangs
