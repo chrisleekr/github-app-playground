@@ -84,6 +84,10 @@ LABEL com.chrisleekr.bot.git-hash=${GIT_HASH}
 COPY --from=development --chown=bun:bun /app/dist ./dist
 COPY --from=development --chown=bun:bun /app/package.json ./
 
+# SQL migration files — not bundled by Bun.build, copied as-is.
+# migrate.ts resolves these via process.cwd() + "src/db/migrations".
+COPY --from=development --chown=bun:bun /app/src/db/migrations ./src/db/migrations
+
 # Production node_modules (runtime dependencies only)
 COPY --from=deps --chown=bun:bun /app/node_modules ./node_modules
 

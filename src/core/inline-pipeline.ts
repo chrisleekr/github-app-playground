@@ -102,16 +102,25 @@ export async function runInlinePipeline(ctx: BotContext): Promise<void> {
       // Step 8: Execute Claude Agent SDK
       const result = await executeAgent(enrichedCtx, prompt, mcpServers, workDir, allowedTools);
 
-      // Step 9: Finalize tracking comment with results
-      const finalOpts = buildFinalOpts(result);
-      await retryWithBackoff(
-        () => finalizeTrackingComment(enrichedCtx, resolvedTrackingCommentId, finalOpts),
-        {
-          maxAttempts: 3,
-          initialDelayMs: 1000,
-          log: enrichedCtx.log,
-        },
-      );
+      // Step 9: Finalize tracking comment with results.
+      // Post-success bookkeeping errors must NOT mark the execution as failed —
+      // the agent work already completed successfully at this point.
+      try {
+        const finalOpts = buildFinalOpts(result);
+        await retryWithBackoff(
+          () => finalizeTrackingComment(enrichedCtx, resolvedTrackingCommentId, finalOpts),
+          {
+            maxAttempts: 3,
+            initialDelayMs: 1000,
+            log: enrichedCtx.log,
+          },
+        );
+      } catch (finalizeError) {
+        enrichedCtx.log.error(
+          { err: finalizeError },
+          "Failed to finalize tracking comment after successful execution",
+        );
+      }
 
       enrichedCtx.log.info(
         {
@@ -123,8 +132,13 @@ export async function runInlinePipeline(ctx: BotContext): Promise<void> {
         "Request processing completed",
       );
     } finally {
-      // Step 10: Cleanup temp directory (always, even on error)
-      await cleanup();
+      // Step 10: Cleanup temp directory (always, even on error).
+      // Wrapped to avoid masking the original error if cleanup fails.
+      try {
+        await cleanup();
+      } catch (cleanupError) {
+        ctx.log.error({ err: cleanupError }, "Failed to cleanup temp directory");
+      }
     }
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error));
@@ -134,11 +148,20 @@ export async function runInlinePipeline(ctx: BotContext): Promise<void> {
     // Update tracking comment with a generic user-facing message to avoid leaking
     // internal error details (paths, API keys, server addresses) to GitHub contributors.
     if (trackingCommentId !== undefined) {
+      const commentId = trackingCommentId;
       try {
-        await finalizeTrackingComment(ctx, trackingCommentId, {
-          success: false,
-          error: "An internal error occurred. Check server logs for details.",
-        });
+        await retryWithBackoff(
+          () =>
+            finalizeTrackingComment(ctx, commentId, {
+              success: false,
+              error: "An internal error occurred. Check server logs for details.",
+            }),
+          {
+            maxAttempts: 3,
+            initialDelayMs: 1000,
+            log: ctx.log,
+          },
+        );
       } catch (commentError) {
         ctx.log.error({ err: commentError }, "Failed to update tracking comment with error");
       }

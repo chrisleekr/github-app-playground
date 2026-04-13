@@ -186,14 +186,14 @@ function validateDataLayerConfig(
 ): void {
   if (data.agentJobMode === "inline") return;
 
-  if (data.databaseUrl === undefined || data.databaseUrl === "") {
+  if ((data.databaseUrl?.trim().length ?? 0) === 0) {
     ctx.addIssue({
       code: "custom",
       message: "DATABASE_URL is required when AGENT_JOB_MODE is not 'inline'",
       path: ["databaseUrl"],
     });
   }
-  if (data.valkeyUrl === undefined || data.valkeyUrl === "") {
+  if ((data.valkeyUrl?.trim().length ?? 0) === 0) {
     ctx.addIssue({
       code: "custom",
       message: "VALKEY_URL is required when AGENT_JOB_MODE is not 'inline'",
@@ -222,13 +222,28 @@ export function assertOauthRequiresAllowlist(cfg: Config): void {
   if (
     cfg.provider === "anthropic" &&
     (cfg.claudeCodeOauthToken?.trim().length ?? 0) > 0 &&
-    cfg.allowedOwners === undefined
+    cfg.allowedOwners?.length !== 1
   ) {
     throw new Error(
-      "ALLOWED_OWNERS is required when CLAUDE_CODE_OAUTH_TOKEN is set. " +
+      "ALLOWED_OWNERS must contain exactly one owner when CLAUDE_CODE_OAUTH_TOKEN is set. " +
         "See https://code.claude.com/docs/en/agent-sdk/overview",
     );
   }
+}
+
+/**
+ * Parse a boolean environment variable strictly.
+ * Accepts: true/false, 1/0, yes/no (case-insensitive).
+ * Throws on unrecognized values to prevent silent misconfiguration.
+ */
+export function parseBooleanEnv(name: string, raw: string | undefined): boolean | undefined {
+  if (raw === undefined) return undefined;
+  const normalized = raw.trim().toLowerCase();
+
+  if (["true", "1", "yes"].includes(normalized)) return true;
+  if (["false", "0", "no"].includes(normalized)) return false;
+
+  throw new Error(`${name} must be one of: true, false, 1, 0, yes, no. Got: ${raw}`);
 }
 
 /**
@@ -303,13 +318,8 @@ function loadConfig(): Config {
     sharedRunnerToken: process.env["SHARED_RUNNER_TOKEN"],
     internalRunnerToken: process.env["INTERNAL_RUNNER_TOKEN"],
 
-    // Triage — convert string to boolean for z.boolean().
-    // Accept common truthy strings (case-insensitive) to avoid silent misconfiguration
-    // from Helm values or .env typos like "TRUE" or "True".
-    triageEnabled:
-      process.env["TRIAGE_ENABLED"] !== undefined
-        ? ["true", "1", "yes"].includes(process.env["TRIAGE_ENABLED"].toLowerCase())
-        : undefined,
+    // Triage — strict boolean parsing; rejects unrecognized values at startup.
+    triageEnabled: parseBooleanEnv("TRIAGE_ENABLED", process.env["TRIAGE_ENABLED"]),
     triageModel: process.env["TRIAGE_MODEL"],
     triageConfidenceThreshold: process.env["TRIAGE_CONFIDENCE_THRESHOLD"],
     triageMaxTokens: process.env["TRIAGE_MAX_TOKENS"],

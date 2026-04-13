@@ -96,6 +96,12 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Reject non-health traffic until startup checks (including DB migrations) finish.
+  if (!isReady) {
+    res.writeHead(503, { "Content-Type": "text/plain" }).end("not ready");
+    return;
+  }
+
   // All other routes go through webhook middleware
   void webhookMiddleware(req, res);
 });
@@ -191,11 +197,17 @@ function shutdown(signal: string): void {
   logger.info({ signal }, "Received shutdown signal");
   isReady = false;
 
-  void closeDb();
-
   server.close(() => {
-    logger.info("Server closed, exiting");
-    process.exit(0);
+    void (async (): Promise<void> => {
+      try {
+        await closeDb();
+        logger.info("Server closed, exiting");
+        process.exit(0);
+      } catch (err) {
+        logger.error({ err }, "Failed to close database pool during shutdown");
+        process.exit(1);
+      }
+    })();
   });
 
   // Force exit after terminationGracePeriodSeconds if server.close hangs

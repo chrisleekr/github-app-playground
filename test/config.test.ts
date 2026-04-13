@@ -4,6 +4,7 @@ import {
   assertOauthRequiresAllowlist,
   type Config,
   configSchema,
+  parseBooleanEnv,
   parseMaxTurnsEnv,
 } from "../src/config";
 
@@ -450,6 +451,70 @@ describe("parseMaxTurnsEnv", () => {
   });
 });
 
+describe("parseBooleanEnv", () => {
+  it("returns undefined when input is undefined", () => {
+    expect(parseBooleanEnv("TEST", undefined)).toBeUndefined();
+  });
+
+  it.each(["true", "TRUE", "True", "1", "yes", "YES"])("returns true for '%s'", (val) => {
+    expect(parseBooleanEnv("TEST", val)).toBe(true);
+  });
+
+  it.each(["false", "FALSE", "False", "0", "no", "NO"])("returns false for '%s'", (val) => {
+    expect(parseBooleanEnv("TEST", val)).toBe(false);
+  });
+
+  it("trims whitespace before parsing", () => {
+    expect(parseBooleanEnv("TEST", "  true  ")).toBe(true);
+  });
+
+  it("throws on unrecognized values like 'tru'", () => {
+    expect(() => parseBooleanEnv("TRIAGE_ENABLED", "tru")).toThrow(
+      /TRIAGE_ENABLED must be one of: true, false, 1, 0, yes, no/,
+    );
+  });
+
+  it("throws on empty string", () => {
+    expect(() => parseBooleanEnv("TEST", "")).toThrow(/TEST must be one of/);
+  });
+});
+
+describe("configSchema — non-inline mode rejects whitespace-only data-layer URLs", () => {
+  const ANTHROPIC_BASE = {
+    ...BASE,
+    provider: "anthropic" as const,
+    anthropicApiKey: "sk-ant-test",
+  };
+
+  it("rejects whitespace-only DATABASE_URL in non-inline mode", () => {
+    const result = configSchema.safeParse({
+      ...ANTHROPIC_BASE,
+      agentJobMode: "shared-runner",
+      databaseUrl: "   ",
+      valkeyUrl: "redis://localhost:6379",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const paths = result.error.issues.map((i) => i.path.join("."));
+      expect(paths).toContain("databaseUrl");
+    }
+  });
+
+  it("rejects whitespace-only VALKEY_URL in non-inline mode", () => {
+    const result = configSchema.safeParse({
+      ...ANTHROPIC_BASE,
+      agentJobMode: "shared-runner",
+      databaseUrl: "postgres://localhost/test",
+      valkeyUrl: "   ",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const paths = result.error.issues.map((i) => i.path.join("."));
+      expect(paths).toContain("valkeyUrl");
+    }
+  });
+});
+
 describe("assertOauthRequiresAllowlist", () => {
   // ToS guard: CLAUDE_CODE_OAUTH_TOKEN is a personal Max/Pro subscription credential.
   // The Agent SDK Note prohibits serving other users' repos from that quota, so
@@ -470,7 +535,7 @@ describe("assertOauthRequiresAllowlist", () => {
     });
     expect(() => {
       assertOauthRequiresAllowlist(cfg);
-    }).toThrow(/ALLOWED_OWNERS is required/);
+    }).toThrow(/ALLOWED_OWNERS must contain exactly one owner/);
   });
 
   it("throws when OAuth token is set and ALLOWED_OWNERS is whitespace-only", () => {
@@ -484,7 +549,19 @@ describe("assertOauthRequiresAllowlist", () => {
     });
     expect(() => {
       assertOauthRequiresAllowlist(cfg);
-    }).toThrow(/ALLOWED_OWNERS is required/);
+    }).toThrow(/ALLOWED_OWNERS must contain exactly one owner/);
+  });
+
+  it("throws when OAuth token is set with multiple ALLOWED_OWNERS (must be single-tenant)", () => {
+    const cfg = parse({
+      ...BASE,
+      provider: "anthropic",
+      claudeCodeOauthToken: "sk-ant-oat-test",
+      allowedOwners: "owner-a,owner-b",
+    });
+    expect(() => {
+      assertOauthRequiresAllowlist(cfg);
+    }).toThrow(/ALLOWED_OWNERS must contain exactly one owner/);
   });
 
   it("allows OAuth token with a non-empty ALLOWED_OWNERS (single-tenant in-policy)", () => {
@@ -539,7 +616,7 @@ describe("assertOauthRequiresAllowlist", () => {
     });
     expect(() => {
       assertOauthRequiresAllowlist(cfg);
-    }).toThrow(/ALLOWED_OWNERS is required/);
+    }).toThrow(/ALLOWED_OWNERS must contain exactly one owner/);
   });
 
   it("does not apply to Bedrock deployments", () => {

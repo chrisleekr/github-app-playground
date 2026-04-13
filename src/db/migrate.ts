@@ -6,9 +6,12 @@ import type { SQL } from "bun";
 import { logger } from "../logger";
 
 // Use process.cwd() (project root) instead of import.meta.dir because Bun.build
-// bundles TS→JS into dist/ but does not copy .sql files. In production Docker,
-// CWD is /app (project root) so src/db/migrations/ is always accessible.
+// bundles TS→JS into dist/ but does not copy .sql files. The Dockerfile copies
+// src/db/migrations/ into the production image so the path resolves correctly.
 const MIGRATIONS_DIR = join(process.cwd(), "src/db/migrations");
+
+// Fixed advisory lock key to serialize migrations across replicas.
+const MIGRATION_LOCK_KEY = 819_283_746;
 
 /**
  * Run all pending SQL migrations in order.
@@ -39,37 +42,46 @@ export async function runMigrations(sql: SQL): Promise<void> {
     )
   `;
 
-  // Get already-applied versions
-  const applied: { version: string }[] = await sql`
-    SELECT version FROM _migrations ORDER BY version
-  `;
-  const appliedSet = new Set(applied.map((r) => r.version));
+  // Acquire advisory lock to serialize migrations across replicas.
+  // Without this, two replicas booting simultaneously could both read the same
+  // pending set and race on DDL + _migrations inserts.
+  await sql`SELECT pg_advisory_lock(${MIGRATION_LOCK_KEY})`;
 
-  // Read migration files, sorted by filename
+  try {
+    // Get already-applied versions
+    const applied: { version: string }[] = await sql`
+      SELECT version FROM _migrations ORDER BY version
+    `;
+    const appliedSet = new Set(applied.map((r) => r.version));
 
-  const files = readdirSync(MIGRATIONS_DIR)
-    .filter((f) => f.endsWith(".sql"))
-    .sort();
+    // Read migration files, sorted by filename
 
-  for (const file of files) {
-    const version = file.replace(/\.sql$/, "");
-    if (appliedSet.has(version)) {
-      continue;
+    const files = readdirSync(MIGRATIONS_DIR)
+      .filter((f) => f.endsWith(".sql"))
+      .sort();
+
+    for (const file of files) {
+      const version = file.replace(/\.sql$/, "");
+      if (appliedSet.has(version)) {
+        continue;
+      }
+
+      const filePath = join(MIGRATIONS_DIR, file);
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- path is join()-constructed from controlled dir
+      const content = readFileSync(filePath, "utf-8");
+
+      logger.info({ version, file }, "Applying migration");
+
+      // eslint-disable-next-line no-await-in-loop -- migrations must run sequentially
+      await sql.begin(async (tx) => {
+        // unsafe() allows multi-statement SQL (DDL, CREATE TABLE, etc.)
+        await tx.unsafe(content);
+        await tx`INSERT INTO _migrations (version) VALUES (${version})`;
+      });
+
+      logger.info({ version }, "Migration applied successfully");
     }
-
-    const filePath = join(MIGRATIONS_DIR, file);
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- path is join()-constructed from controlled dir
-    const content = readFileSync(filePath, "utf-8");
-
-    logger.info({ version, file }, "Applying migration");
-
-    // eslint-disable-next-line no-await-in-loop -- migrations must run sequentially
-    await sql.begin(async (tx) => {
-      // unsafe() allows multi-statement SQL (DDL, CREATE TABLE, etc.)
-      await tx.unsafe(content);
-      await tx`INSERT INTO _migrations (version) VALUES (${version})`;
-    });
-
-    logger.info({ version }, "Migration applied successfully");
+  } finally {
+    await sql`SELECT pg_advisory_unlock(${MIGRATION_LOCK_KEY})`;
   }
 }

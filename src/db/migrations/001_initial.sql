@@ -4,12 +4,8 @@
 --   executions  — tracks every agent execution (inline, shared-runner, ephemeral-job)
 --   daemons     — registry of connected daemon instances and their capabilities
 --
--- Extensions:
---   vector — pgvector for future semantic search (Phase 6)
---
 -- Note: gen_random_uuid() is built-in since Postgres 13 — no uuid-ossp needed.
-
-CREATE EXTENSION IF NOT EXISTS vector;
+-- pgvector extension deferred to the migration that first adds vector columns.
 
 CREATE TABLE executions (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),

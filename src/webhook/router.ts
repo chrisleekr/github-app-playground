@@ -119,6 +119,13 @@ export async function processRequest(ctx: BotContext): Promise<void> {
   activeCount++;
 
   try {
+    if (config.agentJobMode !== "inline") {
+      ctx.log.error(
+        { agentJobMode: config.agentJobMode },
+        "Non-inline AGENT_JOB_MODE is not yet implemented; only 'inline' is supported",
+      );
+      return;
+    }
     await runInlinePipeline(ctx);
   } finally {
     // Always decrement so the next request can enter the pipeline

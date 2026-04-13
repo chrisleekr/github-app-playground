@@ -562,6 +562,28 @@ describe("processRequest — owner allowlist", () => {
   });
 });
 
+describe("processRequest — agentJobMode fail-fast guard", () => {
+  it("logs error and returns without executing pipeline for non-inline modes", async () => {
+    const { config } = await import("../../src/config");
+    const originalMode = config.agentJobMode;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (config as any).agentJobMode = "shared-runner";
+
+    const ctx = makeCtx();
+    const executorCallsBefore = mockExecuteAgent.mock.calls.length;
+
+    try {
+      await processRequest(ctx);
+
+      // Pipeline should NOT have been invoked (no executeAgent call)
+      expect(mockExecuteAgent.mock.calls.length).toBe(executorCallsBefore);
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (config as any).agentJobMode = originalMode;
+    }
+  });
+});
+
 describe("cleanupStaleIdempotencyEntries", () => {
   it("removes entries older than the TTL and preserves fresh entries", async () => {
     const { cleanupStaleIdempotencyEntries } = await import("../../src/webhook/router");
