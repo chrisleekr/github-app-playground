@@ -14,6 +14,8 @@ bun run lint            # ESLint check
 bun run lint:fix        # ESLint auto-fix
 bun run format          # Check formatting with prettier
 bun run format:fix      # Auto-fix formatting with prettier
+bun run dev:deps        # Start local Valkey + Postgres (Docker Compose)
+bun run dev:deps:down   # Stop local infrastructure
 ```
 
 ## What This Is
@@ -29,23 +31,25 @@ Single HTTP server (`src/app.ts`) using `octokit` App class. Webhook events arri
 
 **Event handler** (`src/webhook/events/`): parse event → unified `BotContext` → check for `@chrisleekr-bot` trigger → fire-and-forget `processRequest()`
 
-**Inside `processRequest()`** (`src/webhook/router.ts`):
+**Router** (`src/webhook/router.ts`): routing concerns — idempotency (in-memory `Map` + durable tracking comment check), owner allowlist, concurrency guard, then delegates to the inline pipeline.
 
-1. Idempotency check — in-memory `Map` (fast path) + durable check via existing tracking comment (survives pod restarts)
-2. Concurrency guard — reject if active executions ≥ `MAX_CONCURRENT_REQUESTS`
-3. Create tracking comment ("Working…")
-4. Fetch PR/issue data via GraphQL
-5. Build prompt with full context
-6. Clone repo to temp directory, checkout PR/default branch
-7. Resolve MCP servers and allowed tools
-8. Run Claude Agent SDK with `cwd` set to cloned repo
-9. Finalize tracking comment (success/error/cost)
-10. Cleanup temp directory
+**Inline pipeline** (`src/core/inline-pipeline.ts`):
+
+1. Create tracking comment ("Working…")
+2. Get installation token
+3. Fetch PR/issue data via GraphQL
+4. Build prompt with full context
+5. Clone repo to temp directory, checkout PR/default branch
+6. Resolve MCP servers and allowed tools
+7. Run Claude Agent SDK with `cwd` set to cloned repo
+8. Finalize tracking comment (success/error/cost)
+9. Cleanup temp directory
 
 ## Architecture
 
 - `src/webhook/` — Event routing (`router.ts`) and per-event handlers (`events/`, one file per event type)
-- `src/core/` — Pipeline: context → fetch → format → prompt → checkout → execute
+- `src/core/` — Pipeline: context → fetch → format → prompt → checkout → execute. The inline pipeline (`inline-pipeline.ts`) is the main execution path.
+- `src/db/` — Database layer (Postgres via `Bun.sql`). Connection singleton (`index.ts`), migration runner (`migrate.ts`), SQL migrations (`migrations/`). Only active when `DATABASE_URL` is configured.
 - `src/mcp/` — MCP server registry and servers (extensible: add new servers)
 - `src/utils/` — Retry logic, sanitization
 

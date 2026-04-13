@@ -1,6 +1,11 @@
 import { describe, expect, it } from "bun:test";
 
-import { assertOauthRequiresAllowlist, type Config, configSchema } from "../src/config";
+import {
+  assertOauthRequiresAllowlist,
+  type Config,
+  configSchema,
+  parseMaxTurnsEnv,
+} from "../src/config";
 
 // Minimal required GitHub App fields shared by all test cases
 const BASE = {
@@ -246,6 +251,202 @@ describe("configSchema — allowedOwners parsing", () => {
     if (result.success) {
       expect(result.data.allowedOwners).toBeUndefined();
     }
+  });
+});
+
+describe("configSchema — daemon orchestration defaults", () => {
+  const ANTHROPIC_BASE = {
+    ...BASE,
+    provider: "anthropic" as const,
+    anthropicApiKey: "sk-ant-test",
+  };
+
+  it("defaults agentJobMode to 'inline' when AGENT_JOB_MODE is absent", () => {
+    const result = configSchema.safeParse(ANTHROPIC_BASE);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.agentJobMode).toBe("inline");
+    }
+  });
+
+  it("accepts all valid agentJobMode enum values", () => {
+    for (const mode of ["inline", "shared-runner", "ephemeral-job", "auto"] as const) {
+      const input =
+        mode === "inline"
+          ? { ...ANTHROPIC_BASE, agentJobMode: mode }
+          : {
+              ...ANTHROPIC_BASE,
+              agentJobMode: mode,
+              databaseUrl: "postgres://localhost/test",
+              valkeyUrl: "redis://localhost:6379",
+            };
+      const result = configSchema.safeParse(input);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.agentJobMode).toBe(mode);
+      }
+    }
+  });
+
+  it("rejects invalid agentJobMode values", () => {
+    const result = configSchema.safeParse({ ...ANTHROPIC_BASE, agentJobMode: "invalid" });
+    expect(result.success).toBe(false);
+  });
+
+  it("defaults defaultDispatchMode to 'shared-runner'", () => {
+    const result = configSchema.safeParse(ANTHROPIC_BASE);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.defaultDispatchMode).toBe("shared-runner");
+    }
+  });
+
+  it("defaults wsPort to 3002", () => {
+    const result = configSchema.safeParse(ANTHROPIC_BASE);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.wsPort).toBe(3002);
+    }
+  });
+
+  it("defaults jobMaxCostUsd to 80", () => {
+    const result = configSchema.safeParse(ANTHROPIC_BASE);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.jobMaxCostUsd).toBe(80);
+    }
+  });
+
+  it("defaults triageEnabled to true", () => {
+    const result = configSchema.safeParse(ANTHROPIC_BASE);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.triageEnabled).toBe(true);
+    }
+  });
+
+  it("defaults triageConfidenceThreshold to 1.0", () => {
+    const result = configSchema.safeParse(ANTHROPIC_BASE);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.triageConfidenceThreshold).toBe(1.0);
+    }
+  });
+
+  it("defaults maxTurnsPerComplexity to {trivial:10, moderate:30, complex:50}", () => {
+    const result = configSchema.safeParse(ANTHROPIC_BASE);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.maxTurnsPerComplexity).toEqual({ trivial: 10, moderate: 30, complex: 50 });
+    }
+  });
+
+  it("defaults jobTtlSeconds to 300", () => {
+    const result = configSchema.safeParse(ANTHROPIC_BASE);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.jobTtlSeconds).toBe(300);
+    }
+  });
+
+  it("defaults triageModel to 'haiku-3-5'", () => {
+    const result = configSchema.safeParse(ANTHROPIC_BASE);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.triageModel).toBe("haiku-3-5");
+    }
+  });
+});
+
+describe("configSchema — non-inline mode requires data layer", () => {
+  const ANTHROPIC_BASE = {
+    ...BASE,
+    provider: "anthropic" as const,
+    anthropicApiKey: "sk-ant-test",
+  };
+
+  it("rejects agentJobMode='shared-runner' without DATABASE_URL", () => {
+    const result = configSchema.safeParse({
+      ...ANTHROPIC_BASE,
+      agentJobMode: "shared-runner",
+      valkeyUrl: "redis://localhost:6379",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const paths = result.error.issues.map((i) => i.path.join("."));
+      expect(paths).toContain("databaseUrl");
+    }
+  });
+
+  it("rejects agentJobMode='auto' without VALKEY_URL", () => {
+    const result = configSchema.safeParse({
+      ...ANTHROPIC_BASE,
+      agentJobMode: "auto",
+      databaseUrl: "postgres://localhost/test",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const paths = result.error.issues.map((i) => i.path.join("."));
+      expect(paths).toContain("valkeyUrl");
+    }
+  });
+
+  it("accepts agentJobMode='shared-runner' with both DATABASE_URL and VALKEY_URL", () => {
+    const result = configSchema.safeParse({
+      ...ANTHROPIC_BASE,
+      agentJobMode: "shared-runner",
+      databaseUrl: "postgres://localhost/test",
+      valkeyUrl: "redis://localhost:6379",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.agentJobMode).toBe("shared-runner");
+    }
+  });
+
+  it("does not require DATABASE_URL or VALKEY_URL in inline mode", () => {
+    const result = configSchema.safeParse(ANTHROPIC_BASE);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.agentJobMode).toBe("inline");
+      expect(result.data.databaseUrl).toBeUndefined();
+      expect(result.data.valkeyUrl).toBeUndefined();
+    }
+  });
+});
+
+describe("configSchema — maxTurnsPerComplexity", () => {
+  it("accepts valid object for maxTurnsPerComplexity", () => {
+    const result = configSchema.safeParse({
+      ...BASE,
+      anthropicApiKey: "sk-ant-test",
+      maxTurnsPerComplexity: { trivial: 5, moderate: 15, complex: 25 },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.maxTurnsPerComplexity).toEqual({ trivial: 5, moderate: 15, complex: 25 });
+    }
+  });
+});
+
+describe("parseMaxTurnsEnv", () => {
+  it("returns undefined when input is undefined", () => {
+    expect(parseMaxTurnsEnv(undefined)).toBeUndefined();
+  });
+
+  it("parses valid JSON into an object", () => {
+    const result = parseMaxTurnsEnv('{"trivial":5,"moderate":15,"complex":25}');
+    expect(result).toEqual({ trivial: 5, moderate: 15, complex: 25 });
+  });
+
+  it("throws a descriptive error for malformed JSON", () => {
+    expect(() => parseMaxTurnsEnv("{bad json")).toThrow(
+      /MAX_TURNS_PER_COMPLEXITY must be valid JSON/,
+    );
+  });
+
+  it("includes the raw value in the error message for debugging", () => {
+    expect(() => parseMaxTurnsEnv("{oops}")).toThrow("{oops}");
   });
 });
 

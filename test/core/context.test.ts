@@ -14,6 +14,17 @@ function makeIssueCommentPayload(overrides?: Partial<IssueCommentEvent>): IssueC
     issue: {
       number: 42,
       pull_request: undefined,
+      labels: [
+        {
+          id: 1,
+          node_id: "L1",
+          url: "https://api.github.com/labels/bug",
+          name: "bug",
+          description: null,
+          color: "d73a4a",
+          default: true,
+        },
+      ],
       ...overrides?.issue,
     },
     comment: {
@@ -42,6 +53,17 @@ function makeReviewCommentPayload(
       number: 7,
       head: { ref: "feat/test" },
       base: { ref: "main" },
+      labels: [
+        {
+          id: 2,
+          node_id: "L2",
+          url: "https://api.github.com/labels/enhancement",
+          name: "enhancement",
+          description: null,
+          color: "a2eeef",
+          default: false,
+        },
+      ],
       ...overrides?.pull_request,
     },
     comment: {
@@ -77,11 +99,21 @@ describe("parseIssueCommentEvent", () => {
     expect(ctx.commentId).toBe(100);
     expect(ctx.deliveryId).toBe("delivery-1");
     expect(ctx.defaultBranch).toBe("main");
+    expect(ctx.labels).toEqual(["bug"]);
+  });
+
+  it("returns empty labels array when issue has no labels", () => {
+    const payload = makeIssueCommentPayload({
+      issue: { number: 42, pull_request: undefined, labels: [] },
+    } as Partial<IssueCommentEvent>);
+    const ctx = parseIssueCommentEvent(payload, mockOctokit, "delivery-labels-empty");
+
+    expect(ctx.labels).toEqual([]);
   });
 
   it("detects PR from pull_request field on issue", () => {
     const payload = makeIssueCommentPayload({
-      issue: { number: 5, pull_request: { url: "https://..." } },
+      issue: { number: 5, pull_request: { url: "https://..." }, labels: [] },
     } as Partial<IssueCommentEvent>);
     const ctx = parseIssueCommentEvent(payload, mockOctokit, "delivery-2");
 
@@ -121,5 +153,12 @@ describe("parseReviewCommentEvent", () => {
 
     expect(ctx.headBranch).toBe("feat/test");
     expect(ctx.baseBranch).toBe("main");
+  });
+
+  it("populates labels from PR payload", () => {
+    const payload = makeReviewCommentPayload();
+    const ctx = parseReviewCommentEvent(payload, mockOctokit, "delivery-labels-pr");
+
+    expect(ctx.labels).toEqual(["enhancement"]);
   });
 });

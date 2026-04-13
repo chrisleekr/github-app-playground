@@ -1,5 +1,10 @@
 /**
- * Tests for the processRequest pipeline in src/webhook/router.ts.
+ * Tests for processRequest in src/webhook/router.ts.
+ *
+ * Covers both routing concerns (idempotency, auth, concurrency) and the inline
+ * execution pipeline (src/core/inline-pipeline.ts). After the pipeline extraction,
+ * router.ts delegates to runInlinePipeline() — tests exercise the full path through
+ * both modules via processRequest().
  *
  * Design decisions:
  * - mock.module() in Bun persists across ALL test files in the same process run.
@@ -161,6 +166,7 @@ function makeCtx(
     commentId: 1,
     deliveryId,
     defaultBranch: "main",
+    labels: [],
     octokit: makeOctokit(octokitOpts),
     log: silentLog,
     ...ctxOverrides,
@@ -253,7 +259,7 @@ describe("processRequest — race condition prevention", () => {
   });
 });
 
-describe("processRequest — error handling", () => {
+describe("processRequest — error handling (pipeline)", () => {
   it("always calls cleanup even when executeAgent throws", async () => {
     mockExecuteAgent.mockRejectedValue(new Error("agent blew up"));
     const ctx = makeCtx();
@@ -313,7 +319,7 @@ describe("processRequest — error handling", () => {
   });
 });
 
-describe("processRequest — successful execution", () => {
+describe("processRequest — successful execution (pipeline)", () => {
   it("finalizes comment with success content after a successful run", async () => {
     mockExecuteAgent.mockResolvedValue({ success: true, durationMs: 3000, costUsd: 0.05 });
     const ctx = makeCtx();

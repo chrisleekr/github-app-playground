@@ -13,6 +13,8 @@ import type {
 import { App } from "octokit";
 
 import { config } from "./config";
+import { closeDb, getDb } from "./db";
+import { runMigrations } from "./db/migrate";
 import { logger } from "./logger";
 import { handleIssueComment } from "./webhook/events/issue-comment";
 import { handlePullRequest } from "./webhook/events/pull-request";
@@ -164,6 +166,13 @@ async function runStartupChecks(): Promise<void> {
     // Non-fatal: cloneBaseDir may not exist yet on a fresh pod
   }
 
+  // --- Database migration (only when DATABASE_URL is configured) ---
+  const db = getDb();
+  if (db !== null) {
+    await runMigrations(db);
+    logger.info("Database migrations completed");
+  }
+
   isReady = true;
   logger.info("Startup checks passed, server is ready");
 }
@@ -181,6 +190,8 @@ void runStartupChecks().catch((err: unknown) => {
 function shutdown(signal: string): void {
   logger.info({ signal }, "Received shutdown signal");
   isReady = false;
+
+  void closeDb();
 
   server.close(() => {
     logger.info("Server closed, exiting");

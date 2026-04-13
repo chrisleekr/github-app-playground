@@ -36,6 +36,7 @@ export function parseIssueCommentEvent(
     triggerBody: payload.comment.body,
     commentId: payload.comment.id,
     deliveryId,
+    labels: payload.issue.labels.map((l) => l.name),
     // PR head/base branches are not in issue_comment payload;
     // they will be populated by the fetcher via GraphQL.
     // Omitted here intentionally (exactOptionalPropertyTypes forbids explicit undefined).
@@ -73,6 +74,7 @@ export function parseReviewCommentEvent(
     triggerBody: payload.comment.body,
     commentId: payload.comment.id,
     deliveryId,
+    labels: payload.pull_request.labels.map((l) => l.name),
     headBranch: payload.pull_request.head.ref,
     baseBranch: payload.pull_request.base.ref,
     defaultBranch: repo.default_branch,

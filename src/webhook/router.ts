@@ -1,16 +1,7 @@
 import { config } from "../config";
-import { checkoutRepo } from "../core/checkout";
-import { executeAgent } from "../core/executor";
-import { fetchGitHubData } from "../core/fetcher";
-import { buildPrompt, resolveAllowedTools } from "../core/prompt-builder";
-import {
-  createTrackingComment,
-  finalizeTrackingComment,
-  isAlreadyProcessed,
-} from "../core/tracking-comment";
-import { resolveMcpServers } from "../mcp/registry";
-import type { BotContext, EnrichedBotContext, ExecutionResult } from "../types";
-import { retryWithBackoff } from "../utils/retry";
+import { runInlinePipeline } from "../core/inline-pipeline";
+import { isAlreadyProcessed } from "../core/tracking-comment";
+import type { BotContext } from "../types";
 import { isOwnerAllowed } from "./authorize";
 
 /**
@@ -61,44 +52,11 @@ const cleanupInterval = setInterval(
 cleanupInterval.unref();
 
 /**
- * Build the options object passed to `finalizeTrackingComment` on success.
- *
- * Exists because `exactOptionalPropertyTypes` forbids assigning `undefined` to
- * optional properties — we have to omit them instead. Extracted so the two
- * conditional branches don't count against processRequest's cyclomatic
- * complexity budget.
- */
-function buildFinalOpts(result: ExecutionResult): {
-  success: boolean;
-  durationMs?: number;
-  costUsd?: number;
-} {
-  const opts: { success: boolean; durationMs?: number; costUsd?: number } = {
-    success: result.success,
-  };
-  if (result.durationMs !== undefined) {
-    opts.durationMs = result.durationMs;
-  }
-  if (result.costUsd !== undefined) {
-    opts.costUsd = result.costUsd;
-  }
-  return opts;
-}
-
-/**
- * Main async processing pipeline.
+ * Main async processing entry point.
  * Called fire-and-forget from event handlers after the webhook has responded 200 OK.
  *
- * Pipeline:
- * 1. Idempotency check
- * 2. Create tracking comment
- * 3. Fetch PR/issue data via GraphQL
- * 4. Build prompt
- * 5. Clone repo to temp directory
- * 6. Resolve MCP servers
- * 7. Execute Claude Agent SDK
- * 8. Finalize tracking comment
- * 9. Cleanup temp directory
+ * Handles routing concerns (idempotency, auth, concurrency) then delegates
+ * the actual execution pipeline to runInlinePipeline().
  */
 export async function processRequest(ctx: BotContext): Promise<void> {
   // Fast-path idempotency: in-memory check (current process lifetime only)
@@ -160,102 +118,8 @@ export async function processRequest(ctx: BotContext): Promise<void> {
 
   activeCount++;
 
-  let trackingCommentId: number | undefined;
-
   try {
-    // Step 1: Create tracking comment ("Working...")
-    trackingCommentId = await retryWithBackoff(() => createTrackingComment(ctx), {
-      maxAttempts: 3,
-      initialDelayMs: 1000,
-      log: ctx.log,
-    });
-    // Capture as const so TypeScript can narrow it inside arrow-function closures below.
-    const resolvedTrackingCommentId = trackingCommentId;
-
-    // Step 2: Get an installation token for API calls and git clone
-    // The octokit instance on ctx is already authenticated for this installation,
-    // but we need a raw token for git clone auth URL.
-    // Use octokit's auth to get the installation access token.
-    const { token: installationToken } = (await ctx.octokit.auth({
-      type: "installation",
-    })) as { token: string };
-
-    // Step 3: Fetch PR/issue data via GraphQL
-    const data = await retryWithBackoff(() => fetchGitHubData(ctx), {
-      maxAttempts: 3,
-      initialDelayMs: 2000,
-      log: ctx.log,
-    });
-
-    // Build an enriched context with branch data resolved from GraphQL.
-    // Creates a new object instead of mutating ctx to avoid hidden temporal dependencies.
-    const enrichedCtx: EnrichedBotContext = {
-      ...ctx,
-      headBranch: data.headBranch ?? ctx.headBranch ?? ctx.defaultBranch,
-      baseBranch: data.baseBranch ?? ctx.baseBranch ?? ctx.defaultBranch,
-    };
-
-    // Step 4: Build the full prompt
-    const prompt = buildPrompt(enrichedCtx, data, resolvedTrackingCommentId);
-
-    // Step 5: Clone repo to temp directory
-    const { workDir, cleanup } = await checkoutRepo(enrichedCtx, installationToken);
-
-    try {
-      // Step 6: Resolve MCP servers for this context
-      const mcpServers = resolveMcpServers(
-        enrichedCtx,
-        resolvedTrackingCommentId,
-        installationToken,
-      );
-
-      // Step 7: Resolve allowed tools
-      const allowedTools = resolveAllowedTools(enrichedCtx);
-
-      // Step 8: Execute Claude Agent SDK
-      const result = await executeAgent(enrichedCtx, prompt, mcpServers, workDir, allowedTools);
-
-      // Step 9: Finalize tracking comment with results
-      const finalOpts = buildFinalOpts(result);
-      await retryWithBackoff(
-        () => finalizeTrackingComment(enrichedCtx, resolvedTrackingCommentId, finalOpts),
-        {
-          maxAttempts: 3,
-          initialDelayMs: 1000,
-          log: enrichedCtx.log,
-        },
-      );
-
-      enrichedCtx.log.info(
-        {
-          success: result.success,
-          durationMs: result.durationMs,
-          costUsd: result.costUsd,
-          numTurns: result.numTurns,
-        },
-        "Request processing completed",
-      );
-    } finally {
-      // Step 10: Cleanup temp directory (always, even on error)
-      await cleanup();
-    }
-  } catch (error) {
-    const err = error instanceof Error ? error : new Error(String(error));
-    // Log the full error server-side only — do not expose internal details in the comment.
-    ctx.log.error({ err }, "Request processing failed");
-
-    // Update tracking comment with a generic user-facing message to avoid leaking
-    // internal error details (paths, API keys, server addresses) to GitHub contributors.
-    if (trackingCommentId !== undefined) {
-      try {
-        await finalizeTrackingComment(ctx, trackingCommentId, {
-          success: false,
-          error: "An internal error occurred. Check server logs for details.",
-        });
-      } catch (commentError) {
-        ctx.log.error({ err: commentError }, "Failed to update tracking comment with error");
-      }
-    }
+    await runInlinePipeline(ctx);
   } finally {
     // Always decrement so the next request can enter the pipeline
     activeCount--;

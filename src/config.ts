@@ -86,6 +86,45 @@ const configSchema = z
           .filter(Boolean);
         return parsed.length === 0 ? undefined : parsed;
       }),
+
+    // --- Dispatch mode (Phase 2+) ---
+    // AGENT_JOB_MODE determines how triggered work is executed.
+    // "inline" (default) = current behaviour, no external deps needed.
+    agentJobMode: z.enum(["inline", "shared-runner", "ephemeral-job", "auto"]).default("inline"),
+    defaultDispatchMode: z.enum(["shared-runner", "ephemeral-job"]).default("shared-runner"),
+
+    // --- K8s Job spawner ---
+    jobNamespace: z.string().default("github-app"),
+    jobImage: z.string().optional(),
+    jobTtlSeconds: z.coerce.number().int().positive().default(300),
+    sharedRunnerUrl: z.url().optional(),
+
+    // --- Data layer ---
+    valkeyUrl: z.string().optional(),
+    databaseUrl: z.string().optional(),
+
+    // --- Orchestrator ---
+    wsPort: z.coerce.number().int().positive().default(3002),
+    jobMaxCostUsd: z.coerce.number().positive().default(80),
+
+    // --- Shared runner auth (ADR-011) ---
+    sharedRunnerToken: z.string().optional(),
+    internalRunnerToken: z.string().optional(),
+
+    // --- Triage pre-classifier ---
+    triageEnabled: z.boolean().default(true),
+    triageModel: z.string().default("haiku-3-5"),
+    triageConfidenceThreshold: z.coerce.number().min(0).max(1).default(1.0),
+    triageMaxTokens: z.coerce.number().int().positive().default(256),
+
+    // --- Max turns per complexity class (maps triage output to agent maxTurns) ---
+    maxTurnsPerComplexity: z
+      .object({
+        trivial: z.coerce.number().int().positive().default(10),
+        moderate: z.coerce.number().int().positive().default(30),
+        complex: z.coerce.number().int().positive().default(50),
+      })
+      .default({ trivial: 10, moderate: 30, complex: 50 }),
   })
   .superRefine((data, ctx) => {
     if (data.provider === "anthropic") {
@@ -131,7 +170,37 @@ const configSchema = z
       // handles all cases — AWS_PROFILE (local SSO), IRSA, explicit keys, or bearer token.
       // Runtime will surface any credential error on first API call.
     }
+
+    // Non-inline dispatch modes require data layer connections (Valkey + Postgres).
+    // Extracted to reduce superRefine complexity below eslint's threshold.
+    validateDataLayerConfig(data, ctx);
   });
+
+/**
+ * Validate data layer requirements for non-inline dispatch modes.
+ * Inline mode (default) needs neither — zero behaviour change until opted in.
+ */
+function validateDataLayerConfig(
+  data: { agentJobMode: string; databaseUrl?: string | undefined; valkeyUrl?: string | undefined },
+  ctx: z.RefinementCtx,
+): void {
+  if (data.agentJobMode === "inline") return;
+
+  if (data.databaseUrl === undefined || data.databaseUrl === "") {
+    ctx.addIssue({
+      code: "custom",
+      message: "DATABASE_URL is required when AGENT_JOB_MODE is not 'inline'",
+      path: ["databaseUrl"],
+    });
+  }
+  if (data.valkeyUrl === undefined || data.valkeyUrl === "") {
+    ctx.addIssue({
+      code: "custom",
+      message: "VALKEY_URL is required when AGENT_JOB_MODE is not 'inline'",
+      path: ["valkeyUrl"],
+    });
+  }
+}
 
 export type Config = z.infer<typeof configSchema>;
 
@@ -158,6 +227,24 @@ export function assertOauthRequiresAllowlist(cfg: Config): void {
     throw new Error(
       "ALLOWED_OWNERS is required when CLAUDE_CODE_OAUTH_TOKEN is set. " +
         "See https://code.claude.com/docs/en/agent-sdk/overview",
+    );
+  }
+}
+
+/**
+ * Parse MAX_TURNS_PER_COMPLEXITY env var with a clear error message on malformed JSON.
+ * Returns undefined when the var is not set (triggers Zod .default()).
+ *
+ * Exported so tests can exercise the error path directly without re-importing
+ * the config singleton (same pattern as assertOauthRequiresAllowlist).
+ */
+export function parseMaxTurnsEnv(raw: string | undefined): Record<string, unknown> | undefined {
+  if (raw === undefined) return undefined;
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    throw new Error(
+      `MAX_TURNS_PER_COMPLEXITY must be valid JSON (e.g. '{"trivial":10,"moderate":30,"complex":50}'). Got: ${raw}`,
     );
   }
 }
@@ -193,6 +280,42 @@ function loadConfig(): Config {
     cloneDepth: process.env["CLONE_DEPTH"],
     claudeCodePath: process.env["CLAUDE_CODE_PATH"],
     allowedOwners: process.env["ALLOWED_OWNERS"],
+
+    // Dispatch mode
+    agentJobMode: process.env["AGENT_JOB_MODE"],
+    defaultDispatchMode: process.env["DEFAULT_DISPATCH_MODE"],
+
+    // K8s Job spawner
+    jobNamespace: process.env["JOB_NAMESPACE"],
+    jobImage: process.env["JOB_IMAGE"],
+    jobTtlSeconds: process.env["JOB_TTL_SECONDS"],
+    sharedRunnerUrl: process.env["SHARED_RUNNER_URL"],
+
+    // Data layer
+    valkeyUrl: process.env["VALKEY_URL"],
+    databaseUrl: process.env["DATABASE_URL"],
+
+    // Orchestrator
+    wsPort: process.env["WS_PORT"],
+    jobMaxCostUsd: process.env["JOB_MAX_COST_USD"],
+
+    // Shared runner auth
+    sharedRunnerToken: process.env["SHARED_RUNNER_TOKEN"],
+    internalRunnerToken: process.env["INTERNAL_RUNNER_TOKEN"],
+
+    // Triage — convert string to boolean for z.boolean().
+    // Accept common truthy strings (case-insensitive) to avoid silent misconfiguration
+    // from Helm values or .env typos like "TRUE" or "True".
+    triageEnabled:
+      process.env["TRIAGE_ENABLED"] !== undefined
+        ? ["true", "1", "yes"].includes(process.env["TRIAGE_ENABLED"].toLowerCase())
+        : undefined,
+    triageModel: process.env["TRIAGE_MODEL"],
+    triageConfidenceThreshold: process.env["TRIAGE_CONFIDENCE_THRESHOLD"],
+    triageMaxTokens: process.env["TRIAGE_MAX_TOKENS"],
+
+    // Max turns per complexity
+    maxTurnsPerComplexity: parseMaxTurnsEnv(process.env["MAX_TURNS_PER_COMPLEXITY"]),
   });
   assertOauthRequiresAllowlist(cfg);
   return cfg;

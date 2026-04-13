@@ -33,6 +33,8 @@ export interface BotContext {
   baseBranch?: string;
   /** Default branch of the repository */
   defaultBranch: string;
+  /** GitHub labels on the parent issue/PR at webhook trigger time */
+  labels: string[];
   /** Authenticated Octokit instance for this installation */
   octokit: Octokit;
   /** Child logger scoped to this request */
