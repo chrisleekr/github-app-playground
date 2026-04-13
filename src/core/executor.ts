@@ -51,6 +51,7 @@ export async function executeAgent(
   mcpServers: McpServerConfig,
   workDir: string,
   allowedTools: string[],
+  maxTurns?: number,
 ): Promise<ExecutionResult> {
   const { log } = ctx;
 
@@ -69,7 +70,7 @@ export async function executeAgent(
     permissionMode: "bypassPermissions",
     allowedTools,
     mcpServers,
-    maxTurns: 50, // Safety limit per hosting guide
+    maxTurns: maxTurns ?? 50, // Per-job limit or safety default per hosting guide
     systemPrompt: { type: "preset", preset: "claude_code" },
     env: buildProviderEnv(),
   };

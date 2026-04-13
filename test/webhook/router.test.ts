@@ -562,8 +562,8 @@ describe("processRequest — owner allowlist", () => {
   });
 });
 
-describe("processRequest — agentJobMode fail-fast guard", () => {
-  it("posts user comment and returns without executing pipeline for non-inline modes", async () => {
+describe("processRequest — agentJobMode non-inline dispatch", () => {
+  it("rejects with Valkey unavailable message when Valkey is not connected", async () => {
     const { config } = await import("../../src/config");
     const originalMode = config.agentJobMode;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -579,10 +579,10 @@ describe("processRequest — agentJobMode fail-fast guard", () => {
       // Pipeline should NOT have been invoked (no executeAgent call)
       expect(mockExecuteAgent.mock.calls.length).toBe(executorCallsBefore);
 
-      // User should be notified via a comment
+      // User should be notified that Valkey is unavailable (FM-7)
       const modeCall = createCommentSpy.mock.calls.find((call) => {
         const body = (call[0] as { body?: string }).body;
-        return typeof body === "string" && body.includes("not yet implemented");
+        return typeof body === "string" && body.includes("job queue service is temporarily unavailable");
       });
       expect(modeCall).toBeDefined();
     } finally {

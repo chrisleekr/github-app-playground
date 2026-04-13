@@ -1,6 +1,7 @@
 import type { Octokit } from "octokit";
 
 import type { Logger } from "./logger";
+import type { SerializableBotContext } from "./shared/daemon-types";
 
 /**
  * Unified context for processing a webhook event.
@@ -138,3 +139,15 @@ export type McpServerDef =
  * Map of MCP server name to its definition.
  */
 export type McpServerConfig = Record<string, McpServerDef>;
+
+/**
+ * Convert a BotContext into a JSON-serializable form for WebSocket transmission.
+ * Strips `octokit` (class instance) and `log` (pino logger with streams).
+ * Daemon reconstructs these locally from the installation token and delivery ID.
+ */
+export function serializeBotContext(ctx: BotContext): SerializableBotContext {
+  // Destructure to remove non-serializable fields; spread the rest.
+   
+  const { octokit: _octokit, log: _log, ...serializable } = ctx;
+  return serializable;
+}

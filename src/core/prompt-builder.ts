@@ -1,4 +1,5 @@
 import { config } from "../config";
+import type { DaemonCapabilities } from "../shared/daemon-types";
 import type { BotContext, FetchedData } from "../types";
 import { sanitizeContent } from "../utils/sanitize";
 import { formatAllSections } from "./formatter";
@@ -207,8 +208,14 @@ f. If you are unable to complete certain steps, explain this in your comment.
 /**
  * Resolve the allowed tools list for the Claude Agent SDK.
  * Matches claude-code-action's buildAllowedToolsString() for tag mode.
+ *
+ * When daemonCapabilities is provided (daemon execution), additional Bash tools
+ * are conditionally included based on the daemon's discovered CLI tools (R-007).
  */
-export function resolveAllowedTools(ctx: BotContext): string[] {
+export function resolveAllowedTools(
+  ctx: BotContext,
+  daemonCapabilities?: DaemonCapabilities,
+): string[] {
   const tools: string[] = [
     // File system tools
     "Edit",
@@ -241,5 +248,57 @@ export function resolveAllowedTools(ctx: BotContext): string[] {
     tools.push("mcp__context7__resolve-library-id", "mcp__context7__query-docs");
   }
 
+  // Daemon capabilities-based tool injection (T026, R-007 section 3)
+  if (daemonCapabilities !== undefined) {
+    const functional = new Set(
+      [...daemonCapabilities.cliTools, ...daemonCapabilities.packageManagers]
+        .filter((t) => t.functional)
+        .map((t) => t.name),
+    );
+
+    if (functional.has("docker") || daemonCapabilities.containerRuntime?.daemonRunning === true) {
+      tools.push("Bash(docker:*)");
+    }
+    if (functional.has("curl")) tools.push("Bash(curl:*)");
+    if (functional.has("make")) tools.push("Bash(make:*)");
+    if (functional.has("python3")) tools.push("Bash(python3:*)");
+  }
+
+  // Daemon capabilities MCP tool
+  if (daemonCapabilities !== undefined) {
+    tools.push("mcp__daemon_capabilities__query_daemon_capabilities");
+  }
+
   return tools;
+}
+
+/**
+ * Build an environment header paragraph for daemon-executed jobs (Tier 2, R-011/R-012).
+ * Injected into the system prompt so Claude knows the daemon's local environment.
+ *
+ * Returns an empty string for inline mode (no daemon capabilities available).
+ */
+export function buildEnvironmentHeader(daemonCapabilities?: DaemonCapabilities): string {
+  if (daemonCapabilities === undefined) return "";
+
+  const { platform, shells, packageManagers, cliTools, containerRuntime, resources } =
+    daemonCapabilities;
+
+  const shellNames = shells.filter((s) => s.functional).map((s) => s.name);
+  const pkgMgrs = packageManagers.filter((p) => p.functional).map((p) => `${p.name}@${p.version}`);
+  const tools = cliTools.filter((t) => t.functional).map((t) => `${t.name}@${t.version}`);
+
+  const containerStatus =
+    containerRuntime !== null
+      ? `${containerRuntime.name}@${containerRuntime.version} (daemon: ${containerRuntime.daemonRunning ? "running" : "stopped"}${containerRuntime.composeAvailable ? ", compose available" : ""})`
+      : "none";
+
+  return `
+<daemon_environment>
+You are running on a daemon worker process with the following environment:
+Platform: ${platform} | Shells: ${shellNames.join(", ") || "none"} | Package managers: ${pkgMgrs.join(", ") || "none"}
+CLI tools: ${tools.join(", ") || "none"} | Container runtime: ${containerStatus}
+Resources: ${resources.cpuCount} CPUs, ${resources.memoryFreeMb}MB free memory, ${resources.diskFreeMb}MB free disk
+</daemon_environment>
+`.trim();
 }

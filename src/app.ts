@@ -16,6 +16,9 @@ import { config } from "./config";
 import { closeDb, getDb } from "./db";
 import { runMigrations } from "./db/migrate";
 import { logger } from "./logger";
+import { recoverStaleExecutions } from "./orchestrator/history";
+import { closeValkey, getValkeyClient, isValkeyHealthy } from "./orchestrator/valkey";
+import { startWebSocketServer, stopWebSocketServer } from "./orchestrator/ws-server";
 import { handleIssueComment } from "./webhook/events/issue-comment";
 import { handlePullRequest } from "./webhook/events/pull-request";
 import { handleReview } from "./webhook/events/review";
@@ -90,9 +93,12 @@ const server = http.createServer((req, res) => {
   }
   if (req.url === "/readyz") {
     // Readiness: should we receive traffic?
+    // In non-inline mode, also check Valkey health (FM-7).
+    const valkeyOk = config.agentJobMode === "inline" || isValkeyHealthy();
+    const ready = isReady && valkeyOk;
     res
-      .writeHead(isReady ? 200 : 503, { "Content-Type": "text/plain" })
-      .end(isReady ? "ready" : "shutting down");
+      .writeHead(ready ? 200 : 503, { "Content-Type": "text/plain" })
+      .end(ready ? "ready" : "not ready");
     return;
   }
 
@@ -177,6 +183,17 @@ async function runStartupChecks(): Promise<void> {
   if (db !== null) {
     await runMigrations(db);
     logger.info("Database migrations completed");
+
+    // Recover stale executions from previous server lifetime (FM-4).
+    // Runs AFTER migrations, BEFORE WebSocket server accepts connections.
+    await recoverStaleExecutions(db);
+  }
+
+  // --- Valkey + WebSocket server (non-inline modes only) ---
+  if (config.agentJobMode !== "inline") {
+    getValkeyClient(); // Initialize connection (lazy singleton)
+    startWebSocketServer();
+    logger.info({ wsPort: config.wsPort }, "Orchestrator WebSocket server started");
   }
 
   isReady = true;
@@ -200,11 +217,13 @@ function shutdown(signal: string): void {
   server.close(() => {
     void (async (): Promise<void> => {
       try {
+        stopWebSocketServer();
+        closeValkey();
         await closeDb();
         logger.info("Server closed, exiting");
         process.exit(0);
       } catch (err) {
-        logger.error({ err }, "Failed to close database pool during shutdown");
+        logger.error({ err }, "Failed to close resources during shutdown");
         process.exit(1);
       }
     })();

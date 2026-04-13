@@ -6,7 +6,7 @@
 
 services:
   postgres:
-    image: ankane/pgvector:pg17
+    image: pgvector/pgvector:pg17
     ports:
       - "127.0.0.1:5432:5432"
     environment:

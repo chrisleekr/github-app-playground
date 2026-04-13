@@ -1,4 +1,5 @@
 import { config } from "../config";
+import type { DaemonCapabilities } from "../shared/daemon-types";
 import type { BotContext, McpServerConfig, McpServerDef } from "../types";
 import { context7Server } from "./servers/context7";
 
@@ -13,6 +14,7 @@ export function resolveMcpServers(
   ctx: BotContext,
   trackingCommentId: number,
   installationToken: string,
+  daemonCapabilities?: DaemonCapabilities,
 ): McpServerConfig {
   const servers: McpServerConfig = {};
 
@@ -35,6 +37,11 @@ export function resolveMcpServers(
   // Helps Claude reference current APIs when reviewing code
   if (config.context7ApiKey !== undefined && config.context7ApiKey !== "") {
     servers["context7"] = context7Server();
+  }
+
+  // Daemon capabilities MCP server (Tier 3, R-011) — only when running on a daemon
+  if (config.agentJobMode !== "inline" && daemonCapabilities !== undefined) {
+    servers["daemon_capabilities"] = daemonCapabilitiesServerDef(daemonCapabilities);
   }
 
   return servers;
@@ -73,6 +80,21 @@ function inlineCommentServerDef(sharedEnv: Record<string, string>, prNumber: num
     env: {
       ...sharedEnv,
       PR_NUMBER: prNumber.toString(),
+    },
+  };
+}
+
+/**
+ * Daemon capabilities MCP server definition (stdio transport).
+ * Passes the full DaemonCapabilities JSON via env var.
+ */
+function daemonCapabilitiesServerDef(capabilities: DaemonCapabilities): McpServerDef {
+  return {
+    type: "stdio",
+    command: "bun",
+    args: ["run", "dist/mcp/servers/daemon-capabilities.js"],
+    env: {
+      DAEMON_CAPABILITIES: JSON.stringify(capabilities),
     },
   };
 }

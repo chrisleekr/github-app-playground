@@ -111,6 +111,21 @@ const configSchema = z
     sharedRunnerToken: z.string().optional(),
     internalRunnerToken: z.string().optional(),
 
+    // --- Daemon / Orchestrator (Phase 2) ---
+    daemonAuthToken: z.string().optional(),
+    heartbeatIntervalMs: z.coerce.number().int().positive().default(30_000),
+    heartbeatTimeoutMs: z.coerce.number().int().positive().default(90_000),
+    staleExecutionThresholdMs: z.coerce.number().int().positive().default(600_000),
+    daemonDrainTimeoutMs: z.coerce.number().int().positive().default(300_000),
+    jobMaxRetries: z.coerce.number().int().nonnegative().default(3),
+    offerTimeoutMs: z.coerce.number().int().positive().default(5_000),
+    orchestratorUrl: z.string().optional(),
+    daemonUpdateStrategy: z.enum(["exit", "pull", "notify"]).default("exit"),
+    daemonUpdateDelayMs: z.coerce.number().int().nonnegative().default(0),
+    daemonEphemeral: z.boolean().default(false),
+    daemonMemoryFloorMb: z.coerce.number().int().nonnegative().default(512),
+    daemonDiskFloorMb: z.coerce.number().int().nonnegative().default(1024),
+
     // --- Triage pre-classifier ---
     triageEnabled: z.boolean().default(true),
     triageModel: z.string().default("haiku-3-5"),
@@ -181,7 +196,12 @@ const configSchema = z
  * Inline mode (default) needs neither — zero behaviour change until opted in.
  */
 function validateDataLayerConfig(
-  data: { agentJobMode: string; databaseUrl?: string | undefined; valkeyUrl?: string | undefined },
+  data: {
+    agentJobMode: string;
+    databaseUrl?: string | undefined;
+    valkeyUrl?: string | undefined;
+    daemonAuthToken?: string | undefined;
+  },
   ctx: z.RefinementCtx,
 ): void {
   if (data.agentJobMode === "inline") return;
@@ -198,6 +218,13 @@ function validateDataLayerConfig(
       code: "custom",
       message: "VALKEY_URL is required when AGENT_JOB_MODE is not 'inline'",
       path: ["valkeyUrl"],
+    });
+  }
+  if ((data.daemonAuthToken?.trim().length ?? 0) === 0) {
+    ctx.addIssue({
+      code: "custom",
+      message: "DAEMON_AUTH_TOKEN is required when AGENT_JOB_MODE is not 'inline'",
+      path: ["daemonAuthToken"],
     });
   }
 }
@@ -317,6 +344,21 @@ function loadConfig(): Config {
     // Shared runner auth
     sharedRunnerToken: process.env["SHARED_RUNNER_TOKEN"],
     internalRunnerToken: process.env["INTERNAL_RUNNER_TOKEN"],
+
+    // Daemon / Orchestrator
+    daemonAuthToken: process.env["DAEMON_AUTH_TOKEN"],
+    heartbeatIntervalMs: process.env["HEARTBEAT_INTERVAL_MS"],
+    heartbeatTimeoutMs: process.env["HEARTBEAT_TIMEOUT_MS"],
+    staleExecutionThresholdMs: process.env["STALE_EXECUTION_THRESHOLD_MS"],
+    daemonDrainTimeoutMs: process.env["DAEMON_DRAIN_TIMEOUT_MS"],
+    jobMaxRetries: process.env["JOB_MAX_RETRIES"],
+    offerTimeoutMs: process.env["OFFER_TIMEOUT_MS"],
+    orchestratorUrl: process.env["ORCHESTRATOR_URL"],
+    daemonUpdateStrategy: process.env["DAEMON_UPDATE_STRATEGY"],
+    daemonUpdateDelayMs: process.env["DAEMON_UPDATE_DELAY_MS"],
+    daemonEphemeral: parseBooleanEnv("DAEMON_EPHEMERAL", process.env["DAEMON_EPHEMERAL"]),
+    daemonMemoryFloorMb: process.env["DAEMON_MEMORY_FLOOR_MB"],
+    daemonDiskFloorMb: process.env["DAEMON_DISK_FLOOR_MB"],
 
     // Triage — strict boolean parsing; rejects unrecognized values at startup.
     triageEnabled: parseBooleanEnv("TRIAGE_ENABLED", process.env["TRIAGE_ENABLED"]),
