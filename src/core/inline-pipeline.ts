@@ -21,7 +21,6 @@ function readDaemonActionsFile(
     log.info({ actionsPath, exists }, "Checking for daemon actions file");
     if (exists) {
       const actions = JSON.parse(readFileSync(actionsPath, "utf-8")) as {
-         
         type: string;
         category?: string;
         content?: string;

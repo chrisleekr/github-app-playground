@@ -387,7 +387,7 @@ beforeEach(() => {
 describe("handleWsOpen", () => {
   it("is a no-op (does not throw)", () => {
     const ws = makeFakeWs();
-     
+
     expect(() => {
       handleWsOpen(ws as any);
     }).not.toThrow();
@@ -585,7 +585,6 @@ describe("handleDaemonMessage - heartbeat:pong", () => {
     const ws = makeFakeWs(undefined);
     const pongMsg = makeHeartbeatPongMsg();
 
-     
     expect(() => {
       handleDaemonMessage(ws as any, pongMsg);
     }).not.toThrow();
@@ -621,7 +620,6 @@ describe("handleDaemonMessage - daemon:draining", () => {
       payload: { activeJobs: 0, reason: "shutdown" },
     };
 
-     
     expect(() => {
       handleDaemonMessage(ws as any, drainingMsg);
     }).not.toThrow();
@@ -656,7 +654,6 @@ describe("handleDaemonMessage - daemon:update-acknowledged", () => {
       payload: { strategy: "pull", delayMs: 0 },
     };
 
-     
     expect(() => {
       handleDaemonMessage(ws as any, updateMsg);
     }).not.toThrow();
@@ -923,7 +920,6 @@ describe("handleDaemonMessage - job:status", () => {
       payload: { status: "running", message: "cloning repo" },
     };
 
-     
     expect(() => {
       handleDaemonMessage(ws as any, statusMsg);
     }).not.toThrow();
