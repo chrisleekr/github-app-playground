@@ -54,7 +54,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --check .",
     "format:fix": "prettier --write .",
-    "check": "bun run typecheck && bun run lint && bun run format && bun test",
+    "check": "bun run typecheck && bun run lint && bun run format && bun run test",
     "dev:daemon": "bash scripts/run-daemon.sh",
     "dev:deps": "docker compose -f docker-compose.dev.yml up -d",
     "dev:deps:down": "docker compose -f docker-compose.dev.yml down",
@@ -64,7 +64,9 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@anthropic-ai/bedrock-sdk": "^0.28.1",
     "@anthropic-ai/claude-agent-sdk": "^0.2.101",
+    "@kubernetes/client-node": "^1.4.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@octokit/webhooks": "13.9.1",
     "@octokit/webhooks-types": "^7.6.1",
