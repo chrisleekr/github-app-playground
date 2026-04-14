@@ -166,10 +166,10 @@ When a Claude agent executes on a daemon (rather than inline), it needs awarenes
 
 The spec, protocol, and data model use related terms for overlapping concepts:
 
-| User-Facing Term | WebSocket Protocol | Postgres Table | Scope |
-|---|---|---|---|
-| Task | `job:*` message prefix | `executions` row | A unit of work from webhook trigger through completion |
-| Daemon | `daemon:*` message prefix | `daemons` row | A persistent worker process |
+| User-Facing Term | WebSocket Protocol        | Postgres Table   | Scope                                                  |
+| ---------------- | ------------------------- | ---------------- | ------------------------------------------------------ |
+| Task             | `job:*` message prefix    | `executions` row | A unit of work from webhook trigger through completion |
+| Daemon           | `daemon:*` message prefix | `daemons` row    | A persistent worker process                            |
 
 "Task" is the user-facing concept (as in User Story 3 — "Task Communication"). "Job" is the wire-protocol term (message types: `job:offer`, `job:payload`, `job:result`). "Execution" is the durable record in Postgres tracking the full lifecycle. All three refer to the same logical unit of work at different abstraction layers.
 

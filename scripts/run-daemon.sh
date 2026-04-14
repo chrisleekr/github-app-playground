@@ -14,10 +14,17 @@ ORCHESTRATOR_URL="${ORCHESTRATOR_URL:-ws://localhost:3002/ws}"
 DAEMON_AUTH_TOKEN="${DAEMON_AUTH_TOKEN:-local-dev-token}"
 export ORCHESTRATOR_URL DAEMON_AUTH_TOKEN
 
+# Forward signals to the child process so daemon graceful shutdown fires
+child=""
+trap 'if [ -n "$child" ]; then kill -TERM "$child" 2>/dev/null; wait "$child"; fi; exit 0' SIGTERM SIGINT
+
 while true; do
   echo "[run-daemon] Starting daemon: bun run ${DAEMON_ENTRY}"
-  bun run "${DAEMON_ENTRY}" || true
+  bun run "${DAEMON_ENTRY}" &
+  child=$!
+  wait "$child" || true
   EXIT_CODE=$?
+  child=""
 
   if [ "${EXIT_CODE}" -eq 75 ]; then
     echo "[run-daemon] Daemon exited with code 75 (update) — restarting immediately"

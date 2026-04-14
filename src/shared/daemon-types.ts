@@ -92,6 +92,15 @@ export interface PendingOffer {
   timer: Timer;
   offeredAt: number;
   retryCount: number;
+  // Original job metadata preserved for re-queue on rejection/timeout
+  repoOwner: string;
+  repoName: string;
+  entityNumber: number;
+  isPR: boolean;
+  eventName: string;
+  triggerUsername: string;
+  labels: string[];
+  triggerBodyPreview: string;
 }
 
 export interface HeartbeatState {

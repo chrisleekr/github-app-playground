@@ -1,7 +1,7 @@
 import type { Octokit } from "octokit";
 
 import type { Logger } from "./logger";
-import type { SerializableBotContext } from "./shared/daemon-types";
+import type { DaemonCapabilities, SerializableBotContext } from "./shared/daemon-types";
 
 /**
  * Unified context for processing a webhook event.
@@ -36,6 +36,14 @@ export interface BotContext {
   defaultBranch: string;
   /** GitHub labels on the parent issue/PR at webhook trigger time */
   labels: string[];
+  /** When true, skip creating/updating tracking comments on GitHub (dev testing) */
+  skipTrackingComments?: boolean;
+  /** When true, skip Claude Agent SDK execution and return a synthetic result (dev testing) */
+  dryRun?: boolean;
+  /** Pre-loaded repo memory from orchestrator (daemon mode only) */
+  repoMemory?: { id: string; category: string; content: string; pinned: boolean }[];
+  /** Daemon capabilities — set when running in daemon mode to enable capability-based tools */
+  daemonCapabilities?: DaemonCapabilities;
   /** Authenticated Octokit instance for this installation */
   octokit: Octokit;
   /** Child logger scoped to this request */
@@ -54,6 +62,13 @@ export interface ExecutionResult {
   durationMs?: number;
   /** Number of agent turns used */
   numTurns?: number;
+  /** When true, indicates this was a dry-run (no Claude execution) */
+  dryRun?: boolean;
+  /** Daemon actions collected from execution (learnings and deletions from .daemon-actions.json) */
+  daemonActions?: {
+    learnings: { category: string; content: string }[];
+    deletions: string[];
+  };
 }
 
 /**
@@ -147,7 +162,7 @@ export type McpServerConfig = Record<string, McpServerDef>;
  */
 export function serializeBotContext(ctx: BotContext): SerializableBotContext {
   // Destructure to remove non-serializable fields; spread the rest.
-   
+
   const { octokit: _octokit, log: _log, ...serializable } = ctx;
   return serializable;
 }

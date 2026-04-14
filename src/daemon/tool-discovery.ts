@@ -1,13 +1,14 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { existsSync, statfsSync } from "node:fs";
-import { cpus, freemem, hostname, platform,totalmem } from "node:os";
+import { cpus, freemem, hostname, platform, totalmem } from "node:os";
 
 import { logger } from "../logger";
 import type { DaemonCapabilities, DaemonResources, DiscoveredTool } from "../shared/daemon-types";
 
-// ---------------------------------------------------------------------------
+const SUPPORTED_PLATFORMS = ["linux", "darwin", "win32"] as const;
+type SupportedPlatform = (typeof SUPPORTED_PLATFORMS)[number];
+
 // Resource snapshot (R-007)
-// ---------------------------------------------------------------------------
 
 /**
  * Get current system resources (CPU, memory, disk).
@@ -29,16 +30,15 @@ export function getCurrentResources(): DaemonResources {
   return { cpuCount, memoryTotalMb, memoryFreeMb, diskFreeMb };
 }
 
-// ---------------------------------------------------------------------------
 // Tool discovery helpers
-// ---------------------------------------------------------------------------
 
 function discoverTool(name: string, versionFlag = "--version"): DiscoveredTool {
   try {
-    const pathResult = execSync(`which ${name}`, { encoding: "utf-8", timeout: 5_000 }).trim();
+    // Use execFileSync to avoid shell interpolation (prevents command injection)
+    const pathResult = execFileSync("which", [name], { encoding: "utf-8", timeout: 5_000 }).trim();
     let version = "unknown";
     try {
-      const raw = execSync(`${name} ${versionFlag}`, {
+      const raw = execFileSync(name, [versionFlag], {
         encoding: "utf-8",
         timeout: 5_000,
         stdio: ["pipe", "pipe", "pipe"],
@@ -55,9 +55,7 @@ function discoverTool(name: string, versionFlag = "--version"): DiscoveredTool {
   }
 }
 
-// ---------------------------------------------------------------------------
 // Ephemeral detection
-// ---------------------------------------------------------------------------
 
 function detectEphemeral(): boolean {
   // Docker / container detection
@@ -67,9 +65,7 @@ function detectEphemeral(): boolean {
   return false;
 }
 
-// ---------------------------------------------------------------------------
 // Full capability scan (R-007)
-// ---------------------------------------------------------------------------
 
 /**
  * Discover daemon capabilities: tools, container runtime, resources, etc.
@@ -78,23 +74,19 @@ function detectEphemeral(): boolean {
 export async function discoverCapabilities(cloneBaseDir: string): Promise<DaemonCapabilities> {
   const plat = platform();
 
-  // Shells
   const shells = ["bash", "sh", "zsh", "fish"].map((s) => discoverTool(s));
-
-  // Package managers
   const packageManagers = ["bun", "node", "npm", "yarn", "pnpm"].map((p) => discoverTool(p));
+  const cliTools = ["git", "curl", "jq", "python3", "aws", "make", "gh"].map((t) =>
+    discoverTool(t),
+  );
 
-  // CLI tools
-  const cliTools = ["git", "curl", "jq", "python3", "aws", "make", "gh"].map((t) => discoverTool(t));
-
-  // Container runtime
   let containerRuntime: DaemonCapabilities["containerRuntime"] = null;
   for (const rt of ["docker", "podman"] as const) {
     const tool = discoverTool(rt);
     if (tool.functional) {
       let daemonRunning = false;
       try {
-        execSync(`${rt} info`, { timeout: 5_000, stdio: "pipe" });
+        execFileSync(rt, ["info"], { timeout: 5_000, stdio: "pipe" });
         daemonRunning = true;
       } catch {
         // daemon not running
@@ -102,7 +94,7 @@ export async function discoverCapabilities(cloneBaseDir: string): Promise<Daemon
 
       let composeAvailable = false;
       try {
-        execSync(`${rt} compose version`, { timeout: 5_000, stdio: "pipe" });
+        execFileSync(rt, ["compose", "version"], { timeout: 5_000, stdio: "pipe" });
         composeAvailable = true;
       } catch {
         // compose not available
@@ -119,16 +111,15 @@ export async function discoverCapabilities(cloneBaseDir: string): Promise<Daemon
     }
   }
 
-  // Auth contexts (best-effort check)
+  // Auth contexts — best-effort, non-functional if CLI not logged in
   const authContexts: string[] = [];
   try {
-    execSync("gh auth status", { timeout: 5_000, stdio: "pipe" });
+    execFileSync("gh", ["auth", "status"], { timeout: 5_000, stdio: "pipe" });
     authContexts.push("github");
   } catch {
     // Not authenticated
   }
 
-  // Cached repos
   const cachedRepos: string[] = [];
   try {
     const { readdirSync } = await import("node:fs");
@@ -156,8 +147,14 @@ export async function discoverCapabilities(cloneBaseDir: string): Promise<Daemon
     "Capability discovery complete",
   );
 
+  if (!SUPPORTED_PLATFORMS.includes(plat as SupportedPlatform)) {
+    throw new Error(
+      `Unsupported platform: ${plat}. Expected one of: ${SUPPORTED_PLATFORMS.join(", ")}`,
+    );
+  }
+
   return {
-    platform: plat as "linux" | "darwin" | "win32",
+    platform: plat as SupportedPlatform,
     shells,
     packageManagers,
     cliTools,

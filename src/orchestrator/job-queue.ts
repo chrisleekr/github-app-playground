@@ -13,6 +13,11 @@ export interface QueuedJob {
   entityNumber: number;
   isPR: boolean;
   eventName: string;
+  /** Trigger metadata — carried through queue so dispatch uses correct context
+   * regardless of which webhook handler dequeues the job (Issue #4 race fix). */
+  triggerUsername: string;
+  labels: string[];
+  triggerBodyPreview: string;
   enqueuedAt: number;
   retryCount: number;
 }
@@ -30,7 +35,26 @@ export async function enqueueJob(job: QueuedJob): Promise<void> {
 }
 
 /**
- * Dequeue the next job from the queue.
+ * Non-blocking dequeue for use in webhook handlers.
+ * Uses RPOP — returns immediately with null if the queue is empty.
+ */
+export async function tryDequeueJob(): Promise<QueuedJob | null> {
+  const valkey = requireValkeyClient();
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Valkey RPOP returns string | null
+  const result: string | null = await valkey.send("RPOP", [QUEUE_KEY]);
+
+  if (result === null) return null;
+
+  try {
+    return JSON.parse(result) as QueuedJob;
+  } catch {
+    logger.error("Failed to parse dequeued job");
+    return null;
+  }
+}
+
+/**
+ * Blocking dequeue for background dispatch loops.
  * Uses BRPOP with a 5-second timeout to avoid busy-waiting.
  * Returns null if the queue is empty after timeout.
  */

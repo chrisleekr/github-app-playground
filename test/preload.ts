@@ -23,6 +23,10 @@ process.env["CLAUDE_PROVIDER"] = "anthropic";
 delete process.env["ALLOWED_OWNERS"];
 delete process.env["CLAUDE_CODE_OAUTH_TOKEN"];
 
+// Force inline mode for tests — most tests assume inline pipeline execution.
+// Individual tests that need non-inline behavior override config.agentJobMode directly.
+process.env["AGENT_JOB_MODE"] = "inline";
+
 // Helper: set env var to a fallback when absent or empty.
 // ?? (nullish coalescing) only replaces null/undefined, not "". A local .env
 // file may contain KEY= (empty string), which Bun loads as "" into process.env.

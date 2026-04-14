@@ -114,10 +114,7 @@ export function startWebSocketServer(): ReturnType<typeof Bun.serve<WsConnection
       },
 
       close(ws: ServerWebSocket<WsConnectionData>, code: number, reason: string) {
-        logger.info(
-          { daemonId: ws.data.daemonId, code, reason },
-          "WebSocket connection closed",
-        );
+        logger.info({ daemonId: ws.data.daemonId, code, reason }, "WebSocket connection closed");
         handleWsClose(ws, code, reason);
       },
     },
@@ -147,12 +144,11 @@ export function sendError(
   code: string,
   message: string,
 ): void {
-  const envelope = createMessageEnvelope();
+  const envelope = createMessageEnvelope(correlationId);
   ws.sendText(
     JSON.stringify({
       type: "error",
-      id: correlationId,
-      timestamp: envelope.timestamp,
+      ...envelope,
       payload: { code, message },
     }),
   );

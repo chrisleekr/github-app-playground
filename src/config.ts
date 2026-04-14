@@ -6,10 +6,11 @@ import { z } from "zod";
  */
 const configSchema = z
   .object({
-    // GitHub App credentials
-    appId: z.string().min(1, "GITHUB_APP_ID is required"),
-    privateKey: z.string().min(1, "GITHUB_APP_PRIVATE_KEY is required"),
-    webhookSecret: z.string().min(1, "GITHUB_WEBHOOK_SECRET is required"),
+    // GitHub App credentials — required for server mode, optional for daemon-only mode.
+    // Daemon mode (ORCHESTRATOR_URL set) does not need these; validated in superRefine.
+    appId: z.string().optional(),
+    privateKey: z.string().optional(),
+    webhookSecret: z.string().optional(),
 
     // AI provider selection: "anthropic" (default) or "bedrock"
     provider: z.enum(["anthropic", "bedrock"]).default("anthropic"),
@@ -59,6 +60,9 @@ const configSchema = z
     // Guards against resource exhaustion from hung model responses or MCP servers.
     // Set via AGENT_TIMEOUT_MS env var (default: 10 minutes).
     agentTimeoutMs: z.coerce.number().int().positive().default(600_000),
+    // Override max turns for the Claude Agent SDK. When set, takes precedence over
+    // complexity-based turns. Set via AGENT_MAX_TURNS env var.
+    agentMaxTurns: z.coerce.number().int().positive().optional(),
     // Git clone depth for repo checkout. Increase for PRs with deeply diverged branches.
     // Set via CLONE_DEPTH env var (default: 50).
     cloneDepth: z.coerce.number().int().positive().default(50),
@@ -142,54 +146,99 @@ const configSchema = z
       .default({ trivial: 10, moderate: 30, complex: 50 }),
   })
   .superRefine((data, ctx) => {
-    if (data.provider === "anthropic") {
-      // Direct Anthropic API requires a non-empty credential:
-      //   - ANTHROPIC_API_KEY (Console pay-as-you-go), OR
-      //   - CLAUDE_CODE_OAUTH_TOKEN (Max/Pro subscription, sk-ant-oat... prefix)
-      // If both are set, the Claude CLI's own auth precedence chain picks one
-      // (API key wins). Rejecting "both set" would duplicate CLI-side logic.
-      // `.trim()` guards against whitespace-only values pasted into .env files —
-      // those would otherwise pass startup and fail later on the first API call.
-      const hasApiKey = (data.anthropicApiKey?.trim().length ?? 0) > 0;
-      const hasOauthToken = (data.claudeCodeOauthToken?.trim().length ?? 0) > 0;
-      if (!hasApiKey && !hasOauthToken) {
-        ctx.addIssue({
-          code: "custom",
-          message:
-            "When CLAUDE_PROVIDER=anthropic, either ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN is required.",
-          path: ["anthropicApiKey"],
-        });
-      }
-    } else {
-      // provider === "bedrock" (the only other enum value)
-      // Bedrock always needs a region to construct the endpoint
-      if (data.awsRegion === undefined || data.awsRegion === "") {
-        ctx.addIssue({
-          code: "custom",
-          message: "AWS_REGION is required when CLAUDE_PROVIDER=bedrock",
-          path: ["awsRegion"],
-        });
-      }
-      // Bedrock uses a different model ID format (e.g. us.anthropic.claude-sonnet-4-6).
-      // The SDK only passes --model if provided; without it the CLI uses an Anthropic-format
-      // default that the Bedrock API will reject.
-      if (data.model === undefined) {
-        ctx.addIssue({
-          code: "custom",
-          message:
-            "CLAUDE_MODEL is required when CLAUDE_PROVIDER=bedrock (e.g. us.anthropic.claude-sonnet-4-6)",
-          path: ["model"],
-        });
-      }
-      // Credentials are NOT validated here: the AWS SDK credential chain in the subprocess
-      // handles all cases — AWS_PROFILE (local SSO), IRSA, explicit keys, or bearer token.
-      // Runtime will surface any credential error on first API call.
-    }
-
-    // Non-inline dispatch modes require data layer connections (Valkey + Postgres).
-    // Extracted to reduce superRefine complexity below eslint's threshold.
+    validateServerModeCredentials(data, ctx);
+    validateProviderCredentials(data, ctx);
     validateDataLayerConfig(data, ctx);
   });
+
+/**
+ * Validate GitHub App credentials are present in server mode.
+ * Daemon mode (ORCHESTRATOR_URL set) does not require these.
+ */
+function validateServerModeCredentials(
+  data: {
+    orchestratorUrl?: string | undefined;
+    appId?: string | undefined;
+    privateKey?: string | undefined;
+    webhookSecret?: string | undefined;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  const isDaemonMode = (data.orchestratorUrl?.trim().length ?? 0) > 0;
+  if (isDaemonMode) return;
+
+  if ((data.appId?.trim().length ?? 0) === 0) {
+    ctx.addIssue({
+      code: "custom",
+      message: "GITHUB_APP_ID is required in server mode (when ORCHESTRATOR_URL is not set)",
+      path: ["appId"],
+    });
+  }
+  if ((data.privateKey?.trim().length ?? 0) === 0) {
+    ctx.addIssue({
+      code: "custom",
+      message:
+        "GITHUB_APP_PRIVATE_KEY is required in server mode (when ORCHESTRATOR_URL is not set)",
+      path: ["privateKey"],
+    });
+  }
+  if ((data.webhookSecret?.trim().length ?? 0) === 0) {
+    ctx.addIssue({
+      code: "custom",
+      message:
+        "GITHUB_WEBHOOK_SECRET is required in server mode (when ORCHESTRATOR_URL is not set)",
+      path: ["webhookSecret"],
+    });
+  }
+}
+
+/**
+ * Validate provider-specific credentials.
+ * Anthropic requires API key or OAuth token; Bedrock requires region and model.
+ */
+function validateProviderCredentials(
+  data: {
+    provider: string;
+    anthropicApiKey?: string | undefined;
+    claudeCodeOauthToken?: string | undefined;
+    awsRegion?: string | undefined;
+    model?: string | undefined;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  if (data.provider === "anthropic") {
+    // Direct Anthropic API requires a non-empty credential:
+    //   - ANTHROPIC_API_KEY (Console pay-as-you-go), OR
+    //   - CLAUDE_CODE_OAUTH_TOKEN (Max/Pro subscription, sk-ant-oat... prefix)
+    const hasApiKey = (data.anthropicApiKey?.trim().length ?? 0) > 0;
+    const hasOauthToken = (data.claudeCodeOauthToken?.trim().length ?? 0) > 0;
+    if (!hasApiKey && !hasOauthToken) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "When CLAUDE_PROVIDER=anthropic, either ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN is required.",
+        path: ["anthropicApiKey"],
+      });
+    }
+  } else {
+    // Bedrock requires region and model ID
+    if (data.awsRegion === undefined || data.awsRegion === "") {
+      ctx.addIssue({
+        code: "custom",
+        message: "AWS_REGION is required when CLAUDE_PROVIDER=bedrock",
+        path: ["awsRegion"],
+      });
+    }
+    if (data.model === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "CLAUDE_MODEL is required when CLAUDE_PROVIDER=bedrock (e.g. us.anthropic.claude-sonnet-4-6)",
+        path: ["model"],
+      });
+    }
+  }
+}
 
 /**
  * Validate data layer requirements for non-inline dispatch modes.
@@ -319,6 +368,7 @@ function loadConfig(): Config {
     nodeEnv: process.env.NODE_ENV,
     maxConcurrentRequests: process.env["MAX_CONCURRENT_REQUESTS"],
     agentTimeoutMs: process.env["AGENT_TIMEOUT_MS"],
+    agentMaxTurns: process.env["AGENT_MAX_TURNS"],
     cloneDepth: process.env["CLONE_DEPTH"],
     claudeCodePath: process.env["CLAUDE_CODE_PATH"],
     allowedOwners: process.env["ALLOWED_OWNERS"],
@@ -370,6 +420,18 @@ function loadConfig(): Config {
     maxTurnsPerComplexity: parseMaxTurnsEnv(process.env["MAX_TURNS_PER_COMPLEXITY"]),
   });
   assertOauthRequiresAllowlist(cfg);
+
+  // H6: Warn when WebSocket URLs use unencrypted ws:// in production.
+  // Installation tokens and DAEMON_AUTH_TOKEN are transmitted over this connection.
+  if (cfg.nodeEnv === "production") {
+    if (cfg.orchestratorUrl?.startsWith("ws://") === true) {
+      console.warn(
+        "[config] WARNING: ORCHESTRATOR_URL uses ws:// (unencrypted) in production. " +
+          "Installation tokens and DAEMON_AUTH_TOKEN are transmitted in cleartext. Use wss:// for production.",
+      );
+    }
+  }
+
   return cfg;
 }
 

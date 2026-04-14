@@ -1,3 +1,5 @@
+import { release } from "node:os";
+
 import { logger } from "../logger";
 import type { DaemonCapabilities } from "../shared/daemon-types";
 import {
@@ -8,7 +10,7 @@ import {
 } from "../shared/ws-messages";
 
 // Read version from package.json at module load
-const APP_VERSION: string = (() => {
+const APP_VERSION: string = ((): string => {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- Bun supports require for JSON; dynamic import would be async
     const pkg = require("../../package.json") as { version: string };
@@ -21,9 +23,11 @@ const APP_VERSION: string = (() => {
 /**
  * Decorrelated jitter backoff for reconnection (R-002).
  * Base: 1s, Cap: 30s. Formula: min(cap, random_between(base, sleep * 3))
+ * Per: https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/
  */
 function nextBackoff(previousMs: number, baseMs: number, capMs: number): number {
-  return Math.min(capMs, Math.random() * Math.max(baseMs, previousMs * 3));
+  const ceiling = Math.max(baseMs, previousMs * 3);
+  return Math.min(capMs, baseMs + Math.random() * (ceiling - baseMs));
 }
 
 export interface WsClientOptions {
@@ -68,7 +72,7 @@ export class DaemonWsClient {
       return;
     }
 
-    this.ws.onopen = () => {
+    this.ws.onopen = (): void => {
       logger.info({ orchestratorUrl: this.opts.orchestratorUrl }, "Connected to orchestrator");
       this.backoffMs = this.BASE_BACKOFF_MS;
       this.reconnecting = false;
@@ -76,7 +80,7 @@ export class DaemonWsClient {
       this.opts.onConnected();
     };
 
-    this.ws.onmessage = (event: MessageEvent) => {
+    this.ws.onmessage = (event: MessageEvent): void => {
       const raw = typeof event.data === "string" ? event.data : String(event.data);
 
       let parsed: unknown;
@@ -96,27 +100,27 @@ export class DaemonWsClient {
       this.opts.onMessage(result.data);
     };
 
-    this.ws.onclose = (event: CloseEvent) => {
+    this.ws.onclose = (event: CloseEvent): void => {
       logger.info({ code: event.code, reason: event.reason }, "Disconnected from orchestrator");
-      this.opts.onDisconnected();
-
       if (!this.closed) {
+        this.opts.onDisconnected();
         this.scheduleReconnect();
       }
     };
 
-    this.ws.onerror = (event: Event) => {
+    this.ws.onerror = (event: Event): void => {
       logger.error({ event }, "WebSocket error");
     };
   }
 
-  /** Send a message to the orchestrator. */
-  send(message: unknown): void {
+  /** Send a message to the orchestrator. Returns false if the send was dropped. */
+  send(message: unknown): boolean {
     if (this.ws !== null && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));
-    } else {
-      logger.warn("Cannot send — WebSocket not connected");
+      return true;
     }
+    logger.warn("Cannot send — WebSocket not connected");
+    return false;
   }
 
   /** Send the daemon:register message on connection open. */
@@ -130,7 +134,7 @@ export class DaemonWsClient {
         daemonId: this.opts.daemonId,
         hostname,
         platform: this.opts.capabilities.platform,
-        osVersion: process.version,
+        osVersion: release(),
         protocolVersion: PROTOCOL_VERSION,
         appVersion: APP_VERSION,
         capabilities: this.opts.capabilities,
@@ -146,10 +150,13 @@ export class DaemonWsClient {
     this.backoffMs = nextBackoff(this.backoffMs, this.BASE_BACKOFF_MS, this.CAP_BACKOFF_MS);
     logger.info({ backoffMs: Math.round(this.backoffMs) }, "Reconnecting to orchestrator");
 
-    this.reconnectTimer = setTimeout(() => {
+    const timer = setTimeout(() => {
       this.reconnecting = false;
       this.connect();
     }, this.backoffMs);
+    // Don't keep the process alive during reconnect backoff (allows graceful shutdown)
+    timer.unref();
+    this.reconnectTimer = timer;
   }
 
   /** Gracefully close the connection. No reconnect. */

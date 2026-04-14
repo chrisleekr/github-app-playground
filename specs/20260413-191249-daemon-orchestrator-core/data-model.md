@@ -15,17 +15,17 @@ A persistent worker process that connects to the orchestrator, advertises capabi
 
 ### Postgres (`daemons` table — existing from `001_initial.sql`)
 
-| Column | Type | Constraints | Description |
-|---|---|---|---|
-| `id` | `TEXT` | `PRIMARY KEY` | Unique daemon identifier (e.g., `daemon-{hostname}-{pid}`) |
-| `hostname` | `TEXT` | `NOT NULL` | Machine hostname |
-| `platform` | `TEXT` | `NOT NULL` | OS platform (`linux`, `darwin`, `win32`) |
-| `os_version` | `TEXT` | `NOT NULL` | OS version string |
-| `capabilities` | `JSONB` | `NOT NULL` | Full capability profile (see DaemonCapabilities schema) |
-| `resources` | `JSONB` | `NOT NULL` | Current resource snapshot (CPU, memory, disk) |
-| `status` | `TEXT` | `NOT NULL DEFAULT 'active'` | Current status: `active`, `inactive` |
-| `first_seen_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT now()` | First registration timestamp |
-| `last_seen_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT now()` | Last heartbeat timestamp |
+| Column          | Type          | Constraints                 | Description                                                |
+| --------------- | ------------- | --------------------------- | ---------------------------------------------------------- |
+| `id`            | `TEXT`        | `PRIMARY KEY`               | Unique daemon identifier (e.g., `daemon-{hostname}-{pid}`) |
+| `hostname`      | `TEXT`        | `NOT NULL`                  | Machine hostname                                           |
+| `platform`      | `TEXT`        | `NOT NULL`                  | OS platform (`linux`, `darwin`, `win32`)                   |
+| `os_version`    | `TEXT`        | `NOT NULL`                  | OS version string                                          |
+| `capabilities`  | `JSONB`       | `NOT NULL`                  | Full capability profile (see DaemonCapabilities schema)    |
+| `resources`     | `JSONB`       | `NOT NULL`                  | Current resource snapshot (CPU, memory, disk)              |
+| `status`        | `TEXT`        | `NOT NULL DEFAULT 'active'` | Current status: `active`, `inactive`                       |
+| `first_seen_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT now()`    | First registration timestamp                               |
+| `last_seen_at`  | `TIMESTAMPTZ` | `NOT NULL DEFAULT now()`    | Last heartbeat timestamp                                   |
 
 **Indexes**: `idx_daemons_status ON daemons (status)`
 
@@ -33,19 +33,19 @@ A persistent worker process that connects to the orchestrator, advertises capabi
 
 ### Valkey (ephemeral liveness)
 
-| Key Pattern | Type | TTL | Description |
-|---|---|---|---|
-| `daemon:{id}` | `STRING` | 90s | Serialized daemon capabilities JSON. Presence = daemon is alive. Auto-expires on missed heartbeats. |
-| `daemon:{id}:active_jobs` | `STRING` | None | Current active job count for this daemon. DEL'd on deregistration. |
+| Key Pattern               | Type     | TTL  | Description                                                                                         |
+| ------------------------- | -------- | ---- | --------------------------------------------------------------------------------------------------- |
+| `daemon:{id}`             | `STRING` | 90s  | Serialized daemon capabilities JSON. Presence = daemon is alive. Auto-expires on missed heartbeats. |
+| `daemon:{id}:active_jobs` | `STRING` | None | Current active job count for this daemon. DEL'd on deregistration.                                  |
 
 ### In-Memory (orchestrator process)
 
-| Field | Type | Description |
-|---|---|---|
-| `connections: Map<string, ServerWebSocket>` | Map | Active WebSocket connections keyed by daemon ID. Used for sending messages to specific daemons. |
-| `pendingOffers: Map<string, PendingOffer>` | Map | Outstanding job offers awaiting accept/reject. Keyed by offer ID. 5s timeout per offer. |
-| `heartbeatTimers: Map<string, HeartbeatState>` | Map | Per-daemon heartbeat interval + pong timeout timers. Cleared on disconnect. |
-| `drainingDaemons: Set<string>` | Set | Daemon IDs that sent `daemon:draining`. Excluded from dispatch but connection stays open. |
+| Field                                          | Type | Description                                                                                     |
+| ---------------------------------------------- | ---- | ----------------------------------------------------------------------------------------------- |
+| `connections: Map<string, ServerWebSocket>`    | Map  | Active WebSocket connections keyed by daemon ID. Used for sending messages to specific daemons. |
+| `pendingOffers: Map<string, PendingOffer>`     | Map  | Outstanding job offers awaiting accept/reject. Keyed by offer ID. 5s timeout per offer.         |
+| `heartbeatTimers: Map<string, HeartbeatState>` | Map  | Per-daemon heartbeat interval + pong timeout timers. Cleared on disconnect.                     |
+| `drainingDaemons: Set<string>`                 | Set  | Daemon IDs that sent `daemon:draining`. Excluded from dispatch but connection stays open.       |
 
 ---
 
@@ -55,30 +55,30 @@ A record of a single request being processed — from queuing through dispatch, 
 
 ### Postgres (`executions` table — existing from `001_initial.sql`)
 
-| Column | Type | Constraints | Description |
-|---|---|---|---|
-| `id` | `UUID` | `PRIMARY KEY DEFAULT gen_random_uuid()` | Unique execution ID |
-| `delivery_id` | `TEXT` | `UNIQUE NOT NULL` | GitHub webhook delivery ID (idempotency key) |
-| `repo_owner` | `TEXT` | `NOT NULL` | Repository owner |
-| `repo_name` | `TEXT` | `NOT NULL` | Repository name |
-| `entity_number` | `INTEGER` | `NOT NULL` | PR or issue number |
-| `entity_type` | `TEXT` | `NOT NULL` | `pull_request` or `issue` |
-| `event_name` | `TEXT` | `NOT NULL` | Webhook event name |
-| `trigger_username` | `TEXT` | `NOT NULL` | Who triggered the bot |
-| `triage_model` | `TEXT` | Nullable | Model used for triage classification (Phase 3) |
-| `triage_result` | `JSONB` | Nullable | Full triage result (Phase 3) |
-| `execution_model` | `TEXT` | Nullable | Model used for agent execution |
-| `daemon_id` | `TEXT` | Nullable | ID of daemon that executed the job (null for inline) |
-| `dispatch_mode` | `TEXT` | `NOT NULL` | `inline`, `shared-runner`, or `ephemeral-job`. Note: `auto` is a config selector (FR-003), not a recorded value — it resolves to `shared-runner` when dispatching to a daemon or `inline` when falling back. **Phase 2**: only `inline` and `shared-runner` are used at runtime; `ephemeral-job` is reserved for Phase 3+ K8s dispatch. |
-| `status` | `TEXT` | `NOT NULL DEFAULT 'queued'` | `queued` → `offered` → `running` → `completed` / `failed` |
-| `cost_usd` | `NUMERIC(10,6)` | Nullable | Total API cost |
-| `duration_ms` | `INTEGER` | Nullable | Total execution duration |
-| `num_turns` | `INTEGER` | Nullable | Agent turns used |
-| `context_json` | `JSONB` | Nullable | Serialized BotContext for replay/debugging |
-| `error_message` | `TEXT` | Nullable | Error details on failure |
-| `created_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT now()` | When the execution was created |
-| `started_at` | `TIMESTAMPTZ` | Nullable | When execution started running |
-| `completed_at` | `TIMESTAMPTZ` | Nullable | When execution completed or failed |
+| Column             | Type            | Constraints                             | Description                                                                                                                                                                                                                                                                                                                             |
+| ------------------ | --------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`               | `UUID`          | `PRIMARY KEY DEFAULT gen_random_uuid()` | Unique execution ID                                                                                                                                                                                                                                                                                                                     |
+| `delivery_id`      | `TEXT`          | `UNIQUE NOT NULL`                       | GitHub webhook delivery ID (idempotency key)                                                                                                                                                                                                                                                                                            |
+| `repo_owner`       | `TEXT`          | `NOT NULL`                              | Repository owner                                                                                                                                                                                                                                                                                                                        |
+| `repo_name`        | `TEXT`          | `NOT NULL`                              | Repository name                                                                                                                                                                                                                                                                                                                         |
+| `entity_number`    | `INTEGER`       | `NOT NULL`                              | PR or issue number                                                                                                                                                                                                                                                                                                                      |
+| `entity_type`      | `TEXT`          | `NOT NULL`                              | `pull_request` or `issue`                                                                                                                                                                                                                                                                                                               |
+| `event_name`       | `TEXT`          | `NOT NULL`                              | Webhook event name                                                                                                                                                                                                                                                                                                                      |
+| `trigger_username` | `TEXT`          | `NOT NULL`                              | Who triggered the bot                                                                                                                                                                                                                                                                                                                   |
+| `triage_model`     | `TEXT`          | Nullable                                | Model used for triage classification (Phase 3)                                                                                                                                                                                                                                                                                          |
+| `triage_result`    | `JSONB`         | Nullable                                | Full triage result (Phase 3)                                                                                                                                                                                                                                                                                                            |
+| `execution_model`  | `TEXT`          | Nullable                                | Model used for agent execution                                                                                                                                                                                                                                                                                                          |
+| `daemon_id`        | `TEXT`          | Nullable                                | ID of daemon that executed the job (null for inline)                                                                                                                                                                                                                                                                                    |
+| `dispatch_mode`    | `TEXT`          | `NOT NULL`                              | `inline`, `shared-runner`, or `ephemeral-job`. Note: `auto` is a config selector (FR-003), not a recorded value — it resolves to `shared-runner` when dispatching to a daemon or `inline` when falling back. **Phase 2**: only `inline` and `shared-runner` are used at runtime; `ephemeral-job` is reserved for Phase 3+ K8s dispatch. |
+| `status`           | `TEXT`          | `NOT NULL DEFAULT 'queued'`             | `queued` → `offered` → `running` → `completed` / `failed`                                                                                                                                                                                                                                                                               |
+| `cost_usd`         | `NUMERIC(10,6)` | Nullable                                | Total API cost                                                                                                                                                                                                                                                                                                                          |
+| `duration_ms`      | `INTEGER`       | Nullable                                | Total execution duration                                                                                                                                                                                                                                                                                                                |
+| `num_turns`        | `INTEGER`       | Nullable                                | Agent turns used                                                                                                                                                                                                                                                                                                                        |
+| `context_json`     | `JSONB`         | Nullable                                | Serialized BotContext for replay/debugging                                                                                                                                                                                                                                                                                              |
+| `error_message`    | `TEXT`          | Nullable                                | Error details on failure                                                                                                                                                                                                                                                                                                                |
+| `created_at`       | `TIMESTAMPTZ`   | `NOT NULL DEFAULT now()`                | When the execution was created                                                                                                                                                                                                                                                                                                          |
+| `started_at`       | `TIMESTAMPTZ`   | Nullable                                | When execution started running                                                                                                                                                                                                                                                                                                          |
+| `completed_at`     | `TIMESTAMPTZ`   | Nullable                                | When execution completed or failed                                                                                                                                                                                                                                                                                                      |
 
 **Indexes**: `idx_executions_status`, `idx_executions_created_at`
 
@@ -105,12 +105,13 @@ Ephemeral representation of a job waiting to be dispatched to a daemon.
 
 ### Valkey (job queue)
 
-| Key Pattern | Type | Description |
-|---|---|---|
-| `queue:jobs` | `LIST` | FIFO queue of job payloads (LPUSH to enqueue, BRPOP to dequeue). Each item is a JSON string containing `deliveryId` and dispatch metadata. |
+| Key Pattern              | Type               | Description                                                                                                                                                                                                                                                        |
+| ------------------------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `queue:jobs`             | `LIST`             | FIFO queue of job payloads (LPUSH to enqueue, BRPOP to dequeue). Each item is a JSON string containing `deliveryId` and dispatch metadata.                                                                                                                         |
 | `job:{deliveryId}:offer` | `STRING (TTL 10s)` | Tracks an active offer. Prevents duplicate offers for the same job. TTL is intentionally 2× `OFFER_TIMEOUT_MS` (default 5s) as a safety net — the in-memory timer handles normal expiry; the Valkey TTL catches leaked keys if the orchestrator crashes mid-offer. |
 
 **Queue item schema**:
+
 ```typescript
 interface QueuedJob {
   deliveryId: string;
@@ -222,7 +223,7 @@ export interface DaemonInfo {
    */
   status: "active" | "inactive" | "draining" | "updating";
   protocolVersion: string; // WebSocket protocol semver
-  appVersion: string;      // Application version from package.json
+  appVersion: string; // Application version from package.json
   activeJobs: number;
   lastSeenAt: number; // Unix timestamp ms
   firstSeenAt: number;
@@ -246,10 +247,10 @@ export interface PendingOffer {
 
 ```typescript
 export interface HeartbeatState {
-  intervalTimer: Timer;    // Fires every 30s to send heartbeat:ping
+  intervalTimer: Timer; // Fires every 30s to send heartbeat:ping
   pongTimer: Timer | null; // 90s timeout waiting for heartbeat:pong — null when not awaiting
-  awaitingPong: boolean;   // True after ping sent, cleared on pong received
-  missedPongs: number;     // Consecutive missed pongs (for logging)
+  awaitingPong: boolean; // True after ping sent, cleared on pong received
+  missedPongs: number; // Consecutive missed pongs (for logging)
 }
 ```
 
@@ -260,9 +261,9 @@ export interface HeartbeatState {
 export interface ActiveJob {
   offerId: string;
   deliveryId: string;
-  workDir: string;         // Temp directory with cloned repo
+  workDir: string; // Temp directory with cloned repo
   agentPid: number | null; // PID of Claude agent subprocess (null until started)
-  startedAt: number;       // Unix timestamp ms
+  startedAt: number; // Unix timestamp ms
 }
 ```
 

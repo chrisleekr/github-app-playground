@@ -1,17 +1,15 @@
-import type { ActiveJob, DaemonCapabilities } from "../shared/daemon-types";
+import type { DaemonCapabilities } from "../shared/daemon-types";
 import { createMessageEnvelope, type HeartbeatPingMessage } from "../shared/ws-messages";
-import { discoverCapabilities,getCurrentResources } from "./tool-discovery";
+import { discoverCapabilities, getCurrentResources } from "./tool-discovery";
 
-/** Counter for periodic full capability rescan (every 10th heartbeat). */
 let heartbeatCount = 0;
 
 /**
- * Build a heartbeat:pong response with real-time resource data.
- * Every 10th heartbeat triggers a full capability rescan (R-007).
+ * Build heartbeat:pong with live resources; triggers full rescan per R-007.
  */
 export async function buildHeartbeatPong(
   ping: HeartbeatPingMessage,
-  activeJobs: ActiveJob[],
+  activeJobCount: number,
   capabilities: DaemonCapabilities,
   cloneBaseDir: string,
 ): Promise<{ pong: unknown; updatedCapabilities: DaemonCapabilities }> {
@@ -19,11 +17,9 @@ export async function buildHeartbeatPong(
 
   let updatedCapabilities = capabilities;
 
-  // Full capability rescan every 10th heartbeat
   if (heartbeatCount % 10 === 0) {
     updatedCapabilities = await discoverCapabilities(cloneBaseDir);
   } else {
-    // Just update resource snapshot
     updatedCapabilities = {
       ...capabilities,
       resources: getCurrentResources(),
@@ -34,7 +30,7 @@ export async function buildHeartbeatPong(
     type: "heartbeat:pong" as const,
     ...createMessageEnvelope(ping.id),
     payload: {
-      activeJobs: activeJobs.length,
+      activeJobs: activeJobCount,
       resources: updatedCapabilities.resources,
     },
   };

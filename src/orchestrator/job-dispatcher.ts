@@ -4,16 +4,10 @@ import type { DaemonCapabilities, PendingOffer } from "../shared/daemon-types";
 import { createMessageEnvelope } from "../shared/ws-messages";
 import { getConnections, getDaemonInfo, isDaemonDraining } from "./connection-handler";
 import { getActiveDaemons, getDaemonActiveJobs } from "./daemon-registry";
-import {
-  markExecutionFailed,
-  markExecutionOffered,
-  requeueExecution,
-} from "./history";
+import { markExecutionFailed, markExecutionOffered, requeueExecution } from "./history";
 import { type QueuedJob, requeueJob } from "./job-queue";
 
-// ---------------------------------------------------------------------------
 // In-memory pending offers (keyed by offerId)
-// ---------------------------------------------------------------------------
 
 const pendingOffers = new Map<string, PendingOffer>();
 
@@ -29,20 +23,14 @@ export function removePendingOffer(offerId: string): void {
   }
 }
 
-// ---------------------------------------------------------------------------
 // Tool requirement inference (R-007)
-// ---------------------------------------------------------------------------
 
-/** Baseline tools every job needs. */
 const BASELINE_TOOLS = ["git", "bun", "node"];
 
 /**
  * Infer required tools from job metadata (labels + trigger body keywords).
  */
-export function inferRequiredTools(
-  labels: string[],
-  triggerBody: string,
-): string[] {
+export function inferRequiredTools(labels: string[], triggerBody: string): string[] {
   const tools = new Set(BASELINE_TOOLS);
 
   // Label-based inference (e.g., "bot:docker" -> docker)
@@ -54,7 +42,6 @@ export function inferRequiredTools(
     if (lower.includes("make")) tools.add("make");
   }
 
-  // Keyword-based inference from trigger body
   const bodyLower = triggerBody.toLowerCase();
   if (bodyLower.includes("docker") || bodyLower.includes("container")) tools.add("docker");
   if (bodyLower.includes("python")) tools.add("python3");
@@ -64,17 +51,12 @@ export function inferRequiredTools(
   return [...tools];
 }
 
-// ---------------------------------------------------------------------------
 // Daemon selection (R-007, FM-10)
-// ---------------------------------------------------------------------------
 
 /**
  * Check if a daemon has the required tools as functional.
  */
-function hasRequiredTools(
-  capabilities: DaemonCapabilities,
-  requiredTools: string[],
-): boolean {
+function hasRequiredTools(capabilities: DaemonCapabilities, requiredTools: string[]): boolean {
   const functionalTools = new Set<string>();
   for (const tool of capabilities.cliTools) {
     if (tool.functional) functionalTools.add(tool.name);
@@ -97,9 +79,7 @@ function hasRequiredTools(
  * Select the best daemon for a job offer.
  * Strategy: capability match -> filter draining -> ephemeral preference -> least loaded.
  */
-export async function selectDaemon(
-  requiredTools: string[],
-): Promise<string | null> {
+export async function selectDaemon(requiredTools: string[]): Promise<string | null> {
   const activeDaemonIds = await getActiveDaemons();
   if (activeDaemonIds.length === 0) return null;
 
@@ -110,7 +90,6 @@ export async function selectDaemon(
   }[] = [];
 
   for (const daemonId of activeDaemonIds) {
-    // Skip draining daemons
     if (isDaemonDraining(daemonId)) continue;
 
     const info = getDaemonInfo(daemonId);
@@ -141,24 +120,17 @@ export async function selectDaemon(
     return a.activeJobs - b.activeJobs;
   });
 
-  return candidates[0]!.id;
+  return candidates[0]?.id ?? null;
 }
 
-// ---------------------------------------------------------------------------
 // Offer protocol (FR-010a)
-// ---------------------------------------------------------------------------
 
 /**
  * Dispatch a job to a daemon via the offer/accept/reject protocol.
  * Returns true if the job was offered to a daemon, false if no daemon available.
  */
-export async function dispatchJob(
-  job: QueuedJob,
-  triggerUsername: string,
-  labels: string[],
-  triggerBodyPreview: string,
-): Promise<boolean> {
-  const requiredTools = inferRequiredTools(labels, triggerBodyPreview);
+export async function dispatchJob(job: QueuedJob): Promise<boolean> {
+  const requiredTools = inferRequiredTools(job.labels, job.triggerBodyPreview);
   const daemonId = await selectDaemon(requiredTools);
 
   if (daemonId === null) {
@@ -174,10 +146,8 @@ export async function dispatchJob(
 
   const offerId = crypto.randomUUID();
 
-  // Update execution record
   await markExecutionOffered(job.deliveryId, daemonId);
 
-  // Send job:offer
   ws.sendText(
     JSON.stringify({
       type: "job:offer",
@@ -189,17 +159,16 @@ export async function dispatchJob(
         entityNumber: job.entityNumber,
         isPR: job.isPR,
         eventName: job.eventName,
-        triggerUsername,
-        labels,
-        triggerBodyPreview,
+        triggerUsername: job.triggerUsername,
+        labels: job.labels,
+        triggerBodyPreview: job.triggerBodyPreview,
         requiredTools,
       },
     }),
   );
 
-  // Track pending offer with timeout
   const timer = setTimeout(() => {
-    void handleOfferTimeout(offerId, job);
+    void handleOfferTimeout(offerId);
   }, config.offerTimeoutMs);
 
   pendingOffers.set(offerId, {
@@ -209,12 +178,17 @@ export async function dispatchJob(
     timer,
     offeredAt: Date.now(),
     retryCount: job.retryCount,
+    repoOwner: job.repoOwner,
+    repoName: job.repoName,
+    entityNumber: job.entityNumber,
+    isPR: job.isPR,
+    eventName: job.eventName,
+    triggerUsername: job.triggerUsername,
+    labels: job.labels,
+    triggerBodyPreview: job.triggerBodyPreview,
   });
 
-  logger.info(
-    { deliveryId: job.deliveryId, daemonId, offerId },
-    "Job offered to daemon",
-  );
+  logger.info({ deliveryId: job.deliveryId, daemonId, offerId }, "Job offered to daemon");
 
   return true;
 }
@@ -223,25 +197,39 @@ export async function dispatchJob(
  * Handle offer timeout — daemon didn't respond within offerTimeoutMs.
  * Re-queue or fail the job.
  */
-async function handleOfferTimeout(offerId: string, job: QueuedJob): Promise<void> {
+async function handleOfferTimeout(offerId: string): Promise<void> {
   const offer = pendingOffers.get(offerId);
-  if (offer === undefined) return; // Already handled
+  if (offer === undefined) return; // Already handled (accepted or rejected)
 
   pendingOffers.delete(offerId);
 
   logger.warn(
-    { deliveryId: job.deliveryId, daemonId: offer.daemonId, offerId },
+    { deliveryId: offer.deliveryId, daemonId: offer.daemonId, offerId },
     "Job offer timed out",
   );
 
   // Re-queue the execution
-  await requeueExecution(job.deliveryId);
+  await requeueExecution(offer.deliveryId);
 
-  // Re-enqueue with incremented retry count
+  // Reconstruct QueuedJob from the offer metadata (single source of truth)
+  const job: QueuedJob = {
+    deliveryId: offer.deliveryId,
+    repoOwner: offer.repoOwner,
+    repoName: offer.repoName,
+    entityNumber: offer.entityNumber,
+    isPR: offer.isPR,
+    eventName: offer.eventName,
+    triggerUsername: offer.triggerUsername,
+    labels: offer.labels,
+    triggerBodyPreview: offer.triggerBodyPreview,
+    enqueuedAt: Date.now(),
+    retryCount: offer.retryCount,
+  };
+
   const requeued = await requeueJob(job);
   if (!requeued) {
     await markExecutionFailed(
-      job.deliveryId,
+      offer.deliveryId,
       "All daemons rejected or timed out after maximum retries",
     );
   }
@@ -251,23 +239,31 @@ async function handleOfferTimeout(offerId: string, job: QueuedJob): Promise<void
  * Handle a job:accept message from a daemon.
  * Sends the full job:payload with context and installation token.
  */
-export function handleJobAccept(
-  offerId: string,
-  daemonId: string,
-  installationToken: string,
-  contextJson: Record<string, unknown>,
-  maxTurns: number,
-  allowedTools: string[],
-): void {
-  const offer = pendingOffers.get(offerId);
-  if (offer === undefined) {
-    logger.warn({ offerId, daemonId }, "Accept for unknown/expired offer");
-    return;
-  }
+export interface JobAcceptParams {
+  offerId: string;
+  daemonId: string;
+  deliveryId: string;
+  installationToken: string;
+  contextJson: Record<string, unknown>;
+  maxTurns: number;
+  allowedTools: string[];
+  envVars: Record<string, string>;
+  memory: { id: string; category: string; content: string; pinned: boolean }[];
+}
 
-  // Clear timeout
-  clearTimeout(offer.timer);
-  pendingOffers.delete(offerId);
+export function handleJobAccept({
+  offerId,
+  daemonId,
+  deliveryId,
+  installationToken,
+  contextJson,
+  maxTurns,
+  allowedTools,
+  envVars,
+  memory,
+}: JobAcceptParams): void {
+  // Note: the pending offer is already removed by handleAccept in connection-handler.ts
+  // before this function is called (C2 fix — prevents timeout/accept race).
 
   const connections = getConnections();
   const ws = connections.get(daemonId);
@@ -276,7 +272,6 @@ export function handleJobAccept(
     return;
   }
 
-  // Send job:payload
   ws.sendText(
     JSON.stringify({
       type: "job:payload",
@@ -286,21 +281,20 @@ export function handleJobAccept(
         installationToken,
         maxTurns,
         allowedTools,
+        ...(Object.keys(envVars).length > 0 ? { envVars } : {}),
+        ...(memory.length > 0 ? { memory } : {}),
       },
     }),
   );
 
-  logger.info({ deliveryId: offer.deliveryId, daemonId, offerId }, "Job payload sent to daemon");
+  logger.info({ deliveryId, daemonId, offerId }, "Job payload sent to daemon");
 }
 
 /**
  * Handle a job:reject message from a daemon.
  * Re-queue the job for another daemon.
  */
-export async function handleJobReject(
-  offerId: string,
-  reason: string,
-): Promise<void> {
+export async function handleJobReject(offerId: string, reason: string): Promise<void> {
   const offer = pendingOffers.get(offerId);
   if (offer === undefined) {
     logger.warn({ offerId }, "Reject for unknown/expired offer");
@@ -310,21 +304,27 @@ export async function handleJobReject(
   clearTimeout(offer.timer);
   pendingOffers.delete(offerId);
 
-  logger.info({ deliveryId: offer.deliveryId, daemonId: offer.daemonId, reason }, "Job rejected by daemon");
+  logger.info(
+    { deliveryId: offer.deliveryId, daemonId: offer.daemonId, reason },
+    "Job rejected by daemon",
+  );
 
   // Re-queue the execution back to 'queued'
   await requeueExecution(offer.deliveryId);
 
-  // Re-enqueue the job
+  // Re-enqueue the job with original metadata (retryCount incremented by requeueJob)
   const job: QueuedJob = {
     deliveryId: offer.deliveryId,
-    repoOwner: "", // Will be re-read from execution context on next dispatch
-    repoName: "",
-    entityNumber: 0,
-    isPR: false,
-    eventName: "",
+    repoOwner: offer.repoOwner,
+    repoName: offer.repoName,
+    entityNumber: offer.entityNumber,
+    isPR: offer.isPR,
+    eventName: offer.eventName,
+    triggerUsername: offer.triggerUsername,
+    labels: offer.labels,
+    triggerBodyPreview: offer.triggerBodyPreview,
     enqueuedAt: Date.now(),
-    retryCount: offer.retryCount + 1,
+    retryCount: offer.retryCount,
   };
 
   const requeued = await requeueJob(job);

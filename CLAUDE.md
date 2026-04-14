@@ -85,6 +85,7 @@ The scheduled research workflow in `.github/workflows/research.yml` also uses `C
 - Conventional commits enforced via commitlint.
 
 ## Active Technologies
+
 - TypeScript 5.9.3 strict mode on Bun >=1.3.8 + `octokit`, `@anthropic-ai/claude-agent-sdk`, `@modelcontextprotocol/sdk`, `pino`, `zod` (all existing). New: Bun built-in `WebSocket` + `RedisClient` (zero new npm dependencies). (20260413-191249-daemon-orchestrator-core)
 - PostgreSQL 17 (pgvector-ready, existing `executions` + `daemons` tables from `001_initial.sql`) + Valkey 8 (Redis 7.2-compatible, via Bun built-in `RedisClient`) (20260413-191249-daemon-orchestrator-core)
 

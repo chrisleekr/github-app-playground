@@ -20,7 +20,8 @@ const server = new McpServer({
 server.registerTool(
   "query_daemon_capabilities",
   {
-    description: "Returns the full capabilities of the daemon executing this job, including platform, CLI tools, container runtime, resources (CPU, memory, disk), and network info.",
+    description:
+      "Returns the full capabilities of the daemon executing this job, including platform, CLI tools, container runtime, resources (CPU, memory, disk), and network info.",
   },
   () => {
     const capsJson = process.env["DAEMON_CAPABILITIES"];

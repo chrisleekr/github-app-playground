@@ -4,6 +4,7 @@ import { config } from "../config";
 import { getDb } from "../db";
 import { logger } from "../logger";
 import type { SerializableBotContext } from "../shared/daemon-types";
+import { decrementDaemonActiveJobs } from "./daemon-registry";
 
 /**
  * Execution status transitions:
@@ -41,20 +42,19 @@ export async function createExecution(params: CreateExecutionParams): Promise<st
       ${params.deliveryId}, ${params.repoOwner}, ${params.repoName},
       ${params.entityNumber}, ${params.entityType}, ${params.eventName},
       ${params.triggerUsername}, ${params.dispatchMode}, 'queued',
-      ${params.contextJson !== undefined ? params.contextJson : null}
+      ${params.contextJson ?? null}
     )
     RETURNING id
   `;
-  return rows[0]!.id;
+  const row = rows[0];
+  if (row === undefined) throw new Error("INSERT RETURNING yielded no row");
+  return row.id;
 }
 
 /**
  * Update execution status to 'offered' with the assigned daemon ID.
  */
-export async function markExecutionOffered(
-  deliveryId: string,
-  daemonId: string,
-): Promise<void> {
+export async function markExecutionOffered(deliveryId: string, daemonId: string): Promise<void> {
   const db = getDb();
   if (db === null) return;
 
@@ -102,10 +102,7 @@ export async function markExecutionCompleted(
 /**
  * Update execution status to 'failed' with an error message.
  */
-export async function markExecutionFailed(
-  deliveryId: string,
-  errorMessage: string,
-): Promise<void> {
+export async function markExecutionFailed(deliveryId: string, errorMessage: string): Promise<void> {
   const db = getDb();
   if (db === null) return;
 
@@ -142,10 +139,11 @@ export async function getExecutionState(
   const rows: { status: string; daemon_id: string | null }[] = await db`
     SELECT status, daemon_id FROM executions WHERE delivery_id = ${deliveryId}
   `;
-  if (rows.length === 0) return null;
+  const row = rows[0];
+  if (row === undefined) return null;
   return {
-    status: rows[0]!.status,
-    daemonId: rows[0]!.daemon_id,
+    status: row.status,
+    daemonId: row.daemon_id,
   };
 }
 
@@ -180,7 +178,8 @@ export async function getOrphanedExecutions(
 export async function recoverStaleExecutions(db: SQL): Promise<void> {
   const thresholdMs = config.staleExecutionThresholdMs;
 
-  const staleRows: { id: string; delivery_id: string; daemon_id: string | null; status: string }[] = await db`
+  const staleRows: { id: string; delivery_id: string; daemon_id: string | null; status: string }[] =
+    await db`
     SELECT id, delivery_id, daemon_id, status
     FROM executions
     WHERE (status = 'running' AND started_at < now() - make_interval(secs => ${thresholdMs / 1000}))
@@ -196,7 +195,24 @@ export async function recoverStaleExecutions(db: SQL): Promise<void> {
       SET status = 'failed', error_message = 'server restarted — execution state unknown', completed_at = now()
       WHERE id = ${row.id} AND status IN ('offered', 'running')
     `;
-    logger.warn({ deliveryId: row.delivery_id, daemonId: row.daemon_id, previousStatus: row.status }, "Recovered stale execution on startup");
+
+    // Decrement the daemon's Valkey active_jobs counter if it still exists (M11)
+    if (row.daemon_id !== null) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        await decrementDaemonActiveJobs(row.daemon_id);
+      } catch (err) {
+        logger.debug(
+          { err, daemonId: row.daemon_id },
+          "Failed to decrement active_jobs for stale execution (daemon may be deregistered)",
+        );
+      }
+    }
+
+    logger.warn(
+      { deliveryId: row.delivery_id, daemonId: row.daemon_id, previousStatus: row.status },
+      "Recovered stale execution on startup",
+    );
   }
 
   logger.warn({ count: staleRows.length }, "Recovered stale executions on startup");

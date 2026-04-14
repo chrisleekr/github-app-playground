@@ -74,10 +74,10 @@ All messages follow this shape:
 
 ```typescript
 interface MessageEnvelope {
-  type: string;    // Discriminant field for union narrowing
-  id: string;      // Correlation ID (UUID v4) for request/response pairing
+  type: string; // Discriminant field for union narrowing
+  id: string; // Correlation ID (UUID v4) for request/response pairing
   timestamp: number; // Unix epoch milliseconds
-  payload: unknown;  // Type-specific payload
+  payload: unknown; // Type-specific payload
 }
 ```
 
@@ -96,9 +96,9 @@ Sent after successful registration. Confirms the daemon is active and provides c
   timestamp: number;
   payload: {
     heartbeatIntervalMs: number; // 30000
-    offerTimeoutMs: number;      // 5000
-    maxRetries: number;          // 3
-  };
+    offerTimeoutMs: number; // 5000
+    maxRetries: number; // 3
+  }
 }
 ```
 
@@ -112,10 +112,10 @@ Sent when the orchestrator detects a version mismatch. The daemon should drain a
   id: string;
   timestamp: number;
   payload: {
-    targetVersion: string;  // App version the daemon should update to
-    reason: string;          // e.g., "version mismatch", "security patch"
-    urgent: boolean;         // true = drain immediately; false = update at next idle window
-  };
+    targetVersion: string; // App version the daemon should update to
+    reason: string; // e.g., "version mismatch", "security patch"
+    urgent: boolean; // true = drain immediately; false = update at next idle window
+  }
 }
 ```
 
@@ -189,7 +189,7 @@ Sent by orchestrator to cancel a job that is currently assigned to this daemon. 
   timestamp: number;
   payload: {
     reason: string; // e.g., "execution reassigned", "operator cancelled"
-  };
+  }
 }
 ```
 
@@ -203,13 +203,14 @@ Sent when the server encounters an error processing a daemon message.
   id: string; // Correlation ID of the message that caused the error
   timestamp: number;
   payload: {
-    code: string;   // Machine-readable error code
+    code: string; // Machine-readable error code
     message: string; // Human-readable description
-  };
+  }
 }
 ```
 
 **Error codes**:
+
 - `INVALID_MESSAGE` — Message failed Zod validation
 - `UNKNOWN_OFFER` — Accept/reject for a non-existent or expired offer
 - `DUPLICATE_REGISTRATION` — Daemon ID already registered by another connection
@@ -231,14 +232,14 @@ First message after WebSocket connection established. Advertises daemon identity
   id: string;
   timestamp: number;
   payload: {
-    daemonId: string;       // Unique daemon identifier
+    daemonId: string; // Unique daemon identifier
     hostname: string;
     platform: "linux" | "darwin" | "win32";
     osVersion: string;
     protocolVersion: string; // WebSocket protocol semver (e.g., "1.0.0") — major mismatch = reject
-    appVersion: string;      // Application version from package.json — mismatch = trigger update
+    appVersion: string; // Application version from package.json — mismatch = trigger update
     capabilities: DaemonCapabilities;
-  };
+  }
 }
 ```
 
@@ -258,8 +259,8 @@ Response to `heartbeat:ping`. Carries real-time resource status.
       memoryTotalMb: number;
       memoryFreeMb: number;
       diskFreeMb: number;
-    };
-  };
+    }
+  }
 }
 ```
 
@@ -287,7 +288,7 @@ Daemon rejects a job offer with a reason.
   timestamp: number;
   payload: {
     reason: string; // e.g., "at capacity", "missing tool: docker", "insufficient memory"
-  };
+  }
 }
 ```
 
@@ -338,7 +339,7 @@ Sent after receiving `daemon:update-required`. Confirms the daemon will update a
   payload: {
     strategy: "exit" | "pull" | "notify"; // What the daemon will do
     delayMs: number; // How long before the daemon starts draining (includes jitter)
-  };
+  }
 }
 ```
 
@@ -352,9 +353,9 @@ Sent when the daemon is shutting down gracefully (SIGTERM/SIGINT received, or up
   id: string;
   timestamp: number;
   payload: {
-    activeJobs: number;  // How many jobs are still in-flight
-    reason: string;       // e.g., "SIGTERM received", "manual shutdown", "auto-update to v1.2.0"
-  };
+    activeJobs: number; // How many jobs are still in-flight
+    reason: string; // e.g., "SIGTERM received", "manual shutdown", "auto-update to v1.2.0"
+  }
 }
 ```
 
@@ -545,12 +546,12 @@ const daemonMessageSchema = z.discriminatedUnion("type", [
 
 ## Custom WebSocket Close Codes
 
-| Code | Reason | Meaning |
-|---|---|---|
-| 1000 | `"graceful shutdown"` | Daemon shut down cleanly after draining |
-| 1008 | `"policy violation"` | Invalid JSON — protocol error |
-| 4001 | `"heartbeat timeout"` | Daemon did not respond to heartbeat within 90s |
-| 4002 | `"superseded by new connection"` | Another connection registered with the same daemon ID |
+| Code | Reason                            | Meaning                                                      |
+| ---- | --------------------------------- | ------------------------------------------------------------ |
+| 1000 | `"graceful shutdown"`             | Daemon shut down cleanly after draining                      |
+| 1008 | `"policy violation"`              | Invalid JSON — protocol error                                |
+| 4001 | `"heartbeat timeout"`             | Daemon did not respond to heartbeat within 90s               |
+| 4002 | `"superseded by new connection"`  | Another connection registered with the same daemon ID        |
 | 4003 | `"incompatible protocol version"` | Daemon's protocol major version doesn't match orchestrator's |
 
 ---

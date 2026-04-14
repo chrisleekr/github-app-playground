@@ -24,12 +24,12 @@ export function getValkeyClient(): RedisClient | null {
 
   client = new RedisClient(config.valkeyUrl);
 
-  client.onconnect = () => {
+  client.onconnect = (): void => {
     valkeyConnected = true;
     logger.info("Valkey connected");
   };
 
-  client.onclose = () => {
+  client.onclose = (): void => {
     valkeyConnected = false;
     logger.warn("Valkey connection closed");
   };

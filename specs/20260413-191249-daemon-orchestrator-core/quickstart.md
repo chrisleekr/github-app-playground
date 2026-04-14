@@ -56,6 +56,7 @@ bun run dev
 ```
 
 The server starts two listeners:
+
 - HTTP webhook server on `:3000` (`/api/github/webhooks`, `/healthz`, `/readyz`)
 - WebSocket orchestrator on `:3002` (`/ws`)
 
@@ -71,6 +72,7 @@ bun run src/daemon/main.ts
 ```
 
 Expected log output:
+
 ```
 {"level":"info","msg":"Daemon starting","daemonId":"daemon-dev-mac-12345","orchestratorUrl":"ws://localhost:3002/ws"}
 {"level":"info","msg":"Connected to orchestrator"}
@@ -80,6 +82,7 @@ Expected log output:
 ### 5. Verify End-to-End
 
 1. **Check daemon is registered**: The orchestrator logs should show:
+
    ```
    {"level":"info","msg":"Daemon registered","daemonId":"daemon-dev-mac-12345","platform":"darwin"}
    ```
@@ -87,6 +90,7 @@ Expected log output:
 2. **Trigger a webhook**: Mention `@chrisleekr-bot` on a PR or issue in an allowed repo.
 
 3. **Observe dispatch**: Server logs show:
+
    ```
    {"level":"info","msg":"Job queued","deliveryId":"abc123"}
    {"level":"info","msg":"Job offered to daemon","daemonId":"daemon-dev-mac-12345","offerId":"..."}
@@ -190,11 +194,13 @@ bun run src/daemon/main.ts
 ```
 
 Expected log output when version mismatch is detected:
+
 ```
 {"level":"warn","msg":"Update required by orchestrator","targetVersion":"1.0.0","currentVersion":"0.9.0","strategy":"notify"}
 ```
 
 Test the `exit` strategy (daemon drains and exits with code 75):
+
 ```bash
 # Use the restart wrapper script for automatic restart
 DAEMON_AUTH_TOKEN=dev-secret-change-in-production \
@@ -216,13 +222,13 @@ All in-flight daemon jobs will complete, but new requests route inline. No data 
 
 ## Troubleshooting
 
-| Symptom | Likely Cause | Fix |
-|---|---|---|
-| Daemon can't connect | Wrong `ORCHESTRATOR_URL` or `DAEMON_AUTH_TOKEN` mismatch | Check env vars match between server and daemon |
-| Daemon keeps reconnecting | Server not running, firewall blocking port 3002 | Start server first, check port accessibility |
-| Jobs stay `queued` | No active daemons registered | Start a daemon, check Valkey for `daemon:*` keys |
-| Jobs fail immediately | Daemon missing required tools (e.g., `git`, `bun`) | Check daemon logs for capability report |
-| Valkey connection refused | Docker Compose not running | `bun run dev:deps` |
-| "Non-inline mode requires DATABASE_URL" | Missing config for daemon mode | Set `DATABASE_URL` and `VALKEY_URL` in env |
-| "incompatible protocol version" (close 4003) | Daemon protocol version doesn't match orchestrator | Update daemon to match orchestrator version |
-| Daemon keeps restarting (exit 75) | Auto-update loop — new code not actually deployed | Check `DAEMON_UPDATE_STRATEGY`, use `notify` for debugging |
+| Symptom                                      | Likely Cause                                             | Fix                                                        |
+| -------------------------------------------- | -------------------------------------------------------- | ---------------------------------------------------------- |
+| Daemon can't connect                         | Wrong `ORCHESTRATOR_URL` or `DAEMON_AUTH_TOKEN` mismatch | Check env vars match between server and daemon             |
+| Daemon keeps reconnecting                    | Server not running, firewall blocking port 3002          | Start server first, check port accessibility               |
+| Jobs stay `queued`                           | No active daemons registered                             | Start a daemon, check Valkey for `daemon:*` keys           |
+| Jobs fail immediately                        | Daemon missing required tools (e.g., `git`, `bun`)       | Check daemon logs for capability report                    |
+| Valkey connection refused                    | Docker Compose not running                               | `bun run dev:deps`                                         |
+| "Non-inline mode requires DATABASE_URL"      | Missing config for daemon mode                           | Set `DATABASE_URL` and `VALKEY_URL` in env                 |
+| "incompatible protocol version" (close 4003) | Daemon protocol version doesn't match orchestrator       | Update daemon to match orchestrator version                |
+| Daemon keeps restarting (exit 75)            | Auto-update loop — new code not actually deployed        | Check `DAEMON_UPDATE_STRATEGY`, use `notify` for debugging |

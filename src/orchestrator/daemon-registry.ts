@@ -22,15 +22,17 @@ export async function registerDaemon(msg: DaemonRegisterMessage): Promise<Daemon
 
   const valkey = requireValkeyClient();
 
-  // Valkey: store daemon liveness with TTL
+  // Valkey: store daemon liveness with TTL + add to active set for O(1) lookup
   const valkeyPayload = JSON.stringify(capabilities);
   await valkey.send("SETEX", [`daemon:${daemonId}`, String(DAEMON_TTL_SECONDS), valkeyPayload]);
   await valkey.send("SET", [`daemon:${daemonId}:active_jobs`, "0"]);
+  await valkey.send("SADD", ["active_daemons", daemonId]);
 
-  // Postgres: upsert daemon record (extract resources from capabilities)
+  // Postgres upsert — resources column separated per data-model.md
   const db = getDb();
   if (db !== null) {
     const { resources, ...capabilitiesWithoutResources } = capabilities;
+    // Pass objects directly — Bun.sql handles JSONB serialization (no JSON.stringify).
     await db`
       INSERT INTO daemons (id, hostname, platform, os_version, capabilities, resources, status, first_seen_at, last_seen_at)
       VALUES (
@@ -38,8 +40,8 @@ export async function registerDaemon(msg: DaemonRegisterMessage): Promise<Daemon
         ${hostname},
         ${platform},
         ${osVersion},
-        ${JSON.stringify(capabilitiesWithoutResources)},
-        ${JSON.stringify(resources)},
+        ${capabilitiesWithoutResources},
+        ${resources},
         'active',
         now(),
         now()
@@ -79,6 +81,7 @@ export async function deregisterDaemon(daemonId: string): Promise<void> {
 
   await valkey.send("DEL", [`daemon:${daemonId}`]);
   await valkey.send("DEL", [`daemon:${daemonId}:active_jobs`]);
+  await valkey.send("SREM", ["active_daemons", daemonId]);
 
   const db = getDb();
   if (db !== null) {
@@ -110,15 +113,28 @@ export async function refreshDaemonTtl(
 
 /**
  * Get all active daemon IDs from Valkey.
- * Returns daemon IDs (strips the "daemon:" prefix).
+ * Uses SMEMBERS on the `active_daemons` set — O(N) in set size, not keyspace.
+ * Prunes stale entries whose liveness key has expired (TTL miss without explicit SREM).
  */
 export async function getActiveDaemons(): Promise<string[]> {
   const valkey = requireValkeyClient();
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Valkey KEYS returns string[]
-  const keys: string[] = await valkey.send("KEYS", ["daemon:*"]);
-  return keys
-    .filter((k) => !k.includes(":active_jobs"))
-    .map((k) => k.replace("daemon:", ""));
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Valkey SMEMBERS returns string[]
+  const members: string[] = await valkey.send("SMEMBERS", ["active_daemons"]);
+
+  const alive: string[] = [];
+  for (const id of members) {
+    // eslint-disable-next-line no-await-in-loop, @typescript-eslint/no-unsafe-assignment -- Valkey EXISTS returns number
+    const exists: number = await valkey.send("EXISTS", [`daemon:${id}`]);
+    if (exists === 1) {
+      alive.push(id);
+    } else {
+      // Stale entry — liveness key expired without explicit deregister. Clean up.
+      // eslint-disable-next-line no-await-in-loop
+      await valkey.send("SREM", ["active_daemons", id]);
+      logger.debug({ daemonId: id }, "Pruned stale daemon from active_daemons set");
+    }
+  }
+  return alive;
 }
 
 /**
@@ -140,9 +156,25 @@ export async function incrementDaemonActiveJobs(daemonId: string): Promise<void>
 }
 
 /**
- * Decrement the active job count for a daemon in Valkey.
+ * Atomically decrement the active job count for a daemon in Valkey.
+ * Uses a Lua script for atomic check-and-decrement to prevent TOCTOU races
+ * where concurrent handleResult calls could double-decrement past zero.
  */
+const DECR_IF_POSITIVE_LUA = `
+  local current = tonumber(redis.call('GET', KEYS[1]) or '0')
+  if current > 0 then
+    return redis.call('DECR', KEYS[1])
+  else
+    return -1
+  end
+`;
+
 export async function decrementDaemonActiveJobs(daemonId: string): Promise<void> {
   const valkey = requireValkeyClient();
-  await valkey.send("DECR", [`daemon:${daemonId}:active_jobs`]);
+  const key = `daemon:${daemonId}:active_jobs`;
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Valkey EVAL returns number
+  const result: number = await valkey.send("EVAL", [DECR_IF_POSITIVE_LUA, "1", key]);
+  if (result === -1) {
+    logger.warn({ daemonId }, "Skipped DECR — active_jobs already at zero or below");
+  }
 }

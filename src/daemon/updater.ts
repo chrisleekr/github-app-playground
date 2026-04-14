@@ -1,5 +1,10 @@
 import { logger } from "../logger";
 
+// TODO: Wire pullAndRestart() into handleUpdateRequired() in daemon/main.ts
+// for the "pull" update strategy. Currently only "exit" (drain + shutdown) is
+// implemented; the "pull" and "notify" strategies are defined in config but
+// have no caller. See R-016 in specs for the full strategy matrix.
+
 /**
  * Pull-and-restart update strategy (R-016).
  * Runs git pull, bun install, bun run build, then exits with code 75
@@ -9,6 +14,10 @@ import { logger } from "../logger";
  * running on the current version (rollback safety).
  */
 export async function pullAndRestart(): Promise<void> {
+  // Resolve repo root from this module's location (not process.cwd which may differ)
+  const path = await import("node:path");
+  const repoRoot = path.resolve(path.dirname(import.meta.dir), "..");
+
   const steps = [
     { cmd: ["git", "pull", "--ff-only"], label: "git pull" },
     { cmd: ["bun", "install", "--frozen-lockfile"], label: "bun install" },
@@ -18,9 +27,9 @@ export async function pullAndRestart(): Promise<void> {
   for (const step of steps) {
     logger.info({ step: step.label }, "Running update step");
     const proc = Bun.spawn(step.cmd, {
-      stdout: "pipe",
+      stdout: "ignore",
       stderr: "pipe",
-      cwd: process.cwd(),
+      cwd: repoRoot,
     });
     // eslint-disable-next-line no-await-in-loop
     const exitCode = await proc.exited;

@@ -48,6 +48,13 @@ const jobOfferSchema = z.object({
   }),
 });
 
+const repoMemoryEntrySchema = z.object({
+  id: z.string(),
+  category: z.string(),
+  content: z.string(),
+  pinned: z.boolean(),
+});
+
 const jobPayloadSchema = z.object({
   type: z.literal("job:payload"),
   ...messageEnvelopeBase,
@@ -56,6 +63,8 @@ const jobPayloadSchema = z.object({
     installationToken: z.string(),
     maxTurns: z.number().int().positive(),
     allowedTools: z.array(z.string()),
+    envVars: z.record(z.string(), z.string()).optional(),
+    memory: z.array(repoMemoryEntrySchema).optional(),
   }),
 });
 
@@ -157,10 +166,16 @@ const jobResultSchema = z.object({
   ...messageEnvelopeBase,
   payload: z.object({
     success: z.boolean(),
+    /** Daemon includes deliveryId so orchestrator can finalize the execution
+     * even if the in-memory pending offer map was cleared (e.g. after restart). */
+    deliveryId: z.string().optional(),
     costUsd: z.number().nonnegative().optional(),
     durationMs: z.number().int().nonnegative().optional(),
     numTurns: z.number().int().nonnegative().optional(),
     errorMessage: z.string().optional(),
+    dryRun: z.boolean().optional(),
+    learnings: z.array(z.object({ category: z.string(), content: z.string() })).optional(),
+    deletions: z.array(z.string()).optional(),
   }),
 });
 

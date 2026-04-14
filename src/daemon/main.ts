@@ -9,31 +9,24 @@ import {
   evaluateOffer,
   executeJob,
   getActiveJobCount,
-  getActiveJobs,
   handleJobCancel,
   registerExitCleanup,
 } from "./job-executor";
 import { discoverCapabilities, getCurrentResources } from "./tool-discovery";
 import { DaemonWsClient } from "./ws-client";
 
-// ---------------------------------------------------------------------------
 // Daemon ID generation
-// ---------------------------------------------------------------------------
 
 const daemonId = `daemon-${hostname()}-${process.pid}`;
 
-// ---------------------------------------------------------------------------
 // State
-// ---------------------------------------------------------------------------
 
 let capabilities: DaemonCapabilities;
 let wsClient: DaemonWsClient;
 let draining = false;
 let spotCheckInterval: Timer | null = null;
 
-// ---------------------------------------------------------------------------
 // Platform-aware drain timeout (T040, FM-10)
-// ---------------------------------------------------------------------------
 
 async function detectPlatformTerminationDeadline(): Promise<number> {
   // AWS Spot: 2-minute warning
@@ -60,9 +53,7 @@ async function detectPlatformTerminationDeadline(): Promise<number> {
   return Infinity; // Not on ephemeral infrastructure
 }
 
-// ---------------------------------------------------------------------------
 // Graceful shutdown (T039, FM-5)
-// ---------------------------------------------------------------------------
 
 let effectiveDrainTimeout: number;
 
@@ -72,7 +63,6 @@ function initiateGracefulShutdown(reason: string): void {
 
   logger.info({ reason, activeJobs: getActiveJobCount() }, "Initiating graceful shutdown");
 
-  // Send daemon:draining
   wsClient.send({
     type: "daemon:draining",
     ...createMessageEnvelope(),
@@ -82,7 +72,6 @@ function initiateGracefulShutdown(reason: string): void {
     },
   });
 
-  // Wait for active jobs to complete or drain timeout
   const drainStart = Date.now();
 
   const checkInterval = setInterval(() => {
@@ -105,9 +94,7 @@ function initiateGracefulShutdown(reason: string): void {
   }, 1000);
 }
 
-// ---------------------------------------------------------------------------
 // Message handler
-// ---------------------------------------------------------------------------
 
 function handleMessage(msg: ServerMessage): void {
   switch (msg.type) {
@@ -122,14 +109,14 @@ function handleMessage(msg: ServerMessage): void {
       break;
 
     case "heartbeat:ping": {
-      const currentCapabilities = capabilities;
-      void (async () => {
+      void (async (): Promise<void> => {
         const { pong, updatedCapabilities } = await buildHeartbeatPong(
           msg,
-          getActiveJobs(),
-          currentCapabilities,
+          getActiveJobCount(),
+          capabilities,
           config.cloneBaseDir,
         );
+        // eslint-disable-next-line require-atomic-updates -- single-threaded; stale write is acceptable
         capabilities = updatedCapabilities;
         wsClient.send(pong);
       })();
@@ -146,7 +133,6 @@ function handleMessage(msg: ServerMessage): void {
         return;
       }
 
-      // Update resources for fresh evaluation
       capabilities = { ...capabilities, resources: getCurrentResources() };
       const evaluation = evaluateOffer(msg, capabilities);
 
@@ -167,11 +153,15 @@ function handleMessage(msg: ServerMessage): void {
     }
 
     case "job:payload":
-      void executeJob(msg, capabilities, (m) => { wsClient.send(m); });
+      void executeJob(msg, capabilities, (m) => {
+        wsClient.send(m);
+      });
       break;
 
     case "job:cancel":
-      handleJobCancel(msg, (m) => { wsClient.send(m); });
+      handleJobCancel(msg, (m) => {
+        wsClient.send(m);
+      });
       break;
 
     case "daemon:update-required":
@@ -187,9 +177,7 @@ function handleMessage(msg: ServerMessage): void {
   }
 }
 
-// ---------------------------------------------------------------------------
 // Update handler (T044, R-016)
-// ---------------------------------------------------------------------------
 
 function handleUpdateRequired(
   msg: Extract<ServerMessage, { type: "daemon:update-required" }>,
@@ -211,33 +199,30 @@ function handleUpdateRequired(
     "Update required by orchestrator",
   );
 
-  // Send acknowledgement
+  const actualDelayMs = msg.payload.urgent ? 0 : delayMs;
+
   wsClient.send({
     type: "daemon:update-acknowledged",
     ...createMessageEnvelope(msg.id),
-    payload: { strategy, delayMs },
+    payload: { strategy, delayMs: actualDelayMs },
   });
 
-  // Schedule drain after delay
   setTimeout(() => {
     initiateGracefulShutdown(`auto-update to ${msg.payload.targetVersion}`);
-  }, msg.payload.urgent ? 0 : delayMs);
+  }, actualDelayMs);
 }
 
-// ---------------------------------------------------------------------------
 // Spot termination notice polling (T041, FM-10)
-// ---------------------------------------------------------------------------
 
 function startSpotTerminationPolling(): void {
   if (!capabilities.ephemeral || platform() !== "linux") return;
 
-  spotCheckInterval = setInterval(() => {
-    void (async () => {
+  spotCheckInterval = setInterval((): void => {
+    void (async (): Promise<void> => {
       try {
-        const resp = await fetch(
-          "http://169.254.169.254/latest/meta-data/spot/instance-action",
-          { signal: AbortSignal.timeout(1000) },
-        );
+        const resp = await fetch("http://169.254.169.254/latest/meta-data/spot/instance-action", {
+          signal: AbortSignal.timeout(1000),
+        });
         if (resp.ok) {
           logger.warn("Spot termination notice detected — initiating graceful drain");
           if (spotCheckInterval !== null) {
@@ -255,17 +240,13 @@ function startSpotTerminationPolling(): void {
   spotCheckInterval.unref();
 }
 
-// ---------------------------------------------------------------------------
 // Main
-// ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
   logger.info({ daemonId }, "Daemon starting");
 
-  // Register exit cleanup handler (FM-9)
   registerExitCleanup();
 
-  // Discover capabilities
   capabilities = await discoverCapabilities(config.cloneBaseDir);
   logger.info(
     {
@@ -276,15 +257,16 @@ async function main(): Promise<void> {
     "Capabilities discovered",
   );
 
-  // Compute effective drain timeout (T040)
+  // T040: drain timeout capped by platform termination deadline
   const platformDeadline = await detectPlatformTerminationDeadline();
   effectiveDrainTimeout = Math.min(
     config.daemonDrainTimeoutMs,
-    platformDeadline === Infinity ? config.daemonDrainTimeoutMs : platformDeadline - 10_000,
+    platformDeadline === Infinity
+      ? config.daemonDrainTimeoutMs
+      : Math.max(5_000, platformDeadline - 10_000),
   );
   logger.info({ effectiveDrainTimeout, platformDeadline }, "Drain timeout configured");
 
-  // Validate orchestrator URL
   const orchestratorUrl = config.orchestratorUrl;
   if (orchestratorUrl === undefined) {
     logger.error("ORCHESTRATOR_URL is required for daemon mode");
@@ -297,24 +279,22 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Connect to orchestrator
   wsClient = new DaemonWsClient({
     orchestratorUrl,
     authToken,
     daemonId,
     capabilities,
     onMessage: handleMessage,
-    onConnected: () => {
+    onConnected: (): void => {
       logger.info("Connected to orchestrator");
     },
-    onDisconnected: () => {
+    onDisconnected: (): void => {
       logger.info("Disconnected from orchestrator");
     },
   });
 
   wsClient.connect();
 
-  // Start spot termination polling if on ephemeral infrastructure
   startSpotTerminationPolling();
 
   // Signal handlers (FM-5)

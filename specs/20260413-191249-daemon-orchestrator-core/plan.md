@@ -25,27 +25,27 @@ Build the daemon application and orchestrator WebSocket layer that enables persi
 
 _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
-| Principle | Status | Notes |
-|---|---|---|
-| I. Strict TypeScript and Bun Runtime | PASS | All new code TypeScript strict, zero `any`. Bun built-in WebSocket + RedisClient — no Node.js deps added. |
-| II. Async Webhook Safety | PASS | Webhook response unchanged (< 10s). Orchestrator dispatch is fire-and-forget after 200 OK. WebSocket server on separate port (3002), does not block webhook event loop. |
-| III. Idempotency and Concurrency Control | PASS | Two-layer idempotency guard unchanged. Concurrency guard in `router.ts` applies before dispatch to daemon. `activeCount` tracks daemon-dispatched jobs too. |
-| IV. Security by Default | PASS | Pre-shared secret in WebSocket `Authorization` header (FR-012). Installation tokens minted per-job, never persisted (FR-011). Daemon never receives App private key. Valkey connection via `VALKEY_URL` env var. |
-| V. Test Coverage | PASS | All new modules will have unit tests. WebSocket protocol, daemon registry, job queue, heartbeat — all pure-function testable. Integration test via Docker Compose (2.11). |
-| VI. Structured Observability | PASS | Pino child loggers per daemon connection. Delivery ID traceable through daemon dispatch. Cost/duration/turns logged per execution. |
-| VII. MCP Server Extensibility | PASS | `daemon-capabilities` MCP server (Tier 3, R-011) exposes daemon registry to Claude agent at runtime. |
-| VIII. Documentation Standards | PASS | JSDoc on all exports. Mermaid diagrams for WebSocket protocol flow, daemon lifecycle, job dispatch sequence. |
-| **Technology Constraints** | | |
-| Runtime: Bun >=1.3.8 | PASS | Bun built-in WebSocket server (`Bun.serve()`) and `RedisClient` — zero external deps for core transport. |
-| HTTP framework: octokit only | PASS | WebSocket server is `Bun.serve()` on port 3002, separate from octokit on port 3000. No Express/Fastify added. |
-| Logging: pino | PASS | |
-| Schema validation: zod | PASS | All WebSocket messages validated via `z.discriminatedUnion()` at boundary. |
-| Testing: bun test | PASS | |
-| AI orchestration: claude-agent-sdk | PASS | Daemon job executor reuses `executeAgent()` from `src/core/executor.ts`. |
-| **Architecture Constraints** | | |
-| Single Server Model | PASS | Orchestrator is embedded in the webhook server process (same `app.ts` startup). WebSocket listener is a second `Bun.serve()` call in the same process. Daemon is a separate process but is a _client_, not a decomposed microservice. |
-| Pipeline Architecture | PASS | Daemon executes the same `runInlinePipeline()` — no pipeline bypass or reorder. |
-| Code Style | PASS | Named exports. Zod validation. One concern per file. |
+| Principle                                | Status | Notes                                                                                                                                                                                                                                 |
+| ---------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| I. Strict TypeScript and Bun Runtime     | PASS   | All new code TypeScript strict, zero `any`. Bun built-in WebSocket + RedisClient — no Node.js deps added.                                                                                                                             |
+| II. Async Webhook Safety                 | PASS   | Webhook response unchanged (< 10s). Orchestrator dispatch is fire-and-forget after 200 OK. WebSocket server on separate port (3002), does not block webhook event loop.                                                               |
+| III. Idempotency and Concurrency Control | PASS   | Two-layer idempotency guard unchanged. Concurrency guard in `router.ts` applies before dispatch to daemon. `activeCount` tracks daemon-dispatched jobs too.                                                                           |
+| IV. Security by Default                  | PASS   | Pre-shared secret in WebSocket `Authorization` header (FR-012). Installation tokens minted per-job, never persisted (FR-011). Daemon never receives App private key. Valkey connection via `VALKEY_URL` env var.                      |
+| V. Test Coverage                         | PASS   | All new modules will have unit tests. WebSocket protocol, daemon registry, job queue, heartbeat — all pure-function testable. Integration test via Docker Compose (2.11).                                                             |
+| VI. Structured Observability             | PASS   | Pino child loggers per daemon connection. Delivery ID traceable through daemon dispatch. Cost/duration/turns logged per execution.                                                                                                    |
+| VII. MCP Server Extensibility            | PASS   | `daemon-capabilities` MCP server (Tier 3, R-011) exposes daemon registry to Claude agent at runtime.                                                                                                                                  |
+| VIII. Documentation Standards            | PASS   | JSDoc on all exports. Mermaid diagrams for WebSocket protocol flow, daemon lifecycle, job dispatch sequence.                                                                                                                          |
+| **Technology Constraints**               |        |                                                                                                                                                                                                                                       |
+| Runtime: Bun >=1.3.8                     | PASS   | Bun built-in WebSocket server (`Bun.serve()`) and `RedisClient` — zero external deps for core transport.                                                                                                                              |
+| HTTP framework: octokit only             | PASS   | WebSocket server is `Bun.serve()` on port 3002, separate from octokit on port 3000. No Express/Fastify added.                                                                                                                         |
+| Logging: pino                            | PASS   |                                                                                                                                                                                                                                       |
+| Schema validation: zod                   | PASS   | All WebSocket messages validated via `z.discriminatedUnion()` at boundary.                                                                                                                                                            |
+| Testing: bun test                        | PASS   |                                                                                                                                                                                                                                       |
+| AI orchestration: claude-agent-sdk       | PASS   | Daemon job executor reuses `executeAgent()` from `src/core/executor.ts`.                                                                                                                                                              |
+| **Architecture Constraints**             |        |                                                                                                                                                                                                                                       |
+| Single Server Model                      | PASS   | Orchestrator is embedded in the webhook server process (same `app.ts` startup). WebSocket listener is a second `Bun.serve()` call in the same process. Daemon is a separate process but is a _client_, not a decomposed microservice. |
+| Pipeline Architecture                    | PASS   | Daemon executes the same `runInlinePipeline()` — no pipeline bypass or reorder.                                                                                                                                                       |
+| Code Style                               | PASS   | Named exports. Zod validation. One concern per file.                                                                                                                                                                                  |
 
 **No violations. No complexity tracking entries needed.**
 
@@ -126,6 +126,7 @@ This section maps every spec resilience requirement (FR-004a, FR-007, FR-009, SC
 8. Log at `warn` level with daemon ID, list of orphaned delivery IDs, and action taken.
 
 **Daemon-side cleanup** (in `job-executor.ts`):
+
 - Each active job tracks its temp directory path and Claude agent subprocess PID.
 - On unexpected process exit (uncaught exception, SIGKILL), the OS reclaims the subprocess. Temp directories in `/tmp/daemon-workspaces/` are cleaned up by the OS or a periodic cron — not guaranteed immediate.
 - Constitution Principle II requires resource cleanup "even when operations fail." The daemon's `main.ts` registers a `process.on('exit')` handler that attempts synchronous cleanup of tracked temp directories via `fs.rmSync()`.
@@ -141,6 +142,7 @@ This section maps every spec resilience requirement (FR-004a, FR-007, FR-009, SC
 **Design**: The orchestrator manages heartbeat tracking per connection, not via Valkey TTL expiry alone. This avoids relying on Valkey keyspace notifications (which require `notify-keyspace-events` config and add complexity).
 
 **Orchestrator heartbeat loop** (in `connection-handler.ts`):
+
 1. On `daemon:registered`: start a per-daemon interval timer at `heartbeatIntervalMs` (30s).
 2. On each tick: send `heartbeat:ping`. Set `awaitingPong = true`. Start a `pongTimeout` timer at `heartbeatTimeoutMs` (90s).
 3. On `heartbeat:pong` received: clear `pongTimeout`, set `awaitingPong = false`, refresh Valkey `SETEX daemon:{id} 90 ...`.
@@ -152,12 +154,14 @@ This section maps every spec resilience requirement (FR-004a, FR-007, FR-009, SC
 **Why not rely on Bun's `idleTimeout`?** Bun's `sendPings: true` (default) sends WebSocket-level pings. The daemon OS TCP stack responds to these even if the daemon application is hung (e.g., stuck in a blocking syscall). Application-level heartbeat detects "process alive but unresponsive" — a strictly stronger liveness signal.
 
 **Bun WebSocket config**:
+
 ```typescript
 websocket: {
   sendPings: true,       // Keep TCP alive (catches half-open)
   idleTimeout: 120,      // Backstop: close if zero traffic for 120s
 }
 ```
+
 The 120s `idleTimeout` is a safety net. The 90s application heartbeat fires first in all realistic scenarios.
 
 ---
@@ -168,6 +172,7 @@ The 120s `idleTimeout` is a safety net. The 90s application heartbeat fires firs
 **Trigger**: Job dispatcher calls `getActiveDaemons()` and receives an empty list, OR all daemons reject the offer and no daemons remain.
 
 **Design** (in `job-dispatcher.ts`):
+
 1. Before offering a job, query active daemons from Valkey: `KEYS daemon:*` (filtered by presence, not Postgres status).
 2. If **zero active daemons** AND `config.agentJobMode === 'auto'`:
    - Log at `warn`: `"No active daemons — falling back to inline execution"`.
@@ -193,6 +198,7 @@ The 120s `idleTimeout` is a safety net. The 90s application heartbeat fires firs
 **Design**: Startup recovery scan in `app.ts`, after database migrations and before accepting webhooks.
 
 **Recovery scan** (in `src/orchestrator/history.ts` → `recoverStaleExecutions()`):
+
 1. Query (two conditions to handle NULL `started_at` for `offered` records):
    ```sql
    SELECT id, delivery_id, daemon_id, status, started_at, created_at
@@ -222,6 +228,7 @@ The 120s `idleTimeout` is a safety net. The 90s application heartbeat fires firs
 **New protocol message**: `daemon:draining` (daemon → server). See updated `contracts/ws-protocol.md`.
 
 **Daemon shutdown sequence** (in `src/daemon/main.ts`):
+
 1. `process.on('SIGTERM')` / `process.on('SIGINT')` handler fires.
 2. Send `daemon:draining` message to orchestrator — signals "I won't accept new jobs, but I'm finishing active ones."
 3. Orchestrator receives `daemon:draining`:
@@ -243,6 +250,7 @@ The 120s `idleTimeout` is a safety net. The 90s application heartbeat fires firs
 **Orchestrator distinction**: When the `close` handler fires after `daemon:draining` was received, the orchestrator knows this was a planned shutdown. It still runs FM-1 cleanup for any jobs that were force-killed by the drain timeout, but logs at `info` instead of `warn` for the draining case.
 
 **Config additions**:
+
 - `DAEMON_DRAIN_TIMEOUT_MS`: default 300,000 (5 minutes). Maximum time to wait for active jobs to complete during graceful shutdown.
 
 ---
@@ -253,6 +261,7 @@ The 120s `idleTimeout` is a safety net. The 90s application heartbeat fires firs
 **Trigger**: A daemon that was declared dead (FM-1/FM-2) reconnects or delivers a `job:result` for an execution that has already been reassigned to another daemon or marked failed.
 
 **Design** (in `connection-handler.ts`, `job:result` handler):
+
 1. On receiving `job:result`, query Postgres: `SELECT status, daemon_id FROM executions WHERE delivery_id = $1`.
 2. If `status` is already `completed` or `failed`:
    - Log at `info`: `"Late result received for already-finalized execution"` with `deliveryId`, reporting daemon ID, current status, current `daemon_id`.
@@ -270,20 +279,27 @@ The 120s `idleTimeout` is a safety net. The 90s application heartbeat fires firs
 **Trigger**: Valkey connection drops or is unreachable.
 
 **Design** (in `src/orchestrator/valkey.ts`):
+
 1. The Bun `RedisClient` has built-in reconnection (`autoReconnect: true`, `maxRetries: 10`, `enableOfflineQueue: true`).
 2. Track connection state via `client.onconnect` and `client.onclose` callbacks:
    ```typescript
    let valkeyConnected = false;
-   client.onconnect = () => { valkeyConnected = true; };
-   client.onclose = () => { valkeyConnected = false; };
+   client.onconnect = () => {
+     valkeyConnected = true;
+   };
+   client.onclose = () => {
+     valkeyConnected = false;
+   };
    ```
 3. Export `isValkeyHealthy(): boolean` — returns `valkeyConnected`.
 4. In `router.ts`, before dispatching to daemon mode:
    ```typescript
-   if (config.agentJobMode !== 'inline' && !isValkeyHealthy()) {
+   if (config.agentJobMode !== "inline" && !isValkeyHealthy()) {
      ctx.log.error("Valkey unavailable — rejecting request");
      await ctx.octokit.rest.issues.createComment({
-       owner: ctx.owner, repo: ctx.repo, issue_number: ctx.entityNumber,
+       owner: ctx.owner,
+       repo: ctx.repo,
+       issue_number: ctx.entityNumber,
        body: `**${config.triggerPhrase}** cannot process this request — the job queue service is temporarily unavailable. Please try again in a few minutes.`,
      });
      return;
@@ -301,6 +317,7 @@ The 120s `idleTimeout` is a safety net. The 90s application heartbeat fires firs
 **Trigger**: A daemon crashes and restarts with the same daemon ID (same hostname + new PID, or configured static ID).
 
 **Design** (in `connection-handler.ts` and `daemon-registry.ts`):
+
 1. On `daemon:register`, check if `connections` Map already has an entry for this daemon ID.
 2. If an **existing active connection** exists for this daemon ID:
    - Close the OLD connection with code `4002` and reason `"superseded by new connection"`.
@@ -325,10 +342,12 @@ The 120s `idleTimeout` is a safety net. The 90s application heartbeat fires firs
 **Spec ref**: Constitution Principle II ("resource cleanup MUST be guaranteed even when operations fail or time out")
 
 **Tracked resources per job** (in `job-executor.ts`):
+
 - `workDir: string` — temp directory containing the cloned repo.
 - `agentPid: number | undefined` — PID of the Claude agent subprocess (if started).
 
 **Cleanup guarantees**:
+
 1. **Normal completion**: `finally` block in `executeJob()` calls `cleanup()` (same as inline pipeline).
 2. **Uncaught exception in job**: `try/catch` around `executeJob()` in `job-executor.ts`. Catch block calls cleanup, reports `job:result` with `success: false`.
 3. **Daemon process exit**: `process.on('exit')` in `main.ts` does synchronous `fs.rmSync(workDir, { recursive: true, force: true })` for all tracked work directories.
@@ -377,16 +396,18 @@ flowchart TD
 Add `ephemeral: boolean` to daemon capabilities (reported at registration). Set to `true` when the daemon detects it's running on a preemptible instance.
 
 **Auto-detection** (in `tool-discovery.ts`):
+
 ```typescript
 async function detectEphemeral(): Promise<boolean> {
   // AWS: check instance metadata for spot
   try {
-    const resp = await fetch(
-      "http://169.254.169.254/latest/meta-data/instance-life-cycle",
-      { signal: AbortSignal.timeout(500) },
-    );
+    const resp = await fetch("http://169.254.169.254/latest/meta-data/instance-life-cycle", {
+      signal: AbortSignal.timeout(500),
+    });
     if (resp.ok && (await resp.text()) === "spot") return true;
-  } catch { /* not on AWS or metadata unavailable */ }
+  } catch {
+    /* not on AWS or metadata unavailable */
+  }
 
   // GCP: check metadata for scheduling/preemptible
   try {
@@ -395,7 +416,9 @@ async function detectEphemeral(): Promise<boolean> {
       { headers: { "Metadata-Flavor": "Google" }, signal: AbortSignal.timeout(500) },
     );
     if (resp.ok && (await resp.text()) === "TRUE") return true;
-  } catch { /* not on GCP or metadata unavailable */ }
+  } catch {
+    /* not on GCP or metadata unavailable */
+  }
 
   // Manual override via env var
   return process.env["DAEMON_EPHEMERAL"] === "true";
@@ -403,6 +426,7 @@ async function detectEphemeral(): Promise<boolean> {
 ```
 
 **Dispatch impact** (in `job-dispatcher.ts`):
+
 - When selecting a daemon for a job offer, prefer non-ephemeral daemons for jobs classified as complex.
 - **Job complexity heuristic** (dispatcher implementation detail, not a spec-level classification): a job is treated as complex when the effective `maxTurns > 30` (derived from `config.maxTurnsPerComplexity`; in Phase 2 without triage, all jobs default to the `complex` tier = 50, so all are treated as complex for ephemeral ranking). This is a soft dispatcher preference used only for ephemeral-vs-stable ranking — it does not block ephemeral daemons from receiving complex jobs.
 - Ephemeral daemons are still eligible — they're just ranked lower for long jobs. This is a soft preference, not a hard block. Avoids wasted work when a cheaper alternative exists.
@@ -416,12 +440,13 @@ The daemon's drain timeout should be shorter than the platform's termination dea
 const platformDeadlineMs = await detectPlatformTerminationDeadline();
 // platformDeadlineMs: AWS Spot = 120_000 (2min), GCP = 30_000, default = Infinity
 const effectiveDrainTimeout = Math.min(
-  config.daemonDrainTimeoutMs,           // operator-configured (default 5min)
-  platformDeadlineMs - 10_000,           // platform deadline minus 10s safety margin
+  config.daemonDrainTimeoutMs, // operator-configured (default 5min)
+  platformDeadlineMs - 10_000, // platform deadline minus 10s safety margin
 );
 ```
 
 Detection of platform deadline:
+
 - AWS Spot: 120,000ms (2 minutes). Source: [AWS Spot Instance Interruptions](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/spot-instance-termination-notices.html).
 - GCP Preemptible: 30,000ms. Source: [GCP Preemptible VM shutdown](https://cloud.google.com/compute/docs/instances/preemptible#preemption_process).
 - Unknown/bare metal: use `DAEMON_DRAIN_TIMEOUT_MS` as-is.
@@ -434,17 +459,18 @@ AWS provides a 2-minute early warning via instance metadata before SIGTERM is se
 // In daemon main.ts — poll every 5s (AWS recommendation)
 const spotCheckInterval = setInterval(async () => {
   try {
-    const resp = await fetch(
-      "http://169.254.169.254/latest/meta-data/spot/instance-action",
-      { signal: AbortSignal.timeout(1000) },
-    );
+    const resp = await fetch("http://169.254.169.254/latest/meta-data/spot/instance-action", {
+      signal: AbortSignal.timeout(1000),
+    });
     if (resp.ok) {
       // Termination notice received — start draining NOW
       log.warn("Spot termination notice detected — initiating graceful drain");
       clearInterval(spotCheckInterval);
       initiateGracefulShutdown("spot termination notice");
     }
-  } catch { /* 404 = no termination pending, network error = ignore */ }
+  } catch {
+    /* 404 = no termination pending, network error = ignore */
+  }
 }, 5_000);
 spotCheckInterval.unref();
 ```
@@ -456,6 +482,7 @@ This is **opt-in** — only runs when `ephemeral === true` and `platform === "li
 The original FM-1 claimed "< 1s" detection for daemon crash. This is only true when the OS sends a TCP RST (process crash on a running machine). When the entire VM disappears (spot reclaim, hardware failure), the TCP connection enters a half-open state. Detection falls through to FM-2 (heartbeat timeout, ≤ 90s).
 
 Corrected FM-1 detection latency:
+
 - Process crash on running host: < 1s (TCP RST/FIN).
 - VM hard-kill (spot, preemptible, power loss): **≤ 90s** (falls through to FM-2 heartbeat timeout). This is the true worst-case detection latency for ephemeral environments.
 
@@ -467,18 +494,18 @@ The 90s gap is acceptable at Phase 2 scale (1-10 daemons, 10-100 jobs/day). The 
 
 ### Failure Mode Summary
 
-| ID | Failure | Detection | Latency | Action | Spec Ref |
-|---|---|---|---|---|---|
-| FM-1 | Daemon crash mid-execution | WS `close` event | < 1s (clean close) or ≤ 90s (half-open TCP, falls to FM-2) | Orphan cleanup, re-queue or fail, update GitHub comment | FR-007, SC-003 |
-| FM-2 | Daemon unresponsive | Heartbeat pong timeout | ≤ 90s | Close connection → FM-1 | FR-002 |
-| FM-3 | All daemons offline | Empty active daemon list | Immediate | Inline fallback (`auto`) or error comment | Edge Case §1 |
-| FM-4 | Server restarts | Startup scan | On boot | Fail stale executions, clear Valkey state | Edge Case §5 |
-| FM-5 | Daemon graceful shutdown | SIGTERM handler | Controlled | Drain active jobs, then disconnect | Principle II |
-| FM-6 | Late result after reassignment | Status check on `job:result` | Immediate | Log and discard | Edge Case §2 |
-| FM-7 | Valkey unavailable | `onclose` callback | Immediate | Reject new requests with error comment | FR-004a |
-| FM-8 | Daemon reconnect same ID | Registration check | Immediate | Close old connection, clean orphans, re-register | Edge Case §4, FR-009 |
-| FM-9 | Resource leak on daemon | Process exit handler | On exit | Sync cleanup of temp dirs + subprocess kill | Principle II |
-| FM-10 | Ephemeral instance termination | Spot metadata poll (early) or SIGTERM or heartbeat timeout (late) | 0s (poll) / 2min (SIGTERM) / ≤90s (half-open) | Platform-aware drain, prefer stable daemons for long jobs | FR-007 |
+| ID    | Failure                        | Detection                                                         | Latency                                                    | Action                                                    | Spec Ref             |
+| ----- | ------------------------------ | ----------------------------------------------------------------- | ---------------------------------------------------------- | --------------------------------------------------------- | -------------------- |
+| FM-1  | Daemon crash mid-execution     | WS `close` event                                                  | < 1s (clean close) or ≤ 90s (half-open TCP, falls to FM-2) | Orphan cleanup, re-queue or fail, update GitHub comment   | FR-007, SC-003       |
+| FM-2  | Daemon unresponsive            | Heartbeat pong timeout                                            | ≤ 90s                                                      | Close connection → FM-1                                   | FR-002               |
+| FM-3  | All daemons offline            | Empty active daemon list                                          | Immediate                                                  | Inline fallback (`auto`) or error comment                 | Edge Case §1         |
+| FM-4  | Server restarts                | Startup scan                                                      | On boot                                                    | Fail stale executions, clear Valkey state                 | Edge Case §5         |
+| FM-5  | Daemon graceful shutdown       | SIGTERM handler                                                   | Controlled                                                 | Drain active jobs, then disconnect                        | Principle II         |
+| FM-6  | Late result after reassignment | Status check on `job:result`                                      | Immediate                                                  | Log and discard                                           | Edge Case §2         |
+| FM-7  | Valkey unavailable             | `onclose` callback                                                | Immediate                                                  | Reject new requests with error comment                    | FR-004a              |
+| FM-8  | Daemon reconnect same ID       | Registration check                                                | Immediate                                                  | Close old connection, clean orphans, re-register          | Edge Case §4, FR-009 |
+| FM-9  | Resource leak on daemon        | Process exit handler                                              | On exit                                                    | Sync cleanup of temp dirs + subprocess kill               | Principle II         |
+| FM-10 | Ephemeral instance termination | Spot metadata poll (early) or SIGTERM or heartbeat timeout (late) | 0s (poll) / 2min (SIGTERM) / ≤90s (half-open)              | Platform-aware drain, prefer stable daemons for long jobs | FR-007               |
 
 ## Complexity Tracking
 

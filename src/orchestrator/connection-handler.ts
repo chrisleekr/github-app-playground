@@ -1,4 +1,5 @@
 import type { ServerWebSocket } from "bun";
+import { App } from "octokit";
 
 import { config } from "../config";
 import { logger } from "../logger";
@@ -9,6 +10,7 @@ import {
   WS_CLOSE_CODES,
   WS_ERROR_CODES,
 } from "../shared/ws-messages";
+import { decrementActiveCount } from "./concurrency";
 import {
   decrementDaemonActiveJobs,
   deregisterDaemon,
@@ -23,28 +25,35 @@ import {
   markExecutionFailed,
   markExecutionRunning,
 } from "./history";
-import { getPendingOffer,handleJobAccept, handleJobReject, removePendingOffer } from "./job-dispatcher";
+import {
+  getPendingOffer,
+  handleJobAccept,
+  handleJobReject,
+  removePendingOffer,
+} from "./job-dispatcher";
 import { sendError, type WsConnectionData } from "./ws-server";
 
-// ---------------------------------------------------------------------------
 // In-memory state (per orchestrator process)
-// ---------------------------------------------------------------------------
 
-/** Active WebSocket connections keyed by daemon ID. */
 const connections = new Map<string, ServerWebSocket<WsConnectionData>>();
-
-/** Daemon info keyed by daemon ID. */
 const daemonInfoMap = new Map<string, DaemonInfo>();
-
-/** Per-daemon heartbeat timers. */
 const heartbeatTimers = new Map<string, HeartbeatState>();
 
 /** Daemon IDs that sent daemon:draining — excluded from dispatch. */
 const drainingDaemons = new Set<string>();
 
-// ---------------------------------------------------------------------------
+/** Cached Octokit App singleton for minting installation tokens. */
+let cachedApp: InstanceType<typeof App> | null = null;
+function getOrCreateApp(): InstanceType<typeof App> {
+  if (cachedApp !== null) return cachedApp;
+  if (config.appId === undefined || config.privateKey === undefined) {
+    throw new Error("getOrCreateApp requires GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY");
+  }
+  cachedApp = new App({ appId: config.appId, privateKey: config.privateKey });
+  return cachedApp;
+}
+
 // Exports for other orchestrator modules
-// ---------------------------------------------------------------------------
 
 export function getConnections(): Map<string, ServerWebSocket<WsConnectionData>> {
   return connections;
@@ -58,16 +67,13 @@ export function isDaemonDraining(daemonId: string): boolean {
   return drainingDaemons.has(daemonId);
 }
 
-// ---------------------------------------------------------------------------
 // WebSocket event handlers (called from ws-server.ts)
-// ---------------------------------------------------------------------------
 
-/** Called when a new WebSocket connection opens. */
 export function handleWsOpen(_ws: ServerWebSocket<WsConnectionData>): void {
   // No-op until daemon:register is received
 }
 
-/** Called when a WebSocket connection closes (FM-1 cleanup). */
+/** FM-1 cleanup on WebSocket close. */
 export function handleWsClose(
   ws: ServerWebSocket<WsConnectionData>,
   _code: number,
@@ -76,7 +82,6 @@ export function handleWsClose(
   const daemonId = ws.data.daemonId;
   if (daemonId === undefined) return;
 
-  // Clear heartbeat timers
   const hb = heartbeatTimers.get(daemonId);
   if (hb !== undefined) {
     clearInterval(hb.intervalTimer);
@@ -84,7 +89,6 @@ export function handleWsClose(
     heartbeatTimers.delete(daemonId);
   }
 
-  // Remove from in-memory state
   connections.delete(daemonId);
   daemonInfoMap.delete(daemonId);
   drainingDaemons.delete(daemonId);
@@ -108,19 +112,25 @@ async function cleanupAfterDisconnect(daemonId: string): Promise<void> {
         // eslint-disable-next-line no-await-in-loop
         await markExecutionFailed(orphan.deliveryId, "daemon disconnected during execution");
       } catch (err) {
-        logger.error({ err, deliveryId: orphan.deliveryId }, "Failed to mark orphaned execution as failed");
+        logger.error(
+          { err, deliveryId: orphan.deliveryId },
+          "Failed to mark orphaned execution as failed",
+        );
       }
     }
 
     if (orphans.length > 0) {
-      logger.warn({ daemonId, orphanCount: orphans.length }, "Cleaned up orphaned executions after daemon disconnect");
+      logger.warn(
+        { daemonId, orphanCount: orphans.length },
+        "Cleaned up orphaned executions after daemon disconnect",
+      );
     }
   } catch (err) {
     logger.error({ err, daemonId }, "Failed to cleanup after daemon disconnect");
   }
 }
 
-/** Main message dispatch — called from ws-server.ts after validation. */
+/** Route validated daemon messages to type-specific handlers. */
 export function handleDaemonMessage(
   ws: ServerWebSocket<WsConnectionData>,
   msg: DaemonMessage,
@@ -142,15 +152,12 @@ export function handleDaemonMessage(
     case "job:reject":
     case "job:status":
     case "job:result":
-      // Dispatched to job-dispatcher in Phase 4/5
       handleJobMessage(ws, msg);
       break;
   }
 }
 
-// ---------------------------------------------------------------------------
 // daemon:register handler (FM-8 reconnection logic)
-// ---------------------------------------------------------------------------
 
 async function handleRegister(
   ws: ServerWebSocket<WsConnectionData>,
@@ -162,6 +169,9 @@ async function handleRegister(
   const existing = connections.get(daemonId);
   if (existing !== undefined) {
     logger.info({ daemonId }, "Daemon reconnected — closing old connection (FM-8)");
+    // Clear daemonId BEFORE close so handleWsClose's cleanup is a no-op,
+    // preventing a race where deregisterDaemon runs after registerDaemon.
+    existing.data.daemonId = undefined;
     existing.close(WS_CLOSE_CODES.SUPERSEDED.code, WS_CLOSE_CODES.SUPERSEDED.reason);
 
     // Clean up old connection state
@@ -179,7 +189,10 @@ async function handleRegister(
     for (const orphan of orphans) {
       try {
         // eslint-disable-next-line no-await-in-loop
-        await markExecutionFailed(orphan.deliveryId, "daemon reconnected — previous session orphaned");
+        await markExecutionFailed(
+          orphan.deliveryId,
+          "daemon reconnected — previous session orphaned",
+        );
       } catch (err) {
         logger.error({ err, deliveryId: orphan.deliveryId }, "Failed to mark orphaned execution");
       }
@@ -208,11 +221,9 @@ async function handleRegister(
     return;
   }
 
-  // Store connection
   ws.data.daemonId = daemonId;
   connections.set(daemonId, ws);
 
-  // Send daemon:registered response
   ws.sendText(
     JSON.stringify({
       type: "daemon:registered",
@@ -234,14 +245,9 @@ async function handleRegister(
   );
 }
 
-// ---------------------------------------------------------------------------
 // Heartbeat loop (FM-2)
-// ---------------------------------------------------------------------------
 
-function startHeartbeatLoop(
-  ws: ServerWebSocket<WsConnectionData>,
-  daemonId: string,
-): void {
+function startHeartbeatLoop(ws: ServerWebSocket<WsConnectionData>, daemonId: string): void {
   const state: HeartbeatState = {
     intervalTimer: setInterval(() => {
       sendHeartbeatPing(ws, daemonId);
@@ -254,10 +260,7 @@ function startHeartbeatLoop(
   heartbeatTimers.set(daemonId, state);
 }
 
-function sendHeartbeatPing(
-  ws: ServerWebSocket<WsConnectionData>,
-  daemonId: string,
-): void {
+function sendHeartbeatPing(ws: ServerWebSocket<WsConnectionData>, daemonId: string): void {
   const state = heartbeatTimers.get(daemonId);
   if (state === undefined) return;
 
@@ -295,7 +298,6 @@ function handleHeartbeatPong(
   const state = heartbeatTimers.get(daemonId);
   if (state === undefined) return;
 
-  // Clear pong timeout
   if (state.pongTimer !== null) {
     clearTimeout(state.pongTimer);
     state.pongTimer = null;
@@ -303,20 +305,18 @@ function handleHeartbeatPong(
   state.awaitingPong = false;
   state.missedPongs = 0;
 
-  // Refresh Valkey TTL
   const info = daemonInfoMap.get(daemonId);
   if (info !== undefined) {
-    // Update resource snapshot from pong payload
     info.capabilities.resources = msg.payload.resources;
     info.activeJobs = msg.payload.activeJobs;
     info.lastSeenAt = Date.now();
-    void refreshDaemonTtl(daemonId, info.capabilities);
+    void refreshDaemonTtl(daemonId, info.capabilities).catch((err: unknown) => {
+      logger.error({ err, daemonId }, "Failed to refresh daemon TTL");
+    });
   }
 }
 
-// ---------------------------------------------------------------------------
 // daemon:draining handler
-// ---------------------------------------------------------------------------
 
 function handleDraining(
   ws: ServerWebSocket<WsConnectionData>,
@@ -337,9 +337,7 @@ function handleDraining(
   );
 }
 
-// ---------------------------------------------------------------------------
 // daemon:update-acknowledged handler
-// ---------------------------------------------------------------------------
 
 function handleUpdateAcknowledged(
   ws: ServerWebSocket<WsConnectionData>,
@@ -359,14 +357,9 @@ function handleUpdateAcknowledged(
   );
 }
 
-// ---------------------------------------------------------------------------
 // Job message handling (T032-T033)
-// ---------------------------------------------------------------------------
 
-function handleJobMessage(
-  ws: ServerWebSocket<WsConnectionData>,
-  msg: DaemonMessage,
-): void {
+function handleJobMessage(ws: ServerWebSocket<WsConnectionData>, msg: DaemonMessage): void {
   const daemonId = ws.data.daemonId;
   if (daemonId === undefined) {
     sendError(ws, msg.id, WS_ERROR_CODES.INTERNAL_ERROR, "Daemon not registered");
@@ -402,77 +395,189 @@ async function handleAccept(
     return;
   }
 
-  // Increment active jobs in Valkey
-  await incrementDaemonActiveJobs(daemonId);
+  // C2: Immediately claim the offer and clear its timeout to prevent a race
+  // where the timeout fires during async work below and re-queues the job.
+  removePendingOffer(offerId);
 
-  // Update execution status
+  await incrementDaemonActiveJobs(daemonId);
   await markExecutionRunning(offer.deliveryId);
 
-  // Get context from Postgres and send payload
-  // For now, delegate to job-dispatcher which handles the full flow
   const { getDb } = await import("../db");
   const db = getDb();
-  if (db !== null) {
-    const rows: { context_json: Record<string, unknown> | null }[] = await db`
-      SELECT context_json FROM executions WHERE delivery_id = ${offer.deliveryId}
-    `;
-    const firstRow = rows[0];
-    if (rows.length > 0 && firstRow !== undefined && firstRow.context_json !== null) {
-      const contextJson = firstRow.context_json;
+  if (db === null) {
+    logger.error({ offerId, daemonId }, "Database not available for context lookup");
+    await markExecutionFailed(offer.deliveryId, "Database unavailable");
+    await decrementDaemonActiveJobs(daemonId);
+    decrementActiveCount();
+    return;
+  }
 
-      // Mint installation token
-      // The octokit app auth creates short-lived tokens
-      const { App } = await import("octokit");
-      const { config } = await import("../config");
-      const app = new App({
-        appId: config.appId,
-        privateKey: config.privateKey,
-      });
-      const owner = typeof contextJson["owner"] === "string" ? contextJson["owner"] : "";
-      const repo = typeof contextJson["repo"] === "string" ? contextJson["repo"] : "";
+  const rows: { context_json: Record<string, unknown> | null }[] = await db`
+    SELECT context_json FROM executions WHERE delivery_id = ${offer.deliveryId}
+  `;
+  const contextJson = rows[0]?.context_json ?? null;
+  if (contextJson === null) {
+    logger.error({ offerId, daemonId, deliveryId: offer.deliveryId }, "No execution context found");
+    await markExecutionFailed(offer.deliveryId, "Execution context not found");
+    await decrementDaemonActiveJobs(daemonId);
+    decrementActiveCount();
+    return;
+  }
+  const owner = typeof contextJson["owner"] === "string" ? contextJson["owner"] : "";
+  const repo = typeof contextJson["repo"] === "string" ? contextJson["repo"] : "";
 
-      try {
-        const { data: installation } = await app.octokit.rest.apps.getRepoInstallation({
-          owner,
-          repo,
-        });
-        const octokit = await app.getInstallationOctokit(installation.id);
-        const { token } = (await octokit.auth({ type: "installation" })) as { token: string };
+  try {
+    // Mint installation token via cached App singleton (avoid per-request App instantiation)
+    const app = getOrCreateApp();
+    const { data: installation } = await app.octokit.rest.apps.getRepoInstallation({
+      owner,
+      repo,
+    });
+    const octokit = await app.getInstallationOctokit(installation.id);
+    const { token } = (await octokit.auth({ type: "installation" })) as { token: string };
 
-        const maxTurns = config.maxTurnsPerComplexity.complex;
-        const { resolveAllowedTools } = await import("../core/prompt-builder");
+    const maxTurns = config.agentMaxTurns ?? config.maxTurnsPerComplexity.complex;
+    const { resolveAllowedTools } = await import("../core/prompt-builder");
 
-        handleJobAccept(
-          offerId,
-          daemonId,
-          token,
-          contextJson,
-          maxTurns,
-          resolveAllowedTools(contextJson as never),
-        );
-      } catch (err) {
-        logger.error({ err, offerId, daemonId }, "Failed to mint installation token for job");
-        await markExecutionFailed(offer.deliveryId, "Failed to mint installation token");
-        removePendingOffer(offerId);
-      }
-    }
+    // Reconstruct a minimal BotContext-shaped object for resolveAllowedTools.
+    // Only isPR and labels are read by the function.
+    const ctxForTools = {
+      isPR: contextJson["isPR"] === true,
+      labels: Array.isArray(contextJson["labels"]) ? (contextJson["labels"] as string[]) : [],
+    };
+
+    // Look up daemon capabilities so repo_memory + daemon-specific tools are allowed
+    const daemonInfo = getDaemonInfo(daemonId);
+
+    // Load persistent repo knowledge for this owner/repo
+    const { getRepoEnvVars, getRepoMemory } = await import("./repo-knowledge");
+    const envVars = await getRepoEnvVars(owner, repo);
+    const memory = await getRepoMemory(owner, repo);
+
+    handleJobAccept({
+      offerId,
+      daemonId,
+      deliveryId: offer.deliveryId,
+      installationToken: token,
+      contextJson,
+      maxTurns,
+      allowedTools: resolveAllowedTools(
+        ctxForTools as Parameters<typeof resolveAllowedTools>[0],
+        daemonInfo?.capabilities,
+      ),
+      envVars,
+      memory,
+    });
+  } catch (err) {
+    logger.error({ err, offerId, daemonId }, "Failed to mint installation token for job");
+    await markExecutionFailed(offer.deliveryId, "Failed to mint installation token");
+    await decrementDaemonActiveJobs(daemonId);
+    decrementActiveCount();
   }
 }
 
-async function handleReject(
-  msg: Extract<DaemonMessage, { type: "job:reject" }>,
-): Promise<void> {
+async function handleReject(msg: Extract<DaemonMessage, { type: "job:reject" }>): Promise<void> {
   await handleJobReject(msg.id, msg.payload.reason);
 }
 
-function handleStatus(
-  daemonId: string,
-  msg: Extract<DaemonMessage, { type: "job:status" }>,
-): void {
+function handleStatus(daemonId: string, msg: Extract<DaemonMessage, { type: "job:status" }>): void {
   logger.info(
     { daemonId, offerId: msg.id, status: msg.payload.status, message: msg.payload.message },
     "Job status update from daemon",
   );
+}
+
+/**
+ * Resolve the deliveryId for a job result using a 3-tier strategy:
+ * 1. Pending offer map (primary)
+ * 2. Daemon-provided payload field (fallback)
+ * 3. Database query for the daemon's running execution (last resort)
+ */
+async function resolveDeliveryId(
+  offerId: string,
+  daemonId: string,
+  payloadDeliveryId: string | undefined,
+): Promise<string | undefined> {
+  const offer = getPendingOffer(offerId);
+  const deliveryId = offer?.deliveryId ?? payloadDeliveryId;
+  if (deliveryId !== undefined) return deliveryId;
+
+  logger.debug({ offerId, daemonId }, "Result for offer not in pending map — querying DB");
+  const { getDb } = await import("../db");
+  const db = getDb();
+  if (db === null) return undefined;
+
+  const rows: { delivery_id: string }[] = await db`
+    SELECT delivery_id FROM executions
+    WHERE daemon_id = ${daemonId} AND status IN ('offered', 'running')
+    ORDER BY started_at DESC NULLS LAST LIMIT 1
+  `;
+  const row = rows[0];
+  if (row === undefined) return undefined;
+
+  logger.info(
+    { offerId, daemonId, deliveryId: row.delivery_id },
+    "Resolved deliveryId from DB fallback",
+  );
+  return row.delivery_id;
+}
+
+/**
+ * Persist learnings and deletions from a daemon execution to repo_memory.
+ * Extracted to reduce nesting depth in handleResult.
+ */
+async function persistRepoKnowledge(
+  deliveryId: string,
+  learnings: { category: string; content: string }[] | undefined,
+  deletions: string[] | undefined,
+): Promise<void> {
+  try {
+    const { saveRepoLearnings, deleteRepoMemories } = await import("./repo-knowledge");
+    const { requireDb } = await import("../db");
+    const knowledgeDb = requireDb();
+    const execRows: { repo_owner: string; repo_name: string }[] = await knowledgeDb`
+      SELECT repo_owner, repo_name FROM executions WHERE delivery_id = ${deliveryId}
+    `;
+    const exec = execRows[0];
+    if (exec === undefined) return;
+
+    if (learnings !== undefined && learnings.length > 0) {
+      const saved = await saveRepoLearnings(exec.repo_owner, exec.repo_name, learnings);
+      if (saved > 0) {
+        logger.info({ deliveryId, saved }, "Persisted repo learnings from execution");
+      }
+    }
+    if (deletions !== undefined && deletions.length > 0) {
+      const deleted = await deleteRepoMemories(deletions);
+      if (deleted > 0) {
+        logger.info({ deliveryId, deleted }, "Deleted outdated repo memories per daemon request");
+      }
+    }
+  } catch (err) {
+    logger.error({ err, deliveryId }, "Failed to persist repo knowledge");
+  }
+}
+
+/** Persist execution outcome to the database. */
+async function finalizeExecution(
+  deliveryId: string,
+  payload: {
+    success: boolean;
+    costUsd?: number | undefined;
+    durationMs?: number | undefined;
+    numTurns?: number | undefined;
+    errorMessage?: string | undefined;
+  },
+): Promise<void> {
+  if (payload.success) {
+    const result: { costUsd?: number; durationMs?: number; numTurns?: number } = {};
+    if (payload.costUsd !== undefined) result.costUsd = payload.costUsd;
+    if (payload.durationMs !== undefined) result.durationMs = payload.durationMs;
+    if (payload.numTurns !== undefined) result.numTurns = payload.numTurns;
+    await markExecutionCompleted(deliveryId, result);
+  } else {
+    await markExecutionFailed(deliveryId, payload.errorMessage ?? "Execution failed on daemon");
+  }
 }
 
 /**
@@ -483,66 +588,58 @@ async function handleResult(
   msg: Extract<DaemonMessage, { type: "job:result" }>,
 ): Promise<void> {
   const offerId = msg.id;
-  const offer = getPendingOffer(offerId);
-  const deliveryId = offer?.deliveryId;
+  const actualDeliveryId = await resolveDeliveryId(offerId, daemonId, msg.payload.deliveryId);
 
-  // Try to find the delivery ID from the pending offer or from execution records
-  const actualDeliveryId = deliveryId;
-  if (actualDeliveryId === undefined) {
-    // Look up via offerId in execution records or just use daemon tracking
-    logger.debug({ offerId, daemonId }, "Result for offer not in pending map — checking DB");
-  }
-
-  // Decrement active jobs
+  // Decrement active jobs (daemon-side Valkey counter + webhook concurrency counter)
   await decrementDaemonActiveJobs(daemonId);
+  decrementActiveCount();
 
-  // Remove pending offer if it still exists
   removePendingOffer(offerId);
 
+  if (actualDeliveryId === undefined) return;
+
   // FM-6: Late result guard — check if execution is already finalized
-  if (actualDeliveryId !== undefined) {
-    const state = await getExecutionState(actualDeliveryId);
-    if (state !== null) {
-      if (state.status === "completed" || state.status === "failed") {
-        logger.info(
-          { deliveryId: actualDeliveryId, daemonId, currentStatus: state.status },
-          "Late result received for already-finalized execution (FM-6) — discarding",
-        );
-        return;
-      }
-
-      if (state.daemonId !== null && state.daemonId !== daemonId) {
-        logger.info(
-          { deliveryId: actualDeliveryId, daemonId, assignedDaemonId: state.daemonId },
-          "Result from non-assigned daemon (FM-6) — discarding",
-        );
-        return;
-      }
-    }
-
-    // Finalize execution
-    if (msg.payload.success) {
-      const result: { costUsd?: number; durationMs?: number; numTurns?: number } = {};
-      if (msg.payload.costUsd !== undefined) result.costUsd = msg.payload.costUsd;
-      if (msg.payload.durationMs !== undefined) result.durationMs = msg.payload.durationMs;
-      if (msg.payload.numTurns !== undefined) result.numTurns = msg.payload.numTurns;
-      await markExecutionCompleted(actualDeliveryId, result);
-    } else {
-      await markExecutionFailed(
-        actualDeliveryId,
-        msg.payload.errorMessage ?? "Execution failed on daemon",
+  const state = await getExecutionState(actualDeliveryId);
+  if (state !== null) {
+    if (state.status === "completed" || state.status === "failed") {
+      logger.info(
+        { deliveryId: actualDeliveryId, daemonId, currentStatus: state.status },
+        "Late result received for already-finalized execution (FM-6) — discarding",
       );
+      return;
     }
 
-    logger.info(
-      {
-        deliveryId: actualDeliveryId,
-        daemonId,
-        success: msg.payload.success,
-        durationMs: msg.payload.durationMs,
-        costUsd: msg.payload.costUsd,
-      },
-      "Job result received and recorded",
-    );
+    if (state.daemonId !== null && state.daemonId !== daemonId) {
+      logger.info(
+        { deliveryId: actualDeliveryId, daemonId, assignedDaemonId: state.daemonId },
+        "Result from non-assigned daemon (FM-6) — discarding",
+      );
+      return;
+    }
   }
+
+  // Finalize execution
+  await finalizeExecution(actualDeliveryId, msg.payload);
+
+  // Persist learnings and process deletions from daemon execution
+  const learnings = msg.payload.learnings;
+  const deletions = msg.payload.deletions;
+
+  if (
+    (learnings !== undefined && learnings.length > 0) ||
+    (deletions !== undefined && deletions.length > 0)
+  ) {
+    await persistRepoKnowledge(actualDeliveryId, learnings, deletions);
+  }
+
+  logger.info(
+    {
+      deliveryId: actualDeliveryId,
+      daemonId,
+      success: msg.payload.success,
+      durationMs: msg.payload.durationMs,
+      costUsd: msg.payload.costUsd,
+    },
+    "Job result received and recorded",
+  );
 }
