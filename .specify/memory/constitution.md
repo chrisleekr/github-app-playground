@@ -1,4 +1,32 @@
 <!-- Sync Impact Report
+  Version change: 1.2.0 → 1.2.1
+  Modified sections:
+    - Technology Constraints > AI orchestration: added a carve-out
+      permitting non-agent single-turn inference (classification,
+      embedding, summarisation) through a dedicated client adaptor
+      under `src/ai/` using the raw Anthropic or Bedrock SDKs.
+      Multi-turn tool-using flows remain exclusively on
+      `@anthropic-ai/claude-agent-sdk`. Enforcement is triple-gated:
+      spec contract, runtime guards in the adaptor, and fail-fast
+      config validation.
+  Rationale: unblocks the dispatch-triage feature
+    (specs/20260415-000159-triage-dispatch-modes). The triage call
+    is a single-turn, no-tool classification; the prior blanket ban
+    was intended to prevent agent-loop bypasses, not pure
+    inference. The carve-out is guarded by the circuit-breaker,
+    latency, and cost requirements in FR-020, SC-003, and SC-005
+    of that spec. PATCH-level per §Amendment Procedure — existing
+    guidance is clarified, no principle removed or redefined.
+  Added sections: None
+  Removed sections: None
+  Templates requiring updates:
+    - .specify/templates/plan-template.md ✅ no changes needed
+    - .specify/templates/spec-template.md ✅ no changes needed
+    - .specify/templates/tasks-template.md ✅ no changes needed
+  Follow-up TODOs: None
+-->
+
+<!-- Sync Impact Report (historical)
   Version change: 1.1.0 → 1.2.0
   Modified sections:
     - Architecture Constraints > Single Server Model: added daemon
@@ -238,8 +266,17 @@ documentation drift from becoming systemic.
 - **HTTP framework**: `octokit` App class for webhook handling. No
   additional HTTP frameworks (Express, Fastify, Hono) MUST be added
   without a constitution amendment.
-- **AI orchestration**: `@anthropic-ai/claude-agent-sdk`. Direct LLM
-  API calls outside the agent SDK are forbidden.
+- **AI orchestration**: `@anthropic-ai/claude-agent-sdk` for all
+  multi-turn, tool-using agent flows. Non-agent single-turn
+  inference (classification, embedding, summarisation) MAY use the
+  raw Anthropic or Bedrock SDKs via a dedicated client adaptor
+  module under `src/ai/`, provided **all three** of the following
+  hold: (a) the calling feature's spec documents the circuit-breaker,
+  latency cap, and cost-budget requirements; (b) the adaptor or call
+  site enforces those guards at runtime (not merely at review time);
+  and (c) any credentials, model IDs, and budget / timeout knobs are
+  validated fail-fast at startup via the Zod config schema. Multi-turn
+  tool-using flows MUST continue to use `@anthropic-ai/claude-agent-sdk`.
 - **MCP**: `@modelcontextprotocol/sdk` for tool server
   implementations.
 - **Git hooks**: Husky + lint-staged. Lefthook or other hook managers
@@ -377,4 +414,4 @@ If a spec, plan, or task contradicts this constitution, the
 constitution takes precedence. The conflicting artifact MUST be
 amended to align.
 
-**Version**: 1.2.0 | **Ratified**: 2026-04-09 | **Last Amended**: 2026-04-13
+**Version**: 1.2.1 | **Ratified**: 2026-04-09 | **Last Amended**: 2026-04-15
