@@ -86,7 +86,21 @@ function buildFinalOpts(result: ExecutionResult): {
  * 8. Finalize tracking comment (success/error/cost)
  * 9. Cleanup temp directory
  */
-export async function runInlinePipeline(ctx: BotContext): Promise<ExecutionResult> {
+/**
+ * Optional overrides for callers (e.g. daemon mode) that want to honor
+ * orchestrator-provided execution limits instead of the pipeline defaults.
+ * - `maxTurns` overrides the Agent SDK turn budget
+ * - `allowedTools` overrides the tool allowlist from `resolveAllowedTools`
+ */
+export interface RunInlinePipelineOverrides {
+  maxTurns?: number;
+  allowedTools?: string[];
+}
+
+export async function runInlinePipeline(
+  ctx: BotContext,
+  overrides: RunInlinePipelineOverrides = {},
+): Promise<ExecutionResult> {
   let trackingCommentId: number | undefined;
 
   try {
@@ -152,8 +166,11 @@ export async function runInlinePipeline(ctx: BotContext): Promise<ExecutionResul
         },
       );
 
-      // Step 7: Resolve allowed tools
-      const allowedTools = resolveAllowedTools(enrichedCtx, enrichedCtx.daemonCapabilities);
+      // Step 7: Resolve allowed tools (or honor caller override, e.g. from
+      // orchestrator `job:payload` in daemon mode — keeps daemon execution in
+      // lockstep with the orchestrator-approved tool allowlist).
+      const allowedTools =
+        overrides.allowedTools ?? resolveAllowedTools(enrichedCtx, enrichedCtx.daemonCapabilities);
 
       // Step 8: Execute Claude Agent SDK
       const result = await executeAgent({
@@ -162,6 +179,7 @@ export async function runInlinePipeline(ctx: BotContext): Promise<ExecutionResul
         mcpServers,
         workDir,
         allowedTools,
+        ...(overrides.maxTurns !== undefined ? { maxTurns: overrides.maxTurns } : {}),
       });
 
       // Step 9: Finalize tracking comment with results.

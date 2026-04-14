@@ -123,7 +123,18 @@ const configSchema = z
     daemonDrainTimeoutMs: z.coerce.number().int().positive().default(300_000),
     jobMaxRetries: z.coerce.number().int().nonnegative().default(3),
     offerTimeoutMs: z.coerce.number().int().positive().default(5_000),
-    orchestratorUrl: z.string().optional(),
+    orchestratorUrl: z
+      .string()
+      .optional()
+      .refine((value) => {
+        if (value === undefined || value === "") return true;
+        try {
+          const url = new URL(value);
+          return url.protocol === "ws:" || url.protocol === "wss:";
+        } catch {
+          return false;
+        }
+      }, "ORCHESTRATOR_URL must be a valid ws:// or wss:// URL"),
     daemonUpdateStrategy: z.enum(["exit", "pull", "notify"]).default("exit"),
     daemonUpdateDelayMs: z.coerce.number().int().nonnegative().default(0),
     daemonEphemeral: z.boolean().default(false),

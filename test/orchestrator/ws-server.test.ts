@@ -171,7 +171,7 @@ describe("startWebSocketServer", () => {
       // so startFresh might return early with the existing server.
       // Reset it first by stopping.
       const { stopWebSocketServer } = await import("../../src/orchestrator/ws-server");
-      stopWebSocketServer();
+      await stopWebSocketServer();
 
       expect(() => startFresh()).toThrow("DAEMON_AUTH_TOKEN is required");
     } finally {
@@ -189,7 +189,7 @@ describe("startWebSocketServer", () => {
       (config as { wsPort: number }).wsPort = 0; // Use random port
 
       const { stopWebSocketServer } = await import("../../src/orchestrator/ws-server");
-      stopWebSocketServer(); // Ensure no existing server
+      await stopWebSocketServer(); // Ensure no existing server
 
       // Dynamically re-import to get a clean state
       // Note: the module is cached, but stopWebSocketServer clears `server`
@@ -204,7 +204,7 @@ describe("startWebSocketServer", () => {
       expect(srv2).toBe(srv);
 
       // Cleanup
-      stopWebSocketServer();
+      await stopWebSocketServer();
     } finally {
       (config as { daemonAuthToken: string | undefined }).daemonAuthToken = originalToken;
       (config as { wsPort: number }).wsPort = originalPort;
@@ -222,7 +222,7 @@ describe("startWebSocketServer", () => {
 
       const { stopWebSocketServer, startWebSocketServer } =
         await import("../../src/orchestrator/ws-server");
-      stopWebSocketServer();
+      await stopWebSocketServer();
       const srv = startWebSocketServer();
 
       // Test fetch handler via HTTP request to the server
@@ -247,7 +247,7 @@ describe("startWebSocketServer", () => {
       const res3 = await fetch(`http://localhost:${srv.port}/other`);
       expect(res3.status).toBe(404);
 
-      stopWebSocketServer();
+      await stopWebSocketServer();
     } finally {
       (config as { daemonAuthToken: string | undefined }).daemonAuthToken = originalToken;
       (config as { wsPort: number }).wsPort = originalPort;
@@ -265,7 +265,7 @@ describe("startWebSocketServer", () => {
 
       const { stopWebSocketServer, startWebSocketServer } =
         await import("../../src/orchestrator/ws-server");
-      stopWebSocketServer();
+      await stopWebSocketServer();
       const srv = startWebSocketServer();
 
       const res = await fetch(`http://localhost:${srv.port}/ws`, {
@@ -273,7 +273,7 @@ describe("startWebSocketServer", () => {
       });
       expect(res.status).toBe(401);
 
-      stopWebSocketServer();
+      await stopWebSocketServer();
     } finally {
       (config as { daemonAuthToken: string | undefined }).daemonAuthToken = originalToken;
       (config as { wsPort: number }).wsPort = originalPort;
@@ -284,13 +284,9 @@ describe("startWebSocketServer", () => {
 describe("stopWebSocketServer", () => {
   it("is a no-op when no server is running", async () => {
     const { stopWebSocketServer } = await import("../../src/orchestrator/ws-server");
-    // Should not throw even when called multiple times
-    expect(() => {
-      stopWebSocketServer();
-    }).not.toThrow();
-    expect(() => {
-      stopWebSocketServer();
-    }).not.toThrow();
+    // Should resolve cleanly even when called multiple times
+    await stopWebSocketServer();
+    await stopWebSocketServer();
   });
 });
 
@@ -306,7 +302,7 @@ describe("WebSocket message handler (integration via real server)", () => {
 
       const { stopWebSocketServer, startWebSocketServer } =
         await import("../../src/orchestrator/ws-server");
-      stopWebSocketServer();
+      await stopWebSocketServer();
       const srv = startWebSocketServer();
 
       // Create a WebSocket client
@@ -370,7 +366,7 @@ describe("WebSocket message handler (integration via real server)", () => {
       expect(mockHandleDaemonMessage).toHaveBeenCalled();
 
       ws.close();
-      stopWebSocketServer();
+      await stopWebSocketServer();
     } finally {
       (config as { daemonAuthToken: string | undefined }).daemonAuthToken = originalToken;
       (config as { wsPort: number }).wsPort = originalPort;
@@ -388,7 +384,7 @@ describe("WebSocket message handler (integration via real server)", () => {
 
       const { stopWebSocketServer, startWebSocketServer } =
         await import("../../src/orchestrator/ws-server");
-      stopWebSocketServer();
+      await stopWebSocketServer();
       const srv = startWebSocketServer();
 
       const ws = new WebSocket(`ws://localhost:${srv.port}/ws`, {
@@ -417,7 +413,7 @@ describe("WebSocket message handler (integration via real server)", () => {
       // Should get POLICY_VIOLATION close code (1008)
       expect(code).toBe(1008);
 
-      stopWebSocketServer();
+      await stopWebSocketServer();
     } finally {
       (config as { daemonAuthToken: string | undefined }).daemonAuthToken = originalToken;
       (config as { wsPort: number }).wsPort = originalPort;
@@ -435,7 +431,7 @@ describe("WebSocket message handler (integration via real server)", () => {
 
       const { stopWebSocketServer, startWebSocketServer } =
         await import("../../src/orchestrator/ws-server");
-      stopWebSocketServer();
+      await stopWebSocketServer();
       const srv = startWebSocketServer();
 
       const ws = new WebSocket(`ws://localhost:${srv.port}/ws`, {
@@ -466,7 +462,7 @@ describe("WebSocket message handler (integration via real server)", () => {
       expect(parsed.payload.code).toBe("INVALID_MESSAGE");
 
       ws.close();
-      stopWebSocketServer();
+      await stopWebSocketServer();
     } finally {
       (config as { daemonAuthToken: string | undefined }).daemonAuthToken = originalToken;
       (config as { wsPort: number }).wsPort = originalPort;
@@ -484,7 +480,7 @@ describe("WebSocket message handler (integration via real server)", () => {
 
       const { stopWebSocketServer, startWebSocketServer } =
         await import("../../src/orchestrator/ws-server");
-      stopWebSocketServer();
+      await stopWebSocketServer();
       const srv = startWebSocketServer();
 
       const ws = new WebSocket(`ws://localhost:${srv.port}/ws`, {
@@ -514,7 +510,7 @@ describe("WebSocket message handler (integration via real server)", () => {
       expect(parsed.id).toBe("my-corr-id");
 
       ws.close();
-      stopWebSocketServer();
+      await stopWebSocketServer();
     } finally {
       (config as { daemonAuthToken: string | undefined }).daemonAuthToken = originalToken;
       (config as { wsPort: number }).wsPort = originalPort;

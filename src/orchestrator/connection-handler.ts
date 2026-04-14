@@ -3,6 +3,33 @@ import { App } from "octokit";
 
 import { config } from "../config";
 import { logger } from "../logger";
+
+// Read orchestrator app version at module load so we can detect daemon drift
+// in handleRegister and request an update via daemon:update-required.
+const ORCHESTRATOR_APP_VERSION: string = ((): string => {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- Bun supports require for JSON; dynamic import would be async
+    const pkg = require("../../package.json") as { version: string };
+    return pkg.version;
+  } catch {
+    return "0.0.0";
+  }
+})();
+
+/** Parse a semver-ish version string into a [major, minor, patch] tuple. */
+function parseVersion(v: string): [number, number, number] {
+  const parts = v.split(".").map((p) => parseInt(p, 10));
+  return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0];
+}
+
+/** Return true if `daemon` is strictly older than `orchestrator`. */
+function isDaemonOutdated(daemon: string, orchestrator: string): boolean {
+  const [dMaj, dMin, dPatch] = parseVersion(daemon);
+  const [oMaj, oMin, oPatch] = parseVersion(orchestrator);
+  if (dMaj !== oMaj) return dMaj < oMaj;
+  if (dMin !== oMin) return dMin < oMin;
+  return dPatch < oPatch;
+}
 import type { DaemonInfo, HeartbeatState } from "../shared/daemon-types";
 import {
   createMessageEnvelope,
@@ -240,9 +267,44 @@ async function handleRegister(
   startHeartbeatLoop(ws, daemonId);
 
   logger.info(
-    { daemonId, platform: msg.payload.platform, protocolVersion: msg.payload.protocolVersion },
+    {
+      daemonId,
+      platform: msg.payload.platform,
+      protocolVersion: msg.payload.protocolVersion,
+      appVersion: msg.payload.appVersion,
+      orchestratorVersion: ORCHESTRATOR_APP_VERSION,
+    },
     "Daemon registered",
   );
+
+  // App-version drift: outdated daemons receive daemon:update-required so they
+  // can apply the configured update strategy (exit / pull / notify). Newer
+  // daemons are tolerated (e.g. mid-rollout) but logged for visibility.
+  const daemonAppVersion = msg.payload.appVersion;
+  if (daemonAppVersion !== ORCHESTRATOR_APP_VERSION) {
+    if (isDaemonOutdated(daemonAppVersion, ORCHESTRATOR_APP_VERSION)) {
+      logger.warn(
+        { daemonId, daemonAppVersion, orchestratorVersion: ORCHESTRATOR_APP_VERSION },
+        "Daemon appVersion is older than orchestrator — sending daemon:update-required",
+      );
+      ws.sendText(
+        JSON.stringify({
+          type: "daemon:update-required",
+          ...createMessageEnvelope(),
+          payload: {
+            targetVersion: ORCHESTRATOR_APP_VERSION,
+            reason: `Orchestrator is on ${ORCHESTRATOR_APP_VERSION}; daemon is on ${daemonAppVersion}`,
+            urgent: false,
+          },
+        }),
+      );
+    } else {
+      logger.info(
+        { daemonId, daemonAppVersion, orchestratorVersion: ORCHESTRATOR_APP_VERSION },
+        "Daemon appVersion is ahead of orchestrator — tolerating during rollout",
+      );
+    }
+  }
 }
 
 // Heartbeat loop (FM-2)

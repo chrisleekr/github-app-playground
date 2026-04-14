@@ -37,6 +37,14 @@ export function registerExitCleanup(): void {
       } catch {
         // Best effort on exit
       }
+      // Credential helper (${workDir}.cred.sh) is written by checkoutRepo beside
+      // the workspace and contains the installation token — remove it too so a
+      // SIGKILL / crash does not leak it for the app.ts stale-cred sweep window.
+      try {
+        rmSync(`${job.workDir}.cred.sh`, { force: true });
+      } catch {
+        // Best effort on exit
+      }
     }
   });
 }
@@ -190,13 +198,7 @@ export async function executeJob(
 
   if (!validateJobContext(context, offerId, send)) return;
 
-  const {
-    installationToken,
-    maxTurns: _maxTurns,
-    allowedTools: _allowedTools,
-    envVars,
-    memory,
-  } = payload.payload;
+  const { installationToken, maxTurns, allowedTools, envVars, memory } = payload.payload;
 
   // Abort controller for cancel/execute race prevention (C1)
   const abortController = new AbortController();
@@ -278,7 +280,9 @@ export async function executeJob(
     });
 
     try {
-      const result = await runInlinePipeline(fullCtx);
+      // Honor orchestrator-approved execution limits (maxTurns, tool allowlist)
+      // so daemon execution matches what the orchestrator authorized.
+      const result = await runInlinePipeline(fullCtx, { maxTurns, allowedTools });
       const learnings = result.daemonActions?.learnings ?? [];
       const deletions = result.daemonActions?.deletions ?? [];
 
@@ -376,6 +380,11 @@ export function handleJobCancel(cancel: JobCancelMessage, send: (msg: unknown) =
   if (job.workDir !== "") {
     try {
       rmSync(job.workDir, { recursive: true, force: true });
+    } catch {
+      // Best effort
+    }
+    try {
+      rmSync(`${job.workDir}.cred.sh`, { force: true });
     } catch {
       // Best effort
     }

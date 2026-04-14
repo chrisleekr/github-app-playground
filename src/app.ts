@@ -326,7 +326,9 @@ function shutdown(signal: string): void {
   server.close(() => {
     void (async (): Promise<void> => {
       try {
-        stopWebSocketServer();
+        // Drain the WebSocket server first so daemon disconnect cleanup
+        // (which still uses the Valkey client) finishes before we close Valkey.
+        await stopWebSocketServer();
         closeValkey();
         await closeDb();
         logger.info("Server closed, exiting");

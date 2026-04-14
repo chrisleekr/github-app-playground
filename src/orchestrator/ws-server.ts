@@ -125,12 +125,26 @@ export function startWebSocketServer(): ReturnType<typeof Bun.serve<WsConnection
 }
 
 /**
- * Stop the WebSocket server. Called during graceful shutdown.
+ * Stop the WebSocket server and wait for in-flight drain.
+ * Called during graceful shutdown — the caller must await so that daemon
+ * disconnect cleanup paths finish before downstream resources (Valkey, DB)
+ * are closed.
+ *
+ * We race `server.stop(true)` against a 2s timeout because Bun's graceful
+ * drain can stall when a client fails to ACK the close frame; letting it
+ * block indefinitely would deadlock shutdown and hang tests that rely on
+ * server re-creation between cases.
  */
-export function stopWebSocketServer(): void {
+const STOP_DRAIN_TIMEOUT_MS = 2000;
+
+export async function stopWebSocketServer(): Promise<void> {
   if (server !== null) {
-    void server.stop(true);
+    const stopping = server;
     server = null;
+    await Promise.race([
+      stopping.stop(true),
+      new Promise<void>((resolve) => setTimeout(resolve, STOP_DRAIN_TIMEOUT_MS)),
+    ]);
     logger.info("WebSocket server stopped");
   }
 }
