@@ -5,6 +5,7 @@ import {
   type Config,
   configSchema,
   parseBooleanEnv,
+  warnIfIsolatedJobWithoutKubernetesAuth,
 } from "../src/config";
 
 // Minimal required GitHub App fields shared by all test cases
@@ -627,5 +628,308 @@ describe("assertOauthRequiresAllowlist", () => {
     expect(() => {
       assertOauthRequiresAllowlist(cfg);
     }).not.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T005: new env-var defaults, cross-field rules, and K8s-auth warning.
+// ---------------------------------------------------------------------------
+
+describe("configSchema — triage-dispatch-modes new defaults (T004/T005)", () => {
+  const ANTHROPIC_BASE = {
+    ...BASE,
+    provider: "anthropic" as const,
+    anthropicApiKey: "sk-ant-test",
+  };
+
+  it("defaults triageTimeoutMs to 5000", () => {
+    const result = configSchema.safeParse(ANTHROPIC_BASE);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.triageTimeoutMs).toBe(5_000);
+    }
+  });
+
+  it("defaults maxConcurrentIsolatedJobs to 3", () => {
+    const result = configSchema.safeParse(ANTHROPIC_BASE);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.maxConcurrentIsolatedJobs).toBe(3);
+    }
+  });
+
+  it("defaults pendingIsolatedJobQueueMax to 20", () => {
+    const result = configSchema.safeParse(ANTHROPIC_BASE);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.pendingIsolatedJobQueueMax).toBe(20);
+    }
+  });
+
+  it("coerces numeric env-var strings for all new fields", () => {
+    // Env vars always arrive as strings from process.env. Coercion is
+    // security-critical — a silent NaN would map every FR-008a complexity
+    // to a bogus maxTurns.
+    const result = configSchema.safeParse({
+      ...ANTHROPIC_BASE,
+      triageTimeoutMs: "7500",
+      triageMaxTurnsTrivial: "8",
+      triageMaxTurnsModerate: "20",
+      triageMaxTurnsComplex: "40",
+      defaultMaxTurns: "25",
+      maxConcurrentIsolatedJobs: "5",
+      pendingIsolatedJobQueueMax: "30",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.triageTimeoutMs).toBe(7_500);
+      expect(result.data.triageMaxTurnsTrivial).toBe(8);
+      expect(result.data.triageMaxTurnsModerate).toBe(20);
+      expect(result.data.triageMaxTurnsComplex).toBe(40);
+      expect(result.data.defaultMaxTurns).toBe(25);
+      expect(result.data.maxConcurrentIsolatedJobs).toBe(5);
+      expect(result.data.pendingIsolatedJobQueueMax).toBe(30);
+    }
+  });
+
+  it("rejects non-positive values for every numeric FR-008a / FR-018 knob", () => {
+    const zeroRejects: readonly string[] = [
+      "triageTimeoutMs",
+      "triageMaxTurnsTrivial",
+      "triageMaxTurnsModerate",
+      "triageMaxTurnsComplex",
+      "defaultMaxTurns",
+      "maxConcurrentIsolatedJobs",
+      "pendingIsolatedJobQueueMax",
+    ];
+    for (const key of zeroRejects) {
+      const input = { ...ANTHROPIC_BASE, [key]: 0 };
+      const result = configSchema.safeParse(input);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        const paths = result.error.issues.map((i) => i.path.join("."));
+        expect(paths).toContain(key);
+      }
+    }
+  });
+});
+
+describe("configSchema — auto mode requires non-inline default (FR-003)", () => {
+  const AUTO_BASE = {
+    ...BASE,
+    provider: "anthropic" as const,
+    anthropicApiKey: "sk-ant-test",
+    agentJobMode: "auto" as const,
+    databaseUrl: "postgres://localhost/test",
+    valkeyUrl: "redis://localhost:6379",
+    daemonAuthToken: "test-token",
+    internalRunnerUrl: "http://runner.svc.cluster.local:8080",
+    internalRunnerToken: "runner-token",
+  };
+
+  it("rejects agentJobMode='auto' with defaultDispatchTarget='inline'", () => {
+    const result = configSchema.safeParse({ ...AUTO_BASE, defaultDispatchTarget: "inline" });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const paths = result.error.issues.map((i) => i.path.join("."));
+      expect(paths).toContain("defaultDispatchTarget");
+    }
+  });
+
+  it("accepts agentJobMode='auto' with any non-inline default", () => {
+    for (const target of ["daemon", "shared-runner", "isolated-job"] as const) {
+      const result = configSchema.safeParse({ ...AUTO_BASE, defaultDispatchTarget: target });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.defaultDispatchTarget).toBe(target);
+      }
+    }
+  });
+
+  it("allows defaultDispatchTarget='inline' in non-auto modes (not meaningful but not invalid)", () => {
+    // In inline mode the default is unused; no need to restrict it.
+    const result = configSchema.safeParse({
+      ...BASE,
+      provider: "anthropic",
+      anthropicApiKey: "sk-ant-test",
+      agentJobMode: "inline",
+      defaultDispatchTarget: "inline",
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("configSchema — shared-runner auth (FR-006, contracts/shared-runner-internal)", () => {
+  const SHARED_RUNNER_BASE = {
+    ...BASE,
+    provider: "anthropic" as const,
+    anthropicApiKey: "sk-ant-test",
+    agentJobMode: "shared-runner" as const,
+    databaseUrl: "postgres://localhost/test",
+    valkeyUrl: "redis://localhost:6379",
+    daemonAuthToken: "test-token",
+  };
+
+  it("rejects agentJobMode='shared-runner' without INTERNAL_RUNNER_URL", () => {
+    const result = configSchema.safeParse({
+      ...SHARED_RUNNER_BASE,
+      internalRunnerToken: "token",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const paths = result.error.issues.map((i) => i.path.join("."));
+      expect(paths).toContain("internalRunnerUrl");
+    }
+  });
+
+  it("rejects agentJobMode='shared-runner' without INTERNAL_RUNNER_TOKEN", () => {
+    const result = configSchema.safeParse({
+      ...SHARED_RUNNER_BASE,
+      internalRunnerUrl: "http://runner:8080",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const paths = result.error.issues.map((i) => i.path.join("."));
+      expect(paths).toContain("internalRunnerToken");
+    }
+  });
+
+  it("rejects agentJobMode='auto' without shared-runner creds (auto can route there)", () => {
+    const result = configSchema.safeParse({
+      ...SHARED_RUNNER_BASE,
+      agentJobMode: "auto",
+      defaultDispatchTarget: "shared-runner",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const paths = result.error.issues.map((i) => i.path.join("."));
+      expect(paths).toContain("internalRunnerUrl");
+      expect(paths).toContain("internalRunnerToken");
+    }
+  });
+
+  it("does not require shared-runner creds in daemon or isolated-job modes", () => {
+    for (const mode of ["daemon", "isolated-job"] as const) {
+      const result = configSchema.safeParse({
+        ...SHARED_RUNNER_BASE,
+        agentJobMode: mode,
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.agentJobMode).toBe(mode);
+      }
+    }
+  });
+});
+
+describe("warnIfIsolatedJobWithoutKubernetesAuth (FR-018)", () => {
+  const parse = (input: Record<string, unknown>): Config => {
+    const result = configSchema.safeParse(input);
+    if (!result.success) throw new Error("parse failed");
+    return result.data;
+  };
+
+  const ISOLATED_BASE = {
+    ...BASE,
+    provider: "anthropic" as const,
+    anthropicApiKey: "sk-ant-test",
+    agentJobMode: "isolated-job" as const,
+    databaseUrl: "postgres://localhost/test",
+    valkeyUrl: "redis://localhost:6379",
+    daemonAuthToken: "test-token",
+  };
+
+  /** Run the warning function with a locally scoped env, capturing console.warn. */
+  function runWithEnv(cfg: Config, envPatch: Record<string, string | undefined>): string[] {
+    const original: Record<string, string | undefined> = {};
+    for (const [key, value] of Object.entries(envPatch)) {
+      original[key] = process.env[key];
+      if (value === undefined) {
+        Reflect.deleteProperty(process.env, key);
+      } else {
+        process.env[key] = value;
+      }
+    }
+
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args.map(String).join(" "));
+    };
+    try {
+      warnIfIsolatedJobWithoutKubernetesAuth(cfg);
+    } finally {
+      console.warn = originalWarn;
+      for (const [key, value] of Object.entries(original)) {
+        if (value === undefined) {
+          Reflect.deleteProperty(process.env, key);
+        } else {
+          process.env[key] = value;
+        }
+      }
+    }
+    return warnings;
+  }
+
+  it("warns when agentJobMode='isolated-job' and neither KUBERNETES_SERVICE_HOST nor KUBECONFIG is set", () => {
+    const cfg = parse(ISOLATED_BASE);
+    const warnings = runWithEnv(cfg, { KUBERNETES_SERVICE_HOST: undefined, KUBECONFIG: undefined });
+    expect(warnings.length).toBe(1);
+    expect(warnings[0]).toMatch(/AGENT_JOB_MODE=isolated-job/);
+    expect(warnings[0]).toMatch(/infra-absent/);
+  });
+
+  it("warns when agentJobMode='auto' and K8s auth is absent (auto can route to isolated-job)", () => {
+    const cfg = parse({
+      ...ISOLATED_BASE,
+      agentJobMode: "auto",
+      internalRunnerUrl: "http://runner:8080",
+      internalRunnerToken: "runner-token",
+    });
+    const warnings = runWithEnv(cfg, { KUBERNETES_SERVICE_HOST: undefined, KUBECONFIG: undefined });
+    expect(warnings.length).toBe(1);
+    expect(warnings[0]).toMatch(/AGENT_JOB_MODE=auto/);
+  });
+
+  it("does not warn when KUBERNETES_SERVICE_HOST is set (in-cluster)", () => {
+    const cfg = parse(ISOLATED_BASE);
+    const warnings = runWithEnv(cfg, {
+      KUBERNETES_SERVICE_HOST: "10.0.0.1",
+      KUBECONFIG: undefined,
+    });
+    expect(warnings.length).toBe(0);
+  });
+
+  it("does not warn when KUBECONFIG is set (out-of-cluster)", () => {
+    const cfg = parse(ISOLATED_BASE);
+    const warnings = runWithEnv(cfg, {
+      KUBERNETES_SERVICE_HOST: undefined,
+      KUBECONFIG: "/home/user/.kube/config",
+    });
+    expect(warnings.length).toBe(0);
+  });
+
+  it("does not warn in inline / daemon / shared-runner modes (isolated-job target unused)", () => {
+    for (const mode of ["inline", "daemon", "shared-runner"] as const) {
+      const cfg = parse(
+        mode === "inline"
+          ? { ...BASE, provider: "anthropic", anthropicApiKey: "sk-ant-test" }
+          : {
+              ...ISOLATED_BASE,
+              agentJobMode: mode,
+              ...(mode === "shared-runner"
+                ? {
+                    internalRunnerUrl: "http://runner:8080",
+                    internalRunnerToken: "runner-token",
+                  }
+                : {}),
+            },
+      );
+      const warnings = runWithEnv(cfg, {
+        KUBERNETES_SERVICE_HOST: undefined,
+        KUBECONFIG: undefined,
+      });
+      expect(warnings.length).toBe(0);
+    }
   });
 });
