@@ -25,48 +25,56 @@ try {
   sql = null;
 }
 
+function requireDb(): SQL {
+  if (sql === null) throw new Error("Database not available — test should have been skipped");
+  return sql;
+}
+
 describe.skipIf(sql === null)("runMigrations", () => {
   beforeAll(async () => {
-    await sql!.unsafe(`
+    await requireDb().unsafe(`
       DROP TABLE IF EXISTS _migrations CASCADE;
+      DROP TABLE IF EXISTS repo_memory CASCADE;
       DROP TABLE IF EXISTS executions CASCADE;
       DROP TABLE IF EXISTS daemons CASCADE;
     `);
   });
 
   afterAll(async () => {
-    await sql!.unsafe(`
+    await requireDb().unsafe(`
       DROP TABLE IF EXISTS _migrations CASCADE;
+      DROP TABLE IF EXISTS repo_memory CASCADE;
       DROP TABLE IF EXISTS executions CASCADE;
       DROP TABLE IF EXISTS daemons CASCADE;
     `);
-    await sql!.close();
+    await requireDb().close();
   });
 
   it("applies migrations cleanly on a fresh database", async () => {
     // Dynamic import so the module is not loaded when suite is skipped
     const { runMigrations } = await import("../../src/db/migrate");
-    await runMigrations(sql!);
+    await runMigrations(requireDb());
 
-    const versions: { version: string }[] = await sql!`
+    const versions: { version: string }[] = await requireDb()`
       SELECT version FROM _migrations ORDER BY version
     `;
-    expect(versions.length).toBe(1);
-    expect(versions[0]!.version).toBe("001_initial");
+    expect(versions.length).toBe(2);
+    expect(versions[0]?.version).toBe("001_initial");
+    expect(versions[1]?.version).toBe("002_repo_knowledge");
   });
 
   it("is idempotent — second run is a no-op", async () => {
     const { runMigrations } = await import("../../src/db/migrate");
-    await runMigrations(sql!);
+    await runMigrations(requireDb());
 
-    const versions: { version: string }[] = await sql!`
+    const versions: { version: string }[] = await requireDb()`
       SELECT version FROM _migrations ORDER BY version
     `;
-    expect(versions.length).toBe(1);
+    expect(versions.length).toBe(2);
   });
 
   it("creates the executions table with expected columns", async () => {
-    const columns: { column_name: string }[] = await sql!`
+    const columns: { column_name: string }[] = await requireDb()`
       SELECT column_name
       FROM information_schema.columns
       WHERE table_name = 'executions'
@@ -85,7 +93,7 @@ describe.skipIf(sql === null)("runMigrations", () => {
   });
 
   it("creates the daemons table with expected columns", async () => {
-    const columns: { column_name: string }[] = await sql!`
+    const columns: { column_name: string }[] = await requireDb()`
       SELECT column_name
       FROM information_schema.columns
       WHERE table_name = 'daemons'

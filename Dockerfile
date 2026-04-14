@@ -93,6 +93,9 @@ COPY --from=deps --chown=bun:bun /app/node_modules ./node_modules
 
 USER bun
 EXPOSE 3000/tcp
+EXPOSE 3002/tcp
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:3000/healthz || exit 1
-ENTRYPOINT ["bun", "run", "dist/app.js"]
+# Default: webhook server + orchestrator. For daemon mode, override:
+#   docker run ... chrisleekr/github-app-playground bun run dist/daemon/main.js
+CMD ["bun", "run", "dist/app.js"]

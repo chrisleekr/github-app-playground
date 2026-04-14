@@ -280,6 +280,7 @@ describe("configSchema — daemon orchestration defaults", () => {
               agentJobMode: mode,
               databaseUrl: "postgres://localhost/test",
               valkeyUrl: "redis://localhost:6379",
+              daemonAuthToken: "test-token",
             };
       const result = configSchema.safeParse(input);
       expect(result.success).toBe(true);
@@ -398,6 +399,7 @@ describe("configSchema — non-inline mode requires data layer", () => {
       agentJobMode: "shared-runner",
       databaseUrl: "postgres://localhost/test",
       valkeyUrl: "redis://localhost:6379",
+      daemonAuthToken: "test-token",
     });
     expect(result.success).toBe(true);
     if (result.success) {

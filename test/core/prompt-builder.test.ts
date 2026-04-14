@@ -8,7 +8,12 @@
 
 import { describe, expect, it } from "bun:test";
 
-import { buildPrompt, resolveAllowedTools } from "../../src/core/prompt-builder";
+import {
+  buildEnvironmentHeader,
+  buildPrompt,
+  resolveAllowedTools,
+} from "../../src/core/prompt-builder";
+import type { DaemonCapabilities } from "../../src/shared/daemon-types";
 import type { BotContext, FetchedData } from "../../src/types";
 
 // ─── Factories ──────────────────────────────────────────────────────────────
@@ -257,5 +262,250 @@ describe("resolveAllowedTools", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (config as any).context7ApiKey = original;
     }
+  });
+
+  it("includes daemon capability CLI tools when daemonCapabilities is provided", () => {
+    const caps: DaemonCapabilities = {
+      platform: "linux",
+      shells: [{ name: "bash", path: "/bin/bash", version: "5.2", functional: true }],
+      packageManagers: [
+        { name: "npm", path: "/usr/bin/npm", version: "10.0", functional: true },
+        { name: "yarn", path: "/usr/bin/yarn", version: "1.22", functional: false },
+      ],
+      cliTools: [
+        { name: "bun", path: "/usr/bin/bun", version: "1.3.8", functional: true },
+        { name: "deno", path: "/usr/bin/deno", version: "2.0", functional: false },
+      ],
+      containerRuntime: {
+        name: "docker",
+        path: "/usr/bin/docker",
+        version: "27.0",
+        daemonRunning: true,
+        composeAvailable: true,
+      },
+      authContexts: ["github"],
+      resources: { cpuCount: 4, memoryTotalMb: 8192, memoryFreeMb: 4096, diskFreeMb: 50000 },
+      network: { hostname: "worker-1" },
+      cachedRepos: [],
+      ephemeral: false,
+      maxUptimeMs: null,
+    };
+
+    const tools = resolveAllowedTools(makeCtx(), caps);
+
+    // Functional CLI tools and package managers get Bash(name:*) entries
+    expect(tools).toContain("Bash(bun:*)");
+    expect(tools).toContain("Bash(npm:*)");
+    // Non-functional tools are excluded
+    expect(tools).not.toContain("Bash(deno:*)");
+    expect(tools).not.toContain("Bash(yarn:*)");
+    // Container runtime with daemonRunning=true gets included
+    expect(tools).toContain("Bash(docker:*)");
+    // Daemon capabilities MCP tool
+    expect(tools).toContain("mcp__daemon_capabilities__query_daemon_capabilities");
+    // Repo memory MCP tools
+    expect(tools).toContain("mcp__repo_memory__save_repo_memory");
+    expect(tools).toContain("mcp__repo_memory__delete_repo_memory");
+    expect(tools).toContain("mcp__repo_memory__get_repo_memory");
+  });
+
+  it("excludes container runtime when daemonRunning is false", () => {
+    const caps: DaemonCapabilities = {
+      platform: "darwin",
+      shells: [],
+      packageManagers: [],
+      cliTools: [],
+      containerRuntime: {
+        name: "docker",
+        path: "/usr/bin/docker",
+        version: "27.0",
+        daemonRunning: false,
+        composeAvailable: false,
+      },
+      authContexts: [],
+      resources: { cpuCount: 2, memoryTotalMb: 4096, memoryFreeMb: 2048, diskFreeMb: 20000 },
+      network: { hostname: "worker-2" },
+      cachedRepos: [],
+      ephemeral: false,
+      maxUptimeMs: null,
+    };
+
+    const tools = resolveAllowedTools(makeCtx(), caps);
+
+    expect(tools).not.toContain("Bash(docker:*)");
+    // Daemon MCP tools are still included when daemon capabilities are present
+    expect(tools).toContain("mcp__daemon_capabilities__query_daemon_capabilities");
+  });
+
+  it("excludes daemon tools when daemonCapabilities is undefined", () => {
+    const tools = resolveAllowedTools(makeCtx(), undefined);
+
+    expect(tools).not.toContain("mcp__daemon_capabilities__query_daemon_capabilities");
+    expect(tools).not.toContain("mcp__repo_memory__save_repo_memory");
+  });
+});
+
+// ─── buildPrompt — repo_memory section ───────────────────────────────────────
+
+describe("buildPrompt — repo_memory", () => {
+  it("includes repo_memory section when repoMemory is non-empty", () => {
+    const ctx = makeCtx({
+      repoMemory: [
+        { id: "m1", category: "architecture", content: "Uses Bun runtime", pinned: false },
+        { id: "m2", category: "convention", content: "No default exports", pinned: true },
+      ],
+    });
+    const result = buildPrompt(ctx, makeIssueData(), 1);
+
+    expect(result).toContain("<repo_memory>");
+    expect(result).toContain("[id:m1] [architecture] Uses Bun runtime");
+    expect(result).toContain("[id:m2] [convention] [pinned] No default exports");
+    expect(result).toContain("</repo_memory>");
+    expect(result).toContain("delete_repo_memory");
+  });
+
+  it("omits repo_memory section when repoMemory is undefined", () => {
+    const ctx = makeCtx({ repoMemory: undefined });
+    const result = buildPrompt(ctx, makeIssueData(), 1);
+
+    // The string "<repo_memory>" appears in instructions text ("Check <repo_memory>..."),
+    // so we check for the opening tag followed by the section content marker instead.
+    expect(result).not.toContain("The following learnings have been accumulated");
+  });
+
+  it("omits repo_memory section when repoMemory is an empty array", () => {
+    const ctx = makeCtx({ repoMemory: [] });
+    const result = buildPrompt(ctx, makeIssueData(), 1);
+
+    expect(result).not.toContain("The following learnings have been accumulated");
+  });
+});
+
+// ─── buildPrompt — trackingCommentId conditional ─────────────────────────────
+
+describe("buildPrompt — trackingCommentId", () => {
+  it("omits claude_comment_id and comment_tool_info when trackingCommentId is undefined", () => {
+    const ctx = makeCtx();
+    const result = buildPrompt(ctx, makeIssueData(), undefined);
+
+    expect(result).not.toContain("<claude_comment_id>");
+    expect(result).not.toContain("<comment_tool_info>");
+    expect(result).not.toContain("mcp__github_comment__update_claude_comment tool");
+  });
+
+  it("includes claude_comment_id and comment_tool_info when trackingCommentId is provided", () => {
+    const ctx = makeCtx();
+    const result = buildPrompt(ctx, makeIssueData(), 123);
+
+    expect(result).toContain("<claude_comment_id>123</claude_comment_id>");
+    expect(result).toContain("<comment_tool_info>");
+    expect(result).toContain("mcp__github_comment__update_claude_comment");
+  });
+});
+
+// ─── buildEnvironmentHeader ──────────────────────────────────────────────────
+
+describe("buildEnvironmentHeader", () => {
+  it("returns empty string when daemonCapabilities is undefined", () => {
+    const result = buildEnvironmentHeader(undefined);
+    expect(result).toBe("");
+  });
+
+  it("builds a formatted environment header with all capability sections", () => {
+    const caps: DaemonCapabilities = {
+      platform: "linux",
+      shells: [
+        { name: "bash", path: "/bin/bash", version: "5.2", functional: true },
+        { name: "zsh", path: "/usr/bin/zsh", version: "5.9", functional: false },
+      ],
+      packageManagers: [{ name: "npm", path: "/usr/bin/npm", version: "10.0", functional: true }],
+      cliTools: [
+        { name: "bun", path: "/usr/bin/bun", version: "1.3.8", functional: true },
+        { name: "deno", path: "/usr/bin/deno", version: "2.0", functional: true },
+      ],
+      containerRuntime: {
+        name: "docker",
+        path: "/usr/bin/docker",
+        version: "27.0",
+        daemonRunning: true,
+        composeAvailable: true,
+      },
+      authContexts: ["github"],
+      resources: { cpuCount: 8, memoryTotalMb: 16384, memoryFreeMb: 8000, diskFreeMb: 100000 },
+      network: { hostname: "worker-1" },
+      cachedRepos: [],
+      ephemeral: false,
+      maxUptimeMs: null,
+    };
+
+    const result = buildEnvironmentHeader(caps);
+
+    expect(result).toContain("<daemon_environment>");
+    expect(result).toContain("</daemon_environment>");
+    expect(result).toContain("Platform: linux");
+    // Only functional shells
+    expect(result).toContain("Shells: bash");
+    expect(result).not.toContain("Shells: bash, zsh");
+    // Package managers with version
+    expect(result).toContain("Package managers: npm@10.0");
+    // CLI tools with version
+    expect(result).toContain("bun@1.3.8");
+    expect(result).toContain("deno@2.0");
+    // Container runtime info
+    expect(result).toContain("docker@27.0 (daemon: running, compose available)");
+    // Resources
+    expect(result).toContain("8 CPUs");
+    expect(result).toContain("8000MB free memory");
+    expect(result).toContain("100000MB free disk");
+  });
+
+  it("shows 'none' for empty capability sections", () => {
+    const caps: DaemonCapabilities = {
+      platform: "darwin",
+      shells: [],
+      packageManagers: [],
+      cliTools: [],
+      containerRuntime: null,
+      authContexts: [],
+      resources: { cpuCount: 2, memoryTotalMb: 4096, memoryFreeMb: 2048, diskFreeMb: 20000 },
+      network: { hostname: "worker-2" },
+      cachedRepos: [],
+      ephemeral: false,
+      maxUptimeMs: null,
+    };
+
+    const result = buildEnvironmentHeader(caps);
+
+    expect(result).toContain("Shells: none");
+    expect(result).toContain("Package managers: none");
+    expect(result).toContain("CLI tools: none");
+    expect(result).toContain("Container runtime: none");
+  });
+
+  it("shows container runtime with stopped daemon", () => {
+    const caps: DaemonCapabilities = {
+      platform: "linux",
+      shells: [],
+      packageManagers: [],
+      cliTools: [],
+      containerRuntime: {
+        name: "podman",
+        path: "/usr/bin/podman",
+        version: "5.0",
+        daemonRunning: false,
+        composeAvailable: false,
+      },
+      authContexts: [],
+      resources: { cpuCount: 1, memoryTotalMb: 2048, memoryFreeMb: 1024, diskFreeMb: 10000 },
+      network: { hostname: "worker-3" },
+      cachedRepos: [],
+      ephemeral: false,
+      maxUptimeMs: null,
+    };
+
+    const result = buildEnvironmentHeader(caps);
+
+    expect(result).toContain("podman@5.0 (daemon: stopped)");
+    expect(result).not.toContain("compose available");
   });
 });

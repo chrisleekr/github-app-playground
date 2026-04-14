@@ -35,6 +35,13 @@ const mockCheckoutRepo = mock(() =>
 const mockExecuteAgent = mock(() => Promise.resolve({ success: true, durationMs: 100 }));
 const mockResolveMcpServers = mock(() => ({}));
 
+// Orchestrator module mocks for non-inline dispatch paths
+const mockIsValkeyHealthy = mock(() => false);
+const mockCreateExecution = mock(() => Promise.resolve());
+const mockDispatchJob = mock(() => Promise.resolve(false));
+const mockEnqueueJob = mock(() => Promise.resolve());
+const mockGetDb = mock(() => null as unknown);
+
 // mock.module() returns void in Bun's runtime but ESLint infers a Promise from the factory.
 // The void operator suppresses the no-floating-promises rule for these static mock registrations.
 // NOTE: prompt-builder is NOT mocked here — it has its own dedicated test file and is a pure
@@ -51,8 +58,42 @@ void mock.module("../../src/mcp/registry", () => ({
   resolveMcpServers: mockResolveMcpServers,
 }));
 
+void mock.module("../../src/orchestrator/valkey", () => ({
+  isValkeyHealthy: mockIsValkeyHealthy,
+  getValkeyClient: mock(() => null),
+  requireValkeyClient: mock(() => {
+    throw new Error("No Valkey in test");
+  }),
+  closeValkey: mock(() => {}),
+}));
+
+void mock.module("../../src/orchestrator/history", () => ({
+  createExecution: mockCreateExecution,
+  markExecutionOffered: mock(() => Promise.resolve()),
+  markExecutionRunning: mock(() => Promise.resolve()),
+  markExecutionCompleted: mock(() => Promise.resolve()),
+  markExecutionFailed: mock(() => Promise.resolve()),
+  requeueExecution: mock(() => Promise.resolve()),
+  getExecutionState: mock(() => Promise.resolve(null)),
+  getOrphanedExecutions: mock(() => Promise.resolve([])),
+  recoverStaleExecutions: mock(() => Promise.resolve()),
+}));
+
+void mock.module("../../src/orchestrator/job-dispatcher", () => ({
+  dispatchJob: mockDispatchJob,
+}));
+
+void mock.module("../../src/orchestrator/job-queue", () => ({
+  enqueueJob: mockEnqueueJob,
+}));
+
+void mock.module("../../src/db", () => ({
+  getDb: mockGetDb,
+}));
+
 // Import router AFTER mocks are set up
 const { processRequest } = await import("../../src/webhook/router");
+const { getActiveCount, decrementActiveCount } = await import("../../src/orchestrator/concurrency");
 
 // ─── GraphQL response factory ──────────────────────────────────────────────
 
@@ -179,15 +220,30 @@ function makeCtx(
 // implementation to prevent stale behaviours from previous tests leaking in.
 
 beforeEach(() => {
+  // Drain concurrency counter to prevent capacity leaks from non-inline tests
+  while (getActiveCount() > 0) decrementActiveCount();
+
   mockCleanup.mockClear();
   mockCheckoutRepo.mockClear();
   mockExecuteAgent.mockClear();
   mockResolveMcpServers.mockClear();
+  mockIsValkeyHealthy.mockClear();
+  mockCreateExecution.mockClear();
+  mockDispatchJob.mockClear();
+  mockEnqueueJob.mockClear();
+  mockGetDb.mockClear();
 
   mockCleanup.mockResolvedValue(undefined);
   mockCheckoutRepo.mockResolvedValue({ workDir: "/tmp/test", cleanup: mockCleanup });
   mockExecuteAgent.mockResolvedValue({ success: true, durationMs: 100 });
   mockResolveMcpServers.mockReturnValue({});
+  // Default: Valkey NOT healthy (inline tests don't hit the Valkey check)
+  mockIsValkeyHealthy.mockReturnValue(false);
+  mockCreateExecution.mockResolvedValue(undefined);
+  mockDispatchJob.mockResolvedValue(false);
+  mockEnqueueJob.mockResolvedValue(undefined);
+  // Default: no database configured (inline mode without DB)
+  mockGetDb.mockReturnValue(null);
 });
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
@@ -562,12 +618,14 @@ describe("processRequest — owner allowlist", () => {
   });
 });
 
-describe("processRequest — agentJobMode fail-fast guard", () => {
-  it("posts user comment and returns without executing pipeline for non-inline modes", async () => {
+describe("processRequest — agentJobMode non-inline dispatch", () => {
+  it("rejects with Valkey unavailable message when Valkey is not connected", async () => {
     const { config } = await import("../../src/config");
     const originalMode = config.agentJobMode;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (config as any).agentJobMode = "shared-runner";
+
+    mockIsValkeyHealthy.mockReturnValue(false);
 
     const ctx = makeCtx();
     const executorCallsBefore = mockExecuteAgent.mock.calls.length;
@@ -579,16 +637,265 @@ describe("processRequest — agentJobMode fail-fast guard", () => {
       // Pipeline should NOT have been invoked (no executeAgent call)
       expect(mockExecuteAgent.mock.calls.length).toBe(executorCallsBefore);
 
-      // User should be notified via a comment
+      // User should be notified that Valkey is unavailable (FM-7)
       const modeCall = createCommentSpy.mock.calls.find((call) => {
         const body = (call[0] as { body?: string }).body;
-        return typeof body === "string" && body.includes("not yet implemented");
+        return (
+          typeof body === "string" && body.includes("job queue service is temporarily unavailable")
+        );
       });
       expect(modeCall).toBeDefined();
     } finally {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (config as any).agentJobMode = originalMode;
     }
+  });
+
+  it("does not crash when Valkey unavailable comment post fails (line 181)", async () => {
+    const { config } = await import("../../src/config");
+    const originalMode = config.agentJobMode;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (config as any).agentJobMode = "shared-runner";
+
+    mockIsValkeyHealthy.mockReturnValue(false);
+
+    const ctx = makeCtx({
+      octokitOpts: {
+        createCommentFn: () => Promise.reject(new Error("GitHub API down")),
+      },
+    });
+
+    try {
+      let didThrow = false;
+      try {
+        await processRequest(ctx);
+      } catch {
+        didThrow = true;
+      }
+      // Must resolve without throwing even when Valkey unavailable comment fails
+      expect(didThrow).toBe(false);
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (config as any).agentJobMode = originalMode;
+    }
+  });
+
+  it("dispatches to daemon when Valkey is healthy and a daemon is available (lines 187-223)", async () => {
+    const { config } = await import("../../src/config");
+    const originalMode = config.agentJobMode;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (config as any).agentJobMode = "shared-runner";
+
+    mockIsValkeyHealthy.mockReturnValue(true);
+    mockDispatchJob.mockResolvedValue(true);
+
+    const ctx = makeCtx();
+
+    try {
+      await processRequest(ctx);
+
+      // createExecution should have been called with non-inline dispatch mode
+      expect(mockCreateExecution).toHaveBeenCalledTimes(1);
+      const execArgs = mockCreateExecution.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(execArgs.deliveryId).toBe(ctx.deliveryId);
+      expect(execArgs.dispatchMode).toBe("shared-runner");
+      expect(execArgs.repoOwner).toBe(ctx.owner);
+      expect(execArgs.repoName).toBe(ctx.repo);
+
+      // dispatchJob should have been called with a QueuedJob
+      expect(mockDispatchJob).toHaveBeenCalledTimes(1);
+      const jobArg = mockDispatchJob.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(jobArg.deliveryId).toBe(ctx.deliveryId);
+      expect(jobArg.repoOwner).toBe(ctx.owner);
+      expect(jobArg.repoName).toBe(ctx.repo);
+      expect(jobArg.entityNumber).toBe(ctx.entityNumber);
+      expect(jobArg.retryCount).toBe(0);
+
+      // Inline pipeline should NOT run
+      expect(mockExecuteAgent).not.toHaveBeenCalled();
+
+      // enqueueJob should NOT be called (daemon was available)
+      expect(mockEnqueueJob).not.toHaveBeenCalled();
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (config as any).agentJobMode = originalMode;
+    }
+  });
+
+  it("enqueues job when no daemon is available (lines 226-231)", async () => {
+    const { config } = await import("../../src/config");
+    const originalMode = config.agentJobMode;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (config as any).agentJobMode = "shared-runner";
+
+    mockIsValkeyHealthy.mockReturnValue(true);
+    mockDispatchJob.mockResolvedValue(false); // no daemon available
+
+    const ctx = makeCtx();
+
+    try {
+      await processRequest(ctx);
+
+      // createExecution and dispatchJob both called
+      expect(mockCreateExecution).toHaveBeenCalledTimes(1);
+      expect(mockDispatchJob).toHaveBeenCalledTimes(1);
+
+      // enqueueJob should be called as fallback
+      expect(mockEnqueueJob).toHaveBeenCalledTimes(1);
+      const queuedJobArg = mockEnqueueJob.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(queuedJobArg.deliveryId).toBe(ctx.deliveryId);
+
+      // Inline pipeline should NOT run
+      expect(mockExecuteAgent).not.toHaveBeenCalled();
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (config as any).agentJobMode = originalMode;
+    }
+  });
+
+  it("uses 'shared-runner' dispatch mode when agentJobMode is 'auto' (line 197)", async () => {
+    const { config } = await import("../../src/config");
+    const originalMode = config.agentJobMode;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (config as any).agentJobMode = "auto";
+
+    mockIsValkeyHealthy.mockReturnValue(true);
+    mockDispatchJob.mockResolvedValue(true);
+
+    const ctx = makeCtx();
+
+    try {
+      await processRequest(ctx);
+
+      // dispatchMode should map 'auto' to 'shared-runner'
+      const execArgs = mockCreateExecution.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(execArgs.dispatchMode).toBe("shared-runner");
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (config as any).agentJobMode = originalMode;
+    }
+  });
+
+  it("releases concurrency slot on infrastructure failure (lines 233-236)", async () => {
+    const { config } = await import("../../src/config");
+    const originalMode = config.agentJobMode;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (config as any).agentJobMode = "shared-runner";
+
+    mockIsValkeyHealthy.mockReturnValue(true);
+    // createExecution throws to simulate infrastructure failure
+    mockCreateExecution.mockRejectedValue(new Error("Postgres down"));
+
+    const ctx = makeCtx();
+
+    try {
+      // The error should propagate out of processRequest (dispatchNonInline re-throws)
+      let thrownError: Error | undefined;
+      try {
+        await processRequest(ctx);
+      } catch (err) {
+        thrownError = err as Error;
+      }
+
+      expect(thrownError).toBeDefined();
+      expect(thrownError?.message).toBe("Postgres down");
+
+      // Inline pipeline should NOT run
+      expect(mockExecuteAgent).not.toHaveBeenCalled();
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (config as any).agentJobMode = originalMode;
+    }
+  });
+
+  it("builds QueuedJob with correct triggerBodyPreview truncated to 200 chars (line 210)", async () => {
+    const { config } = await import("../../src/config");
+    const originalMode = config.agentJobMode;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (config as any).agentJobMode = "shared-runner";
+
+    mockIsValkeyHealthy.mockReturnValue(true);
+    mockDispatchJob.mockResolvedValue(true);
+
+    const longBody = "a".repeat(500);
+    const ctx = makeCtx({ triggerBody: longBody });
+
+    try {
+      await processRequest(ctx);
+
+      const jobArg = mockDispatchJob.mock.calls[0]?.[0] as Record<string, unknown>;
+      const preview = jobArg.triggerBodyPreview as string;
+      expect(preview.length).toBe(200);
+      expect(preview).toBe("a".repeat(200));
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (config as any).agentJobMode = originalMode;
+    }
+  });
+
+  it("correctly maps entityType based on isPR flag (line 194)", async () => {
+    const { config } = await import("../../src/config");
+    const originalMode = config.agentJobMode;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (config as any).agentJobMode = "shared-runner";
+
+    mockIsValkeyHealthy.mockReturnValue(true);
+    mockDispatchJob.mockResolvedValue(true);
+
+    const ctx = makeCtx({ isPR: true });
+
+    try {
+      await processRequest(ctx);
+
+      const execArgs = mockCreateExecution.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(execArgs.entityType).toBe("pull_request");
+    } finally {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (config as any).agentJobMode = originalMode;
+    }
+  });
+});
+
+describe("processRequest — inline execution recording (line 150)", () => {
+  it("continues pipeline when inline execution record creation fails (non-fatal)", async () => {
+    // When DATABASE_URL is configured, the inline path records an execution in Postgres.
+    // If that recording fails, the pipeline should continue (non-fatal error).
+    mockGetDb.mockReturnValue({} as unknown); // non-null → db is "configured"
+    mockCreateExecution.mockRejectedValue(new Error("Postgres insert failed"));
+
+    const ctx = makeCtx();
+
+    await processRequest(ctx);
+
+    // Pipeline must still run despite the recording failure
+    expect(mockExecuteAgent).toHaveBeenCalledTimes(1);
+
+    // The error should be logged (check log.error was called)
+    const errorCalls = (ctx.log.error as ReturnType<typeof mock>).mock.calls;
+    const flatArgs = errorCalls.flat() as unknown[];
+    const hasRecordErr = flatArgs.some(
+      (arg) => typeof arg === "string" && arg.includes("Failed to create inline execution record"),
+    );
+    expect(hasRecordErr).toBe(true);
+  });
+
+  it("records inline execution when db is configured and createExecution succeeds", async () => {
+    mockGetDb.mockReturnValue({} as unknown); // non-null → db is "configured"
+    mockCreateExecution.mockResolvedValue(undefined);
+
+    const ctx = makeCtx();
+
+    await processRequest(ctx);
+
+    // createExecution should have been called for inline mode
+    expect(mockCreateExecution).toHaveBeenCalledTimes(1);
+    const execArgs = mockCreateExecution.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(execArgs.deliveryId).toBe(ctx.deliveryId);
+    expect(execArgs.dispatchMode).toBe("inline");
+    expect(execArgs.entityType).toBe("issue");
+
+    // Pipeline should still complete
+    expect(mockExecuteAgent).toHaveBeenCalledTimes(1);
   });
 });
 

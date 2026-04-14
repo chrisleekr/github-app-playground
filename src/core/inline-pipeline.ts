@@ -1,3 +1,6 @@
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { resolveMcpServers } from "../mcp/registry";
 import type { BotContext, EnrichedBotContext, ExecutionResult } from "../types";
 import { retryWithBackoff } from "../utils/retry";
@@ -6,6 +9,43 @@ import { executeAgent } from "./executor";
 import { fetchGitHubData } from "./fetcher";
 import { buildPrompt, resolveAllowedTools } from "./prompt-builder";
 import { createTrackingComment, finalizeTrackingComment } from "./tracking-comment";
+
+/** Read .daemon-actions.json written by the repo-memory MCP server during execution. */
+function readDaemonActionsFile(
+  workDir: string,
+  log: { info: (obj: object, msg: string) => void; warn: (obj: object, msg: string) => void },
+): { learnings: { category: string; content: string }[]; deletions: string[] } {
+  try {
+    const actionsPath = join(workDir, ".daemon-actions.json");
+    const exists = existsSync(actionsPath); // eslint-disable-line security/detect-non-literal-fs-filename
+    log.info({ actionsPath, exists }, "Checking for daemon actions file");
+    if (exists) {
+      const actions = JSON.parse(readFileSync(actionsPath, "utf-8")) as {
+        type: string;
+        category?: string;
+        content?: string;
+        id?: string;
+      }[];
+      const learnings = actions
+        .filter(
+          (a): a is { type: "save"; category: string; content: string } =>
+            a.type === "save" && typeof a.category === "string" && typeof a.content === "string",
+        )
+        .map(({ category, content }) => ({ category, content }));
+      const deletions = actions
+        .filter(
+          (a): a is { type: "delete"; id: string } =>
+            a.type === "delete" && typeof a.id === "string",
+        )
+        .map((a) => a.id);
+      log.info({ learnings: learnings.length, deletions: deletions.length }, "Read daemon actions");
+      return { learnings, deletions };
+    }
+  } catch (err) {
+    log.warn({ err }, "Failed to read daemon actions file");
+  }
+  return { learnings: [], deletions: [] };
+}
 
 /**
  * Build the options object passed to `finalizeTrackingComment` on success.
@@ -46,16 +86,58 @@ function buildFinalOpts(result: ExecutionResult): {
  * 8. Finalize tracking comment (success/error/cost)
  * 9. Cleanup temp directory
  */
-export async function runInlinePipeline(ctx: BotContext): Promise<void> {
+/**
+ * Optional overrides for callers (e.g. daemon mode) that want to honor
+ * orchestrator-provided execution limits instead of the pipeline defaults.
+ * - `maxTurns` overrides the Agent SDK turn budget
+ * - `allowedTools` overrides the tool allowlist from `resolveAllowedTools`
+ */
+export interface RunInlinePipelineOverrides {
+  maxTurns?: number;
+  allowedTools?: string[];
+  /**
+   * Fires once the pipeline has cloned the repo and knows the workspace path.
+   * Used by the daemon `executeJob()` to track workDir for cancellation and
+   * SIGKILL cleanup without a second (redundant) clone.
+   */
+  onWorkDirReady?: (workDir: string) => void;
+}
+
+/**
+ * Write orchestrator-provided env vars as `.env` in the agent workspace so the
+ * agent subprocess (which runs with cwd=workDir) can read them. No-op when the
+ * map is absent or empty. Values are written verbatim — callers own escaping.
+ */
+function writeEnvFile(
+  workDir: string,
+  envVars: Record<string, string> | undefined,
+  log: { info: (obj: object, msg: string) => void },
+): void {
+  if (envVars === undefined || Object.keys(envVars).length === 0) return;
+  const envContent = Object.entries(envVars)
+    .map(([k, v]) => `${k}=${v}`)
+    .join("\n");
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- workDir is a daemon-owned temp path
+  writeFileSync(join(workDir, ".env"), `${envContent}\n`);
+  log.info({ keyCount: Object.keys(envVars).length }, "Wrote .env from orchestrator env vars");
+}
+
+export async function runInlinePipeline(
+  ctx: BotContext,
+  overrides: RunInlinePipelineOverrides = {},
+): Promise<ExecutionResult> {
   let trackingCommentId: number | undefined;
 
   try {
-    // Step 1: Create tracking comment ("Working...")
-    trackingCommentId = await retryWithBackoff(() => createTrackingComment(ctx), {
-      maxAttempts: 3,
-      initialDelayMs: 1000,
-      log: ctx.log,
-    });
+    if (ctx.skipTrackingComments === true) {
+      ctx.log.info("Skipping tracking comment (skipTrackingComments)");
+    } else {
+      trackingCommentId = await retryWithBackoff(() => createTrackingComment(ctx), {
+        maxAttempts: 3,
+        initialDelayMs: 1000,
+        log: ctx.log,
+      });
+    }
     // Capture as const so TypeScript can narrow it inside arrow-function closures below.
     const resolvedTrackingCommentId = trackingCommentId;
 
@@ -85,41 +167,72 @@ export async function runInlinePipeline(ctx: BotContext): Promise<void> {
     // Step 4: Build the full prompt
     const prompt = buildPrompt(enrichedCtx, data, resolvedTrackingCommentId);
 
+    // Dry-run mode: return a synthetic result without executing Claude or cloning the repo.
+    if (ctx.dryRun === true) {
+      ctx.log.info(
+        { promptLength: prompt.length, headBranch: enrichedCtx.headBranch },
+        "Dry-run complete — skipping checkout, MCP, and Claude execution",
+      );
+      return { success: true, durationMs: 0, costUsd: 0, numTurns: 0, dryRun: true };
+    }
+
     // Step 5: Clone repo to temp directory
     const { workDir, cleanup } = await checkoutRepo(enrichedCtx, installationToken);
+    overrides.onWorkDirReady?.(workDir);
 
     try {
+      // Write orchestrator-provided .env into the just-cloned workspace so the
+      // agent subprocess can read it. Must happen inside this try so cleanup()
+      // still removes the file on every exit path.
+      writeEnvFile(workDir, enrichedCtx.envVars, enrichedCtx.log);
+
       // Step 6: Resolve MCP servers for this context
       const mcpServers = resolveMcpServers(
         enrichedCtx,
         resolvedTrackingCommentId,
         installationToken,
+        {
+          workDir,
+          ...(enrichedCtx.repoMemory !== undefined ? { repoMemory: enrichedCtx.repoMemory } : {}),
+        },
       );
 
-      // Step 7: Resolve allowed tools
-      const allowedTools = resolveAllowedTools(enrichedCtx);
+      // Step 7: Resolve allowed tools (or honor caller override, e.g. from
+      // orchestrator `job:payload` in daemon mode — keeps daemon execution in
+      // lockstep with the orchestrator-approved tool allowlist).
+      const allowedTools =
+        overrides.allowedTools ?? resolveAllowedTools(enrichedCtx, enrichedCtx.daemonCapabilities);
 
       // Step 8: Execute Claude Agent SDK
-      const result = await executeAgent(enrichedCtx, prompt, mcpServers, workDir, allowedTools);
+      const result = await executeAgent({
+        ctx: enrichedCtx,
+        prompt,
+        mcpServers,
+        workDir,
+        allowedTools,
+        ...(overrides.maxTurns !== undefined ? { maxTurns: overrides.maxTurns } : {}),
+      });
 
       // Step 9: Finalize tracking comment with results.
       // Post-success bookkeeping errors must NOT mark the execution as failed —
       // the agent work already completed successfully at this point.
-      try {
-        const finalOpts = buildFinalOpts(result);
-        await retryWithBackoff(
-          () => finalizeTrackingComment(enrichedCtx, resolvedTrackingCommentId, finalOpts),
-          {
-            maxAttempts: 3,
-            initialDelayMs: 1000,
-            log: enrichedCtx.log,
-          },
-        );
-      } catch (finalizeError) {
-        enrichedCtx.log.error(
-          { err: finalizeError },
-          "Failed to finalize tracking comment after successful execution",
-        );
+      if (resolvedTrackingCommentId !== undefined) {
+        try {
+          const finalOpts = buildFinalOpts(result);
+          await retryWithBackoff(
+            () => finalizeTrackingComment(enrichedCtx, resolvedTrackingCommentId, finalOpts),
+            {
+              maxAttempts: 3,
+              initialDelayMs: 1000,
+              log: enrichedCtx.log,
+            },
+          );
+        } catch (finalizeError) {
+          enrichedCtx.log.error(
+            { err: finalizeError },
+            "Failed to finalize tracking comment after successful execution",
+          );
+        }
       }
 
       enrichedCtx.log.info(
@@ -131,6 +244,16 @@ export async function runInlinePipeline(ctx: BotContext): Promise<void> {
         },
         "Request processing completed",
       );
+
+      // Read daemon actions before cleanup destroys the workDir
+      const daemonActions = readDaemonActionsFile(workDir, enrichedCtx.log);
+
+      return {
+        ...result,
+        ...(daemonActions.learnings.length > 0 || daemonActions.deletions.length > 0
+          ? { daemonActions }
+          : {}),
+      };
     } finally {
       // Step 10: Cleanup temp directory (always, even on error).
       // Wrapped to avoid masking the original error if cleanup fails.
@@ -166,5 +289,7 @@ export async function runInlinePipeline(ctx: BotContext): Promise<void> {
         ctx.log.error({ err: commentError }, "Failed to update tracking comment with error");
       }
     }
+
+    return { success: false };
   }
 }

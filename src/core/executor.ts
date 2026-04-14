@@ -3,7 +3,6 @@ import { query, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "../config";
 import type { BotContext, ExecutionResult, McpServerConfig } from "../types";
 
-/** Narrows an unknown streamed SDK message to the final result shape. */
 function isResultMessage(msg: unknown): msg is SDKResultMessage {
   return (
     typeof msg === "object" &&
@@ -45,17 +44,34 @@ function buildProviderEnv(): Record<string, string | undefined> {
  * Key difference: we pass `cwd` pointing to the cloned repo directory
  * so Claude's file tools (Read/Write/Edit/Glob/Grep/LS) operate on real local files.
  */
-export async function executeAgent(
-  ctx: BotContext,
-  prompt: string,
-  mcpServers: McpServerConfig,
-  workDir: string,
-  allowedTools: string[],
-): Promise<ExecutionResult> {
+export interface ExecuteAgentParams {
+  ctx: BotContext;
+  prompt: string;
+  mcpServers: McpServerConfig;
+  workDir: string;
+  allowedTools: string[];
+  maxTurns?: number;
+}
+
+export async function executeAgent({
+  ctx,
+  prompt,
+  mcpServers,
+  workDir,
+  allowedTools,
+  maxTurns,
+}: ExecuteAgentParams): Promise<ExecutionResult> {
   const { log } = ctx;
 
   log.info(
-    { workDir, mcpServerCount: Object.keys(mcpServers).length, provider: config.provider },
+    {
+      workDir,
+      mcpServerCount: Object.keys(mcpServers).length,
+      provider: config.provider,
+      configModel: config.model ?? "(undefined)",
+      configPermissionMode: "bypassPermissions",
+      allowedToolsCount: allowedTools.length,
+    },
     "Starting Claude Agent SDK execution",
   );
 
@@ -67,9 +83,10 @@ export async function executeAgent(
   const queryOptions: Parameters<typeof query>[0]["options"] = {
     cwd: workDir,
     permissionMode: "bypassPermissions",
+    allowDangerouslySkipPermissions: true,
     allowedTools,
     mcpServers,
-    maxTurns: 50, // Safety limit per hosting guide
+    maxTurns: maxTurns ?? config.agentMaxTurns ?? 50,
     systemPrompt: { type: "preset", preset: "claude_code" },
     env: buildProviderEnv(),
   };
@@ -80,13 +97,63 @@ export async function executeAgent(
     queryOptions.pathToClaudeCodeExecutable = config.claudeCodePath;
   }
 
+  log.info(
+    {
+      queryModel: queryOptions.model ?? "(not set)",
+      queryPermissionMode: queryOptions.permissionMode,
+      queryMaxTurns: queryOptions.maxTurns,
+      queryCwd: queryOptions.cwd,
+      queryAllowedTools: queryOptions.allowedTools,
+    },
+    "Agent SDK query options built",
+  );
+
   try {
     // Bound wall-clock time to prevent a hung model response or MCP server from
     // holding an activeCount slot and a cloned workspace indefinitely, which would
     // eventually exhaust MAX_CONCURRENT_REQUESTS for all subsequent requests.
     const agentLoop = (async (): Promise<void> => {
       for await (const message of query({ prompt, options: queryOptions })) {
-        // Capture the final result message for metadata.
+        const msg = message as Record<string, unknown>;
+        const msgType = typeof msg["type"] === "string" ? msg["type"] : "unknown";
+
+        if (msgType === "system") {
+          log.info(
+            { sdkMsgType: msgType, subtype: msg["subtype"], model: msg["model"] },
+            "SDK system message",
+          );
+        } else if (msgType === "assistant") {
+          const betaMsg = msg["message"] as Record<string, unknown> | undefined;
+          const model = betaMsg?.["model"];
+          const stopReason = betaMsg?.["stop_reason"];
+          const content = betaMsg?.["content"] as Record<string, unknown>[] | undefined;
+          const toolUses = content?.filter((b) => b["type"] === "tool_use");
+          const textBlocks = content?.filter((b) => b["type"] === "text");
+          const textPreview = textBlocks
+            ?.map((b) => {
+              const t = b["text"];
+              return typeof t === "string" ? t.slice(0, 200) : "";
+            })
+            .join(" | ");
+          const toolNames = toolUses?.map((b) => {
+            const n = b["name"];
+            return typeof n === "string" ? n : "";
+          });
+          log.info(
+            {
+              sdkMsgType: msgType,
+              model,
+              stopReason,
+              toolUses: toolNames,
+              textPreview:
+                textPreview !== undefined && textPreview !== "" ? textPreview : undefined,
+            },
+            "SDK assistant message",
+          );
+        } else if (msgType === "result") {
+          log.info({ sdkMsgType: msgType, subtype: msg["subtype"] }, "SDK result message");
+        }
+
         // isResultMessage guards against the SDK message union resolving to
         // `any` in ESLint's type graph — ensures safe property access.
         if (isResultMessage(message)) {
@@ -124,8 +191,14 @@ export async function executeAgent(
     "Claude Agent SDK execution completed",
   );
 
-  // Build result, omitting optional fields when undefined
-  // (exactOptionalPropertyTypes forbids assigning undefined to optional props)
+  return buildExecutionResult(result, durationMs);
+}
+
+/** Build ExecutionResult from SDK output (exactOptionalPropertyTypes-safe). */
+function buildExecutionResult(
+  result: SDKResultMessage | undefined,
+  durationMs: number,
+): ExecutionResult {
   const executionResult: ExecutionResult = {
     success: result?.subtype === "success",
     durationMs: result?.duration_ms ?? durationMs,

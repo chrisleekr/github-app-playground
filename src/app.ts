@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { access, constants, mkdir, readdir, rm, stat } from "node:fs/promises";
 import http from "node:http";
 import { join } from "node:path";
@@ -16,6 +17,10 @@ import { config } from "./config";
 import { closeDb, getDb } from "./db";
 import { runMigrations } from "./db/migrate";
 import { logger } from "./logger";
+import { recoverStaleExecutions } from "./orchestrator/history";
+import { closeValkey, getValkeyClient, isValkeyHealthy } from "./orchestrator/valkey";
+import { startWebSocketServer, stopWebSocketServer } from "./orchestrator/ws-server";
+import type { BotContext } from "./types";
 import { handleIssueComment } from "./webhook/events/issue-comment";
 import { handlePullRequest } from "./webhook/events/pull-request";
 import { handleReview } from "./webhook/events/review";
@@ -31,14 +36,23 @@ import { handleReviewThread } from "./webhook/events/review-thread";
  * createNodeMiddleware auto-verifies HMAC-SHA256 signatures per:
  * https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries
  */
+// Server mode: appId, privateKey, webhookSecret are guaranteed present by config superRefine
+// (only optional for daemon-only mode when ORCHESTRATOR_URL is set).
+if (
+  config.appId === undefined ||
+  config.privateKey === undefined ||
+  config.webhookSecret === undefined
+) {
+  throw new Error(
+    "Server mode requires GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY, and GITHUB_WEBHOOK_SECRET",
+  );
+}
 const app = new App({
   appId: config.appId,
   privateKey: config.privateKey,
   webhooks: { secret: config.webhookSecret },
 });
 
-// Register webhook event handlers
-// The octokit instance and delivery ID are provided by the webhook framework
 app.webhooks.on("issue_comment.created", ({ octokit, payload, id }) => {
   handleIssueComment(octokit, payload as unknown as IssueCommentEvent, id);
 });
@@ -64,7 +78,6 @@ app.webhooks.on(
   },
 );
 
-// Global webhook error handler
 app.webhooks.onError((error) => {
   logger.error({ err: error }, "Webhook processing error");
 });
@@ -82,7 +95,6 @@ const webhookMiddleware = createNodeMiddleware(app.webhooks, {
 let isReady = false;
 
 const server = http.createServer((req, res) => {
-  // Health endpoints (outside webhook middleware)
   if (req.url === "/healthz") {
     // Liveness: is the process alive? (no external deps)
     res.writeHead(200, { "Content-Type": "text/plain" }).end("ok");
@@ -90,9 +102,12 @@ const server = http.createServer((req, res) => {
   }
   if (req.url === "/readyz") {
     // Readiness: should we receive traffic?
+    // In non-inline mode, also check Valkey health (FM-7).
+    const valkeyOk = config.agentJobMode === "inline" || isValkeyHealthy();
+    const ready = isReady && valkeyOk;
     res
-      .writeHead(isReady ? 200 : 503, { "Content-Type": "text/plain" })
-      .end(isReady ? "ready" : "shutting down");
+      .writeHead(ready ? 200 : 503, { "Content-Type": "text/plain" })
+      .end(ready ? "ready" : "not ready");
     return;
   }
 
@@ -102,13 +117,117 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // All other routes go through webhook middleware
+  // Dev-only test endpoint: simulate a webhook event without HMAC verification.
+  // Builds a BotContext with a mock Octokit and skipTrackingComments: true,
+  // then feeds it into the normal processRequest() pipeline.
+  if (req.url === "/api/test/webhook" && req.method === "POST") {
+    if (config.nodeEnv === "production") {
+      res.writeHead(404, { "Content-Type": "text/plain" }).end("not found");
+      return;
+    }
+    void handleTestWebhook(req, res);
+    return;
+  }
+
   void webhookMiddleware(req, res);
 });
 
 server.listen(config.port, () => {
   logger.info({ port: config.port }, "Server started");
 });
+
+/**
+ * Dev-only test webhook handler. Parses a JSON body, builds a BotContext with
+ * a mock Octokit (no real GitHub API calls), sets skipTrackingComments: true,
+ * and feeds it into processRequest() to exercise the full orchestrator → daemon flow.
+ */
+async function handleTestWebhook(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<void> {
+  const { createChildLogger } = await import("./logger");
+  const { processRequest } = await import("./webhook/router");
+
+  try {
+    const body = await new Promise<string>((resolve, reject) => {
+      let data = "";
+      req.on("data", (chunk: Buffer) => {
+        data += chunk.toString();
+      });
+      req.on("end", () => {
+        resolve(data);
+      });
+      req.on("error", reject);
+    });
+
+    const payload = JSON.parse(body) as {
+      owner?: string;
+      repo?: string;
+      entityNumber?: number;
+      isPR?: boolean;
+      triggerBody?: string;
+      eventName?: string;
+      dryRun?: boolean;
+    };
+
+    const owner = payload.owner ?? "chrisleekr";
+    const repo = payload.repo ?? "github-app-playground";
+    const entityNumber = payload.entityNumber ?? 1;
+    const isPR = payload.isPR ?? false;
+    const triggerBody =
+      payload.triggerBody ?? `${config.triggerPhrase} what files are in this repo?`;
+    const dryRun = payload.dryRun ?? true;
+    const eventName = (payload.eventName ?? "issue_comment") as BotContext["eventName"];
+    const deliveryId = `test-${randomUUID()}`;
+
+    // Mock Octokit that logs instead of calling GitHub API.
+    // Only used by the router path (isAlreadyProcessed, concurrency comment).
+    // The daemon creates its own real Octokit from the installation token.
+    const mockOctokit = buildMockOctokit();
+
+    const log = createChildLogger({
+      deliveryId,
+      owner,
+      repo,
+      entityNumber,
+    });
+
+    const ctx: BotContext = {
+      owner,
+      repo,
+      entityNumber,
+      isPR,
+      eventName,
+      triggerUsername: "test-user",
+      triggerTimestamp: new Date().toISOString(),
+      triggerBody,
+      commentId: -1,
+      deliveryId,
+      labels: [],
+      skipTrackingComments: true,
+      dryRun,
+      defaultBranch: "main",
+      octokit: mockOctokit,
+      log,
+    };
+
+    logger.info(
+      { deliveryId, owner, repo, entityNumber, isPR, dryRun },
+      "[test-webhook] Dispatching",
+    );
+
+    res.writeHead(202, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ accepted: true, deliveryId }));
+
+    processRequest(ctx).catch((err: unknown) => {
+      log.error({ err }, "[test-webhook] processRequest failed");
+    });
+  } catch (err) {
+    logger.error({ err }, "[test-webhook] Failed to parse request");
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Invalid JSON body" }));
+  }
+}
 
 /**
  * Async startup checks. Runs after the HTTP server is listening so that the
@@ -121,7 +240,6 @@ server.listen(config.port, () => {
  *    previous pod lifetime that was SIGKILL-ed mid-checkout.
  */
 async function runStartupChecks(): Promise<void> {
-  // --- MCP script accessibility checks ---
   // Use process.cwd() (always the project root, /app in Docker) so the path matches
   // how registry.ts spawns these servers — CWD-relative dist/mcp/servers/*.js.
   // import.meta.dir would resolve to src/ in dev and dist/ in prod, breaking one or the other.
@@ -141,7 +259,6 @@ async function runStartupChecks(): Promise<void> {
     }
   }
 
-  // --- Stale credential helper sweep ---
   // *.cred.sh files accumulate in cloneBaseDir when the pod is SIGKILL-ed mid-checkout.
   // Remove files older than 1 hour to avoid leaking installation tokens across restarts.
   const STALE_CRED_TTL_MS = 60 * 60 * 1000;
@@ -172,11 +289,20 @@ async function runStartupChecks(): Promise<void> {
     // Non-fatal: cloneBaseDir may not exist yet on a fresh pod
   }
 
-  // --- Database migration (only when DATABASE_URL is configured) ---
   const db = getDb();
   if (db !== null) {
     await runMigrations(db);
     logger.info("Database migrations completed");
+
+    // Recover stale executions from previous server lifetime (FM-4).
+    // Runs AFTER migrations, BEFORE WebSocket server accepts connections.
+    await recoverStaleExecutions(db);
+  }
+
+  if (config.agentJobMode !== "inline") {
+    getValkeyClient();
+    startWebSocketServer();
+    logger.info({ wsPort: config.wsPort }, "Orchestrator WebSocket server started");
   }
 
   isReady = true;
@@ -200,11 +326,15 @@ function shutdown(signal: string): void {
   server.close(() => {
     void (async (): Promise<void> => {
       try {
+        // Drain the WebSocket server first so daemon disconnect cleanup
+        // (which still uses the Valkey client) finishes before we close Valkey.
+        await stopWebSocketServer();
+        closeValkey();
         await closeDb();
         logger.info("Server closed, exiting");
         process.exit(0);
       } catch (err) {
-        logger.error({ err }, "Failed to close database pool during shutdown");
+        logger.error({ err }, "Failed to close resources during shutdown");
         process.exit(1);
       }
     })();
@@ -214,7 +344,7 @@ function shutdown(signal: string): void {
   setTimeout(() => {
     logger.warn("Forced exit after timeout");
     process.exit(1);
-  }, 290_000); // 290 s force-exit timeout; allows in-flight requests to finish
+  }, 290_000); // 10s below K8s default terminationGracePeriodSeconds (300s)
 }
 
 process.on("SIGTERM", () => {
@@ -223,3 +353,34 @@ process.on("SIGTERM", () => {
 process.on("SIGINT", () => {
   shutdown("SIGINT");
 });
+
+/**
+ * Build a Proxy-based mock Octokit for the test webhook endpoint.
+ * Intercepts all `rest.*.*()` calls and `auth()`, logging instead of hitting GitHub.
+ */
+function buildMockOctokit(): BotContext["octokit"] {
+  type MockApiMethod = (...args: unknown[]) => Promise<{ data: unknown[] }>;
+
+  const methodProxy = new Proxy({} as Record<string, MockApiMethod>, {
+    get(_t, method: string): MockApiMethod {
+      return (...args: unknown[]): Promise<{ data: unknown[] }> => {
+        logger.info(
+          { method, args: JSON.stringify(args).slice(0, 200) },
+          "[test-webhook] Mock Octokit call",
+        );
+        return Promise.resolve({ data: [] });
+      };
+    },
+  });
+
+  const restProxy = new Proxy({} as Record<string, typeof methodProxy>, {
+    get(): typeof methodProxy {
+      return methodProxy;
+    },
+  });
+
+  return {
+    rest: restProxy,
+    auth: (): Promise<{ token: string }> => Promise.resolve({ token: "mock-test-token" }),
+  } as unknown as BotContext["octokit"];
+}

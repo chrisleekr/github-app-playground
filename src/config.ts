@@ -6,10 +6,11 @@ import { z } from "zod";
  */
 const configSchema = z
   .object({
-    // GitHub App credentials
-    appId: z.string().min(1, "GITHUB_APP_ID is required"),
-    privateKey: z.string().min(1, "GITHUB_APP_PRIVATE_KEY is required"),
-    webhookSecret: z.string().min(1, "GITHUB_WEBHOOK_SECRET is required"),
+    // GitHub App credentials — required for server mode, optional for daemon-only mode.
+    // Daemon mode (ORCHESTRATOR_URL set) does not need these; validated in superRefine.
+    appId: z.string().optional(),
+    privateKey: z.string().optional(),
+    webhookSecret: z.string().optional(),
 
     // AI provider selection: "anthropic" (default) or "bedrock"
     provider: z.enum(["anthropic", "bedrock"]).default("anthropic"),
@@ -59,6 +60,9 @@ const configSchema = z
     // Guards against resource exhaustion from hung model responses or MCP servers.
     // Set via AGENT_TIMEOUT_MS env var (default: 10 minutes).
     agentTimeoutMs: z.coerce.number().int().positive().default(600_000),
+    // Override max turns for the Claude Agent SDK. When set, takes precedence over
+    // complexity-based turns. Set via AGENT_MAX_TURNS env var.
+    agentMaxTurns: z.coerce.number().int().positive().optional(),
     // Git clone depth for repo checkout. Increase for PRs with deeply diverged branches.
     // Set via CLONE_DEPTH env var (default: 50).
     cloneDepth: z.coerce.number().int().positive().default(50),
@@ -111,6 +115,32 @@ const configSchema = z
     sharedRunnerToken: z.string().optional(),
     internalRunnerToken: z.string().optional(),
 
+    // --- Daemon / Orchestrator (Phase 2) ---
+    daemonAuthToken: z.string().optional(),
+    heartbeatIntervalMs: z.coerce.number().int().positive().default(30_000),
+    heartbeatTimeoutMs: z.coerce.number().int().positive().default(90_000),
+    staleExecutionThresholdMs: z.coerce.number().int().positive().default(600_000),
+    daemonDrainTimeoutMs: z.coerce.number().int().positive().default(300_000),
+    jobMaxRetries: z.coerce.number().int().nonnegative().default(3),
+    offerTimeoutMs: z.coerce.number().int().positive().default(5_000),
+    orchestratorUrl: z
+      .string()
+      .optional()
+      .refine((value) => {
+        if (value === undefined || value === "") return true;
+        try {
+          const url = new URL(value);
+          return url.protocol === "ws:" || url.protocol === "wss:";
+        } catch {
+          return false;
+        }
+      }, "ORCHESTRATOR_URL must be a valid ws:// or wss:// URL"),
+    daemonUpdateStrategy: z.enum(["exit", "pull", "notify"]).default("exit"),
+    daemonUpdateDelayMs: z.coerce.number().int().nonnegative().default(0),
+    daemonEphemeral: z.boolean().default(false),
+    daemonMemoryFloorMb: z.coerce.number().int().nonnegative().default(512),
+    daemonDiskFloorMb: z.coerce.number().int().nonnegative().default(1024),
+
     // --- Triage pre-classifier ---
     triageEnabled: z.boolean().default(true),
     triageModel: z.string().default("haiku-3-5"),
@@ -127,61 +157,111 @@ const configSchema = z
       .default({ trivial: 10, moderate: 30, complex: 50 }),
   })
   .superRefine((data, ctx) => {
-    if (data.provider === "anthropic") {
-      // Direct Anthropic API requires a non-empty credential:
-      //   - ANTHROPIC_API_KEY (Console pay-as-you-go), OR
-      //   - CLAUDE_CODE_OAUTH_TOKEN (Max/Pro subscription, sk-ant-oat... prefix)
-      // If both are set, the Claude CLI's own auth precedence chain picks one
-      // (API key wins). Rejecting "both set" would duplicate CLI-side logic.
-      // `.trim()` guards against whitespace-only values pasted into .env files —
-      // those would otherwise pass startup and fail later on the first API call.
-      const hasApiKey = (data.anthropicApiKey?.trim().length ?? 0) > 0;
-      const hasOauthToken = (data.claudeCodeOauthToken?.trim().length ?? 0) > 0;
-      if (!hasApiKey && !hasOauthToken) {
-        ctx.addIssue({
-          code: "custom",
-          message:
-            "When CLAUDE_PROVIDER=anthropic, either ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN is required.",
-          path: ["anthropicApiKey"],
-        });
-      }
-    } else {
-      // provider === "bedrock" (the only other enum value)
-      // Bedrock always needs a region to construct the endpoint
-      if (data.awsRegion === undefined || data.awsRegion === "") {
-        ctx.addIssue({
-          code: "custom",
-          message: "AWS_REGION is required when CLAUDE_PROVIDER=bedrock",
-          path: ["awsRegion"],
-        });
-      }
-      // Bedrock uses a different model ID format (e.g. us.anthropic.claude-sonnet-4-6).
-      // The SDK only passes --model if provided; without it the CLI uses an Anthropic-format
-      // default that the Bedrock API will reject.
-      if (data.model === undefined) {
-        ctx.addIssue({
-          code: "custom",
-          message:
-            "CLAUDE_MODEL is required when CLAUDE_PROVIDER=bedrock (e.g. us.anthropic.claude-sonnet-4-6)",
-          path: ["model"],
-        });
-      }
-      // Credentials are NOT validated here: the AWS SDK credential chain in the subprocess
-      // handles all cases — AWS_PROFILE (local SSO), IRSA, explicit keys, or bearer token.
-      // Runtime will surface any credential error on first API call.
-    }
-
-    // Non-inline dispatch modes require data layer connections (Valkey + Postgres).
-    // Extracted to reduce superRefine complexity below eslint's threshold.
+    validateServerModeCredentials(data, ctx);
+    validateProviderCredentials(data, ctx);
     validateDataLayerConfig(data, ctx);
   });
+
+/**
+ * Validate GitHub App credentials are present in server mode.
+ * Daemon mode (ORCHESTRATOR_URL set) does not require these.
+ */
+function validateServerModeCredentials(
+  data: {
+    orchestratorUrl?: string | undefined;
+    appId?: string | undefined;
+    privateKey?: string | undefined;
+    webhookSecret?: string | undefined;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  const isDaemonMode = (data.orchestratorUrl?.trim().length ?? 0) > 0;
+  if (isDaemonMode) return;
+
+  if ((data.appId?.trim().length ?? 0) === 0) {
+    ctx.addIssue({
+      code: "custom",
+      message: "GITHUB_APP_ID is required in server mode (when ORCHESTRATOR_URL is not set)",
+      path: ["appId"],
+    });
+  }
+  if ((data.privateKey?.trim().length ?? 0) === 0) {
+    ctx.addIssue({
+      code: "custom",
+      message:
+        "GITHUB_APP_PRIVATE_KEY is required in server mode (when ORCHESTRATOR_URL is not set)",
+      path: ["privateKey"],
+    });
+  }
+  if ((data.webhookSecret?.trim().length ?? 0) === 0) {
+    ctx.addIssue({
+      code: "custom",
+      message:
+        "GITHUB_WEBHOOK_SECRET is required in server mode (when ORCHESTRATOR_URL is not set)",
+      path: ["webhookSecret"],
+    });
+  }
+}
+
+/**
+ * Validate provider-specific credentials.
+ * Anthropic requires API key or OAuth token; Bedrock requires region and model.
+ */
+function validateProviderCredentials(
+  data: {
+    provider: string;
+    anthropicApiKey?: string | undefined;
+    claudeCodeOauthToken?: string | undefined;
+    awsRegion?: string | undefined;
+    model?: string | undefined;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  if (data.provider === "anthropic") {
+    // Direct Anthropic API requires a non-empty credential:
+    //   - ANTHROPIC_API_KEY (Console pay-as-you-go), OR
+    //   - CLAUDE_CODE_OAUTH_TOKEN (Max/Pro subscription, sk-ant-oat... prefix)
+    const hasApiKey = (data.anthropicApiKey?.trim().length ?? 0) > 0;
+    const hasOauthToken = (data.claudeCodeOauthToken?.trim().length ?? 0) > 0;
+    if (!hasApiKey && !hasOauthToken) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "When CLAUDE_PROVIDER=anthropic, either ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN is required.",
+        path: ["anthropicApiKey"],
+      });
+    }
+  } else {
+    // Bedrock requires region and model ID
+    if (data.awsRegion === undefined || data.awsRegion === "") {
+      ctx.addIssue({
+        code: "custom",
+        message: "AWS_REGION is required when CLAUDE_PROVIDER=bedrock",
+        path: ["awsRegion"],
+      });
+    }
+    if (data.model === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "CLAUDE_MODEL is required when CLAUDE_PROVIDER=bedrock (e.g. us.anthropic.claude-sonnet-4-6)",
+        path: ["model"],
+      });
+    }
+  }
+}
 
 /**
  * Validate data layer requirements for non-inline dispatch modes.
  * Inline mode (default) needs neither — zero behaviour change until opted in.
  */
 function validateDataLayerConfig(
-  data: { agentJobMode: string; databaseUrl?: string | undefined; valkeyUrl?: string | undefined },
+  data: {
+    agentJobMode: string;
+    databaseUrl?: string | undefined;
+    valkeyUrl?: string | undefined;
+    daemonAuthToken?: string | undefined;
+  },
   ctx: z.RefinementCtx,
 ): void {
   if (data.agentJobMode === "inline") return;
@@ -198,6 +278,13 @@ function validateDataLayerConfig(
       code: "custom",
       message: "VALKEY_URL is required when AGENT_JOB_MODE is not 'inline'",
       path: ["valkeyUrl"],
+    });
+  }
+  if ((data.daemonAuthToken?.trim().length ?? 0) === 0) {
+    ctx.addIssue({
+      code: "custom",
+      message: "DAEMON_AUTH_TOKEN is required when AGENT_JOB_MODE is not 'inline'",
+      path: ["daemonAuthToken"],
     });
   }
 }
@@ -292,6 +379,7 @@ function loadConfig(): Config {
     nodeEnv: process.env.NODE_ENV,
     maxConcurrentRequests: process.env["MAX_CONCURRENT_REQUESTS"],
     agentTimeoutMs: process.env["AGENT_TIMEOUT_MS"],
+    agentMaxTurns: process.env["AGENT_MAX_TURNS"],
     cloneDepth: process.env["CLONE_DEPTH"],
     claudeCodePath: process.env["CLAUDE_CODE_PATH"],
     allowedOwners: process.env["ALLOWED_OWNERS"],
@@ -318,6 +406,21 @@ function loadConfig(): Config {
     sharedRunnerToken: process.env["SHARED_RUNNER_TOKEN"],
     internalRunnerToken: process.env["INTERNAL_RUNNER_TOKEN"],
 
+    // Daemon / Orchestrator
+    daemonAuthToken: process.env["DAEMON_AUTH_TOKEN"],
+    heartbeatIntervalMs: process.env["HEARTBEAT_INTERVAL_MS"],
+    heartbeatTimeoutMs: process.env["HEARTBEAT_TIMEOUT_MS"],
+    staleExecutionThresholdMs: process.env["STALE_EXECUTION_THRESHOLD_MS"],
+    daemonDrainTimeoutMs: process.env["DAEMON_DRAIN_TIMEOUT_MS"],
+    jobMaxRetries: process.env["JOB_MAX_RETRIES"],
+    offerTimeoutMs: process.env["OFFER_TIMEOUT_MS"],
+    orchestratorUrl: process.env["ORCHESTRATOR_URL"],
+    daemonUpdateStrategy: process.env["DAEMON_UPDATE_STRATEGY"],
+    daemonUpdateDelayMs: process.env["DAEMON_UPDATE_DELAY_MS"],
+    daemonEphemeral: parseBooleanEnv("DAEMON_EPHEMERAL", process.env["DAEMON_EPHEMERAL"]),
+    daemonMemoryFloorMb: process.env["DAEMON_MEMORY_FLOOR_MB"],
+    daemonDiskFloorMb: process.env["DAEMON_DISK_FLOOR_MB"],
+
     // Triage — strict boolean parsing; rejects unrecognized values at startup.
     triageEnabled: parseBooleanEnv("TRIAGE_ENABLED", process.env["TRIAGE_ENABLED"]),
     triageModel: process.env["TRIAGE_MODEL"],
@@ -328,6 +431,18 @@ function loadConfig(): Config {
     maxTurnsPerComplexity: parseMaxTurnsEnv(process.env["MAX_TURNS_PER_COMPLEXITY"]),
   });
   assertOauthRequiresAllowlist(cfg);
+
+  // H6: Warn when WebSocket URLs use unencrypted ws:// in production.
+  // Installation tokens and DAEMON_AUTH_TOKEN are transmitted over this connection.
+  if (cfg.nodeEnv === "production") {
+    if (cfg.orchestratorUrl?.startsWith("ws://") === true) {
+      console.warn(
+        "[config] WARNING: ORCHESTRATOR_URL uses ws:// (unencrypted) in production. " +
+          "Installation tokens and DAEMON_AUTH_TOKEN are transmitted in cleartext. Use wss:// for production.",
+      );
+    }
+  }
+
   return cfg;
 }
 

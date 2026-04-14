@@ -50,7 +50,10 @@ Single HTTP server (`src/app.ts`) using `octokit` App class. Webhook events arri
 - `src/webhook/` — Event routing (`router.ts`) and per-event handlers (`events/`, one file per event type)
 - `src/core/` — Pipeline: context → fetch → format → prompt → checkout → execute. The inline pipeline (`inline-pipeline.ts`) is the main execution path.
 - `src/db/` — Database layer (Postgres via `Bun.sql`). Connection singleton (`index.ts`), migration runner (`migrate.ts`), SQL migrations (`migrations/`). Only active when `DATABASE_URL` is configured.
-- `src/mcp/` — MCP server registry and servers (extensible: add new servers)
+- `src/orchestrator/` — WebSocket server, daemon registry, job queue, job dispatcher, execution history, Valkey client, concurrency tracking. Embedded in the webhook server process when `AGENT_JOB_MODE !== "inline"`.
+- `src/daemon/` — Standalone daemon worker process. Connects to orchestrator via WebSocket, discovers local capabilities, accepts/rejects job offers, executes jobs via inline pipeline. Entry: `src/daemon/main.ts`.
+- `src/shared/` — Types shared between server and daemon: WebSocket message schemas (`ws-messages.ts`), daemon capability types (`daemon-types.ts`).
+- `src/mcp/` — MCP server registry and servers (extensible: add new servers). Includes `daemon-capabilities` server for daemon environment awareness.
 - `src/utils/` — Retry logic, sanitization
 
 ## Key Concepts
@@ -82,6 +85,9 @@ The scheduled research workflow in `.github/workflows/research.yml` also uses `C
 - Conventional commits enforced via commitlint.
 
 ## Active Technologies
+
+- TypeScript 5.9.3 strict mode on Bun >=1.3.8 + `octokit`, `@anthropic-ai/claude-agent-sdk`, `@modelcontextprotocol/sdk`, `pino`, `zod` (all existing). New: Bun built-in `WebSocket` + `RedisClient` (zero new npm dependencies). (20260413-191249-daemon-orchestrator-core)
+- PostgreSQL 17 (pgvector-ready, existing `executions` + `daemons` tables from `001_initial.sql`) + Valkey 8 (Redis 7.2-compatible, via Bun built-in `RedisClient`) (20260413-191249-daemon-orchestrator-core)
 
 - TypeScript (strict mode) on Bun >=1.3.8 + `octokit`, `@anthropic-ai/claude-agent-sdk`, `@modelcontextprotocol/sdk`, `pino`, `zod`
 

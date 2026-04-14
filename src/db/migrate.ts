@@ -42,19 +42,24 @@ export async function runMigrations(sql: SQL): Promise<void> {
     )
   `;
 
-  // Acquire advisory lock to serialize migrations across replicas.
-  // Without this, two replicas booting simultaneously could both read the same
-  // pending set and race on DDL + _migrations inserts.
-  await sql`SELECT pg_advisory_lock(${MIGRATION_LOCK_KEY})`;
+  // Reserve a single connection so the advisory lock and unlock execute on the
+  // same session — pool-dispatched queries can land on different connections,
+  // leaving the lock orphaned until the connection is recycled.
+  const conn = await sql.reserve();
+  // Track whether the advisory lock was actually acquired so the matching
+  // unlock runs exactly when needed — and always runs, even if a migration
+  // throws. Session-level locks otherwise stay held on the pooled connection
+  // and block the next migrator.
+  let locked = false;
 
   try {
-    // Get already-applied versions
-    const applied: { version: string }[] = await sql`
+    await conn`SELECT pg_advisory_lock(${MIGRATION_LOCK_KEY})`;
+    locked = true;
+
+    const applied: { version: string }[] = await conn`
       SELECT version FROM _migrations ORDER BY version
     `;
     const appliedSet = new Set(applied.map((r) => r.version));
-
-    // Read migration files, sorted by filename
 
     const files = readdirSync(MIGRATIONS_DIR)
       .filter((f) => f.endsWith(".sql"))
@@ -73,8 +78,7 @@ export async function runMigrations(sql: SQL): Promise<void> {
       logger.info({ version, file }, "Applying migration");
 
       // eslint-disable-next-line no-await-in-loop -- migrations must run sequentially
-      await sql.begin(async (tx) => {
-        // unsafe() allows multi-statement SQL (DDL, CREATE TABLE, etc.)
+      await conn.begin(async (tx) => {
         await tx.unsafe(content);
         await tx`INSERT INTO _migrations (version) VALUES (${version})`;
       });
@@ -82,6 +86,12 @@ export async function runMigrations(sql: SQL): Promise<void> {
       logger.info({ version }, "Migration applied successfully");
     }
   } finally {
-    await sql`SELECT pg_advisory_unlock(${MIGRATION_LOCK_KEY})`;
+    try {
+      if (locked) {
+        await conn`SELECT pg_advisory_unlock(${MIGRATION_LOCK_KEY})`;
+      }
+    } finally {
+      conn.release();
+    }
   }
 }

@@ -1,4 +1,19 @@
 <!-- Sync Impact Report
+  Version change: 1.1.0 → 1.2.0
+  Modified sections:
+    - Architecture Constraints > Single Server Model: added daemon
+      worker process acknowledgment (WebSocket clients permitted as
+      separate OS processes sharing codebase and Docker image)
+  Added sections: None
+  Removed sections: None
+  Templates requiring updates:
+    - .specify/templates/plan-template.md ✅ no changes needed
+    - .specify/templates/spec-template.md ✅ no changes needed
+    - .specify/templates/tasks-template.md ✅ no changes needed
+  Follow-up TODOs: None
+-->
+
+<!-- Sync Impact Report (historical)
   Version change: 1.0.0 → 1.1.0
   Modified principles:
     - V. Test Coverage → V. Test Coverage (expanded with coverage
@@ -239,7 +254,10 @@ The application is a single HTTP server process. All webhook routing,
 async processing, and MCP server management happen within one
 process. Complexity MUST NOT be introduced through microservice
 decomposition unless the single-process model demonstrably fails to
-meet scaling requirements.
+meet scaling requirements. Daemon worker processes that connect as
+WebSocket clients to the server are permitted — they share the
+codebase and Docker image but run as separate OS processes with a
+distinct entrypoint. They are clients, not decomposed services.
 
 ### Pipeline Architecture
 
@@ -359,4 +377,4 @@ If a spec, plan, or task contradicts this constitution, the
 constitution takes precedence. The conflicting artifact MUST be
 amended to align.
 
-**Version**: 1.1.0 | **Ratified**: 2026-04-09 | **Last Amended**: 2026-04-09
+**Version**: 1.2.0 | **Ratified**: 2026-04-09 | **Last Amended**: 2026-04-13
