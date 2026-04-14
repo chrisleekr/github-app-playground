@@ -91,17 +91,29 @@ const configSchema = z
         return parsed.length === 0 ? undefined : parsed;
       }),
 
-    // --- Dispatch mode (Phase 2+) ---
-    // AGENT_JOB_MODE determines how triggered work is executed.
+    // --- Dispatch mode (Phase 2+, Phase 3 triage-dispatch-modes) ---
+    // AGENT_JOB_MODE determines how triggered work is executed platform-wide.
     // "inline" (default) = current behaviour, no external deps needed.
-    agentJobMode: z.enum(["inline", "shared-runner", "ephemeral-job", "auto"]).default("inline"),
-    defaultDispatchMode: z.enum(["shared-runner", "ephemeral-job"]).default("shared-runner"),
+    // "auto" = run the dispatch cascade (label → keyword → triage) per event.
+    // Canonical target names per DispatchTarget enum + "auto" as a mode.
+    agentJobMode: z
+      .enum(["inline", "daemon", "shared-runner", "isolated-job", "auto"])
+      .default("inline"),
+    // Per-event fallback when triage is sub-threshold or errored. Must be a
+    // concrete DispatchTarget (never "auto"). "inline" is rejected when
+    // agentJobMode === "auto" (enforced in superRefine) because falling
+    // through to inline defeats the point of opting into auto mode.
+    defaultDispatchTarget: z
+      .enum(["inline", "daemon", "shared-runner", "isolated-job"])
+      .default("shared-runner"),
 
-    // --- K8s Job spawner ---
+    // --- K8s Job spawner (shared-runner + isolated-job) ---
     jobNamespace: z.string().default("github-app"),
     jobImage: z.string().optional(),
     jobTtlSeconds: z.coerce.number().int().positive().default(300),
-    sharedRunnerUrl: z.url().optional(),
+    // Internal HTTP endpoint for the shared-runner pool. Required when
+    // agentJobMode is "shared-runner" or "auto" (enforced in superRefine).
+    internalRunnerUrl: z.url().optional(),
 
     // --- Data layer ---
     valkeyUrl: z.string().optional(),
@@ -141,25 +153,42 @@ const configSchema = z
     daemonMemoryFloorMb: z.coerce.number().int().nonnegative().default(512),
     daemonDiskFloorMb: z.coerce.number().int().nonnegative().default(1024),
 
-    // --- Triage pre-classifier ---
+    // --- Triage pre-classifier (auto mode) ---
     triageEnabled: z.boolean().default(true),
     triageModel: z.string().default("haiku-3-5"),
+    // Per /speckit.clarify Q5 — strict (1.0) on day 1 so only perfectly
+    // confident triage decisions are accepted; below threshold falls back
+    // to defaultDispatchTarget.
     triageConfidenceThreshold: z.coerce.number().min(0).max(1).default(1.0),
     triageMaxTokens: z.coerce.number().int().positive().default(256),
+    // Hard cap per triage LLM call. Beyond this, the call is treated as a
+    // failure and the circuit breaker's consecutive-failure counter increments.
+    triageTimeoutMs: z.coerce.number().int().positive().default(5_000),
 
-    // --- Max turns per complexity class (maps triage output to agent maxTurns) ---
-    maxTurnsPerComplexity: z
-      .object({
-        trivial: z.coerce.number().int().positive().default(10),
-        moderate: z.coerce.number().int().positive().default(30),
-        complex: z.coerce.number().int().positive().default(50),
-      })
-      .default({ trivial: 10, moderate: 30, complex: 50 }),
+    // --- Complexity → maxTurns mapping (FR-008a) ---
+    // Each env var is independently operator-configurable. The router maps
+    // the triage complexity field to one of the three specific values below;
+    // if triage is skipped or returns an unknown complexity, DEFAULT_MAXTURNS
+    // is used instead.
+    triageMaxTurnsTrivial: z.coerce.number().int().positive().default(10),
+    triageMaxTurnsModerate: z.coerce.number().int().positive().default(30),
+    triageMaxTurnsComplex: z.coerce.number().int().positive().default(50),
+    defaultMaxTurns: z.coerce.number().int().positive().default(30),
+
+    // --- Isolated-job capacity back-pressure (FR-018, US3) ---
+    // Ceiling on the Redis set dispatch:isolated-job:in-flight. Requests
+    // above this cap enqueue on the pending list (below) until a slot frees.
+    maxConcurrentIsolatedJobs: z.coerce.number().int().positive().default(3),
+    // Max length of the pending Valkey list. When full, new isolated-job
+    // requests are rejected outright (no silent downgrade).
+    pendingIsolatedJobQueueMax: z.coerce.number().int().positive().default(20),
   })
   .superRefine((data, ctx) => {
     validateServerModeCredentials(data, ctx);
     validateProviderCredentials(data, ctx);
     validateDataLayerConfig(data, ctx);
+    validateAutoModeDefault(data, ctx);
+    validateSharedRunnerAuth(data, ctx);
   });
 
 /**
@@ -289,6 +318,58 @@ function validateDataLayerConfig(
   }
 }
 
+/**
+ * Auto mode must fall back to a real dispatch target, not inline. Otherwise
+ * ambiguous events that can't be triaged silently revert to inline execution,
+ * defeating the whole point of opting into auto mode.
+ */
+function validateAutoModeDefault(
+  data: { agentJobMode: string; defaultDispatchTarget: string },
+  ctx: z.RefinementCtx,
+): void {
+  if (data.agentJobMode === "auto" && data.defaultDispatchTarget === "inline") {
+    ctx.addIssue({
+      code: "custom",
+      message:
+        "DEFAULT_DISPATCH_TARGET cannot be 'inline' when AGENT_JOB_MODE is 'auto' " +
+        "(falling back to inline defeats auto-dispatch). Set to daemon, shared-runner, or isolated-job.",
+      path: ["defaultDispatchTarget"],
+    });
+  }
+}
+
+/**
+ * Shared-runner target requires both the HTTP URL and the shared bearer token.
+ * "auto" mode can route to shared-runner, so the same requirement applies.
+ */
+function validateSharedRunnerAuth(
+  data: {
+    agentJobMode: string;
+    internalRunnerUrl?: string | undefined;
+    internalRunnerToken?: string | undefined;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  const requiresSharedRunner =
+    data.agentJobMode === "shared-runner" || data.agentJobMode === "auto";
+  if (!requiresSharedRunner) return;
+
+  if ((data.internalRunnerUrl?.trim().length ?? 0) === 0) {
+    ctx.addIssue({
+      code: "custom",
+      message: "INTERNAL_RUNNER_URL is required when AGENT_JOB_MODE is 'shared-runner' or 'auto'",
+      path: ["internalRunnerUrl"],
+    });
+  }
+  if ((data.internalRunnerToken?.trim().length ?? 0) === 0) {
+    ctx.addIssue({
+      code: "custom",
+      message: "INTERNAL_RUNNER_TOKEN is required when AGENT_JOB_MODE is 'shared-runner' or 'auto'",
+      path: ["internalRunnerToken"],
+    });
+  }
+}
+
 export type Config = z.infer<typeof configSchema>;
 
 // Export schema for use in tests (avoids importing the singleton which runs loadConfig())
@@ -305,6 +386,31 @@ export { configSchema };
  * expressed as one clear assertion — exported so tests can exercise it directly
  * against a parsed `Config` without round-tripping env vars.
  */
+/**
+ * Isolated-job dispatch requires Kubernetes API auth — either in-cluster
+ * (KUBERNETES_SERVICE_HOST injected by the pod spec) or out-of-cluster
+ * (KUBECONFIG path to a kubeconfig file). If neither is present when the
+ * platform is configured to use the isolated-job target, log a warning at
+ * startup: the app still starts (other targets work), but isolated-job
+ * dispatches will be rejected at runtime per FR-018. A warning beats a hard
+ * error because single-target deployments shouldn't be blocked by unused
+ * target misconfiguration.
+ */
+export function warnIfIsolatedJobWithoutKubernetesAuth(cfg: Config): void {
+  const needsKubernetesAuth = cfg.agentJobMode === "isolated-job" || cfg.agentJobMode === "auto";
+  if (!needsKubernetesAuth) return;
+
+  const inCluster = (process.env["KUBERNETES_SERVICE_HOST"]?.trim().length ?? 0) > 0;
+  const hasKubeconfig = (process.env["KUBECONFIG"]?.trim().length ?? 0) > 0;
+  if (inCluster || hasKubeconfig) return;
+
+  console.warn(
+    `[config] WARNING: AGENT_JOB_MODE=${cfg.agentJobMode} enables the isolated-job target, ` +
+      "but neither KUBERNETES_SERVICE_HOST (in-cluster) nor KUBECONFIG (out-of-cluster) is set. " +
+      "isolated-job dispatches will be rejected at runtime with dispatch_reason='infra-absent'.",
+  );
+}
+
 export function assertOauthRequiresAllowlist(cfg: Config): void {
   if (
     cfg.provider === "anthropic" &&
@@ -331,24 +437,6 @@ export function parseBooleanEnv(name: string, raw: string | undefined): boolean 
   if (["false", "0", "no"].includes(normalized)) return false;
 
   throw new Error(`${name} must be one of: true, false, 1, 0, yes, no. Got: ${raw}`);
-}
-
-/**
- * Parse MAX_TURNS_PER_COMPLEXITY env var with a clear error message on malformed JSON.
- * Returns undefined when the var is not set (triggers Zod .default()).
- *
- * Exported so tests can exercise the error path directly without re-importing
- * the config singleton (same pattern as assertOauthRequiresAllowlist).
- */
-export function parseMaxTurnsEnv(raw: string | undefined): Record<string, unknown> | undefined {
-  if (raw === undefined) return undefined;
-  try {
-    return JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    throw new Error(
-      `MAX_TURNS_PER_COMPLEXITY must be valid JSON (e.g. '{"trivial":10,"moderate":30,"complex":50}'). Got: ${raw}`,
-    );
-  }
 }
 
 /**
@@ -386,13 +474,13 @@ function loadConfig(): Config {
 
     // Dispatch mode
     agentJobMode: process.env["AGENT_JOB_MODE"],
-    defaultDispatchMode: process.env["DEFAULT_DISPATCH_MODE"],
+    defaultDispatchTarget: process.env["DEFAULT_DISPATCH_TARGET"],
 
-    // K8s Job spawner
+    // K8s Job spawner + shared-runner
     jobNamespace: process.env["JOB_NAMESPACE"],
     jobImage: process.env["JOB_IMAGE"],
     jobTtlSeconds: process.env["JOB_TTL_SECONDS"],
-    sharedRunnerUrl: process.env["SHARED_RUNNER_URL"],
+    internalRunnerUrl: process.env["INTERNAL_RUNNER_URL"],
 
     // Data layer
     valkeyUrl: process.env["VALKEY_URL"],
@@ -426,11 +514,20 @@ function loadConfig(): Config {
     triageModel: process.env["TRIAGE_MODEL"],
     triageConfidenceThreshold: process.env["TRIAGE_CONFIDENCE_THRESHOLD"],
     triageMaxTokens: process.env["TRIAGE_MAX_TOKENS"],
+    triageTimeoutMs: process.env["TRIAGE_TIMEOUT_MS"],
 
-    // Max turns per complexity
-    maxTurnsPerComplexity: parseMaxTurnsEnv(process.env["MAX_TURNS_PER_COMPLEXITY"]),
+    // Complexity → maxTurns (FR-008a)
+    triageMaxTurnsTrivial: process.env["TRIAGE_MAXTURNS_TRIVIAL"],
+    triageMaxTurnsModerate: process.env["TRIAGE_MAXTURNS_MODERATE"],
+    triageMaxTurnsComplex: process.env["TRIAGE_MAXTURNS_COMPLEX"],
+    defaultMaxTurns: process.env["DEFAULT_MAXTURNS"],
+
+    // Isolated-job capacity back-pressure (US3)
+    maxConcurrentIsolatedJobs: process.env["MAX_CONCURRENT_ISOLATED_JOBS"],
+    pendingIsolatedJobQueueMax: process.env["PENDING_ISOLATED_JOB_QUEUE_MAX"],
   });
   assertOauthRequiresAllowlist(cfg);
+  warnIfIsolatedJobWithoutKubernetesAuth(cfg);
 
   // H6: Warn when WebSocket URLs use unencrypted ws:// in production.
   // Installation tokens and DAEMON_AUTH_TOKEN are transmitted over this connection.

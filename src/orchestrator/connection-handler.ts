@@ -498,7 +498,7 @@ async function handleAccept(
     const octokit = await app.getInstallationOctokit(installation.id);
     const { token } = (await octokit.auth({ type: "installation" })) as { token: string };
 
-    const maxTurns = config.agentMaxTurns ?? config.maxTurnsPerComplexity.complex;
+    const maxTurns = config.agentMaxTurns ?? config.triageMaxTurnsComplex;
     const { resolveAllowedTools } = await import("../core/prompt-builder");
 
     // Reconstruct a minimal BotContext-shaped object for resolveAllowedTools.

@@ -5,7 +5,6 @@ import {
   type Config,
   configSchema,
   parseBooleanEnv,
-  parseMaxTurnsEnv,
 } from "../src/config";
 
 // Minimal required GitHub App fields shared by all test cases
@@ -271,17 +270,21 @@ describe("configSchema — daemon orchestration defaults", () => {
   });
 
   it("accepts all valid agentJobMode enum values", () => {
-    for (const mode of ["inline", "shared-runner", "ephemeral-job", "auto"] as const) {
+    const nonInlineBase = {
+      ...ANTHROPIC_BASE,
+      databaseUrl: "postgres://localhost/test",
+      valkeyUrl: "redis://localhost:6379",
+      daemonAuthToken: "test-token",
+      // Required when agentJobMode is shared-runner or auto.
+      internalRunnerUrl: "http://runner.svc.cluster.local:8080",
+      internalRunnerToken: "runner-token",
+    };
+
+    for (const mode of ["inline", "daemon", "shared-runner", "isolated-job", "auto"] as const) {
       const input =
         mode === "inline"
           ? { ...ANTHROPIC_BASE, agentJobMode: mode }
-          : {
-              ...ANTHROPIC_BASE,
-              agentJobMode: mode,
-              databaseUrl: "postgres://localhost/test",
-              valkeyUrl: "redis://localhost:6379",
-              daemonAuthToken: "test-token",
-            };
+          : { ...nonInlineBase, agentJobMode: mode };
       const result = configSchema.safeParse(input);
       expect(result.success).toBe(true);
       if (result.success) {
@@ -295,11 +298,11 @@ describe("configSchema — daemon orchestration defaults", () => {
     expect(result.success).toBe(false);
   });
 
-  it("defaults defaultDispatchMode to 'shared-runner'", () => {
+  it("defaults defaultDispatchTarget to 'shared-runner'", () => {
     const result = configSchema.safeParse(ANTHROPIC_BASE);
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.defaultDispatchMode).toBe("shared-runner");
+      expect(result.data.defaultDispatchTarget).toBe("shared-runner");
     }
   });
 
@@ -335,11 +338,14 @@ describe("configSchema — daemon orchestration defaults", () => {
     }
   });
 
-  it("defaults maxTurnsPerComplexity to {trivial:10, moderate:30, complex:50}", () => {
+  it("defaults triage maxTurns ladder to 10 / 30 / 50 with DEFAULT_MAXTURNS=30", () => {
     const result = configSchema.safeParse(ANTHROPIC_BASE);
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.maxTurnsPerComplexity).toEqual({ trivial: 10, moderate: 30, complex: 50 });
+      expect(result.data.triageMaxTurnsTrivial).toBe(10);
+      expect(result.data.triageMaxTurnsModerate).toBe(30);
+      expect(result.data.triageMaxTurnsComplex).toBe(50);
+      expect(result.data.defaultMaxTurns).toBe(30);
     }
   });
 
@@ -393,13 +399,15 @@ describe("configSchema — non-inline mode requires data layer", () => {
     }
   });
 
-  it("accepts agentJobMode='shared-runner' with both DATABASE_URL and VALKEY_URL", () => {
+  it("accepts agentJobMode='shared-runner' with all required fields", () => {
     const result = configSchema.safeParse({
       ...ANTHROPIC_BASE,
       agentJobMode: "shared-runner",
       databaseUrl: "postgres://localhost/test",
       valkeyUrl: "redis://localhost:6379",
       daemonAuthToken: "test-token",
+      internalRunnerUrl: "http://runner.svc.cluster.local:8080",
+      internalRunnerToken: "runner-token",
     });
     expect(result.success).toBe(true);
     if (result.success) {
@@ -418,38 +426,23 @@ describe("configSchema — non-inline mode requires data layer", () => {
   });
 });
 
-describe("configSchema — maxTurnsPerComplexity", () => {
-  it("accepts valid object for maxTurnsPerComplexity", () => {
+describe("configSchema — triage maxTurns ladder (FR-008a)", () => {
+  it("accepts per-complexity overrides via individual env vars", () => {
     const result = configSchema.safeParse({
       ...BASE,
       anthropicApiKey: "sk-ant-test",
-      maxTurnsPerComplexity: { trivial: 5, moderate: 15, complex: 25 },
+      triageMaxTurnsTrivial: 5,
+      triageMaxTurnsModerate: 15,
+      triageMaxTurnsComplex: 25,
+      defaultMaxTurns: 20,
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.maxTurnsPerComplexity).toEqual({ trivial: 5, moderate: 15, complex: 25 });
+      expect(result.data.triageMaxTurnsTrivial).toBe(5);
+      expect(result.data.triageMaxTurnsModerate).toBe(15);
+      expect(result.data.triageMaxTurnsComplex).toBe(25);
+      expect(result.data.defaultMaxTurns).toBe(20);
     }
-  });
-});
-
-describe("parseMaxTurnsEnv", () => {
-  it("returns undefined when input is undefined", () => {
-    expect(parseMaxTurnsEnv(undefined)).toBeUndefined();
-  });
-
-  it("parses valid JSON into an object", () => {
-    const result = parseMaxTurnsEnv('{"trivial":5,"moderate":15,"complex":25}');
-    expect(result).toEqual({ trivial: 5, moderate: 15, complex: 25 });
-  });
-
-  it("throws a descriptive error for malformed JSON", () => {
-    expect(() => parseMaxTurnsEnv("{bad json")).toThrow(
-      /MAX_TURNS_PER_COMPLEXITY must be valid JSON/,
-    );
-  });
-
-  it("includes the raw value in the error message for debugging", () => {
-    expect(() => parseMaxTurnsEnv("{oops}")).toThrow("{oops}");
   });
 });
 
