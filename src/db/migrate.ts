@@ -46,9 +46,15 @@ export async function runMigrations(sql: SQL): Promise<void> {
   // same session — pool-dispatched queries can land on different connections,
   // leaving the lock orphaned until the connection is recycled.
   const conn = await sql.reserve();
+  // Track whether the advisory lock was actually acquired so the matching
+  // unlock runs exactly when needed — and always runs, even if a migration
+  // throws. Session-level locks otherwise stay held on the pooled connection
+  // and block the next migrator.
+  let locked = false;
 
   try {
     await conn`SELECT pg_advisory_lock(${MIGRATION_LOCK_KEY})`;
+    locked = true;
 
     const applied: { version: string }[] = await conn`
       SELECT version FROM _migrations ORDER BY version
@@ -79,9 +85,13 @@ export async function runMigrations(sql: SQL): Promise<void> {
 
       logger.info({ version }, "Migration applied successfully");
     }
-
-    await conn`SELECT pg_advisory_unlock(${MIGRATION_LOCK_KEY})`;
   } finally {
-    conn.release();
+    try {
+      if (locked) {
+        await conn`SELECT pg_advisory_unlock(${MIGRATION_LOCK_KEY})`;
+      }
+    } finally {
+      conn.release();
+    }
   }
 }

@@ -113,22 +113,6 @@ export function evaluateOffer(
 // Helpers extracted from executeJob to reduce complexity / statement count
 // ---------------------------------------------------------------------------
 
-/** Write orchestrator-provided env vars as a .env file in the work directory. */
-async function writeEnvFile(
-  workDir: string,
-  envVars: Record<string, string> | undefined,
-  log: { info: (obj: object, msg: string) => void },
-): Promise<void> {
-  if (envVars === undefined || Object.keys(envVars).length === 0) return;
-  const fs = await import("node:fs");
-  const path = await import("node:path");
-  const envContent = Object.entries(envVars)
-    .map(([k, v]) => `${k}=${v}`)
-    .join("\n");
-  fs.writeFileSync(path.join(workDir, ".env"), `${envContent}\n`);
-  log.info({ keyCount: Object.keys(envVars).length }, "Wrote .env from orchestrator env vars");
-}
-
 /** Validate critical context fields at boundary. Returns false if invalid (sends error result). */
 function validateJobContext(
   context: SerializableBotContext,
@@ -225,7 +209,6 @@ export async function executeJob(
 
   try {
     // Dynamic import to avoid circular deps and keep daemon-side imports clean
-    const { checkoutRepo } = await import("../core/checkout");
     const { runInlinePipeline } = await import("../core/inline-pipeline");
     const { createChildLogger } = await import("../logger");
 
@@ -246,6 +229,10 @@ export async function executeJob(
       entityNumber: context.entityNumber,
     });
 
+    // Build the full BotContext. `envVars` is threaded through the context so
+    // the pipeline can write `.env` into the agent workspace after its own
+    // checkout. A second (outer) checkout here would leave `.env` in a
+    // throwaway directory that the agent never sees.
     const fullCtx = {
       ...context,
       octokit,
@@ -254,6 +241,7 @@ export async function executeJob(
       baseBranch,
       daemonCapabilities: capabilities,
       ...(memory !== undefined ? { repoMemory: memory } : {}),
+      ...(envVars !== undefined && Object.keys(envVars).length > 0 ? { envVars } : {}),
     };
 
     if (context.dryRun === true) {
@@ -268,57 +256,53 @@ export async function executeJob(
       return;
     }
 
-    const { workDir, cleanup } = await checkoutRepo(fullCtx, installationToken);
-    job.workDir = workDir;
-
-    await writeEnvFile(workDir, envVars, childLog);
-
     send({
       type: "job:status",
       ...createMessageEnvelope(offerId),
       payload: { status: "executing" },
     });
 
-    try {
-      // Honor orchestrator-approved execution limits (maxTurns, tool allowlist)
-      // so daemon execution matches what the orchestrator authorized.
-      const result = await runInlinePipeline(fullCtx, { maxTurns, allowedTools });
-      const learnings = result.daemonActions?.learnings ?? [];
-      const deletions = result.daemonActions?.deletions ?? [];
+    // Honor orchestrator-approved execution limits (maxTurns, tool allowlist)
+    // so daemon execution matches what the orchestrator authorized.
+    // `onWorkDirReady` records the pipeline's workspace on the ActiveJob so
+    // handleJobCancel and registerExitCleanup can rm it (and its `.cred.sh`)
+    // even if the pipeline does not finish its own cleanup.
+    const result = await runInlinePipeline(fullCtx, {
+      maxTurns,
+      allowedTools,
+      onWorkDirReady: (wd) => {
+        job.workDir = wd;
+      },
+    });
+    const learnings = result.daemonActions?.learnings ?? [];
+    const deletions = result.daemonActions?.deletions ?? [];
 
-      childLog.info(
-        {
-          learningsCount: learnings.length,
-          deletionsCount: deletions.length,
-          learnings,
-          deletions,
+    childLog.info(
+      {
+        learningsCount: learnings.length,
+        deletionsCount: deletions.length,
+        learnings,
+        deletions,
+      },
+      "Daemon actions collected from execution",
+    );
+
+    // Only send result if not cancelled (prevents duplicate job:result)
+    if (!abortController.signal.aborted) {
+      send({
+        type: "job:result",
+        ...createMessageEnvelope(offerId),
+        payload: {
+          success: result.success,
+          deliveryId: context.deliveryId,
+          durationMs: Date.now() - job.startedAt,
+          costUsd: result.costUsd,
+          numTurns: result.numTurns,
+          ...(result.success ? {} : { errorMessage: "Pipeline completed with failure" }),
+          ...(learnings.length > 0 ? { learnings } : {}),
+          ...(deletions.length > 0 ? { deletions } : {}),
         },
-        "Daemon actions collected from execution",
-      );
-
-      // Only send result if not cancelled (prevents duplicate job:result)
-      if (!abortController.signal.aborted) {
-        send({
-          type: "job:result",
-          ...createMessageEnvelope(offerId),
-          payload: {
-            success: result.success,
-            deliveryId: context.deliveryId,
-            durationMs: Date.now() - job.startedAt,
-            costUsd: result.costUsd,
-            numTurns: result.numTurns,
-            ...(result.success ? {} : { errorMessage: "Pipeline completed with failure" }),
-            ...(learnings.length > 0 ? { learnings } : {}),
-            ...(deletions.length > 0 ? { deletions } : {}),
-          },
-        });
-      }
-    } finally {
-      try {
-        await cleanup();
-      } catch (cleanupErr) {
-        logger.error({ err: cleanupErr }, "Failed to cleanup work directory");
-      }
+      });
     }
   } catch (error) {
     // Only send error result if not cancelled (prevents duplicate job:result)

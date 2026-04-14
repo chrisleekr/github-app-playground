@@ -44,6 +44,13 @@ export interface BotContext {
   repoMemory?: { id: string; category: string; content: string; pinned: boolean }[];
   /** Daemon capabilities — set when running in daemon mode to enable capability-based tools */
   daemonCapabilities?: DaemonCapabilities;
+  /**
+   * Orchestrator-provided env vars (daemon mode only). Written as `.env` in
+   * the pipeline's workspace after checkout so the agent subprocess can read
+   * them. Kept on the context (rather than as a pipeline override) to mirror
+   * the existing `repoMemory` threading.
+   */
+  envVars?: Record<string, string>;
   /** Authenticated Octokit instance for this installation */
   octokit: Octokit;
   /** Child logger scoped to this request */

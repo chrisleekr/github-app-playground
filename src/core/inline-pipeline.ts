@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { resolveMcpServers } from "../mcp/registry";
@@ -95,6 +95,31 @@ function buildFinalOpts(result: ExecutionResult): {
 export interface RunInlinePipelineOverrides {
   maxTurns?: number;
   allowedTools?: string[];
+  /**
+   * Fires once the pipeline has cloned the repo and knows the workspace path.
+   * Used by the daemon `executeJob()` to track workDir for cancellation and
+   * SIGKILL cleanup without a second (redundant) clone.
+   */
+  onWorkDirReady?: (workDir: string) => void;
+}
+
+/**
+ * Write orchestrator-provided env vars as `.env` in the agent workspace so the
+ * agent subprocess (which runs with cwd=workDir) can read them. No-op when the
+ * map is absent or empty. Values are written verbatim — callers own escaping.
+ */
+function writeEnvFile(
+  workDir: string,
+  envVars: Record<string, string> | undefined,
+  log: { info: (obj: object, msg: string) => void },
+): void {
+  if (envVars === undefined || Object.keys(envVars).length === 0) return;
+  const envContent = Object.entries(envVars)
+    .map(([k, v]) => `${k}=${v}`)
+    .join("\n");
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- workDir is a daemon-owned temp path
+  writeFileSync(join(workDir, ".env"), `${envContent}\n`);
+  log.info({ keyCount: Object.keys(envVars).length }, "Wrote .env from orchestrator env vars");
 }
 
 export async function runInlinePipeline(
@@ -153,8 +178,14 @@ export async function runInlinePipeline(
 
     // Step 5: Clone repo to temp directory
     const { workDir, cleanup } = await checkoutRepo(enrichedCtx, installationToken);
+    overrides.onWorkDirReady?.(workDir);
 
     try {
+      // Write orchestrator-provided .env into the just-cloned workspace so the
+      // agent subprocess can read it. Must happen inside this try so cleanup()
+      // still removes the file on every exit path.
+      writeEnvFile(workDir, enrichedCtx.envVars, enrichedCtx.log);
+
       // Step 6: Resolve MCP servers for this context
       const mcpServers = resolveMcpServers(
         enrichedCtx,
