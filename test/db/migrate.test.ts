@@ -35,6 +35,7 @@ describe.skipIf(sql === null)("runMigrations", () => {
     await requireDb().unsafe(`
       DROP TABLE IF EXISTS _migrations CASCADE;
       DROP TABLE IF EXISTS repo_memory CASCADE;
+      DROP TABLE IF EXISTS triage_results CASCADE;
       DROP TABLE IF EXISTS executions CASCADE;
       DROP TABLE IF EXISTS daemons CASCADE;
     `);
@@ -44,6 +45,7 @@ describe.skipIf(sql === null)("runMigrations", () => {
     await requireDb().unsafe(`
       DROP TABLE IF EXISTS _migrations CASCADE;
       DROP TABLE IF EXISTS repo_memory CASCADE;
+      DROP TABLE IF EXISTS triage_results CASCADE;
       DROP TABLE IF EXISTS executions CASCADE;
       DROP TABLE IF EXISTS daemons CASCADE;
     `);
@@ -58,9 +60,10 @@ describe.skipIf(sql === null)("runMigrations", () => {
     const versions: { version: string }[] = await requireDb()`
       SELECT version FROM _migrations ORDER BY version
     `;
-    expect(versions.length).toBe(2);
+    expect(versions.length).toBe(3);
     expect(versions[0]?.version).toBe("001_initial");
     expect(versions[1]?.version).toBe("002_repo_knowledge");
+    expect(versions[2]?.version).toBe("003_dispatch_decisions");
   });
 
   it("is idempotent — second run is a no-op", async () => {
@@ -70,7 +73,7 @@ describe.skipIf(sql === null)("runMigrations", () => {
     const versions: { version: string }[] = await requireDb()`
       SELECT version FROM _migrations ORDER BY version
     `;
-    expect(versions.length).toBe(2);
+    expect(versions.length).toBe(3);
   });
 
   it("creates the executions table with expected columns", async () => {
@@ -106,5 +109,54 @@ describe.skipIf(sql === null)("runMigrations", () => {
     expect(names).toContain("platform");
     expect(names).toContain("capabilities");
     expect(names).toContain("status");
+  });
+
+  it("extends the executions table with dispatch-decision columns (003)", async () => {
+    const columns: { column_name: string; column_default: string | null }[] = await requireDb()`
+      SELECT column_name, column_default
+      FROM information_schema.columns
+      WHERE table_name = 'executions'
+      ORDER BY ordinal_position
+    `;
+    const byName = new Map(columns.map((c) => [c.column_name, c]));
+
+    expect(byName.has("dispatch_target")).toBe(true);
+    expect(byName.has("dispatch_reason")).toBe(true);
+    expect(byName.has("triage_confidence")).toBe(true);
+    expect(byName.has("triage_cost_usd")).toBe(true);
+    expect(byName.has("triage_complexity")).toBe(true);
+
+    // NOT NULL columns need literal defaults so ADD COLUMN backfills existing rows.
+    expect(byName.get("dispatch_target")?.column_default).toContain("'inline'");
+    expect(byName.get("dispatch_reason")?.column_default).toContain("'static-default'");
+  });
+
+  it("creates the triage_results table with the expected schema (003)", async () => {
+    const columns: { column_name: string; is_nullable: string }[] = await requireDb()`
+      SELECT column_name, is_nullable
+      FROM information_schema.columns
+      WHERE table_name = 'triage_results'
+      ORDER BY ordinal_position
+    `;
+    const names = columns.map((c) => c.column_name);
+
+    expect(names).toContain("id");
+    expect(names).toContain("delivery_id");
+    expect(names).toContain("mode");
+    expect(names).toContain("confidence");
+    expect(names).toContain("complexity");
+    expect(names).toContain("rationale");
+    expect(names).toContain("cost_usd");
+    expect(names).toContain("latency_ms");
+    expect(names).toContain("provider");
+    expect(names).toContain("model");
+    expect(names).toContain("created_at");
+
+    // Everything except the allowed-nullable columns should be NOT NULL.
+    const notNull = columns.filter((c) => c.is_nullable === "NO").map((c) => c.column_name);
+    expect(notNull).toContain("delivery_id");
+    expect(notNull).toContain("mode");
+    expect(notNull).toContain("confidence");
+    expect(notNull).toContain("rationale");
   });
 });

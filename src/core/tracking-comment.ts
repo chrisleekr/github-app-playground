@@ -1,8 +1,43 @@
 import { config } from "../config";
+import type { DispatchReason, DispatchTarget } from "../shared/dispatch-types";
 import type { BotContext } from "../types";
 
 /** Spinner HTML used by claude-code-action for "in progress" state */
 const SPINNER_HTML = `<img src="https://github.com/user-attachments/assets/5ac382c7-e004-429b-8e35-7feb3e8f9c6f" width="14px" height="14px" style="vertical-align: middle; margin-left: 4px;" />`;
+
+/**
+ * Render the one-line "why here?" line required by SC-007.
+ *
+ * Consumed both by humans debugging a dispatch decision and by the
+ * dispatch-telemetry tests (T053). Keep deterministic; inline code fences
+ * for enum values are fine.
+ *
+ * For "capacity-rejected" and "infra-absent" the target argument describes
+ * the target that was *attempted* (and refused), not a successful landing.
+ * Triage detail (confidence, complexity, rationale) is rendered by a
+ * separate helper added in US2 (T037) so this one stays usable in rejection
+ * paths where no TriageResult exists.
+ */
+export function renderDispatchReasonLine(reason: DispatchReason, target: DispatchTarget): string {
+  switch (reason) {
+    case "label":
+      return `Routed to \`${target}\` via explicit dispatch label.`;
+    case "keyword":
+      return `Routed to \`${target}\` — matched a keyword rule (e.g. docker / compose / dind).`;
+    case "triage":
+      return `Routed to \`${target}\` via auto-mode triage (LLM classifier accepted).`;
+    case "default-fallback":
+      return `Routed to \`${target}\` — triage confidence below threshold; using configured default.`;
+    case "triage-error-fallback":
+      return `Routed to \`${target}\` — triage unavailable (timeout / parse-error / circuit-open); using configured default.`;
+    case "static-default":
+      return `Routed to \`${target}\` — no explicit signal and auto-mode is off; using platform default.`;
+    case "capacity-rejected":
+      return `\`${target}\` pool at capacity; request rejected (no silent downgrade).`;
+    case "infra-absent":
+      return `\`${target}\` target infrastructure not configured; request rejected.`;
+  }
+}
 
 /**
  * Build the hidden HTML marker used for durable idempotency.

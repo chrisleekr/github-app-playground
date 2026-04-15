@@ -92,7 +92,8 @@ void mock.module("../../src/db", () => ({
 }));
 
 // Import router AFTER mocks are set up
-const { processRequest } = await import("../../src/webhook/router");
+const { processRequest, decideDispatch, dispatch, NotImplementedError } =
+  await import("../../src/webhook/router");
 const { getActiveCount, decrementActiveCount } = await import("../../src/orchestrator/concurrency");
 
 // ─── GraphQL response factory ──────────────────────────────────────────────
@@ -927,5 +928,76 @@ describe("cleanupStaleIdempotencyEntries", () => {
     cleanupStaleIdempotencyEntries(entries, 60 * 60 * 1000);
 
     expect(entries.size).toBe(0);
+  });
+});
+
+// ─── T011–T013: decideDispatch / dispatch scaffolding ─────────────────────
+
+describe("decideDispatch (T011) — Slice B scaffolding", () => {
+  it("returns inline target + static-default reason when agentJobMode=inline (test env default)", async () => {
+    // Test env runs with AGENT_JOB_MODE unset → config default "inline".
+    // Later slices (US1 T023, US2 T035) layer label/keyword/triage logic
+    // on top; this test pins the pre-layer baseline.
+    const ctx = makeCtx();
+    const decision = await decideDispatch(ctx);
+
+    expect(decision.target).toBe("inline");
+    expect(decision.reason).toBe("static-default");
+    expect(decision.maxTurns).toBeGreaterThan(0); // defaultMaxTurns (30 default)
+    expect(typeof decision.maxTurns).toBe("number");
+  });
+});
+
+describe("dispatch (T011) — target switch surfaces NotImplementedError", () => {
+  it("throws NotImplementedError with target='isolated-job' when routed there", async () => {
+    const ctx = makeCtx();
+    const decision = {
+      target: "isolated-job" as const,
+      reason: "static-default" as const,
+      maxTurns: 30,
+    };
+
+    let caught: unknown;
+    try {
+      await dispatch(ctx, decision);
+    } catch (e) {
+      caught = e;
+    }
+
+    expect(caught).toBeInstanceOf(NotImplementedError);
+    expect(caught).toBeInstanceOf(Error); // also inherits Error — callers can catch both
+    if (caught instanceof NotImplementedError) {
+      expect(caught.target).toBe("isolated-job");
+      expect(caught.name).toBe("NotImplementedError");
+      expect(caught.message).toContain("isolated-job");
+      expect(caught.message).toContain("not yet implemented");
+    }
+  });
+});
+
+describe("processRequest (T013) — dispatch-decision log", () => {
+  it("emits the 'dispatch decision' log before dispatching (inline path)", async () => {
+    const ctx = makeCtx({ deliveryId: `telemetry-${Date.now()}` });
+    await processRequest(ctx);
+
+    // The log was emitted via the silent logger mocked in makeCtx — inspect its
+    // call history directly. `.info` takes (obj, msg) tuples; find the entry
+    // whose msg matches the contract's canonical string.
+    const infoCalls = (ctx.log.info as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    const dispatchLog = infoCalls.find(
+      (call) => Array.isArray(call) && call[1] === "dispatch decision",
+    );
+
+    expect(dispatchLog).toBeDefined();
+    if (dispatchLog !== undefined) {
+      const [payload] = dispatchLog as [Record<string, unknown>, string];
+      expect(payload["deliveryId"]).toBe(ctx.deliveryId);
+      expect(payload["owner"]).toBe(ctx.owner);
+      expect(payload["repo"]).toBe(ctx.repo);
+      expect(payload["dispatchTarget"]).toBe("inline");
+      expect(payload["dispatchReason"]).toBe("static-default");
+      // Slice B: triage never runs. US2 T036 extends with triage* fields.
+      expect(payload["triageInvoked"]).toBe(false);
+    }
   });
 });

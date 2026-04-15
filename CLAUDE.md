@@ -86,6 +86,9 @@ The scheduled research workflow in `.github/workflows/research.yml` also uses `C
 
 ## Active Technologies
 
+- TypeScript 5.9.3 (strict mode with `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `useUnknownInCatchVariables`) on Bun ≥1.3.12 (see `package.json` `packageManager` pin). + existing — `octokit`, `@anthropic-ai/claude-agent-sdk`, `@modelcontextprotocol/sdk`, `pino`, `zod`, Bun built-in `WebSocket` + `RedisClient`. New — `@anthropic-ai/bedrock-sdk` (for the LLMClient Bedrock path) and `@kubernetes/client-node` (for in-cluster Job spawning). `@anthropic-ai/sdk` is already a transitive dep of `claude-agent-sdk`. (20260415-000159-triage-dispatch-modes)
+- PostgreSQL 17 via `Bun.sql` singleton (existing `executions` + `daemons` tables from migration `001_initial.sql`); Valkey 8 (Redis-compatible) via Bun built-in `RedisClient` for the new pending isolated-job queue and the existing Phase 2 job queue / daemon registry. (20260415-000159-triage-dispatch-modes)
+
 - TypeScript 5.9.3 strict mode on Bun >=1.3.8 + `octokit`, `@anthropic-ai/claude-agent-sdk`, `@modelcontextprotocol/sdk`, `pino`, `zod` (all existing). New: Bun built-in `WebSocket` + `RedisClient` (zero new npm dependencies). (20260413-191249-daemon-orchestrator-core)
 - PostgreSQL 17 (pgvector-ready, existing `executions` + `daemons` tables from `001_initial.sql`) + Valkey 8 (Redis 7.2-compatible, via Bun built-in `RedisClient`) (20260413-191249-daemon-orchestrator-core)
 
