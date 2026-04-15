@@ -78,19 +78,22 @@ async function main(): Promise<void> {
   // starts) and BotContext does not carry `installationId`. The pod
   // resolves the installation via GitHub's Apps API using the App's JWT
   // credentials, mirroring the pattern in orchestrator/connection-handler.ts.
-  if (
-    config.appId === undefined ||
-    config.privateKey === undefined ||
-    config.webhookSecret === undefined
-  ) {
-    log.error("GITHUB_APP_ID / PRIVATE_KEY / WEBHOOK_SECRET missing; aborting");
+  if (config.appId === undefined || config.privateKey === undefined) {
+    log.error("GITHUB_APP_ID / PRIVATE_KEY missing; aborting");
     process.exit(1);
   }
-  const app = new App({
-    appId: config.appId,
-    privateKey: config.privateKey,
-    webhookSecret: config.webhookSecret,
-  });
+  // webhookSecret is only needed for webhook signature verification; the pod
+  // does not receive webhooks, only issues installation tokens. Pass it when
+  // available for parity with the server-side config, but don't block startup
+  // on its absence.
+  const app =
+    config.webhookSecret !== undefined
+      ? new App({
+          appId: config.appId,
+          privateKey: config.privateKey,
+          webhookSecret: config.webhookSecret,
+        })
+      : new App({ appId: config.appId, privateKey: config.privateKey });
   let octokit;
   try {
     const { data: installation } = await app.octokit.rest.apps.getRepoInstallation({
