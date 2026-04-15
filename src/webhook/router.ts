@@ -2,6 +2,7 @@ import { config } from "../config";
 import { runInlinePipeline } from "../core/inline-pipeline";
 import { isAlreadyProcessed } from "../core/tracking-comment";
 import { getDb } from "../db";
+import { classifyStatic } from "../k8s/classifier";
 import {
   decrementActiveCount,
   getActiveCount,
@@ -219,20 +220,34 @@ export async function decideDispatch(ctx: BotContext): Promise<DispatchDecision>
   // it awaits the triage LLM call. Keeping it async from day 1 avoids a
   // thrash of call-site signatures later.
   await Promise.resolve();
-  void ctx;
 
+  // Step 1+2 of FR-003 cascade: deterministic label / keyword classification.
+  // Labels always win over keywords (FR-016). Inline mode skips the cascade
+  // entirely — inline never benefits from container/shared targets, and the
+  // explicit signal is the operator setting AGENT_JOB_MODE=inline.
+  if (config.agentJobMode !== "inline") {
+    const classification = classifyStatic(ctx);
+    if (classification.outcome === "clear") {
+      return {
+        target: classification.mode,
+        reason: classification.reason,
+        maxTurns: config.defaultMaxTurns,
+      };
+    }
+  }
+
+  // Cascade fell through to step 3 (no clear label/keyword signal). Reason is
+  // "static-default" — the platform's configured default applies, no triage.
+  // US2 (T035) replaces this branch with the triage call when in auto mode.
   const mode = config.agentJobMode;
 
   if (mode === "inline" || mode === "daemon" || mode === "shared-runner") {
     return { target: mode, reason: "static-default", maxTurns: config.defaultMaxTurns };
   }
-  // isolated-job and auto both surface as their nominal target in the decision;
-  // dispatch() is where NotImplementedError fires for isolated-job, and auto
-  // is mapped via a separate branch so the log + error name the right target.
   if (mode === "isolated-job") {
     return { target: "isolated-job", reason: "static-default", maxTurns: config.defaultMaxTurns };
   }
-  // mode === "auto" — placeholder; triage + default fall-through land in US2.
+  // mode === "auto" — placeholder; triage call lands in US2.
   return {
     target: config.defaultDispatchTarget,
     reason: "static-default",
