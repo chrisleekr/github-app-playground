@@ -12,8 +12,37 @@ import { createExecution } from "../orchestrator/history";
 import { dispatchJob } from "../orchestrator/job-dispatcher";
 import { enqueueJob, type QueuedJob } from "../orchestrator/job-queue";
 import { isValkeyHealthy } from "../orchestrator/valkey";
+import type { DispatchReason, DispatchTarget } from "../shared/dispatch-types";
 import { type BotContext, serializeBotContext } from "../types";
 import { isOwnerAllowed } from "./authorize";
+
+/**
+ * Thrown when the router tries to dispatch to a target whose implementation
+ * has not yet landed. Slice B adds the decideDispatch/dispatch scaffolding
+ * with only the inline / daemon / shared-runner branches wired; isolated-job
+ * lights up in Slice C (US1 T019) and auto mode in Slice D (US2 T035).
+ *
+ * Named error class (not a bare Error) so callers can distinguish "not
+ * implemented" from an unexpected runtime failure; emitted as a typed log
+ * field in processRequest.
+ */
+export class NotImplementedError extends Error {
+  constructor(readonly target: DispatchTarget) {
+    super(`Dispatch target '${target}' is not yet implemented`);
+    this.name = "NotImplementedError";
+  }
+}
+
+/**
+ * DispatchDecision — the in-memory record the router produces for each
+ * event. Mirrors data-model.md §5. `triage` is absent in Slice B (added in
+ * T034/T035) and so is `complexity`.
+ */
+export interface DispatchDecision {
+  target: DispatchTarget;
+  reason: DispatchReason;
+  maxTurns: number;
+}
 
 /**
  * In-memory idempotency guard using X-GitHub-Delivery header.
@@ -126,40 +155,124 @@ export async function processRequest(ctx: BotContext): Promise<void> {
 
   incrementActiveCount();
 
+  const decision = await decideDispatch(ctx);
+
+  // Dispatch-decision structured log per contracts/dispatch-telemetry.md §1.
+  // Triage fields are intentionally omitted in Slice B — US2 (T036) extends
+  // this log once triage runs. Operator dashboards key off `msg === "dispatch
+  // decision"` plus `dispatchTarget` / `dispatchReason`.
+  ctx.log.info(
+    {
+      deliveryId: ctx.deliveryId,
+      owner: ctx.owner,
+      repo: ctx.repo,
+      eventType: ctx.eventName,
+      dispatchTarget: decision.target,
+      dispatchReason: decision.reason,
+      triageInvoked: false,
+    },
+    "dispatch decision",
+  );
+
   try {
-    if (config.agentJobMode !== "inline") {
-      await dispatchNonInline(ctx);
-      // Counter stays incremented — decremented on job:result in connection-handler.
+    await dispatch(ctx, decision);
+  } catch (err) {
+    if (err instanceof NotImplementedError) {
+      decrementActiveCount();
+      ctx.log.error(
+        { deliveryId: ctx.deliveryId, target: err.target },
+        "Dispatch target not yet implemented",
+      );
       return;
     }
-    // Inline execution: optionally record in Postgres when DATABASE_URL is configured (T036)
-    const db = getDb();
-    if (db !== null) {
-      try {
-        const serializedCtx = serializeBotContext(ctx);
-        await createExecution({
-          deliveryId: ctx.deliveryId,
-          repoOwner: ctx.owner,
-          repoName: ctx.repo,
-          entityNumber: ctx.entityNumber,
-          entityType: ctx.isPR ? "pull_request" : "issue",
-          eventName: ctx.eventName,
-          triggerUsername: ctx.triggerUsername,
-          dispatchMode: "inline",
-          contextJson: serializedCtx,
-        });
-      } catch (recordErr) {
-        ctx.log.error({ err: recordErr }, "Failed to create inline execution record (non-fatal)");
-      }
-    }
-
-    await runInlinePipeline(ctx);
-  } finally {
-    // Always decrement for inline jobs.
-    // For daemon-dispatched jobs, the counter is decremented on job:result in connection-handler.
-    if (config.agentJobMode === "inline") {
+    // Surface-level decrement for inline-only path; dispatchNonInline manages
+    // its own counter semantics (slot stays held until job:result).
+    if (decision.target === "inline") {
       decrementActiveCount();
     }
+    throw err;
+  }
+  // For inline jobs, decrement on successful completion of the pipeline.
+  // Daemon-dispatched jobs keep the slot — connection-handler releases on job:result.
+  if (decision.target === "inline") {
+    decrementActiveCount();
+  }
+}
+
+/**
+ * Choose a DispatchTarget for this event. Slice B is a pure config echo —
+ * the target equals `config.agentJobMode` (mapped to the DispatchTarget enum)
+ * with reason "static-default". Later slices layer on:
+ *   - T023 (US1): label + keyword classification short-circuits
+ *   - T035 (US2): auto-mode triage call when static classification ambiguous
+ *
+ * The "auto" AGENT_JOB_MODE is not yet wired — Slice B surfaces it as
+ * NotImplementedError via dispatch() so ops can flip the knob and get a
+ * clean error message instead of silent mis-routing.
+ */
+export async function decideDispatch(ctx: BotContext): Promise<DispatchDecision> {
+  // Note: `async` is deliberate — decideDispatch becomes async in US2 when
+  // it awaits the triage LLM call. Keeping it async from day 1 avoids a
+  // thrash of call-site signatures later.
+  await Promise.resolve();
+  void ctx;
+
+  const mode = config.agentJobMode;
+
+  if (mode === "inline" || mode === "daemon" || mode === "shared-runner") {
+    return { target: mode, reason: "static-default", maxTurns: config.defaultMaxTurns };
+  }
+  // isolated-job and auto both surface as their nominal target in the decision;
+  // dispatch() is where NotImplementedError fires for isolated-job, and auto
+  // is mapped via a separate branch so the log + error name the right target.
+  if (mode === "isolated-job") {
+    return { target: "isolated-job", reason: "static-default", maxTurns: config.defaultMaxTurns };
+  }
+  // mode === "auto" — placeholder; triage + default fall-through land in US2.
+  return {
+    target: config.defaultDispatchTarget,
+    reason: "static-default",
+    maxTurns: config.defaultMaxTurns,
+  };
+}
+
+/**
+ * Perform the actual dispatch for a resolved DispatchDecision. Slice B wires
+ * inline / daemon / shared-runner (the three targets that already exist on
+ * main) and throws NotImplementedError for isolated-job. auto mode never
+ * surfaces here — decideDispatch resolves auto into a concrete target.
+ */
+export async function dispatch(ctx: BotContext, decision: DispatchDecision): Promise<void> {
+  switch (decision.target) {
+    case "inline": {
+      const db = getDb();
+      if (db !== null) {
+        try {
+          const serializedCtx = serializeBotContext(ctx);
+          await createExecution({
+            deliveryId: ctx.deliveryId,
+            repoOwner: ctx.owner,
+            repoName: ctx.repo,
+            entityNumber: ctx.entityNumber,
+            entityType: ctx.isPR ? "pull_request" : "issue",
+            eventName: ctx.eventName,
+            triggerUsername: ctx.triggerUsername,
+            dispatchMode: "inline",
+            contextJson: serializedCtx,
+          });
+        } catch (recordErr) {
+          ctx.log.error({ err: recordErr }, "Failed to create inline execution record (non-fatal)");
+        }
+      }
+      await runInlinePipeline(ctx);
+      return;
+    }
+    case "daemon":
+    case "shared-runner":
+      await dispatchNonInline(ctx);
+      return;
+    case "isolated-job":
+      throw new NotImplementedError("isolated-job");
   }
 }
 
