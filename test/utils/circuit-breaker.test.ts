@@ -143,3 +143,19 @@ describe("CircuitBreaker — failure counter reset on success", () => {
     expect(b.getState()).toBe("open");
   });
 });
+
+describe("CircuitBreaker — reset()", () => {
+  it("returns a tripped breaker to closed", async () => {
+    // Replaces brittle private-field casts previously used for test
+    // cleanup (Copilot PR #20 feedback).
+    const b = new CircuitBreaker({ maxConsecutiveFailures: 2 });
+    await b.execute(() => Promise.reject(new Error("x")));
+    await b.execute(() => Promise.reject(new Error("y")));
+    expect(b.getState()).toBe("open");
+    b.reset();
+    expect(b.getState()).toBe("closed");
+    // Full failure budget is available again.
+    await b.execute(() => Promise.reject(new Error("z")));
+    expect(b.getState()).toBe("closed");
+  });
+});

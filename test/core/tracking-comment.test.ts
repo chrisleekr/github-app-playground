@@ -336,8 +336,24 @@ describe("renderTriageSection (T037)", () => {
     expect(out).toContain("moderate");
   });
 
-  it("renders the rationale verbatim", () => {
+  it("renders the rationale verbatim when it contains no HTML-special characters", () => {
     expect(renderTriageSection(base)).toContain(base.rationale);
+  });
+
+  it("HTML-escapes rationale to prevent <details> break-out (Copilot PR #20)", () => {
+    const hostile = renderTriageSection({
+      ...base,
+      rationale: "close </details><script>alert(1)</script> tag",
+    });
+    expect(hostile).not.toContain("</details><script>");
+    expect(hostile).toContain("&lt;/details&gt;&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(hostile.endsWith("</details>")).toBe(true);
+  });
+
+  it("escapes &, <, and > in rationale", () => {
+    const out = renderTriageSection({ ...base, rationale: "a & b < c > d" });
+    expect(out).toContain("a &amp; b &lt; c &gt; d");
+    expect(out).not.toContain("a & b < c > d");
   });
 
   it("formats cost below US$0.001 as '<US$0.001'", () => {

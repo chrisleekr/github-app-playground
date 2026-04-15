@@ -176,6 +176,52 @@ describe("triageRequest — fallback paths", () => {
     expect(r.outcome).toBe("fallback");
     if (r.outcome === "fallback") expect(r.reason).toBe("sub-threshold");
   });
+
+  it("sub-threshold fallback carries the parsed TriageResult for downstream telemetry", async () => {
+    // Regression: earlier Slice D shape dropped the parsed result on
+    // sub-threshold, which prevented the router from populating
+    // triage_confidence / triage_cost_usd / triage_complexity on the
+    // default-fallback executions row (Copilot PR #20 comment).
+    const client = makeStubClient(() =>
+      Promise.resolve(
+        responseText(
+          JSON.stringify({
+            mode: "shared-runner",
+            confidence: 0.5,
+            complexity: "moderate",
+            rationale: "uncertain",
+          }),
+        ),
+      ),
+    );
+    const r = await triageRequest(makeInput(), client);
+    expect(r.outcome).toBe("fallback");
+    if (r.outcome === "fallback") {
+      expect(r.reason).toBe("sub-threshold");
+      expect(r.result).toBeDefined();
+      expect(r.result?.mode).toBe("shared-runner");
+      expect(r.result?.complexity).toBe("moderate");
+      expect(r.result?.confidence).toBe(0.5);
+    }
+  });
+
+  it("parse-error and llm-error fallbacks do NOT carry a result", async () => {
+    const parseErr = makeStubClient(() => Promise.resolve(responseText("not json at all")));
+    const r1 = await triageRequest(makeInput(), parseErr);
+    expect(r1.outcome).toBe("fallback");
+    if (r1.outcome === "fallback") {
+      expect(r1.reason).toBe("parse-error");
+      expect(r1.result).toBeUndefined();
+    }
+
+    const llmErr = makeStubClient(() => Promise.reject(new Error("boom")));
+    const r2 = await triageRequest(makeInput(), llmErr);
+    expect(r2.outcome).toBe("fallback");
+    if (r2.outcome === "fallback") {
+      expect(r2.reason).toBe("llm-error");
+      expect(r2.result).toBeUndefined();
+    }
+  });
 });
 
 describe("extractJsonObject", () => {

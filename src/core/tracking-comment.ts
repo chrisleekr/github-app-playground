@@ -63,14 +63,26 @@ export interface TriageCommentSection {
  * Markdown inside a `<details>` element requires a blank line after the
  * `<summary>` for GitHub to render tables/lists reliably.
  */
+/**
+ * HTML-escape untrusted strings before embedding inside a `<details>` block.
+ * `rationale` is model-generated; without escaping, a stray `</details>`
+ * (or any `<…>` tag) could break out of the collapsible section or render
+ * unintended HTML. Escaping `&<>` is sufficient for this context — we do
+ * not embed rationale inside attributes.
+ */
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 export function renderTriageSection(triage: TriageCommentSection): string {
   const confidencePct = (triage.confidence * 100).toFixed(0);
   const costFmt = triage.costUsd < 0.001 ? "<US$0.001" : `US$${triage.costUsd.toFixed(4)}`;
+  const safeRationale = escapeHtml(triage.rationale);
   return [
     "<details>",
     `<summary>Triage details — mode: <code>${triage.mode}</code>, confidence: ${confidencePct}%, complexity: ${triage.complexity}</summary>`,
     "",
-    `**Rationale:** ${triage.rationale}`,
+    `**Rationale:** ${safeRationale}`,
     "",
     `- Provider: \`${triage.provider}\``,
     `- Model: \`${triage.model}\``,

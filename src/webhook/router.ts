@@ -52,6 +52,15 @@ export interface DispatchDecision {
   triage?: TriageResult;
   /** Complexity feeds the maxTurns mapping and the tracking comment block. */
   complexity?: "trivial" | "moderate" | "complex";
+  /**
+   * True iff auto mode actually invoked the triage engine (success,
+   * parsed-but-gated, OR errored). Distinct from `triage !== undefined`:
+   * parse-error / timeout / llm-error / circuit-open fallbacks all ran the
+   * LLM path but produced no parsed result. Used for the `triageInvoked`
+   * field on the dispatch-decision log so operators can separate "static
+   * cascade chose this" from "triage ran and we recovered".
+   */
+  triageAttempted?: boolean;
 }
 
 /**
@@ -180,7 +189,11 @@ export async function processRequest(ctx: BotContext): Promise<void> {
       eventType: ctx.eventName,
       dispatchTarget: decision.target,
       dispatchReason: decision.reason,
-      triageInvoked: triage !== undefined,
+      // `triageInvoked` tracks "did the LLM path run", not "did we get a
+      // parsed result" — the two diverge on parse-error / timeout /
+      // llm-error / circuit-open fallbacks where triage ran but produced
+      // no structured TriageResult.
+      triageInvoked: decision.triageAttempted === true,
       ...(triage !== undefined && {
         triageConfidence: triage.confidence,
         triageComplexity: triage.complexity,
@@ -287,20 +300,30 @@ export async function decideDispatch(ctx: BotContext): Promise<DispatchDecision>
       maxTurns: resolveMaxTurnsForComplexity(complexity),
       triage: triageOutcome.result,
       complexity,
+      triageAttempted: true,
     };
   }
 
-  // Fallback branch. When triage parsed-but-sub-threshold we still have the
-  // result row (and its complexity) in hand via `triage` is NOT set here —
-  // we lost the typed reference at this layer because `fallback` doesn't
-  // carry a payload. For observability, the persisted `triage_results` row
-  // still exists; the executions row gets reason=default-fallback.
+  // Fallback branch. `disabled` is the only fallback where the LLM path
+  // did NOT run — every other reason means the engine attempted a call
+  // (success-but-gated, parse-error, timeout, llm-error, circuit-open).
   const fallbackReason: DispatchReason =
     triageOutcome.reason === "sub-threshold" ? "default-fallback" : "triage-error-fallback";
+  const triageAttempted = triageOutcome.reason !== "disabled";
+  // When sub-threshold, carry the parsed result through so the router can
+  // populate triage_confidence / triage_cost_usd / triage_complexity on
+  // the `default-fallback` executions row (FR-014) and emit full telemetry
+  // on the dispatch-decision log. Other fallback reasons have no parsed
+  // result to carry — the shape stays undefined.
   return {
     target: config.defaultDispatchTarget,
     reason: fallbackReason,
     maxTurns: config.defaultMaxTurns,
+    triageAttempted,
+    ...(triageOutcome.result !== undefined && {
+      triage: triageOutcome.result,
+      complexity: triageOutcome.result.complexity,
+    }),
   };
 }
 

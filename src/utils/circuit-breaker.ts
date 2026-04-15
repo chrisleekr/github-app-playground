@@ -88,6 +88,18 @@ export class CircuitBreaker {
   }
 
   /**
+   * @internal Reset the breaker to its initial state. Exposed for tests so
+   * modules that hold a long-lived breaker singleton can clear state between
+   * cases without casting into private fields. Not intended for production
+   * callers — transitions produced this way bypass `onStateChange`.
+   */
+  reset(): void {
+    this.state = "closed";
+    this.consecutiveFailures = 0;
+    this.openedAt = 0;
+  }
+
+  /**
    * Execute `fn` under the breaker. Returns an outcome discriminator so the
    * caller can distinguish "didn't run" (circuit-open) from "ran and errored"
    * — the two collapse at the router layer but tests assert on them.

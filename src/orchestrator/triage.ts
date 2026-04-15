@@ -24,6 +24,7 @@ import { config } from "../config";
 import { getDb } from "../db";
 import { logger } from "../logger";
 import { CircuitBreaker } from "../utils/circuit-breaker";
+import { sanitizeContent } from "../utils/sanitize";
 
 /** Zod schema mirroring contracts/triage-response.schema.json. */
 export const TriageResponseSchema = z.object({
@@ -52,7 +53,17 @@ export type TriageFallbackReason =
 
 export type TriageOutcome =
   | { readonly outcome: "result"; readonly result: TriageResult }
-  | { readonly outcome: "fallback"; readonly reason: TriageFallbackReason };
+  | {
+      readonly outcome: "fallback";
+      readonly reason: TriageFallbackReason;
+      /**
+       * Populated when triage parsed successfully but was gated by the
+       * confidence threshold (`reason === "sub-threshold"`). Callers surface
+       * this so the `default-fallback` path still carries triage telemetry
+       * into logs, tracking comments, and denormalized execution columns.
+       */
+      readonly result?: TriageResult;
+    };
 
 /**
  * Minimal context that the triage prompt needs. Decoupled from `BotContext`
@@ -95,18 +106,18 @@ const breaker = new CircuitBreaker({
 
 /** Test-only: reset the shared breaker between test files. */
 export function _resetTriageBreakerForTests(): void {
-  // Rebuild by swapping internals — simplest to just mutate.
-  (breaker as unknown as { state: string; consecutiveFailures: number; openedAt: number }).state =
-    "closed";
-  (breaker as unknown as { consecutiveFailures: number }).consecutiveFailures = 0;
+  breaker.reset();
 }
 
 /** Build the user-role prompt from the event context. */
 export function buildTriagePrompt(input: TriageInput): string {
-  const labelsLine = input.labels.length > 0 ? input.labels.join(", ") : "(none)";
-  // Clip trigger body to keep input token usage predictable and bounded.
-  const body =
-    input.triggerBody.length > 2_000 ? input.triggerBody.slice(0, 2_000) : input.triggerBody;
+  // Sanitize BEFORE clipping so HTML comments / invisible chars / leaked
+  // GitHub tokens cannot ride into the LLM prompt. Mirrors the treatment
+  // in src/core/prompt-builder.ts for the main agent prompt.
+  const sanitizedLabels = input.labels.map((l) => sanitizeContent(l));
+  const labelsLine = sanitizedLabels.length > 0 ? sanitizedLabels.join(", ") : "(none)";
+  const sanitizedBody = sanitizeContent(input.triggerBody);
+  const body = sanitizedBody.length > 2_000 ? sanitizedBody.slice(0, 2_000) : sanitizedBody;
   return [
     `Repository: ${input.owner}/${input.repo}`,
     `Event: ${input.eventName} on ${input.isPR ? "pull request" : "issue"}`,
@@ -166,14 +177,22 @@ export async function persistTriageResult(result: TriageResult): Promise<void> {
  * rejects with a typed error whose message starts with "triage-timeout".
  */
 async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return await Promise.race<T>([
-    p,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => {
-        reject(new Error(`triage-timeout after ${String(ms)}ms`));
-      }, ms),
-    ),
-  ]);
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race<T>([
+      p,
+      new Promise<T>((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          reject(new Error(`triage-timeout after ${String(ms)}ms`));
+        }, ms);
+      }),
+    ]);
+  } finally {
+    // Clear the timer once either branch settles. Without this, a fast
+    // success leaves a pending setTimeout on the event loop that fires
+    // into a no-op rejection — cheap but measurable on hot paths.
+    if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
+  }
 }
 
 /**
@@ -230,8 +249,12 @@ export async function triageRequest(input: TriageInput, client: LLMClient): Prom
 
   const jsonText = extractJsonObject(response.text);
   if (jsonText === null) {
+    // Run model output through the sanitizer before logging. The prompt
+    // includes user-controlled text; a confused model could echo tokens
+    // or HTML comments that would otherwise land unredacted in log sinks.
+    const rawPreview = sanitizeContent(response.text.slice(0, 200));
     logger.warn(
-      { deliveryId: input.deliveryId, raw: response.text.slice(0, 200) },
+      { deliveryId: input.deliveryId, rawPreview },
       "triage response did not contain a JSON object; falling back",
     );
     return { outcome: "fallback", reason: "parse-error" };
@@ -281,7 +304,11 @@ export async function triageRequest(input: TriageInput, client: LLMClient): Prom
       },
       "triage result below confidence threshold; falling back",
     );
-    return { outcome: "fallback", reason: "sub-threshold" };
+    // Carry the parsed result through so the router can still populate
+    // `default-fallback` executions with triage_confidence / triage_cost_usd
+    // / triage_complexity and emit full telemetry on the dispatch-decision
+    // log. The persisted `triage_results` row exists independently.
+    return { outcome: "fallback", reason: "sub-threshold", result };
   }
 
   return { outcome: "result", result };
