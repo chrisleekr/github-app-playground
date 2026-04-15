@@ -14,10 +14,12 @@ import {
 import { createExecution } from "../orchestrator/history";
 import { dispatchJob } from "../orchestrator/job-dispatcher";
 import { enqueueJob, type QueuedJob } from "../orchestrator/job-queue";
+import { triageRequest, type TriageResult } from "../orchestrator/triage";
 import { isValkeyHealthy } from "../orchestrator/valkey";
 import type { DispatchReason, DispatchTarget } from "../shared/dispatch-types";
 import { type BotContext, serializeBotContext } from "../types";
 import { isOwnerAllowed } from "./authorize";
+import { getTriageLLMClient } from "./triage-client-factory";
 
 /**
  * Thrown when the router tries to dispatch to a target whose implementation
@@ -38,13 +40,18 @@ export class NotImplementedError extends Error {
 
 /**
  * DispatchDecision — the in-memory record the router produces for each
- * event. Mirrors data-model.md §5. `triage` is absent in Slice B (added in
- * T034/T035) and so is `complexity`.
+ * event. Mirrors data-model.md §5. `triage` is populated only when auto mode
+ * actually invoked the triage engine (successfully or not); complexity is
+ * carried along for FR-008a maxTurns mapping and for the tracking comment.
  */
 export interface DispatchDecision {
   target: DispatchTarget;
   reason: DispatchReason;
   maxTurns: number;
+  /** Populated iff triage ran AND parsed (even when sub-threshold). */
+  triage?: TriageResult;
+  /** Complexity feeds the maxTurns mapping and the tracking comment block. */
+  complexity?: "trivial" | "moderate" | "complex";
 }
 
 /**
@@ -161,9 +168,10 @@ export async function processRequest(ctx: BotContext): Promise<void> {
   const decision = await decideDispatch(ctx);
 
   // Dispatch-decision structured log per contracts/dispatch-telemetry.md §1.
-  // Triage fields are intentionally omitted in Slice B — US2 (T036) extends
-  // this log once triage runs. Operator dashboards key off `msg === "dispatch
-  // decision"` plus `dispatchTarget` / `dispatchReason`.
+  // Triage fields are populated iff the auto-mode triage path ran. Operator
+  // dashboards key off `msg === "dispatch decision"` plus `dispatchTarget`
+  // / `dispatchReason`.
+  const triage = decision.triage;
   ctx.log.info(
     {
       deliveryId: ctx.deliveryId,
@@ -172,7 +180,15 @@ export async function processRequest(ctx: BotContext): Promise<void> {
       eventType: ctx.eventName,
       dispatchTarget: decision.target,
       dispatchReason: decision.reason,
-      triageInvoked: false,
+      triageInvoked: triage !== undefined,
+      ...(triage !== undefined && {
+        triageConfidence: triage.confidence,
+        triageComplexity: triage.complexity,
+        triageModel: triage.model,
+        triageProvider: triage.provider,
+        triageLatencyMs: triage.latencyMs,
+        triageCostUsd: triage.costUsd,
+      }),
     },
     "dispatch decision",
   );
@@ -223,11 +239,6 @@ export async function processRequest(ctx: BotContext): Promise<void> {
  * to inline.
  */
 export async function decideDispatch(ctx: BotContext): Promise<DispatchDecision> {
-  // Note: `async` is deliberate — decideDispatch becomes async in US2 when
-  // it awaits the triage LLM call. Keeping it async from day 1 avoids a
-  // thrash of call-site signatures later.
-  await Promise.resolve();
-
   // Step 1+2 of FR-003 cascade: deterministic label / keyword classification.
   // Labels always win over keywords (FR-016). Inline mode skips the cascade
   // entirely — inline never benefits from container/shared targets, and the
@@ -243,9 +254,8 @@ export async function decideDispatch(ctx: BotContext): Promise<DispatchDecision>
     }
   }
 
-  // Cascade fell through to step 3 (no clear label/keyword signal). Reason is
-  // "static-default" — the platform's configured default applies, no triage.
-  // US2 (T035) replaces this branch with the triage call when in auto mode.
+  // Cascade fell through to step 3. In auto mode, invoke the probabilistic
+  // triage engine; in any other mode, honour the configured target as-is.
   const mode = config.agentJobMode;
 
   if (mode === "inline" || mode === "daemon" || mode === "shared-runner") {
@@ -254,12 +264,63 @@ export async function decideDispatch(ctx: BotContext): Promise<DispatchDecision>
   if (mode === "isolated-job") {
     return { target: "isolated-job", reason: "static-default", maxTurns: config.defaultMaxTurns };
   }
-  // mode === "auto" — placeholder; triage call lands in US2.
+
+  // mode === "auto" — run triage against the LLM client.
+  const triageOutcome = await triageRequest(
+    {
+      deliveryId: ctx.deliveryId,
+      owner: ctx.owner,
+      repo: ctx.repo,
+      eventName: ctx.eventName,
+      isPR: ctx.isPR,
+      labels: ctx.labels,
+      triggerBody: ctx.triggerBody,
+    },
+    getTriageLLMClient(),
+  );
+
+  if (triageOutcome.outcome === "result") {
+    const complexity = triageOutcome.result.complexity;
+    return {
+      target: triageOutcome.result.mode,
+      reason: "triage",
+      maxTurns: resolveMaxTurnsForComplexity(complexity),
+      triage: triageOutcome.result,
+      complexity,
+    };
+  }
+
+  // Fallback branch. When triage parsed-but-sub-threshold we still have the
+  // result row (and its complexity) in hand via `triage` is NOT set here —
+  // we lost the typed reference at this layer because `fallback` doesn't
+  // carry a payload. For observability, the persisted `triage_results` row
+  // still exists; the executions row gets reason=default-fallback.
+  const fallbackReason: DispatchReason =
+    triageOutcome.reason === "sub-threshold" ? "default-fallback" : "triage-error-fallback";
   return {
     target: config.defaultDispatchTarget,
-    reason: "static-default",
+    reason: fallbackReason,
     maxTurns: config.defaultMaxTurns,
   };
+}
+
+/**
+ * FR-008a: map a coarse complexity estimate onto a concrete `maxTurns`.
+ * Operators tune these via TRIAGE_MAXTURNS_{TRIVIAL,MODERATE,COMPLEX}; the
+ * default table (10 / 30 / 50) avoids over-allocating turns to events that
+ * the classifier deemed trivial.
+ */
+export function resolveMaxTurnsForComplexity(
+  complexity: "trivial" | "moderate" | "complex",
+): number {
+  switch (complexity) {
+    case "trivial":
+      return config.triageMaxTurnsTrivial;
+    case "moderate":
+      return config.triageMaxTurnsModerate;
+    case "complex":
+      return config.triageMaxTurnsComplex;
+  }
 }
 
 /**
@@ -271,26 +332,7 @@ export async function decideDispatch(ctx: BotContext): Promise<DispatchDecision>
 export async function dispatch(ctx: BotContext, decision: DispatchDecision): Promise<void> {
   switch (decision.target) {
     case "inline": {
-      const db = getDb();
-      if (db !== null) {
-        try {
-          const serializedCtx = serializeBotContext(ctx);
-          await createExecution({
-            deliveryId: ctx.deliveryId,
-            repoOwner: ctx.owner,
-            repoName: ctx.repo,
-            entityNumber: ctx.entityNumber,
-            entityType: ctx.isPR ? "pull_request" : "issue",
-            eventName: ctx.eventName,
-            triggerUsername: ctx.triggerUsername,
-            dispatchMode: "inline",
-            dispatchReason: decision.reason,
-            contextJson: serializedCtx,
-          });
-        } catch (recordErr) {
-          ctx.log.error({ err: recordErr }, "Failed to create inline execution record (non-fatal)");
-        }
-      }
+      await writeExecutionRow(ctx, decision, "inline", "inline");
       await runInlinePipeline(ctx);
       return;
     }
@@ -302,28 +344,7 @@ export async function dispatch(ctx: BotContext, decision: DispatchDecision): Pro
       // Mirror the inline path: write an executions row before dispatch so the
       // DB/audit trail captures the request regardless of runner outcome.
       // dispatchToSharedRunner itself does NOT persist — it only speaks HTTP.
-      const db = getDb();
-      if (db !== null) {
-        try {
-          await createExecution({
-            deliveryId: ctx.deliveryId,
-            repoOwner: ctx.owner,
-            repoName: ctx.repo,
-            entityNumber: ctx.entityNumber,
-            entityType: ctx.isPR ? "pull_request" : "issue",
-            eventName: ctx.eventName,
-            triggerUsername: ctx.triggerUsername,
-            dispatchMode: "shared-runner",
-            dispatchReason: decision.reason,
-            contextJson: serializeBotContext(ctx),
-          });
-        } catch (recordErr) {
-          ctx.log.error(
-            { err: recordErr },
-            "Failed to create shared-runner execution record (non-fatal)",
-          );
-        }
-      }
+      await writeExecutionRow(ctx, decision, "shared-runner", "shared-runner");
       await dispatchToSharedRunner(ctx, decision);
       return;
     }
@@ -343,6 +364,43 @@ export async function dispatch(ctx: BotContext, decision: DispatchDecision): Pro
         throw err;
       }
       return;
+  }
+}
+
+/**
+ * Write an `executions` row for a dispatch decision. Extracted helper so
+ * every target (inline / shared-runner / daemon) records the same denorm
+ * triage fields without duplication. DB write failures are logged but
+ * non-fatal — a transient Postgres outage must not block dispatch.
+ */
+async function writeExecutionRow(
+  ctx: BotContext,
+  decision: DispatchDecision,
+  dispatchMode: string,
+  logTag: string,
+): Promise<void> {
+  const db = getDb();
+  if (db === null) return;
+  try {
+    await createExecution({
+      deliveryId: ctx.deliveryId,
+      repoOwner: ctx.owner,
+      repoName: ctx.repo,
+      entityNumber: ctx.entityNumber,
+      entityType: ctx.isPR ? "pull_request" : "issue",
+      eventName: ctx.eventName,
+      triggerUsername: ctx.triggerUsername,
+      dispatchMode,
+      dispatchReason: decision.reason,
+      ...(decision.triage !== undefined && {
+        triageConfidence: decision.triage.confidence,
+        triageCostUsd: decision.triage.costUsd,
+        triageComplexity: decision.triage.complexity,
+      }),
+      contextJson: serializeBotContext(ctx),
+    });
+  } catch (recordErr) {
+    ctx.log.error({ err: recordErr }, `Failed to create ${logTag} execution record (non-fatal)`);
   }
 }
 
@@ -438,6 +496,12 @@ async function dispatchNonInline(ctx: BotContext, decision: DispatchDecision): P
       triggerUsername: ctx.triggerUsername,
       // Use the resolved target (never "auto"), not the raw config mode.
       dispatchMode: decision.target,
+      dispatchReason: decision.reason,
+      ...(decision.triage !== undefined && {
+        triageConfidence: decision.triage.confidence,
+        triageCostUsd: decision.triage.costUsd,
+        triageComplexity: decision.triage.complexity,
+      }),
       contextJson: serializedCtx,
     });
 
