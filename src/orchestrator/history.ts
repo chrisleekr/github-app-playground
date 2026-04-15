@@ -30,6 +30,15 @@ export interface CreateExecutionParams {
    * analytics can distinguish them from the default fallback.
    */
   dispatchReason?: string;
+  /**
+   * Triage denorm fields per data-model.md §4. Populated only when
+   * `dispatchReason === "triage"` (or "default-fallback" when triage parsed
+   * but was sub-threshold). Enables FR-014 aggregate queries to read
+   * confidence/cost without joining to `triage_results`.
+   */
+  triageConfidence?: number;
+  triageCostUsd?: number;
+  triageComplexity?: "trivial" | "moderate" | "complex";
   contextJson?: SerializableBotContext;
 }
 
@@ -41,33 +50,72 @@ export async function createExecution(params: CreateExecutionParams): Promise<st
   const db = getDb();
   if (db === null) throw new Error("Database not configured");
 
-  const rows: { id: string }[] =
-    params.dispatchReason !== undefined
-      ? await db`
-        INSERT INTO executions (
-          delivery_id, repo_owner, repo_name, entity_number, entity_type,
-          event_name, trigger_username, dispatch_mode, dispatch_reason,
-          status, context_json
-        ) VALUES (
-          ${params.deliveryId}, ${params.repoOwner}, ${params.repoName},
-          ${params.entityNumber}, ${params.entityType}, ${params.eventName},
-          ${params.triggerUsername}, ${params.dispatchMode}, ${params.dispatchReason},
-          'queued', ${params.contextJson ?? null}
-        )
-        RETURNING id
-      `
-      : await db`
-        INSERT INTO executions (
-          delivery_id, repo_owner, repo_name, entity_number, entity_type,
-          event_name, trigger_username, dispatch_mode, status, context_json
-        ) VALUES (
-          ${params.deliveryId}, ${params.repoOwner}, ${params.repoName},
-          ${params.entityNumber}, ${params.entityType}, ${params.eventName},
-          ${params.triggerUsername}, ${params.dispatchMode}, 'queued',
-          ${params.contextJson ?? null}
-        )
-        RETURNING id
-      `;
+  const hasDispatchReason = params.dispatchReason !== undefined;
+  const hasTriageFields =
+    params.triageConfidence !== undefined ||
+    params.triageCostUsd !== undefined ||
+    params.triageComplexity !== undefined;
+
+  // Guard: triage denorm columns must only accompany an explicit reason.
+  // Without this, callers could accidentally persist triage_* columns
+  // alongside the DB-default `static-default` reason — which would mislead
+  // FR-014 aggregates into attributing triage telemetry to non-triage rows.
+  if (hasTriageFields && !hasDispatchReason) {
+    throw new Error("createExecution: dispatchReason is required when triage fields are provided");
+  }
+
+  // Migration 003 denormalizes dispatch onto `executions` with
+  // `dispatch_target` as the canonical column for new rows; `dispatch_mode`
+  // stays populated for backward compat (the migration note calls for a
+  // future consolidation). Callers pass the resolved DispatchTarget via
+  // `dispatchMode` — we write it to both columns.
+  let rows: { id: string }[];
+  if (hasTriageFields) {
+    rows = await db`
+      INSERT INTO executions (
+        delivery_id, repo_owner, repo_name, entity_number, entity_type,
+        event_name, trigger_username, dispatch_mode, dispatch_target, dispatch_reason,
+        triage_confidence, triage_cost_usd, triage_complexity,
+        status, context_json
+      ) VALUES (
+        ${params.deliveryId}, ${params.repoOwner}, ${params.repoName},
+        ${params.entityNumber}, ${params.entityType}, ${params.eventName},
+        ${params.triggerUsername}, ${params.dispatchMode}, ${params.dispatchMode},
+        ${params.dispatchReason ?? "static-default"},
+        ${params.triageConfidence ?? null}, ${params.triageCostUsd ?? null},
+        ${params.triageComplexity ?? null},
+        'queued', ${params.contextJson ?? null}
+      )
+      RETURNING id
+    `;
+  } else if (hasDispatchReason) {
+    rows = await db`
+      INSERT INTO executions (
+        delivery_id, repo_owner, repo_name, entity_number, entity_type,
+        event_name, trigger_username, dispatch_mode, dispatch_target, dispatch_reason,
+        status, context_json
+      ) VALUES (
+        ${params.deliveryId}, ${params.repoOwner}, ${params.repoName},
+        ${params.entityNumber}, ${params.entityType}, ${params.eventName},
+        ${params.triggerUsername}, ${params.dispatchMode}, ${params.dispatchMode}, ${params.dispatchReason},
+        'queued', ${params.contextJson ?? null}
+      )
+      RETURNING id
+    `;
+  } else {
+    rows = await db`
+      INSERT INTO executions (
+        delivery_id, repo_owner, repo_name, entity_number, entity_type,
+        event_name, trigger_username, dispatch_mode, dispatch_target, status, context_json
+      ) VALUES (
+        ${params.deliveryId}, ${params.repoOwner}, ${params.repoName},
+        ${params.entityNumber}, ${params.entityType}, ${params.eventName},
+        ${params.triggerUsername}, ${params.dispatchMode}, ${params.dispatchMode}, 'queued',
+        ${params.contextJson ?? null}
+      )
+      RETURNING id
+    `;
+  }
   const row = rows[0];
   if (row === undefined) throw new Error("INSERT RETURNING yielded no row");
   return row.id;

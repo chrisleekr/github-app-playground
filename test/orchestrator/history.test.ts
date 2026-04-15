@@ -214,6 +214,58 @@ describe("createExecution", () => {
     const interpolatedValues = call.slice(1);
     expect(interpolatedValues).toContain(null);
   });
+
+  it("writes dispatch_target column (migration 003) in all INSERT branches", async () => {
+    // Regression for Copilot PR #20: without dispatch_target in the
+    // INSERT, FR-014 aggregates read the DB default ('inline') regardless
+    // of the resolved target.
+    mockDbResult = [{ id: "uuid-target" }];
+
+    await createExecution(makeCreateParams({ dispatchMode: "shared-runner" }));
+    const defaultSql = (firstCall(mockDbFn)[0] as TemplateStringsArray).join("?");
+    expect(defaultSql).toContain("dispatch_target");
+
+    mockDbFn.mockClear();
+    mockDbResult = [{ id: "uuid-reason" }];
+    await createExecution(makeCreateParams({ dispatchMode: "daemon", dispatchReason: "label" }));
+    const reasonSql = (firstCall(mockDbFn)[0] as TemplateStringsArray).join("?");
+    expect(reasonSql).toContain("dispatch_target");
+
+    mockDbFn.mockClear();
+    mockDbResult = [{ id: "uuid-triage" }];
+    await createExecution(
+      makeCreateParams({
+        dispatchMode: "isolated-job",
+        dispatchReason: "triage",
+        triageConfidence: 0.9,
+        triageCostUsd: 0.0001,
+        triageComplexity: "moderate",
+      }),
+    );
+    const triageSql = (firstCall(mockDbFn)[0] as TemplateStringsArray).join("?");
+    expect(triageSql).toContain("dispatch_target");
+  });
+
+  it("throws when triage fields are provided without dispatchReason", async () => {
+    // Guard-rail for Copilot PR #20: triage_* columns must not be
+    // persisted alongside the DB-default `static-default` reason.
+    mockDbResult = [{ id: "uuid-guard" }];
+    let threw = false;
+    try {
+      await createExecution(
+        makeCreateParams({
+          triageConfidence: 0.9,
+          triageCostUsd: 0.0001,
+          triageComplexity: "trivial",
+        }),
+      );
+    } catch (e: unknown) {
+      threw = true;
+      expect((e as Error).message).toContain("dispatchReason is required");
+    }
+    expect(threw).toBe(true);
+    expect(mockDbFn).not.toHaveBeenCalled();
+  });
 });
 
 describe("markExecutionOffered", () => {

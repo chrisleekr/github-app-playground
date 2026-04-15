@@ -40,6 +40,59 @@ export function renderDispatchReasonLine(reason: DispatchReason, target: Dispatc
 }
 
 /**
+ * Triage payload surfaced in tracking comments. A narrow shape — decoupled
+ * from `TriageResult` so this module has no dependency on the orchestrator.
+ */
+export interface TriageCommentSection {
+  readonly mode: "daemon" | "shared-runner" | "isolated-job";
+  readonly confidence: number;
+  readonly complexity: "trivial" | "moderate" | "complex";
+  readonly rationale: string;
+  readonly provider: "anthropic" | "bedrock";
+  readonly model: string;
+  readonly costUsd: number;
+  readonly latencyMs: number;
+}
+
+/**
+ * Render the optional triage details block (T037) per research.md R6 — a
+ * collapsible `<details>` so the tracking comment stays short by default
+ * and expands on click. Only called when `triage` is defined; callers omit
+ * it for non-auto / sub-threshold paths where no result was produced.
+ *
+ * Markdown inside a `<details>` element requires a blank line after the
+ * `<summary>` for GitHub to render tables/lists reliably.
+ */
+/**
+ * HTML-escape untrusted strings before embedding inside a `<details>` block.
+ * `rationale` is model-generated; without escaping, a stray `</details>`
+ * (or any `<…>` tag) could break out of the collapsible section or render
+ * unintended HTML. Escaping `&<>` is sufficient for this context — we do
+ * not embed rationale inside attributes.
+ */
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+export function renderTriageSection(triage: TriageCommentSection): string {
+  const confidencePct = (triage.confidence * 100).toFixed(0);
+  const costFmt = triage.costUsd < 0.001 ? "<US$0.001" : `US$${triage.costUsd.toFixed(4)}`;
+  const safeRationale = escapeHtml(triage.rationale);
+  return [
+    "<details>",
+    `<summary>Triage details — mode: <code>${triage.mode}</code>, confidence: ${confidencePct}%, complexity: ${triage.complexity}</summary>`,
+    "",
+    `**Rationale:** ${safeRationale}`,
+    "",
+    `- Provider: \`${triage.provider}\``,
+    `- Model: \`${triage.model}\``,
+    `- Cost: ${costFmt}`,
+    `- Latency: ${String(triage.latencyMs)} ms`,
+    "</details>",
+  ].join("\n");
+}
+
+/**
  * Build the hidden HTML marker used for durable idempotency.
  * Embedded in the tracking comment body so the marker survives pod restarts
  * and can be detected on webhook retries.

@@ -1,0 +1,214 @@
+import { describe, expect, it } from "bun:test";
+
+import {
+  _createLLMClientForTests,
+  type AnthropicLikeSdk,
+  type AnthropicMessageResponse,
+  buildRequest,
+  createLLMClient,
+  estimateHaikuCostUsd,
+  MODEL_MAP,
+  parseAnthropicResponse,
+  resolveModelId,
+} from "../../src/ai/llm-client";
+
+describe("resolveModelId", () => {
+  it("resolves the haiku-3-5 alias for anthropic", () => {
+    expect(resolveModelId("haiku-3-5", "anthropic")).toBe("claude-3-5-haiku-20241022");
+  });
+
+  it("resolves the haiku-3-5 alias for bedrock", () => {
+    expect(resolveModelId("haiku-3-5", "bedrock")).toBe("anthropic.claude-3-5-haiku-20241022-v1:0");
+  });
+
+  it("falls through unchanged for an unknown alias (explicit pinning)", () => {
+    expect(resolveModelId("claude-3-7-sonnet-snapshot-20260301", "anthropic")).toBe(
+      "claude-3-7-sonnet-snapshot-20260301",
+    );
+  });
+
+  it("MODEL_MAP is a frozen-shape snapshot (no accidental growth in tests)", () => {
+    expect(Object.keys(MODEL_MAP).sort()).toEqual(["haiku-3-5"]);
+  });
+});
+
+describe("createLLMClient — validation guards", () => {
+  it("throws when provider=anthropic and no credentials supplied", () => {
+    expect(() => createLLMClient({ provider: "anthropic" })).toThrow(
+      /requires anthropicApiKey or claudeCodeOauthToken/,
+    );
+  });
+
+  it("throws when anthropicApiKey is empty string", () => {
+    expect(() => createLLMClient({ provider: "anthropic", anthropicApiKey: "" })).toThrow(
+      /requires anthropicApiKey or claudeCodeOauthToken/,
+    );
+  });
+
+  it("throws when provider=bedrock and no region supplied", () => {
+    expect(() => createLLMClient({ provider: "bedrock" })).toThrow(
+      /provider=bedrock requires awsRegion/,
+    );
+  });
+
+  it("builds an anthropic client when apiKey is provided", () => {
+    const c = createLLMClient({ provider: "anthropic", anthropicApiKey: "sk-ant-test" });
+    expect(c.provider).toBe("anthropic");
+    expect(typeof c.create).toBe("function");
+  });
+
+  it("builds an anthropic client when only OAuth token is provided", () => {
+    const c = createLLMClient({
+      provider: "anthropic",
+      claudeCodeOauthToken: "sk-ant-oat-test",
+    });
+    expect(c.provider).toBe("anthropic");
+  });
+
+  it("builds a bedrock client when region is provided", () => {
+    const c = createLLMClient({ provider: "bedrock", awsRegion: "us-east-1" });
+    expect(c.provider).toBe("bedrock");
+    expect(typeof c.create).toBe("function");
+  });
+});
+
+describe("buildRequest — shaping the SDK payload", () => {
+  it("omits `system` when not supplied", () => {
+    const req = buildRequest({
+      model: "haiku",
+      messages: [{ role: "user", content: "hi" }],
+      maxTokens: 256,
+    });
+    expect(req["system"]).toBeUndefined();
+    expect(req["model"]).toBe("haiku");
+    expect(req["max_tokens"]).toBe(256);
+    expect(req["temperature"]).toBe(0);
+  });
+
+  it("includes `system` verbatim when supplied", () => {
+    const req = buildRequest({
+      model: "haiku",
+      system: "you are a classifier",
+      messages: [{ role: "user", content: "hi" }],
+      maxTokens: 256,
+      temperature: 0.5,
+    });
+    expect(req["system"]).toBe("you are a classifier");
+    expect(req["temperature"]).toBe(0.5);
+  });
+});
+
+describe("parseAnthropicResponse — concatenates text blocks, strips non-text", () => {
+  it("joins multiple text blocks", () => {
+    const raw: AnthropicMessageResponse = {
+      content: [
+        { type: "text", text: "hello " },
+        { type: "text", text: "world" },
+      ],
+      model: "claude-3-5-haiku-20241022",
+      usage: { input_tokens: 10, output_tokens: 2 },
+    };
+    const parsed = parseAnthropicResponse(raw);
+    expect(parsed.text).toBe("hello world");
+    expect(parsed.model).toBe("claude-3-5-haiku-20241022");
+    expect(parsed.usage).toEqual({ inputTokens: 10, outputTokens: 2 });
+  });
+
+  it("ignores non-text content blocks (tool_use, etc.)", () => {
+    const raw: AnthropicMessageResponse = {
+      content: [{ type: "tool_use" }, { type: "text", text: "only-text" }],
+      model: "m",
+      usage: { input_tokens: 0, output_tokens: 0 },
+    };
+    expect(parseAnthropicResponse(raw).text).toBe("only-text");
+  });
+
+  it("handles a text block with an undefined text property (defensive)", () => {
+    const raw: AnthropicMessageResponse = {
+      content: [{ type: "text" }, { type: "text", text: "kept" }],
+      model: "m",
+      usage: { input_tokens: 0, output_tokens: 0 },
+    };
+    expect(parseAnthropicResponse(raw).text).toBe("kept");
+  });
+});
+
+describe("_createLLMClientForTests — end-to-end with a stubbed SDK", () => {
+  function makeStub(response: AnthropicMessageResponse): AnthropicLikeSdk & {
+    calls: { req: unknown }[];
+  } {
+    const calls: { req: unknown }[] = [];
+    return {
+      calls,
+      messages: {
+        create: async (req) => {
+          calls.push({ req });
+          return Promise.resolve(response);
+        },
+      },
+    };
+  }
+
+  it("wires buildRequest → SDK → parseAnthropicResponse end-to-end", async () => {
+    const sdk = makeStub({
+      content: [{ type: "text", text: '{"mode":"daemon","confidence":0.9}' }],
+      model: "claude-3-5-haiku-20241022",
+      usage: { input_tokens: 100, output_tokens: 20 },
+    });
+    const client = _createLLMClientForTests("anthropic", sdk);
+    const resp = await client.create({
+      model: "claude-3-5-haiku-20241022",
+      system: "classify",
+      messages: [{ role: "user", content: "ambiguous event" }],
+      maxTokens: 256,
+    });
+    expect(resp.text).toBe('{"mode":"daemon","confidence":0.9}');
+    expect(resp.usage).toEqual({ inputTokens: 100, outputTokens: 20 });
+    expect(sdk.calls).toHaveLength(1);
+    // Sanity-check that buildRequest shaped the payload as expected.
+    const req = sdk.calls[0]?.req as Record<string, unknown>;
+    expect(req["model"]).toBe("claude-3-5-haiku-20241022");
+    expect(req["system"]).toBe("classify");
+    expect(req["max_tokens"]).toBe(256);
+  });
+
+  it("propagates SDK errors without swallowing them", async () => {
+    const sdk: AnthropicLikeSdk = {
+      messages: { create: () => Promise.reject(new Error("SDK-boom")) },
+    };
+    const client = _createLLMClientForTests("bedrock", sdk);
+    let caught: unknown;
+    try {
+      await client.create({
+        model: "m",
+        messages: [{ role: "user", content: "x" }],
+        maxTokens: 10,
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toBe("SDK-boom");
+  });
+});
+
+describe("estimateHaikuCostUsd", () => {
+  it("returns 0 on zero usage", () => {
+    expect(estimateHaikuCostUsd({ inputTokens: 0, outputTokens: 0 })).toBe(0);
+  });
+
+  it("matches the published Haiku 3.5 rate sheet", () => {
+    // 1M input tokens = $0.80; 1M output tokens = $4.00 → total $4.80
+    expect(estimateHaikuCostUsd({ inputTokens: 1_000_000, outputTokens: 1_000_000 })).toBeCloseTo(
+      4.8,
+      6,
+    );
+  });
+
+  it("scales linearly for a realistic single-turn triage call", () => {
+    // Typical triage: ~500 input tokens (prompt + context), ~100 output tokens (JSON response)
+    const cost = estimateHaikuCostUsd({ inputTokens: 500, outputTokens: 100 });
+    // 500 * 0.8/1e6 + 100 * 4/1e6 = 0.0004 + 0.0004 = 0.0008
+    expect(cost).toBeCloseTo(0.0008, 6);
+  });
+});

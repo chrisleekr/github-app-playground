@@ -7,6 +7,8 @@ import {
   finalizeTrackingComment,
   isAlreadyProcessed,
   renderDispatchReasonLine,
+  renderTriageSection,
+  type TriageCommentSection,
   updateTrackingComment,
 } from "../../src/core/tracking-comment";
 import { DISPATCH_REASONS } from "../../src/shared/dispatch-types";
@@ -305,5 +307,74 @@ describe("renderDispatchReasonLine (SC-007)", () => {
   it("rejection reasons do not use 'Routed' (nothing was routed)", () => {
     expect(renderDispatchReasonLine("capacity-rejected", "isolated-job")).not.toMatch(/^Routed/);
     expect(renderDispatchReasonLine("infra-absent", "isolated-job")).not.toMatch(/^Routed/);
+  });
+});
+
+describe("renderTriageSection (T037)", () => {
+  const base: TriageCommentSection = {
+    mode: "daemon",
+    confidence: 0.87,
+    complexity: "moderate",
+    rationale: "Adds one endpoint and a unit test; standard tooling suffices.",
+    provider: "anthropic",
+    model: "claude-3-5-haiku-20241022",
+    costUsd: 0.0008,
+    latencyMs: 412,
+  };
+
+  it("produces a GitHub-renderable <details> collapsible block", () => {
+    const out = renderTriageSection(base);
+    expect(out).toContain("<details>");
+    expect(out).toContain("</details>");
+    expect(out).toContain("<summary>");
+  });
+
+  it("includes mode, confidence %, and complexity in the summary", () => {
+    const out = renderTriageSection(base);
+    expect(out).toContain("<code>daemon</code>");
+    expect(out).toContain("87%");
+    expect(out).toContain("moderate");
+  });
+
+  it("renders the rationale verbatim when it contains no HTML-special characters", () => {
+    expect(renderTriageSection(base)).toContain(base.rationale);
+  });
+
+  it("HTML-escapes rationale to prevent <details> break-out (Copilot PR #20)", () => {
+    const hostile = renderTriageSection({
+      ...base,
+      rationale: "close </details><script>alert(1)</script> tag",
+    });
+    expect(hostile).not.toContain("</details><script>");
+    expect(hostile).toContain("&lt;/details&gt;&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(hostile.endsWith("</details>")).toBe(true);
+  });
+
+  it("escapes &, <, and > in rationale", () => {
+    const out = renderTriageSection({ ...base, rationale: "a & b < c > d" });
+    expect(out).toContain("a &amp; b &lt; c &gt; d");
+    expect(out).not.toContain("a & b < c > d");
+  });
+
+  it("formats cost below US$0.001 as '<US$0.001'", () => {
+    const out = renderTriageSection({ ...base, costUsd: 0.0004 });
+    expect(out).toContain("<US$0.001");
+  });
+
+  it("formats cost ≥ US$0.001 with 4 decimals", () => {
+    const out = renderTriageSection({ ...base, costUsd: 0.0032 });
+    expect(out).toContain("US$0.0032");
+  });
+
+  it("renders provider and model in backticks", () => {
+    const out = renderTriageSection(base);
+    expect(out).toContain("`anthropic`");
+    expect(out).toContain("`claude-3-5-haiku-20241022`");
+  });
+
+  it("leaves a blank line after summary (GitHub Markdown-in-HTML requirement)", () => {
+    const lines = renderTriageSection(base).split("\n");
+    const summaryIdx = lines.findIndex((l) => l.startsWith("<summary>"));
+    expect(lines[summaryIdx + 1]).toBe("");
   });
 });
