@@ -74,6 +74,25 @@ function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+/**
+ * FR-018 / US3: when the isolated-job pool is at capacity, the request is
+ * enqueued and the tracking comment surfaces its position. `position` is
+ * 1-indexed (the head of the queue is 1); `max` is the configured
+ * `MAX_CONCURRENT_ISOLATED_JOBS`. Kept as a pure helper so US3 integration
+ * tests can assert the exact string without mounting the entire comment
+ * pipeline.
+ *
+ * The inputs are integers from trusted config + Valkey RPUSH return, so no
+ * escaping is required — unlike `renderTriageSection.rationale` which is
+ * model-generated. Coerced to integer via `Math.trunc` as a defensive check
+ * against a future caller passing a float.
+ */
+export function renderQueuePosition(position: number, max: number): string {
+  const p = Math.trunc(position);
+  const m = Math.trunc(max);
+  return `⏳ Queued (position ${String(p)} of ${String(m)} on isolated-job pool). Waiting for capacity…`;
+}
+
 export function renderTriageSection(triage: TriageCommentSection): string {
   const confidencePct = (triage.confidence * 100).toFixed(0);
   const costFmt = triage.costUsd < 0.001 ? "<US$0.001" : `US$${triage.costUsd.toFixed(4)}`;

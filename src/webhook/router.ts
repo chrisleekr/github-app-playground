@@ -1,9 +1,15 @@
 import { config } from "../config";
 import { runInlinePipeline } from "../core/inline-pipeline";
-import { isAlreadyProcessed } from "../core/tracking-comment";
+import { isAlreadyProcessed, renderQueuePosition } from "../core/tracking-comment";
 import { getDb } from "../db";
 import { classifyStatic } from "../k8s/classifier";
 import { JobSpawnerError, spawnIsolatedJob } from "../k8s/job-spawner";
+import {
+  enqueuePending,
+  inFlightCount,
+  type PendingIsolatedJobEntry,
+  registerInFlight,
+} from "../k8s/pending-queue";
 import { dispatchToSharedRunner } from "../k8s/shared-runner-dispatcher";
 import {
   decrementActiveCount,
@@ -372,21 +378,182 @@ export async function dispatch(ctx: BotContext, decision: DispatchDecision): Pro
       return;
     }
     case "isolated-job":
-      try {
-        await spawnIsolatedJob(ctx, decision);
-      } catch (err) {
-        // FR-018 graceful rejection (T025): infra-absent → write a rejection
-        // execution row + post a tracking-comment update, do NOT downgrade
-        // to a different target. Other JobSpawnerError kinds (auth-load,
-        // api-rejected, api-unavailable) bubble to the processRequest
-        // catch where they're logged as runtime failures.
-        if (err instanceof JobSpawnerError && err.kind === "infra-absent") {
-          await recordInfraAbsentRejection(ctx, decision, err.message);
-          return;
-        }
-        throw err;
-      }
+      await dispatchIsolatedJob(ctx, decision);
       return;
+  }
+}
+
+/**
+ * T044 (US3): wire the Valkey pending queue + in-flight cap into the
+ * isolated-job path. Three mutually exclusive outcomes:
+ *
+ *   1. Under capacity      → `spawnIsolatedJob` + `registerInFlight` (direct).
+ *   2. At capacity, queue has room → `enqueuePending`; the drainer picks
+ *      the entry up and spawns later. Tracking comment shows "position N of M".
+ *   3. At capacity AND queue full  → `capacity-rejected` execution row +
+ *      tracking-comment rejection (FR-018: no silent downgrade).
+ *
+ * Ordering with `infra-absent`: `spawnIsolatedJob` detects missing K8s auth
+ * via `loadKubernetesClient()`, which runs AFTER this function's capacity
+ * gate. That means on an infra-absent deployment, the FIRST request still
+ * hits capacity=0, takes the direct-spawn branch, and fails fast with an
+ * infra-absent rejection comment. But once capacity is saturated (e.g. K8s
+ * went away AFTER some Jobs were spawned), subsequent requests take the
+ * enqueue path and sit in the queue; the drainer later trips the same
+ * `infra-absent` and surfaces it on the drained request (see
+ * `pending-queue-drainer.ts`). The `SCARD` pre-check here is cheap.
+ */
+async function dispatchIsolatedJob(ctx: BotContext, decision: DispatchDecision): Promise<void> {
+  const inFlight = await inFlightCount();
+  if (inFlight >= config.maxConcurrentIsolatedJobs) {
+    const entry: PendingIsolatedJobEntry = {
+      deliveryId: ctx.deliveryId,
+      enqueuedAt: new Date().toISOString(),
+      botContextKey: `bot-context:${ctx.deliveryId}`,
+      triageResult: decision.triage ?? null,
+      dispatchReason: decision.reason,
+      maxTurns: decision.maxTurns,
+      source: { owner: ctx.owner, repo: ctx.repo, issueOrPrNumber: ctx.entityNumber },
+    };
+    const outcome = await enqueuePending(entry, serializeBotContext(ctx), {
+      maxQueueLength: config.pendingIsolatedJobQueueMax,
+    });
+    if (outcome.outcome === "rejected-full") {
+      await recordCapacityRejection(ctx, decision, outcome.currentLength);
+      return;
+    }
+    await postQueuedTrackingComment(ctx, outcome.position);
+    ctx.log.info(
+      {
+        deliveryId: ctx.deliveryId,
+        position: outcome.position,
+        inFlight,
+        max: config.maxConcurrentIsolatedJobs,
+      },
+      "isolated-job at capacity — enqueued",
+    );
+    return;
+  }
+
+  try {
+    await spawnIsolatedJob(ctx, decision);
+  } catch (err) {
+    // FR-018 graceful rejection (T025): infra-absent → write a rejection
+    // execution row + post a tracking-comment update, do NOT downgrade
+    // to a different target. Other JobSpawnerError kinds (auth-load,
+    // api-rejected, api-unavailable) bubble to the processRequest
+    // catch where they're logged as runtime failures.
+    if (err instanceof JobSpawnerError && err.kind === "infra-absent") {
+      await recordInfraAbsentRejection(ctx, decision, err.message);
+      return;
+    }
+    throw err;
+  }
+
+  // Register AFTER spawn to avoid occupying a slot for a never-created Job.
+  // Non-fatal on failure: the Job is running; the in-flight set is a
+  // best-effort capacity counter, not a liveness source of truth.
+  try {
+    await registerInFlight(ctx.deliveryId);
+  } catch (err) {
+    ctx.log.warn(
+      { err, deliveryId: ctx.deliveryId },
+      "isolated-job registerInFlight failed — slot accounting may drift",
+    );
+  }
+}
+
+/**
+ * US3 queue-full write-path. Persists an execution row with
+ * `dispatch_reason="capacity-rejected"` and posts a tracking comment that
+ * tells the requester the pool is saturated beyond the queue ceiling. Spec
+ * (FR-018) is explicit: NO silent downgrade to shared-runner or daemon.
+ */
+async function recordCapacityRejection(
+  ctx: BotContext,
+  decision: DispatchDecision,
+  queueLength: number,
+): Promise<void> {
+  ctx.log.warn(
+    {
+      deliveryId: ctx.deliveryId,
+      target: decision.target,
+      queueLength,
+      max: config.pendingIsolatedJobQueueMax,
+    },
+    "isolated-job dispatch rejected — pool at capacity and pending queue full",
+  );
+
+  const db = getDb();
+  if (db !== null) {
+    try {
+      await createExecution({
+        deliveryId: ctx.deliveryId,
+        repoOwner: ctx.owner,
+        repoName: ctx.repo,
+        entityNumber: ctx.entityNumber,
+        entityType: ctx.isPR ? "pull_request" : "issue",
+        eventName: ctx.eventName,
+        triggerUsername: ctx.triggerUsername,
+        dispatchMode: decision.target,
+        dispatchReason: "capacity-rejected",
+        ...(decision.triage !== undefined && {
+          triageConfidence: decision.triage.confidence,
+          triageCostUsd: decision.triage.costUsd,
+          triageComplexity: decision.triage.complexity,
+        }),
+        contextJson: serializeBotContext(ctx),
+      });
+    } catch (recordErr) {
+      ctx.log.error(
+        { err: recordErr },
+        "Failed to write capacity-rejected execution row (non-fatal)",
+      );
+    }
+  }
+
+  try {
+    await ctx.octokit.rest.issues.createComment({
+      owner: ctx.owner,
+      repo: ctx.repo,
+      issue_number: ctx.entityNumber,
+      body:
+        `**${config.triggerPhrase}** cannot dispatch this request: the \`isolated-job\` pool is at capacity ` +
+        `(${String(config.maxConcurrentIsolatedJobs)} in-flight) and the pending queue is full ` +
+        `(${String(queueLength)} of ${String(config.pendingIsolatedJobQueueMax)} waiting). ` +
+        `The platform will not silently downgrade to a different target — please re-trigger in a few minutes.`,
+    });
+  } catch (commentError) {
+    ctx.log.error({ err: commentError }, "Failed to post capacity-rejected rejection comment");
+  }
+}
+
+/**
+ * Post the initial "⏳ Queued (position N of M)" tracking comment for a
+ * pending isolated-job request. The body embeds the delivery marker so the
+ * durable idempotency check (`isAlreadyProcessed`) picks it up on a webhook
+ * retry while the event is still queued — preventing a second enqueue for
+ * the same delivery.
+ *
+ * The queued comment is deliberately a separate comment from the one the
+ * Job entrypoint later posts ("Working…"): the Job's `createTrackingComment`
+ * runs inside the isolated pod with a fresh octokit instance, and trying
+ * to thread a comment id through the Valkey queue would require extending
+ * `SerializableBotContext`. The UX cost is one extra comment in the thread;
+ * the engineering cost of threading a mutable id across processes isn't
+ * worth paying.
+ */
+async function postQueuedTrackingComment(ctx: BotContext, position: number): Promise<void> {
+  try {
+    const body = `<!-- delivery:${ctx.deliveryId} -->\n${renderQueuePosition(position, config.maxConcurrentIsolatedJobs)}`;
+    await ctx.octokit.rest.issues.createComment({
+      owner: ctx.owner,
+      repo: ctx.repo,
+      issue_number: ctx.entityNumber,
+      body,
+    });
+  } catch (commentError) {
+    ctx.log.error({ err: commentError }, "Failed to post queued tracking comment");
   }
 }
 
