@@ -24,7 +24,7 @@ import { createChildLogger, logger } from "../logger";
 import type { SerializableBotContext } from "../shared/daemon-types";
 import type { BotContext } from "../types";
 import type { DispatchDecision } from "../webhook/router";
-import { JobSpawnerError, spawnIsolatedJob } from "./job-spawner";
+import { JobSpawnerError, spawnIsolatedJob, watchJobCompletion } from "./job-spawner";
 import {
   dequeuePending,
   inFlightCount,
@@ -146,12 +146,15 @@ async function drainLoop(app: App): Promise<void> {
       }),
     };
 
+    // Spawn is the only step whose failure means "Job never started" —
+    // only spawn failure justifies releasing the slot + posting
+    // infra-absent. Register and watch failures must NOT be treated as
+    // spawn failures: once spawn succeeds the Job is running on the
+    // cluster, and skipping `watchJobCompletion()` would lose
+    // timeout/cleanup monitoring entirely (CodeRabbit PR #22).
     try {
       // eslint-disable-next-line no-await-in-loop -- drainer is sequential by design
       await spawnIsolatedJob(ctx, decision);
-      // eslint-disable-next-line no-await-in-loop -- drainer is sequential by design
-      await registerInFlight(ctx.deliveryId);
-      ctx.log.info({ deliveryId: ctx.deliveryId }, "drained queued isolated-job — Job spawned");
     } catch (err) {
       // FR-021: no retry on mid-run failure. Just release any slot and log.
       //
@@ -172,7 +175,35 @@ async function drainLoop(app: App): Promise<void> {
       }
       // eslint-disable-next-line no-await-in-loop -- drainer is sequential by design
       await releaseInFlight(ctx.deliveryId);
+      continue;
     }
+
+    try {
+      // eslint-disable-next-line no-await-in-loop -- drainer is sequential by design
+      await registerInFlight(ctx.deliveryId);
+    } catch (err) {
+      // Non-fatal: the Job is already running. An unregistered in-flight
+      // slot only means capacity accounting drifts low (the pool admits
+      // one fewer Job until an operator resyncs Valkey); the watcher
+      // below is still the source of truth for cleanup.
+      ctx.log.warn(
+        { err, deliveryId: ctx.deliveryId },
+        "isolated-job registerInFlight failed — slot accounting may drift",
+      );
+    }
+
+    // Fire-and-forget completion watcher — same invariants as the
+    // direct-spawn path (T046/T047/T048). Fires regardless of
+    // registerInFlight outcome because the Job itself is already running.
+    // Drainer must NOT await it; the drain loop needs to move to the
+    // next entry.
+    void watchJobCompletion(ctx.deliveryId).catch((err: unknown) => {
+      ctx.log.error(
+        { err, deliveryId: ctx.deliveryId },
+        "watchJobCompletion threw unexpectedly in drainer — in-flight slot may leak",
+      );
+    });
+    ctx.log.info({ deliveryId: ctx.deliveryId }, "drained queued isolated-job — Job spawned");
   }
 }
 

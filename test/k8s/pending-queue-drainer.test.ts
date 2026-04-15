@@ -39,8 +39,11 @@ void mock.module("../../src/k8s/pending-queue", () => ({
   releaseInFlight: mockReleaseInFlight,
 }));
 
+const mockWatchJobCompletion = mock(() => Promise.resolve("succeeded" as const));
+
 void mock.module("../../src/k8s/job-spawner", () => ({
   spawnIsolatedJob: mockSpawnIsolatedJob,
+  watchJobCompletion: mockWatchJobCompletion,
   JobSpawnerError: class JobSpawnerError extends Error {
     constructor(
       readonly kind: string,
@@ -129,6 +132,7 @@ beforeEach(() => {
   mockRegisterInFlight.mockClear();
   mockReleaseInFlight.mockClear();
   mockSpawnIsolatedJob.mockClear();
+  mockWatchJobCompletion.mockClear();
   mockInFlightCount.mockImplementation(() => Promise.resolve(0));
   mockDequeuePending.mockImplementation(() =>
     Promise.resolve({ outcome: "empty" } as unknown as DequeueResult),
@@ -184,6 +188,11 @@ describe("drainPendingOnce — dequeued path", () => {
     expect(mockSpawnIsolatedJob).toHaveBeenCalledTimes(1);
     expect(mockRegisterInFlight).toHaveBeenCalledTimes(1);
     expect(mockRegisterInFlight.mock.calls[0]?.[0]).toBe(entry.deliveryId);
+    // Verify the watcher handoff actually fires after spawn (CodeRabbit
+    // PR #22). Without this assertion removing the `watchJobCompletion()`
+    // call would still pass the rest of the suite.
+    expect(mockWatchJobCompletion).toHaveBeenCalledTimes(1);
+    expect(mockWatchJobCompletion.mock.calls[0]?.[0]).toBe(entry.deliveryId);
     expect(mockReleaseInFlight).not.toHaveBeenCalled();
   });
 

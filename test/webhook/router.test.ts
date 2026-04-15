@@ -102,10 +102,28 @@ const mockEnqueuePending = mock(() =>
 );
 const mockRegisterInFlight = mock(() => Promise.resolve(1));
 
+const mockReleaseInFlight = mock(() => Promise.resolve());
+// Stub exports used by sibling modules (drainer, job-spawner watcher) so
+// cross-test-file module caching doesn't fail imports when this mock is
+// evaluated first.
+const mockDequeuePending = mock(() => Promise.resolve({ outcome: "empty" as const }));
+const mockPendingLength = mock(() => Promise.resolve(0));
+const mockGetPosition = mock(() => Promise.resolve(null));
+const mockStoreBotContext = mock(() => Promise.resolve());
+const mockLoadBotContext = mock(() => Promise.resolve(null));
+const mockDeleteBotContext = mock(() => Promise.resolve());
+
 void mock.module("../../src/k8s/pending-queue", () => ({
   inFlightCount: mockInFlightCount,
   enqueuePending: mockEnqueuePending,
   registerInFlight: mockRegisterInFlight,
+  releaseInFlight: mockReleaseInFlight,
+  dequeuePending: mockDequeuePending,
+  pendingLength: mockPendingLength,
+  getPosition: mockGetPosition,
+  storeBotContext: mockStoreBotContext,
+  loadBotContext: mockLoadBotContext,
+  deleteBotContext: mockDeleteBotContext,
   PENDING_LIST_KEY: "dispatch:isolated-job:pending",
   IN_FLIGHT_SET_KEY: "dispatch:isolated-job:in-flight",
   BOT_CONTEXT_TTL_SECONDS: 3600,

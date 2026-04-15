@@ -3,7 +3,7 @@ import { runInlinePipeline } from "../core/inline-pipeline";
 import { isAlreadyProcessed, renderQueuePosition } from "../core/tracking-comment";
 import { getDb } from "../db";
 import { classifyStatic } from "../k8s/classifier";
-import { JobSpawnerError, spawnIsolatedJob } from "../k8s/job-spawner";
+import { JobSpawnerError, spawnIsolatedJob, watchJobCompletion } from "../k8s/job-spawner";
 import {
   enqueuePending,
   inFlightCount,
@@ -461,6 +461,20 @@ async function dispatchIsolatedJob(ctx: BotContext, decision: DispatchDecision):
       "isolated-job registerInFlight failed — slot accounting may drift",
     );
   }
+
+  // Fire-and-forget completion watcher (T046/T047/T048). Runs in the
+  // background for the Job's lifetime; on termination it releases the
+  // in-flight slot, and on wall-clock timeout it also updates the
+  // executions row. `.catch` exists so a Promise rejection never
+  // surfaces as an unhandledRejection — the watcher itself already
+  // translates all internal errors to `abandoned`, but the guard is a
+  // cheap belt-and-braces against future refactors.
+  void watchJobCompletion(ctx.deliveryId).catch((err: unknown) => {
+    ctx.log.error(
+      { err, deliveryId: ctx.deliveryId },
+      "watchJobCompletion threw unexpectedly — in-flight slot may leak",
+    );
+  });
 }
 
 /**
