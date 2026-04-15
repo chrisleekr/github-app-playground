@@ -64,10 +64,9 @@ async function main(): Promise<void> {
   const owner = asString(decoded["owner"], "");
   const repo = asString(decoded["repo"], "");
   const entityNumber = asNumber(decoded["entityNumber"], 0);
-  const installationId = asNumber(decoded["installationId"], 0);
-  if (owner === "" || repo === "" || entityNumber === 0 || installationId === 0) {
+  if (owner === "" || repo === "" || entityNumber === 0) {
     log.error(
-      { owner, repo, entityNumber, installationId },
+      { owner, repo, entityNumber },
       "decoded BotContext missing required fields; aborting",
     );
     process.exit(1);
@@ -76,8 +75,9 @@ async function main(): Promise<void> {
   // Re-mint an Octokit instance from the GitHub App credentials. The
   // spawner does NOT forward the installation token (those are short-lived
   // and the server-side grant might not still be valid by the time the pod
-  // starts). The pod re-issues against its own App credentials, which the
-  // server-side AGENT_JOB_MODE config makes available via env.
+  // starts) and BotContext does not carry `installationId`. The pod
+  // resolves the installation via GitHub's Apps API using the App's JWT
+  // credentials, mirroring the pattern in orchestrator/connection-handler.ts.
   if (
     config.appId === undefined ||
     config.privateKey === undefined ||
@@ -91,7 +91,20 @@ async function main(): Promise<void> {
     privateKey: config.privateKey,
     webhookSecret: config.webhookSecret,
   });
-  const octokit = await app.getInstallationOctokit(installationId);
+  let octokit;
+  try {
+    const { data: installation } = await app.octokit.rest.apps.getRepoInstallation({
+      owner,
+      repo,
+    });
+    octokit = await app.getInstallationOctokit(installation.id);
+  } catch (err) {
+    log.error(
+      { err: err instanceof Error ? err.message : String(err), owner, repo },
+      "failed to resolve GitHub App installation for repo; aborting",
+    );
+    process.exit(1);
+  }
 
   const deliveryId = asString(decoded["deliveryId"], "");
   const eventNameRaw = asString(decoded["eventName"], "issue_comment");

@@ -99,15 +99,14 @@ describe("classifyStatic — keyword rules (FR-005)", () => {
     });
   });
 
-  it("does NOT match on keyword-within-URL (whole-word semantics)", () => {
-    // Word-boundary treats hyphens as word chars in some locales — we pass a
-    // URL-like string to make sure a random path containing "docker" still
-    // matches (because hyphens/slashes ARE word boundaries).
+  it("matches keyword in URL path when bounded by `/` and `-` (whole-word semantics)", () => {
+    // Pin that `docker` inside a URL path still matches: `/` and `-` act as
+    // word boundaries under the whole-word regex, so "docker" in
+    // "/docker-tutorial" IS a bounded token and DOES match. The test pins
+    // this behaviour so the regex doesn't silently change under us.
     const result = classifyStatic(
       makeCtx({ triggerBody: "see https://example.com/docker-tutorial" }),
     );
-    // `docker` IS a whole word here (bounded by `/` and `-`), so this DOES match.
-    // The test pins the behaviour so the regex doesn't silently change under us.
     expect(result.outcome).toBe("clear");
   });
 

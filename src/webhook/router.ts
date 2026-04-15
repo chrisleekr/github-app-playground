@@ -177,6 +177,15 @@ export async function processRequest(ctx: BotContext): Promise<void> {
     "dispatch decision",
   );
 
+  // Targets whose active slot is released at this level (dispatch returns
+  // once the work is either complete OR ownership has been handed off).
+  // `daemon` is excluded: dispatchNonInline manages its own counter — the
+  // slot stays held until job:result arrives from the daemon via WS.
+  const releasesSlotHere =
+    decision.target === "inline" ||
+    decision.target === "shared-runner" ||
+    decision.target === "isolated-job";
+
   try {
     await dispatch(ctx, decision);
   } catch (err) {
@@ -188,16 +197,12 @@ export async function processRequest(ctx: BotContext): Promise<void> {
       );
       return;
     }
-    // Surface-level decrement for inline-only path; dispatchNonInline manages
-    // its own counter semantics (slot stays held until job:result).
-    if (decision.target === "inline") {
+    if (releasesSlotHere) {
       decrementActiveCount();
     }
     throw err;
   }
-  // For inline jobs, decrement on successful completion of the pipeline.
-  // Daemon-dispatched jobs keep the slot — connection-handler releases on job:result.
-  if (decision.target === "inline") {
+  if (releasesSlotHere) {
     decrementActiveCount();
   }
 }
@@ -279,6 +284,7 @@ export async function dispatch(ctx: BotContext, decision: DispatchDecision): Pro
             eventName: ctx.eventName,
             triggerUsername: ctx.triggerUsername,
             dispatchMode: "inline",
+            dispatchReason: decision.reason,
             contextJson: serializedCtx,
           });
         } catch (recordErr) {
@@ -292,9 +298,35 @@ export async function dispatch(ctx: BotContext, decision: DispatchDecision): Pro
       // Daemon target retains the existing Phase 2 orchestrator queue path.
       await dispatchNonInline(ctx, decision);
       return;
-    case "shared-runner":
+    case "shared-runner": {
+      // Mirror the inline path: write an executions row before dispatch so the
+      // DB/audit trail captures the request regardless of runner outcome.
+      // dispatchToSharedRunner itself does NOT persist — it only speaks HTTP.
+      const db = getDb();
+      if (db !== null) {
+        try {
+          await createExecution({
+            deliveryId: ctx.deliveryId,
+            repoOwner: ctx.owner,
+            repoName: ctx.repo,
+            entityNumber: ctx.entityNumber,
+            entityType: ctx.isPR ? "pull_request" : "issue",
+            eventName: ctx.eventName,
+            triggerUsername: ctx.triggerUsername,
+            dispatchMode: "shared-runner",
+            dispatchReason: decision.reason,
+            contextJson: serializeBotContext(ctx),
+          });
+        } catch (recordErr) {
+          ctx.log.error(
+            { err: recordErr },
+            "Failed to create shared-runner execution record (non-fatal)",
+          );
+        }
+      }
       await dispatchToSharedRunner(ctx, decision);
       return;
+    }
     case "isolated-job":
       try {
         await spawnIsolatedJob(ctx, decision);
@@ -316,9 +348,10 @@ export async function dispatch(ctx: BotContext, decision: DispatchDecision): Pro
 
 /**
  * FR-018 rejection write-path. Persists an execution row with
- * dispatch_reason="infra-absent" and updates the tracking comment so the
- * maintainer sees a clear refusal. Never silently downgrades to a different
- * target — that defeats the purpose of asking for isolated execution.
+ * dispatch_mode="isolated-job" and dispatch_reason="infra-absent", logs the
+ * rejection, and posts a tracking comment so the maintainer sees a clear
+ * refusal. Never silently downgrades to a different target — that defeats
+ * the purpose of asking for isolated execution.
  */
 async function recordInfraAbsentRejection(
   ctx: BotContext,
@@ -344,6 +377,7 @@ async function recordInfraAbsentRejection(
         // The target IS isolated-job (the user asked for it); the reason is
         // why we couldn't honour it. data-model.md §4 dispatch_reason enum.
         dispatchMode: decision.target,
+        dispatchReason: "infra-absent",
         contextJson: serializeBotContext(ctx),
       });
     } catch (recordErr) {

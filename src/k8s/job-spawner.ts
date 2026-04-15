@@ -159,8 +159,11 @@ function buildJobSpec(ctx: BotContext, decision: DispatchDecision, encodedContex
           restartPolicy: "Never",
           initContainers: [
             {
+              // Must ship the Docker CLI — the bot's server image does not.
+              // `docker:27-cli` is small and pinned to the same major as the
+              // sidecar so client/daemon compatibility is guaranteed.
               name: "wait-for-docker",
-              image,
+              image: "docker:27-cli",
               command: [
                 "sh",
                 "-c",

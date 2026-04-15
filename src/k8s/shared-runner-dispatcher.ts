@@ -208,7 +208,8 @@ function isSuccessResponse(value: unknown): value is RunnerSuccessResponse {
     typeof v["executionId"] === "string" &&
     typeof v["costUsd"] === "number" &&
     typeof v["durationMs"] === "number" &&
-    typeof v["turns"] === "number"
+    typeof v["turns"] === "number" &&
+    (v["status"] === "success" || v["status"] === "failure")
   );
 }
 
