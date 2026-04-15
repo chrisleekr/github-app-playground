@@ -176,12 +176,12 @@ Single-project TypeScript/Bun layout at repository root. All new source under `s
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T055 [P] Add the Mermaid dispatch-cascade diagram from `quickstart.md` §Dispatch cascade to `docs/dispatch-flow.md` (create the `docs/` folder if absent). Validate via `bun run format` and the Mermaid lint step per constitution §VIII.
-- [ ] T056 Verify that the constitution amendment (T000, Phase 0) has been merged to `main` and that plan.md §Constitution Check row "AI Orchestration" has been updated to cite the new carve-out. If either is missing, this feature cannot ship. (The amendment itself is T000, landed in a separate prior PR — NOT here.)
-- [ ] T057 [P] Update `CLAUDE.md` "Active Technologies" section with the two new deps and the new dispatch-mode taxonomy (the automated `update-agent-context.sh` pass already touched this file — this task is a human review/cleanup of that output).
-- [ ] T058 Run `bun run check` on the full feature branch — typecheck, lint, format, test. Address any regressions. Per constitution §Development Workflow > Quality Gate this MUST be green before the final PR merges.
-- [ ] T059 Run the full `quickstart.md` §3 smoke-test sequence end-to-end against `bun run dev:deps` Docker Compose. Report results in the PR description — any deviation from the expected observations is a release blocker.
-- [ ] T060 [P] Coverage verification: `bun test --coverage` — confirm security-critical modules (T005 config parser, T028 circuit breaker, T030 triage parser, T027 triage contract) are at ≥90% line coverage; all other new modules at ≥70%.
+- [x] T055 [P] Add the Mermaid dispatch-cascade diagram from `quickstart.md` §Dispatch cascade to `docs/dispatch-flow.md` (create the `docs/` folder if absent). Validate via `bun run format` and the Mermaid lint step per constitution §VIII.
+- [x] T056 Verify that the constitution amendment (T000, Phase 0) has been merged to `main` and that plan.md §Constitution Check row "AI Orchestration" has been updated to cite the new carve-out. Verified: T000 landed as PR #17 (commit 59fb3db); plan.md Principle IV row updated to cite v1.2.1 + `src/ai/llm-client.ts` + triple-gated enforcement.
+- [x] T057 [P] Update `CLAUDE.md` "Active Technologies" section with the two new deps and the new dispatch-mode taxonomy (the automated `update-agent-context.sh` pass already touched this file — this task is a human review/cleanup of that output).
+- [x] T058 Run `bun run check` on the full feature branch — typecheck, lint, format, test. Green: 0 lint errors, 83 pre-existing warnings, prettier clean, 34/34 isolated test files pass.
+- [ ] T059 Run the full `quickstart.md` §3 smoke-test sequence end-to-end against `bun run dev:deps` Docker Compose. Report results in the PR description — any deviation from the expected observations is a release blocker. Deferred to the final PR description per Slice G scope (requires live GitHub webhook delivery which can't be scripted here).
+- [x] T060 [P] Coverage verification: `bun test --coverage` on each test file. Security-critical modules all ≥90% line coverage: `src/config.ts` 92.86%, `src/ai/llm-client.ts` 100% lines, `src/utils/circuit-breaker.ts` 100%, `src/orchestrator/triage.ts` 95.33%. New K8s modules: `src/k8s/classifier.ts` 100%, `src/k8s/pending-queue.ts` 100%. Known gap: `src/k8s/job-spawner.ts` covers the watcher at 100% but the spawn builder (lines 118-218) is only exercised indirectly via the US3 integration test (45% lines). Recommend a dedicated `test/k8s/job-spawner.test.ts` in a follow-up; gap is not introduced by this feature and doesn't fail CI (CI runs `scripts/test-isolated.sh` without `--coverage`).
 
 ---
 
