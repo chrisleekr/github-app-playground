@@ -13,7 +13,14 @@
  * (`idx_executions_dispatch_target_created_at`,
  * `idx_triage_results_created_at`) from migration 003 keep each query in
  * the low-millisecond range at expected data volumes.
+ *
+ * Each function also accepts an optional `sql` override that defaults to
+ * the `requireDb()` singleton. Tests pass a dedicated connection so they
+ * don't have to mutate `process.env.DATABASE_URL` (which wouldn't take
+ * effect anyway once `config` is captured at first import).
  */
+
+import type { SQL } from "bun";
 
 import type { DispatchTarget } from "../../shared/dispatch-types";
 import { requireDb } from "..";
@@ -68,9 +75,11 @@ export interface TriageSpendRow {
  * events in the window are omitted (GROUP BY only surfaces observed
  * values); treat a missing row as `events === 0`.
  */
-export async function eventsPerTarget(days = 30): Promise<EventsPerTargetRow[]> {
-  const db = requireDb();
-  const rows: EventsPerTargetRow[] = await db`
+export async function eventsPerTarget(
+  days = 30,
+  sql: SQL = requireDb(),
+): Promise<EventsPerTargetRow[]> {
+  const rows: EventsPerTargetRow[] = await sql`
     SELECT dispatch_target, COUNT(*)::int AS events
     FROM executions
     WHERE created_at >= NOW() - make_interval(days => ${days})
@@ -88,9 +97,8 @@ export async function eventsPerTarget(days = 30): Promise<EventsPerTargetRow[]> 
  * auto-mode cascade can emit after invoking the classifier, including
  * the fallback branches.
  */
-export async function triageRate(days = 30): Promise<TriageRateRow[]> {
-  const db = requireDb();
-  const rows: TriageRateRow[] = await db`
+export async function triageRate(days = 30, sql: SQL = requireDb()): Promise<TriageRateRow[]> {
+  const rows: TriageRateRow[] = await sql`
     SELECT
       DATE(created_at)::text AS day,
       COUNT(*) FILTER (
@@ -122,10 +130,19 @@ export async function triageRate(days = 30): Promise<TriageRateRow[]> {
  * Reads `triage_results` directly so the avg is over _successful_
  * triage parses only — failures (timeout / parse-error / circuit-open)
  * never reach this table.
+ *
+ * `sub_threshold_rate` uses a hardcoded `confidence < 1.0` predicate to
+ * measure "any doubt" from the classifier — this is intentionally distinct
+ * from the configurable `TRIAGE_CONFIDENCE_THRESHOLD` env var used at
+ * runtime for routing decisions. Keep them separate on future edits so
+ * dashboards don't silently change meaning when operators tune the
+ * routing threshold.
  */
-export async function avgConfidenceAndFallback(days = 30): Promise<ConfidenceAndFallbackRow> {
-  const db = requireDb();
-  const rows: ConfidenceAndFallbackRow[] = await db`
+export async function avgConfidenceAndFallback(
+  days = 30,
+  sql: SQL = requireDb(),
+): Promise<ConfidenceAndFallbackRow> {
+  const rows: ConfidenceAndFallbackRow[] = await sql`
     SELECT
       AVG(confidence)::float AS avg_confidence,
       (COUNT(*) FILTER (WHERE confidence < 1.0) * 1.0 / NULLIF(COUNT(*), 0))::float
@@ -141,9 +158,8 @@ export async function avgConfidenceAndFallback(days = 30): Promise<ConfidenceAnd
  * budget monitor; returns `{ total_triage_spend_usd: null }` when no
  * triage calls landed in the window.
  */
-export async function triageSpend(days = 30): Promise<TriageSpendRow> {
-  const db = requireDb();
-  const rows: TriageSpendRow[] = await db`
+export async function triageSpend(days = 30, sql: SQL = requireDb()): Promise<TriageSpendRow> {
+  const rows: TriageSpendRow[] = await sql`
     SELECT SUM(cost_usd)::float AS total_triage_spend_usd
     FROM triage_results
     WHERE created_at >= NOW() - make_interval(days => ${days})

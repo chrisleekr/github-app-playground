@@ -40,11 +40,15 @@ function makeSpyLog(): { log: BotContext["log"]; calls: LogCall[] } {
   const capture = (fields: Record<string, unknown>, msg: string): void => {
     calls.push({ fields, msg });
   };
+  // Include trace + fatal so a future refactor that reaches for either
+  // level won't throw a "not a function" in tests (CodeRabbit PR #24).
   const spy = {
     info: mock(capture),
     warn: mock(capture),
     error: mock(capture),
     debug: mock(capture),
+    trace: mock(capture),
+    fatal: mock(capture),
     child: mock((): typeof spy => spy),
   } as unknown as BotContext["log"];
   return { log: spy, calls };

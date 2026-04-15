@@ -34,11 +34,11 @@ function requireSql(): SQL {
   return sql;
 }
 
-// The queries module reads DATABASE_URL through `requireDb()` in
-// `src/db/index.ts`, so we point that singleton at the same URL by
-// setting the env var before the dynamic import below. The queries then
-// open their own pool against the test DB.
-process.env["DATABASE_URL"] = TEST_DATABASE_URL;
+// The queries each accept an optional `sql` parameter (added in
+// response to Copilot PR #24 review). Passing `requireSql()` directly
+// sidesteps the `requireDb()` / `config.databaseUrl` singleton entirely,
+// so this suite works regardless of whether another test file has
+// already captured `config` in the same Bun worker.
 
 describe.skipIf(sql === null)("FR-014 aggregate queries — dispatch-stats.ts", () => {
   beforeAll(async () => {
@@ -103,7 +103,7 @@ describe.skipIf(sql === null)("FR-014 aggregate queries — dispatch-stats.ts", 
 
   it("eventsPerTarget — groups + orders by COUNT desc, excludes out-of-window rows", async () => {
     const { eventsPerTarget } = await import("../../src/db/queries/dispatch-stats");
-    const rows = await eventsPerTarget(30);
+    const rows = await eventsPerTarget(30, requireSql());
 
     // 4 distinct targets in the window — inline=1 (the 60-day row is
     // excluded), shared-runner=2, isolated-job=1, daemon=2.
@@ -121,7 +121,7 @@ describe.skipIf(sql === null)("FR-014 aggregate queries — dispatch-stats.ts", 
 
   it("triageRate — counts triage/default-fallback/triage-error-fallback as triaged", async () => {
     const { triageRate } = await import("../../src/db/queries/dispatch-stats");
-    const rows = await triageRate(30);
+    const rows = await triageRate(30, requireSql());
 
     // Collapse all days to a single totals pair. Rows outside the
     // window are excluded by the WHERE clause.
@@ -143,7 +143,7 @@ describe.skipIf(sql === null)("FR-014 aggregate queries — dispatch-stats.ts", 
 
   it("avgConfidenceAndFallback — averages over triage_results only, in-window", async () => {
     const { avgConfidenceAndFallback } = await import("../../src/db/queries/dispatch-stats");
-    const row = await avgConfidenceAndFallback(30);
+    const row = await avgConfidenceAndFallback(30, requireSql());
 
     expect(row.avg_confidence).not.toBeNull();
     // (0.92 + 0.55 + 1.00) / 3 ≈ 0.823
@@ -157,7 +157,7 @@ describe.skipIf(sql === null)("FR-014 aggregate queries — dispatch-stats.ts", 
 
   it("triageSpend — sums cost_usd across in-window triage_results", async () => {
     const { triageSpend } = await import("../../src/db/queries/dispatch-stats");
-    const row = await triageSpend(30);
+    const row = await triageSpend(30, requireSql());
 
     expect(row.total_triage_spend_usd).not.toBeNull();
     // 0.0009 + 0.0008 + 0.0010 = 0.0027 (the 60-day row is excluded).
@@ -168,13 +168,13 @@ describe.skipIf(sql === null)("FR-014 aggregate queries — dispatch-stats.ts", 
     const { eventsPerTarget, triageSpend } = await import("../../src/db/queries/dispatch-stats");
 
     // Window of 1 day excludes the 2-day-old and 3-day-old rows.
-    const rows = await eventsPerTarget(1);
+    const rows = await eventsPerTarget(1, requireSql());
     const byTarget = new Map(rows.map((r) => [r.dispatch_target, r.events]));
     expect(byTarget.get("shared-runner")).toBe(2); // d-2 + d-3 both 1-day
     expect(byTarget.get("daemon")).toBeUndefined(); // d-5 + d-6 are 2-day
     expect(byTarget.get("isolated-job")).toBeUndefined(); // d-4 is 2-day
 
-    const spend = await triageSpend(1);
+    const spend = await triageSpend(1, requireSql());
     // Only the two 1-day-old triage rows (0.0009 + 0.0008).
     expect(spend.total_triage_spend_usd).toBeCloseTo(0.0017, 6);
   });
