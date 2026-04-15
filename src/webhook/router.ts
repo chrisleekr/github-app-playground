@@ -3,6 +3,8 @@ import { runInlinePipeline } from "../core/inline-pipeline";
 import { isAlreadyProcessed } from "../core/tracking-comment";
 import { getDb } from "../db";
 import { classifyStatic } from "../k8s/classifier";
+import { JobSpawnerError, spawnIsolatedJob } from "../k8s/job-spawner";
+import { dispatchToSharedRunner } from "../k8s/shared-runner-dispatcher";
 import {
   decrementActiveCount,
   getActiveCount,
@@ -287,15 +289,84 @@ export async function dispatch(ctx: BotContext, decision: DispatchDecision): Pro
       return;
     }
     case "daemon":
-    case "shared-runner":
-      // Pass the decision in so the dispatchMode column reflects the
-      // resolved target, not config.agentJobMode. In Slice B they're
-      // identical; in Slice C+ they diverge when label/keyword/triage
-      // overrides the global mode.
+      // Daemon target retains the existing Phase 2 orchestrator queue path.
       await dispatchNonInline(ctx, decision);
       return;
+    case "shared-runner":
+      await dispatchToSharedRunner(ctx, decision);
+      return;
     case "isolated-job":
-      throw new NotImplementedError("isolated-job");
+      try {
+        await spawnIsolatedJob(ctx, decision);
+      } catch (err) {
+        // FR-018 graceful rejection (T025): infra-absent → write a rejection
+        // execution row + post a tracking-comment update, do NOT downgrade
+        // to a different target. Other JobSpawnerError kinds (auth-load,
+        // api-rejected, api-unavailable) bubble to the processRequest
+        // catch where they're logged as runtime failures.
+        if (err instanceof JobSpawnerError && err.kind === "infra-absent") {
+          await recordInfraAbsentRejection(ctx, decision, err.message);
+          return;
+        }
+        throw err;
+      }
+      return;
+  }
+}
+
+/**
+ * FR-018 rejection write-path. Persists an execution row with
+ * dispatch_reason="infra-absent" and updates the tracking comment so the
+ * maintainer sees a clear refusal. Never silently downgrades to a different
+ * target — that defeats the purpose of asking for isolated execution.
+ */
+async function recordInfraAbsentRejection(
+  ctx: BotContext,
+  decision: DispatchDecision,
+  reason: string,
+): Promise<void> {
+  ctx.log.warn(
+    { deliveryId: ctx.deliveryId, target: decision.target, reason },
+    "isolated-job dispatch rejected — Kubernetes infrastructure absent",
+  );
+
+  const db = getDb();
+  if (db !== null) {
+    try {
+      await createExecution({
+        deliveryId: ctx.deliveryId,
+        repoOwner: ctx.owner,
+        repoName: ctx.repo,
+        entityNumber: ctx.entityNumber,
+        entityType: ctx.isPR ? "pull_request" : "issue",
+        eventName: ctx.eventName,
+        triggerUsername: ctx.triggerUsername,
+        // The target IS isolated-job (the user asked for it); the reason is
+        // why we couldn't honour it. data-model.md §4 dispatch_reason enum.
+        dispatchMode: decision.target,
+        contextJson: serializeBotContext(ctx),
+      });
+    } catch (recordErr) {
+      ctx.log.error(
+        { err: recordErr },
+        "Failed to write infra-absent rejection execution row (non-fatal)",
+      );
+    }
+  }
+
+  try {
+    await ctx.octokit.rest.issues.createComment({
+      owner: ctx.owner,
+      repo: ctx.repo,
+      issue_number: ctx.entityNumber,
+      body:
+        `**${config.triggerPhrase}** cannot dispatch this request: the isolated-job target ` +
+        `requires Kubernetes infrastructure that is not currently configured on this server. ` +
+        `The platform will not silently downgrade to a different target — please re-trigger ` +
+        `without the \`bot:job\` label / docker keyword if shared-runner is acceptable.`,
+    });
+  } catch (commentError) {
+    ctx.log.error({ err: commentError }, "Failed to post infra-absent rejection comment");
   }
 }
 
