@@ -105,7 +105,7 @@ Each entry is a JSON blob:
 
 ## R5 — `resolveAllowedTools()` job-mode extension
 
-**Decision**: detect job mode via `process.env.AGENT_JOB_MODE === "ephemeral-job"` OR `process.env.AGENT_CONTEXT_B64 !== undefined` (per plan §Job Mode). Branch tool allow-list:
+**Decision**: detect job mode via `process.env.AGENT_JOB_MODE === "isolated-job"` OR `process.env.AGENT_CONTEXT_B64 !== undefined` (per plan §Job Mode). Branch tool allow-list:
 
 - **Base (all targets)**: `Edit, MultiEdit, Glob, Grep, LS, Read, Write`, git operations, plus existing baseline `Bash(cat:*, ls:*, find:*, grep:*, sed:*, curl:*, chmod:*, mkdir:*)`.
 - **Job-mode only**: `Bash(docker:*), Bash(docker-compose:*), Bash(npm:*), Bash(npx:*), Bash(bun:*), Bash(bunx:*), Bash(make:*), Bash(sh:*), Bash(bash:*), Bash(cp:*), Bash(mv:*)`.
@@ -152,7 +152,7 @@ Observability: every state transition logs at `warn` level with `{state, reason,
 - `ttlSecondsAfterFinished: 3600` (auto-cleanup after 1h)
 - `activeDeadlineSeconds: 1800` (30-min wall clock — matches complexity=complex maxTurns budget × per-turn ceiling)
 - **InitContainer** `wait-for-docker`: shells out to `until docker info; do sleep 1; done`
-- **Container `claude-agent`**: same image as webhook server, different `command: ["bun", "run", "src/k8s/job-entrypoint.ts"]`; env includes `AGENT_CONTEXT_B64`, `AGENT_JOB_MODE=ephemeral-job`, forwarded provider creds, and a short-lived GitHub installation token (1h TTL). Mounts a shared emptyDir at `/workspace`.
+- **Container `claude-agent`**: same image as webhook server, different `command: ["bun", "run", "src/k8s/job-entrypoint.ts"]`; env includes `AGENT_CONTEXT_B64`, `AGENT_JOB_MODE=isolated-job`, forwarded provider creds, and a short-lived GitHub installation token (1h TTL). Mounts a shared emptyDir at `/workspace`.
 - **Sidecar `docker`**: `docker:27-dind` image, `privileged: true`, `DOCKER_TLS_CERTDIR=""`, shared emptyDir at `/var/lib/docker`. The `claude-agent` container sets `DOCKER_HOST=tcp://localhost:2375`.
 - Resource requests: `cpu: 500m, memory: 1Gi`; limits: `cpu: 2000m, memory: 4Gi` (per plan §Job resource limits).
 
@@ -174,7 +174,7 @@ Request/response are spec'd in `contracts/shared-runner-internal.md`. Synchronou
 
 ## R10 — Dispatch-decision + triage-result persistence
 
-**Decision**: one new SQL migration `002_dispatch_decisions.sql`:
+**Decision**: one new SQL migration `003_dispatch_decisions.sql`:
 
 1. Add columns to `executions`: `dispatch_target TEXT NOT NULL DEFAULT 'inline'`, `dispatch_reason TEXT NOT NULL DEFAULT 'default'`, `triage_confidence NUMERIC(3,2)`, `triage_cost_usd NUMERIC(10,6)`, `triage_complexity TEXT`.
 2. New table `triage_results (id UUID PK, delivery_id TEXT UNIQUE, mode TEXT, confidence NUMERIC(3,2), complexity TEXT, rationale TEXT, cost_usd NUMERIC(10,6), latency_ms INTEGER, provider TEXT, model TEXT, created_at TIMESTAMPTZ DEFAULT now())`. Rows are written once per triage invocation and referenced by `executions.delivery_id`.

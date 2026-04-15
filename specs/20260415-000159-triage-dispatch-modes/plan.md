@@ -71,7 +71,7 @@ src/
 │   ├── index.ts                            # existing — unchanged
 │   ├── migrate.ts                          # existing — unchanged
 │   └── migrations/
-│       └── 002_dispatch_decisions.sql      # NEW — extends executions, adds dispatch_decisions + triage_results
+│       └── 003_dispatch_decisions.sql      # NEW — extends executions, adds dispatch_decisions + triage_results
 ├── k8s/
 │   ├── classifier.ts                       # NEW — deterministic StaticClassification function
 │   ├── job-spawner.ts                      # NEW — BatchV1Api Job creation w/ DinD sidecar

@@ -498,7 +498,10 @@ async function handleAccept(
     const octokit = await app.getInstallationOctokit(installation.id);
     const { token } = (await octokit.auth({ type: "installation" })) as { token: string };
 
-    const maxTurns = config.agentMaxTurns ?? config.triageMaxTurnsComplex;
+    // FR-008a: fallback when no explicit override and triage didn't run is
+    // DEFAULT_MAXTURNS (30), not the per-complexity "complex" value (50).
+    // The latter over-allocates turns for events that never got classified.
+    const maxTurns = config.agentMaxTurns ?? config.defaultMaxTurns;
     const { resolveAllowedTools } = await import("../core/prompt-builder");
 
     // Reconstruct a minimal BotContext-shaped object for resolveAllowedTools.

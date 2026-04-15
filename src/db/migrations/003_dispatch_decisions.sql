@@ -1,4 +1,4 @@
--- 002_dispatch_decisions: Persistent dispatch + triage telemetry
+-- 003_dispatch_decisions: Persistent dispatch + triage telemetry
 --
 -- Adds per-event dispatch-decision columns to `executions` and introduces
 -- `triage_results` for the auto-mode probabilistic classifier. Schema
@@ -54,7 +54,7 @@ CREATE TABLE triage_results (
   complexity   TEXT NOT NULL
                CHECK (complexity IN ('trivial', 'moderate', 'complex')),
   rationale    TEXT NOT NULL
-               CHECK (LENGTH(rationale) <= 500),
+               CHECK (LENGTH(rationale) >= 1 AND LENGTH(rationale) <= 500),
   cost_usd     NUMERIC(10,6) NOT NULL CHECK (cost_usd >= 0),
   latency_ms   INTEGER NOT NULL CHECK (latency_ms >= 0),
   provider     TEXT NOT NULL

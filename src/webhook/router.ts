@@ -206,9 +206,13 @@ export async function processRequest(ctx: BotContext): Promise<void> {
  *   - T023 (US1): label + keyword classification short-circuits
  *   - T035 (US2): auto-mode triage call when static classification ambiguous
  *
- * The "auto" AGENT_JOB_MODE is not yet wired — Slice B surfaces it as
- * NotImplementedError via dispatch() so ops can flip the knob and get a
- * clean error message instead of silent mis-routing.
+ * In Slice B, auto mode does NOT throw — it resolves to
+ * `config.defaultDispatchTarget` with reason `"static-default"`. That
+ * lets ops enable `AGENT_JOB_MODE=auto` today (provided
+ * DEFAULT_DISPATCH_TARGET is configured) with a degraded, always-fall-back
+ * behaviour, then upgrade to real triage when US2 lands. The config-level
+ * invariant `auto ⇒ default ≠ inline` ensures this never silently downgrades
+ * to inline.
  */
 export async function decideDispatch(ctx: BotContext): Promise<DispatchDecision> {
   // Note: `async` is deliberate — decideDispatch becomes async in US2 when
@@ -269,7 +273,11 @@ export async function dispatch(ctx: BotContext, decision: DispatchDecision): Pro
     }
     case "daemon":
     case "shared-runner":
-      await dispatchNonInline(ctx);
+      // Pass the decision in so the dispatchMode column reflects the
+      // resolved target, not config.agentJobMode. In Slice B they're
+      // identical; in Slice C+ they diverge when label/keyword/triage
+      // overrides the global mode.
+      await dispatchNonInline(ctx, decision);
       return;
     case "isolated-job":
       throw new NotImplementedError("isolated-job");
@@ -281,7 +289,7 @@ export async function dispatch(ctx: BotContext, decision: DispatchDecision): Pro
  * Extracted so that any throw in this path can decrement the concurrency counter —
  * the caller's try/finally only covers inline mode.
  */
-async function dispatchNonInline(ctx: BotContext): Promise<void> {
+async function dispatchNonInline(ctx: BotContext, decision: DispatchDecision): Promise<void> {
   if (!isValkeyHealthy()) {
     decrementActiveCount();
     ctx.log.error("Valkey unavailable — rejecting request (FM-7)");
@@ -308,7 +316,8 @@ async function dispatchNonInline(ctx: BotContext): Promise<void> {
       entityType: ctx.isPR ? "pull_request" : "issue",
       eventName: ctx.eventName,
       triggerUsername: ctx.triggerUsername,
-      dispatchMode: config.agentJobMode === "auto" ? "shared-runner" : config.agentJobMode,
+      // Use the resolved target (never "auto"), not the raw config mode.
+      dispatchMode: decision.target,
       contextJson: serializedCtx,
     });
 

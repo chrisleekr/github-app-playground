@@ -90,7 +90,7 @@ JOB_TTL_SECONDS=3600
 bun run dev:deps
 
 # Terminal 2 — run the migration
-bun run src/db/migrate.ts        # applies 002_dispatch_decisions.sql
+bun run src/db/migrate.ts        # applies 003_dispatch_decisions.sql
 
 # Terminal 3 — webhook server (same image used as shared-runner in prod)
 bun run dev

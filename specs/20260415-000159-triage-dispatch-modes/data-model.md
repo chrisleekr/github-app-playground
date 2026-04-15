@@ -7,7 +7,7 @@
 
 ## 1. DispatchTarget (enum)
 
-A string literal union. Single source of truth: `src/config.ts`. Both the runtime Zod schema and the Postgres `dispatch_target` column use this vocabulary.
+A string literal union. Single source of truth: `src/shared/dispatch-types.ts` (exports `DISPATCH_TARGETS` tuple + `DispatchTarget` type + `DispatchTargetSchema` Zod enum). `src/config.ts` and the Postgres `dispatch_target` `CHECK` constraint both mirror this vocabulary.
 
 ```text
 "inline" | "daemon" | "shared-runner" | "isolated-job"

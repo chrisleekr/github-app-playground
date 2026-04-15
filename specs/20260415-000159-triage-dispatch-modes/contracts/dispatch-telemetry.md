@@ -73,10 +73,10 @@ ORDER BY events DESC;
 ```sql
 SELECT
   DATE(created_at) AS day,
-  COUNT(*) FILTER (WHERE dispatch_reason IN ('triage', 'default-fallback')) AS triaged,
+  COUNT(*) FILTER (WHERE dispatch_reason IN ('triage', 'default-fallback', 'triage-error-fallback')) AS triaged,
   COUNT(*) AS total,
   ROUND(
-    100.0 * COUNT(*) FILTER (WHERE dispatch_reason IN ('triage', 'default-fallback'))
+    100.0 * COUNT(*) FILTER (WHERE dispatch_reason IN ('triage', 'default-fallback', 'triage-error-fallback'))
     / NULLIF(COUNT(*), 0), 2) AS triage_pct
 FROM executions
 WHERE created_at >= NOW() - INTERVAL '30 days'
