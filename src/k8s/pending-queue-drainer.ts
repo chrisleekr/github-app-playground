@@ -24,7 +24,7 @@ import { createChildLogger, logger } from "../logger";
 import type { SerializableBotContext } from "../shared/daemon-types";
 import type { BotContext } from "../types";
 import type { DispatchDecision } from "../webhook/router";
-import { JobSpawnerError, spawnIsolatedJob } from "./job-spawner";
+import { JobSpawnerError, spawnIsolatedJob, watchJobCompletion } from "./job-spawner";
 import {
   dequeuePending,
   inFlightCount,
@@ -151,6 +151,15 @@ async function drainLoop(app: App): Promise<void> {
       await spawnIsolatedJob(ctx, decision);
       // eslint-disable-next-line no-await-in-loop -- drainer is sequential by design
       await registerInFlight(ctx.deliveryId);
+      // Fire-and-forget completion watcher — same invariants as the
+      // direct-spawn path (T046/T047/T048). Drainer must NOT await it;
+      // the drain loop needs to move to the next entry.
+      void watchJobCompletion(ctx.deliveryId).catch((err: unknown) => {
+        ctx.log.error(
+          { err, deliveryId: ctx.deliveryId },
+          "watchJobCompletion threw unexpectedly in drainer — in-flight slot may leak",
+        );
+      });
       ctx.log.info({ deliveryId: ctx.deliveryId }, "drained queued isolated-job — Job spawned");
     } catch (err) {
       // FR-021: no retry on mid-run failure. Just release any slot and log.

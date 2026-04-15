@@ -111,6 +111,16 @@ const configSchema = z
     jobNamespace: z.string().default("github-app"),
     jobImage: z.string().optional(),
     jobTtlSeconds: z.coerce.number().int().positive().default(300),
+    // K8s `activeDeadlineSeconds` — hard wall-clock ceiling on an isolated-
+    // job run. K8s enforces server-side; the app-side watcher polls status
+    // and, on timeout, deletes the Job, writes a `status="timeout"`
+    // execution row, and releases the in-flight slot. Keep strictly below
+    // the installation-token TTL (GitHub: 3600s).
+    jobActiveDeadlineSeconds: z.coerce.number().int().positive().max(3500).default(1800),
+    // Client-side poll interval used by `watchJobCompletion`. Too-frequent
+    // polling burns K8s API budget; too-slow polling delays releaseInFlight
+    // past true completion and causes the capacity gate to under-provision.
+    jobWatchPollIntervalMs: z.coerce.number().int().positive().default(5000),
     // Internal HTTP endpoint for the shared-runner pool. Required when
     // agentJobMode is "shared-runner" or "auto" (enforced in superRefine).
     internalRunnerUrl: z.url().optional(),
@@ -480,6 +490,8 @@ function loadConfig(): Config {
     jobNamespace: process.env["JOB_NAMESPACE"],
     jobImage: process.env["JOB_IMAGE"],
     jobTtlSeconds: process.env["JOB_TTL_SECONDS"],
+    jobActiveDeadlineSeconds: process.env["JOB_ACTIVE_DEADLINE_SECONDS"],
+    jobWatchPollIntervalMs: process.env["JOB_WATCH_POLL_INTERVAL_MS"],
     internalRunnerUrl: process.env["INTERNAL_RUNNER_URL"],
 
     // Data layer

@@ -39,8 +39,11 @@ void mock.module("../../src/k8s/pending-queue", () => ({
   releaseInFlight: mockReleaseInFlight,
 }));
 
+const mockWatchJobCompletion = mock(() => Promise.resolve("succeeded" as const));
+
 void mock.module("../../src/k8s/job-spawner", () => ({
   spawnIsolatedJob: mockSpawnIsolatedJob,
+  watchJobCompletion: mockWatchJobCompletion,
   JobSpawnerError: class JobSpawnerError extends Error {
     constructor(
       readonly kind: string,
