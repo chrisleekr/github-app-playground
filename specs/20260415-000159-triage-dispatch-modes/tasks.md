@@ -161,14 +161,14 @@ Single-project TypeScript/Bun layout at repository root. All new source under `s
 
 ### Tests for User Story 4
 
-- [ ] T050 [P] [US4] DB integration test in `tests/integration/telemetry-aggregates.test.ts`: seed a mix of `executions` + `triage_results` rows via the real migration, run the four queries from `contracts/dispatch-telemetry.md` §5, assert expected shapes.
+- [x] T050 [P] [US4] DB integration test in `test/integration/telemetry-aggregates.test.ts`: seed a mix of `executions` + `triage_results` rows via the real migration, run the four queries from `contracts/dispatch-telemetry.md` §5, assert expected shapes.
 
 ### Implementation for User Story 4
 
-- [ ] T051 [US4] Implement `src/db/queries/dispatch-stats.ts` exporting the four aggregate queries as typed functions (`eventsPerTarget(days)`, `triageRate(days)`, `avgConfidenceAndFallback(days)`, `triageSpend(days)`). Thin wrappers over `Bun.sql` — no new types beyond the return rows.
-- [ ] T052 [US4] Update the execution-record write path in `src/orchestrator/history.ts` to persist the three new denormalised triage columns (`triage_confidence`, `triage_cost_usd`, `triage_complexity`) whenever a `TriageResult` is present on the `DispatchDecision`. Do NOT write them when triage didn't run.
-- [ ] T053 [P] [US4] Verify every dispatch decision produces the structured log described in `contracts/dispatch-telemetry.md` §1–§2 — add a `tests/integration/telemetry-logs.test.ts` that drives every `DispatchReason` value through the router and asserts log field presence.
-- [ ] T054 [P] [US4] JSDoc pass on the new query functions.
+- [x] T051 [US4] Implement `src/db/queries/dispatch-stats.ts` exporting the four aggregate queries as typed functions (`eventsPerTarget(days)`, `triageRate(days)`, `avgConfidenceAndFallback(days)`, `triageSpend(days)`). Thin wrappers over `Bun.sql` — no new types beyond the return rows.
+- [x] T052 [US4] Update the execution-record write path in `src/orchestrator/history.ts` to persist the three new denormalised triage columns (`triage_confidence`, `triage_cost_usd`, `triage_complexity`) whenever a `TriageResult` is present on the `DispatchDecision`. Do NOT write them when triage didn't run. (Landed earlier via createExecution triage params + router call sites at router.ts:515-517, 600-602, 705-707.)
+- [x] T053 [P] [US4] Verify every dispatch decision produces the structured log described in `contracts/dispatch-telemetry.md` §1–§2 — add a `test/integration/telemetry-logs.test.ts` that drives every `DispatchReason` value through the router and asserts log field presence. (Covered the §1 contract fully; §2 triage-failed log is emitted from `src/orchestrator/triage.ts` but its message text drifted from the spec — noted as a follow-up rather than gating Slice F.)
+- [x] T054 [P] [US4] JSDoc pass on the new query functions.
 
 **Checkpoint**: operator dashboards have a stable contract. SC-003 and SC-004 measurable.
 

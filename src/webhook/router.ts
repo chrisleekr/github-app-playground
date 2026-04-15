@@ -119,6 +119,44 @@ cleanupInterval.unref();
  * Handles routing concerns (idempotency, auth, concurrency) then delegates
  * the actual execution pipeline to runInlinePipeline().
  */
+/**
+ * Emit the dispatch-decision structured log described in
+ * `specs/20260415-000159-triage-dispatch-modes/contracts/dispatch-telemetry.md` §1.
+ *
+ * Extracted from `processRequest` so the contract fields can be
+ * asserted directly by unit tests for every `DispatchReason` value
+ * without needing to drive the full request path end-to-end.
+ *
+ * `triageInvoked` tracks "did the LLM path run", not "did we get a
+ * parsed result" — the two diverge on parse-error / timeout /
+ * llm-error / circuit-open fallbacks where triage ran but produced
+ * no structured TriageResult. The `triage*` fields are emitted only
+ * when a `TriageResult` is attached to the decision.
+ */
+export function logDispatchDecision(ctx: BotContext, decision: DispatchDecision): void {
+  const triage = decision.triage;
+  ctx.log.info(
+    {
+      deliveryId: ctx.deliveryId,
+      owner: ctx.owner,
+      repo: ctx.repo,
+      eventType: ctx.eventName,
+      dispatchTarget: decision.target,
+      dispatchReason: decision.reason,
+      triageInvoked: decision.triageAttempted === true,
+      ...(triage !== undefined && {
+        triageConfidence: triage.confidence,
+        triageComplexity: triage.complexity,
+        triageModel: triage.model,
+        triageProvider: triage.provider,
+        triageLatencyMs: triage.latencyMs,
+        triageCostUsd: triage.costUsd,
+      }),
+    },
+    "dispatch decision",
+  );
+}
+
 export async function processRequest(ctx: BotContext): Promise<void> {
   // Fast-path idempotency: in-memory check (current process lifetime only)
   if (processed.has(ctx.deliveryId)) {
@@ -182,35 +220,7 @@ export async function processRequest(ctx: BotContext): Promise<void> {
 
   const decision = await decideDispatch(ctx);
 
-  // Dispatch-decision structured log per contracts/dispatch-telemetry.md §1.
-  // Triage fields are populated iff the auto-mode triage path ran. Operator
-  // dashboards key off `msg === "dispatch decision"` plus `dispatchTarget`
-  // / `dispatchReason`.
-  const triage = decision.triage;
-  ctx.log.info(
-    {
-      deliveryId: ctx.deliveryId,
-      owner: ctx.owner,
-      repo: ctx.repo,
-      eventType: ctx.eventName,
-      dispatchTarget: decision.target,
-      dispatchReason: decision.reason,
-      // `triageInvoked` tracks "did the LLM path run", not "did we get a
-      // parsed result" — the two diverge on parse-error / timeout /
-      // llm-error / circuit-open fallbacks where triage ran but produced
-      // no structured TriageResult.
-      triageInvoked: decision.triageAttempted === true,
-      ...(triage !== undefined && {
-        triageConfidence: triage.confidence,
-        triageComplexity: triage.complexity,
-        triageModel: triage.model,
-        triageProvider: triage.provider,
-        triageLatencyMs: triage.latencyMs,
-        triageCostUsd: triage.costUsd,
-      }),
-    },
-    "dispatch decision",
-  );
+  logDispatchDecision(ctx, decision);
 
   // Targets whose active slot is released at this level (dispatch returns
   // once the work is either complete OR ownership has been handed off).
