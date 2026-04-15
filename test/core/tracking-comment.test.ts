@@ -6,8 +6,10 @@ import {
   deliveryMarker,
   finalizeTrackingComment,
   isAlreadyProcessed,
+  renderDispatchReasonLine,
   updateTrackingComment,
 } from "../../src/core/tracking-comment";
+import { DISPATCH_REASONS } from "../../src/shared/dispatch-types";
 import type { BotContext } from "../../src/types";
 
 /** Minimal silent logger */
@@ -258,5 +260,50 @@ describe("finalizeTrackingComment", () => {
     await finalizeTrackingComment(ctx, 1, { success: true });
 
     expect(updateCalled).toBe(true);
+  });
+});
+
+describe("renderDispatchReasonLine (SC-007)", () => {
+  it("produces a non-empty one-sentence string for every DispatchReason value", () => {
+    const seen = new Set<string>();
+    for (const reason of DISPATCH_REASONS) {
+      const line = renderDispatchReasonLine(reason, "shared-runner");
+      expect(line).toBeString();
+      expect(line.length).toBeGreaterThan(0);
+      expect(line.length).toBeLessThanOrEqual(200);
+      expect(line).not.toContain("\n");
+      expect(seen.has(line)).toBe(false);
+      seen.add(line);
+    }
+    expect(seen.size).toBe(DISPATCH_REASONS.length);
+  });
+
+  it("includes the target name verbatim in the output", () => {
+    for (const reason of DISPATCH_REASONS) {
+      for (const target of ["inline", "daemon", "shared-runner", "isolated-job"] as const) {
+        const line = renderDispatchReasonLine(reason, target);
+        expect(line).toContain(target);
+      }
+    }
+  });
+
+  it("uses distinguishable vocabulary for each reason (regression guard)", () => {
+    expect(renderDispatchReasonLine("label", "shared-runner")).toMatch(/\blabel\b/i);
+    expect(renderDispatchReasonLine("keyword", "isolated-job")).toMatch(/\bkeyword\b/i);
+    expect(renderDispatchReasonLine("triage", "shared-runner")).toMatch(/\btriage\b/i);
+    expect(renderDispatchReasonLine("default-fallback", "shared-runner")).toMatch(
+      /below threshold/i,
+    );
+    expect(renderDispatchReasonLine("triage-error-fallback", "shared-runner")).toMatch(
+      /unavailable/i,
+    );
+    expect(renderDispatchReasonLine("static-default", "inline")).toMatch(/platform default/i);
+    expect(renderDispatchReasonLine("capacity-rejected", "isolated-job")).toMatch(/capacity/i);
+    expect(renderDispatchReasonLine("infra-absent", "isolated-job")).toMatch(/infrastructure/i);
+  });
+
+  it("rejection reasons do not use 'Routed' (nothing was routed)", () => {
+    expect(renderDispatchReasonLine("capacity-rejected", "isolated-job")).not.toMatch(/^Routed/);
+    expect(renderDispatchReasonLine("infra-absent", "isolated-job")).not.toMatch(/^Routed/);
   });
 });
