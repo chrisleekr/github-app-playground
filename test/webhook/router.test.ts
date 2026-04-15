@@ -624,7 +624,7 @@ describe("processRequest — agentJobMode non-inline dispatch", () => {
     const { config } = await import("../../src/config");
     const originalMode = config.agentJobMode;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (config as any).agentJobMode = "shared-runner";
+    (config as any).agentJobMode = "daemon";
 
     mockIsValkeyHealthy.mockReturnValue(false);
 
@@ -656,7 +656,7 @@ describe("processRequest — agentJobMode non-inline dispatch", () => {
     const { config } = await import("../../src/config");
     const originalMode = config.agentJobMode;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (config as any).agentJobMode = "shared-runner";
+    (config as any).agentJobMode = "daemon";
 
     mockIsValkeyHealthy.mockReturnValue(false);
 
@@ -685,7 +685,7 @@ describe("processRequest — agentJobMode non-inline dispatch", () => {
     const { config } = await import("../../src/config");
     const originalMode = config.agentJobMode;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (config as any).agentJobMode = "shared-runner";
+    (config as any).agentJobMode = "daemon";
 
     mockIsValkeyHealthy.mockReturnValue(true);
     mockDispatchJob.mockResolvedValue(true);
@@ -699,7 +699,7 @@ describe("processRequest — agentJobMode non-inline dispatch", () => {
       expect(mockCreateExecution).toHaveBeenCalledTimes(1);
       const execArgs = mockCreateExecution.mock.calls[0]?.[0] as Record<string, unknown>;
       expect(execArgs.deliveryId).toBe(ctx.deliveryId);
-      expect(execArgs.dispatchMode).toBe("shared-runner");
+      expect(execArgs.dispatchMode).toBe("daemon");
       expect(execArgs.repoOwner).toBe(ctx.owner);
       expect(execArgs.repoName).toBe(ctx.repo);
 
@@ -727,7 +727,7 @@ describe("processRequest — agentJobMode non-inline dispatch", () => {
     const { config } = await import("../../src/config");
     const originalMode = config.agentJobMode;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (config as any).agentJobMode = "shared-runner";
+    (config as any).agentJobMode = "daemon";
 
     mockIsValkeyHealthy.mockReturnValue(true);
     mockDispatchJob.mockResolvedValue(false); // no daemon available
@@ -758,7 +758,7 @@ describe("processRequest — agentJobMode non-inline dispatch", () => {
     const { config } = await import("../../src/config");
     const originalMode = config.agentJobMode;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (config as any).agentJobMode = "auto";
+    (config as any).agentJobMode = "daemon";
 
     mockIsValkeyHealthy.mockReturnValue(true);
     mockDispatchJob.mockResolvedValue(true);
@@ -770,7 +770,7 @@ describe("processRequest — agentJobMode non-inline dispatch", () => {
 
       // dispatchMode should map 'auto' to 'shared-runner'
       const execArgs = mockCreateExecution.mock.calls[0]?.[0] as Record<string, unknown>;
-      expect(execArgs.dispatchMode).toBe("shared-runner");
+      expect(execArgs.dispatchMode).toBe("daemon");
     } finally {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (config as any).agentJobMode = originalMode;
@@ -781,7 +781,7 @@ describe("processRequest — agentJobMode non-inline dispatch", () => {
     const { config } = await import("../../src/config");
     const originalMode = config.agentJobMode;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (config as any).agentJobMode = "shared-runner";
+    (config as any).agentJobMode = "daemon";
 
     mockIsValkeyHealthy.mockReturnValue(true);
     // createExecution throws to simulate infrastructure failure
@@ -813,7 +813,7 @@ describe("processRequest — agentJobMode non-inline dispatch", () => {
     const { config } = await import("../../src/config");
     const originalMode = config.agentJobMode;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (config as any).agentJobMode = "shared-runner";
+    (config as any).agentJobMode = "daemon";
 
     mockIsValkeyHealthy.mockReturnValue(true);
     mockDispatchJob.mockResolvedValue(true);
@@ -838,7 +838,7 @@ describe("processRequest — agentJobMode non-inline dispatch", () => {
     const { config } = await import("../../src/config");
     const originalMode = config.agentJobMode;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (config as any).agentJobMode = "shared-runner";
+    (config as any).agentJobMode = "daemon";
 
     mockIsValkeyHealthy.mockReturnValue(true);
     mockDispatchJob.mockResolvedValue(true);
@@ -948,30 +948,43 @@ describe("decideDispatch (T011) — Slice B scaffolding", () => {
   });
 });
 
-describe("dispatch (T011) — target switch surfaces NotImplementedError", () => {
-  it("throws NotImplementedError with target='isolated-job' when routed there", async () => {
-    const ctx = makeCtx();
+describe("dispatch (T024, FR-018) — isolated-job graceful rejection on missing K8s auth", () => {
+  it("does NOT throw when isolated-job hits absent K8s infra; posts a rejection comment", async () => {
+    // Test env has no KUBERNETES_SERVICE_HOST / KUBECONFIG, so the spawner's
+    // loadKubernetesClient throws JobSpawnerError(kind:"infra-absent"), which
+    // dispatch() converts to a tracking-comment rejection (FR-018) instead
+    // of bubbling. The router does NOT silently downgrade to a different target.
+    const createComment = mock(() => Promise.resolve({ data: { id: 999 } }));
+    const ctx = makeCtx({
+      octokitOpts: {
+        createCommentFn: createComment as unknown as () => Promise<{ data: { id: number } }>,
+      },
+    });
     const decision = {
       target: "isolated-job" as const,
-      reason: "static-default" as const,
+      reason: "label" as const,
       maxTurns: 30,
     };
 
-    let caught: unknown;
-    try {
-      await dispatch(ctx, decision);
-    } catch (e) {
-      caught = e;
-    }
+    // Should resolve, not throw.
+    await dispatch(ctx, decision);
 
-    expect(caught).toBeInstanceOf(NotImplementedError);
-    expect(caught).toBeInstanceOf(Error); // also inherits Error — callers can catch both
-    if (caught instanceof NotImplementedError) {
-      expect(caught.target).toBe("isolated-job");
-      expect(caught.name).toBe("NotImplementedError");
-      expect(caught.message).toContain("isolated-job");
-      expect(caught.message).toContain("not yet implemented");
+    expect(createComment).toHaveBeenCalled();
+    const callArgs = (createComment as unknown as { mock: { calls: unknown[][] } }).mock.calls[0];
+    if (callArgs !== undefined) {
+      const [arg] = callArgs as [{ body: string }];
+      expect(arg.body).toContain("isolated-job");
+      expect(arg.body.toLowerCase()).toContain("not currently configured");
     }
+  });
+
+  it("NotImplementedError remains a typed export for any future unimplemented target", () => {
+    // Slice C lit up isolated-job. The class is kept as a typed surface for
+    // future targets that ship with the same scaffolding pattern.
+    const err = new NotImplementedError("inline");
+    expect(err).toBeInstanceOf(Error);
+    expect(err.name).toBe("NotImplementedError");
+    expect(err.target).toBe("inline");
   });
 });
 

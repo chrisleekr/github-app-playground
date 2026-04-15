@@ -23,6 +23,13 @@ export interface CreateExecutionParams {
   eventName: string;
   triggerUsername: string;
   dispatchMode: string;
+  /**
+   * Optional dispatch-decision reason. When omitted the DB DEFAULT
+   * ('static-default') applies. Callers on rejection / classifier paths pass
+   * the actual DispatchReason (e.g. "infra-absent", "label", "keyword") so
+   * analytics can distinguish them from the default fallback.
+   */
+  dispatchReason?: string;
   contextJson?: SerializableBotContext;
 }
 
@@ -34,18 +41,33 @@ export async function createExecution(params: CreateExecutionParams): Promise<st
   const db = getDb();
   if (db === null) throw new Error("Database not configured");
 
-  const rows: { id: string }[] = await db`
-    INSERT INTO executions (
-      delivery_id, repo_owner, repo_name, entity_number, entity_type,
-      event_name, trigger_username, dispatch_mode, status, context_json
-    ) VALUES (
-      ${params.deliveryId}, ${params.repoOwner}, ${params.repoName},
-      ${params.entityNumber}, ${params.entityType}, ${params.eventName},
-      ${params.triggerUsername}, ${params.dispatchMode}, 'queued',
-      ${params.contextJson ?? null}
-    )
-    RETURNING id
-  `;
+  const rows: { id: string }[] =
+    params.dispatchReason !== undefined
+      ? await db`
+        INSERT INTO executions (
+          delivery_id, repo_owner, repo_name, entity_number, entity_type,
+          event_name, trigger_username, dispatch_mode, dispatch_reason,
+          status, context_json
+        ) VALUES (
+          ${params.deliveryId}, ${params.repoOwner}, ${params.repoName},
+          ${params.entityNumber}, ${params.entityType}, ${params.eventName},
+          ${params.triggerUsername}, ${params.dispatchMode}, ${params.dispatchReason},
+          'queued', ${params.contextJson ?? null}
+        )
+        RETURNING id
+      `
+      : await db`
+        INSERT INTO executions (
+          delivery_id, repo_owner, repo_name, entity_number, entity_type,
+          event_name, trigger_username, dispatch_mode, status, context_json
+        ) VALUES (
+          ${params.deliveryId}, ${params.repoOwner}, ${params.repoName},
+          ${params.entityNumber}, ${params.entityType}, ${params.eventName},
+          ${params.triggerUsername}, ${params.dispatchMode}, 'queued',
+          ${params.contextJson ?? null}
+        )
+        RETURNING id
+      `;
   const row = rows[0];
   if (row === undefined) throw new Error("INSERT RETURNING yielded no row");
   return row.id;

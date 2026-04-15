@@ -2,6 +2,9 @@ import { config } from "../config";
 import { runInlinePipeline } from "../core/inline-pipeline";
 import { isAlreadyProcessed } from "../core/tracking-comment";
 import { getDb } from "../db";
+import { classifyStatic } from "../k8s/classifier";
+import { JobSpawnerError, spawnIsolatedJob } from "../k8s/job-spawner";
+import { dispatchToSharedRunner } from "../k8s/shared-runner-dispatcher";
 import {
   decrementActiveCount,
   getActiveCount,
@@ -174,6 +177,15 @@ export async function processRequest(ctx: BotContext): Promise<void> {
     "dispatch decision",
   );
 
+  // Targets whose active slot is released at this level (dispatch returns
+  // once the work is either complete OR ownership has been handed off).
+  // `daemon` is excluded: dispatchNonInline manages its own counter — the
+  // slot stays held until job:result arrives from the daemon via WS.
+  const releasesSlotHere =
+    decision.target === "inline" ||
+    decision.target === "shared-runner" ||
+    decision.target === "isolated-job";
+
   try {
     await dispatch(ctx, decision);
   } catch (err) {
@@ -185,16 +197,12 @@ export async function processRequest(ctx: BotContext): Promise<void> {
       );
       return;
     }
-    // Surface-level decrement for inline-only path; dispatchNonInline manages
-    // its own counter semantics (slot stays held until job:result).
-    if (decision.target === "inline") {
+    if (releasesSlotHere) {
       decrementActiveCount();
     }
     throw err;
   }
-  // For inline jobs, decrement on successful completion of the pipeline.
-  // Daemon-dispatched jobs keep the slot — connection-handler releases on job:result.
-  if (decision.target === "inline") {
+  if (releasesSlotHere) {
     decrementActiveCount();
   }
 }
@@ -219,20 +227,34 @@ export async function decideDispatch(ctx: BotContext): Promise<DispatchDecision>
   // it awaits the triage LLM call. Keeping it async from day 1 avoids a
   // thrash of call-site signatures later.
   await Promise.resolve();
-  void ctx;
 
+  // Step 1+2 of FR-003 cascade: deterministic label / keyword classification.
+  // Labels always win over keywords (FR-016). Inline mode skips the cascade
+  // entirely — inline never benefits from container/shared targets, and the
+  // explicit signal is the operator setting AGENT_JOB_MODE=inline.
+  if (config.agentJobMode !== "inline") {
+    const classification = classifyStatic(ctx);
+    if (classification.outcome === "clear") {
+      return {
+        target: classification.mode,
+        reason: classification.reason,
+        maxTurns: config.defaultMaxTurns,
+      };
+    }
+  }
+
+  // Cascade fell through to step 3 (no clear label/keyword signal). Reason is
+  // "static-default" — the platform's configured default applies, no triage.
+  // US2 (T035) replaces this branch with the triage call when in auto mode.
   const mode = config.agentJobMode;
 
   if (mode === "inline" || mode === "daemon" || mode === "shared-runner") {
     return { target: mode, reason: "static-default", maxTurns: config.defaultMaxTurns };
   }
-  // isolated-job and auto both surface as their nominal target in the decision;
-  // dispatch() is where NotImplementedError fires for isolated-job, and auto
-  // is mapped via a separate branch so the log + error name the right target.
   if (mode === "isolated-job") {
     return { target: "isolated-job", reason: "static-default", maxTurns: config.defaultMaxTurns };
   }
-  // mode === "auto" — placeholder; triage + default fall-through land in US2.
+  // mode === "auto" — placeholder; triage call lands in US2.
   return {
     target: config.defaultDispatchTarget,
     reason: "static-default",
@@ -262,6 +284,7 @@ export async function dispatch(ctx: BotContext, decision: DispatchDecision): Pro
             eventName: ctx.eventName,
             triggerUsername: ctx.triggerUsername,
             dispatchMode: "inline",
+            dispatchReason: decision.reason,
             contextJson: serializedCtx,
           });
         } catch (recordErr) {
@@ -272,15 +295,112 @@ export async function dispatch(ctx: BotContext, decision: DispatchDecision): Pro
       return;
     }
     case "daemon":
-    case "shared-runner":
-      // Pass the decision in so the dispatchMode column reflects the
-      // resolved target, not config.agentJobMode. In Slice B they're
-      // identical; in Slice C+ they diverge when label/keyword/triage
-      // overrides the global mode.
+      // Daemon target retains the existing Phase 2 orchestrator queue path.
       await dispatchNonInline(ctx, decision);
       return;
+    case "shared-runner": {
+      // Mirror the inline path: write an executions row before dispatch so the
+      // DB/audit trail captures the request regardless of runner outcome.
+      // dispatchToSharedRunner itself does NOT persist — it only speaks HTTP.
+      const db = getDb();
+      if (db !== null) {
+        try {
+          await createExecution({
+            deliveryId: ctx.deliveryId,
+            repoOwner: ctx.owner,
+            repoName: ctx.repo,
+            entityNumber: ctx.entityNumber,
+            entityType: ctx.isPR ? "pull_request" : "issue",
+            eventName: ctx.eventName,
+            triggerUsername: ctx.triggerUsername,
+            dispatchMode: "shared-runner",
+            dispatchReason: decision.reason,
+            contextJson: serializeBotContext(ctx),
+          });
+        } catch (recordErr) {
+          ctx.log.error(
+            { err: recordErr },
+            "Failed to create shared-runner execution record (non-fatal)",
+          );
+        }
+      }
+      await dispatchToSharedRunner(ctx, decision);
+      return;
+    }
     case "isolated-job":
-      throw new NotImplementedError("isolated-job");
+      try {
+        await spawnIsolatedJob(ctx, decision);
+      } catch (err) {
+        // FR-018 graceful rejection (T025): infra-absent → write a rejection
+        // execution row + post a tracking-comment update, do NOT downgrade
+        // to a different target. Other JobSpawnerError kinds (auth-load,
+        // api-rejected, api-unavailable) bubble to the processRequest
+        // catch where they're logged as runtime failures.
+        if (err instanceof JobSpawnerError && err.kind === "infra-absent") {
+          await recordInfraAbsentRejection(ctx, decision, err.message);
+          return;
+        }
+        throw err;
+      }
+      return;
+  }
+}
+
+/**
+ * FR-018 rejection write-path. Persists an execution row with
+ * dispatch_mode="isolated-job" and dispatch_reason="infra-absent", logs the
+ * rejection, and posts a tracking comment so the maintainer sees a clear
+ * refusal. Never silently downgrades to a different target — that defeats
+ * the purpose of asking for isolated execution.
+ */
+async function recordInfraAbsentRejection(
+  ctx: BotContext,
+  decision: DispatchDecision,
+  reason: string,
+): Promise<void> {
+  ctx.log.warn(
+    { deliveryId: ctx.deliveryId, target: decision.target, reason },
+    "isolated-job dispatch rejected — Kubernetes infrastructure absent",
+  );
+
+  const db = getDb();
+  if (db !== null) {
+    try {
+      await createExecution({
+        deliveryId: ctx.deliveryId,
+        repoOwner: ctx.owner,
+        repoName: ctx.repo,
+        entityNumber: ctx.entityNumber,
+        entityType: ctx.isPR ? "pull_request" : "issue",
+        eventName: ctx.eventName,
+        triggerUsername: ctx.triggerUsername,
+        // The target IS isolated-job (the user asked for it); the reason is
+        // why we couldn't honour it. data-model.md §4 dispatch_reason enum.
+        dispatchMode: decision.target,
+        dispatchReason: "infra-absent",
+        contextJson: serializeBotContext(ctx),
+      });
+    } catch (recordErr) {
+      ctx.log.error(
+        { err: recordErr },
+        "Failed to write infra-absent rejection execution row (non-fatal)",
+      );
+    }
+  }
+
+  try {
+    await ctx.octokit.rest.issues.createComment({
+      owner: ctx.owner,
+      repo: ctx.repo,
+      issue_number: ctx.entityNumber,
+      body:
+        `**${config.triggerPhrase}** cannot dispatch this request: the isolated-job target ` +
+        `requires Kubernetes infrastructure that is not currently configured on this server. ` +
+        `The platform will not silently downgrade to a different target — please re-trigger ` +
+        `without the \`bot:job\` label / docker keyword if shared-runner is acceptable.`,
+    });
+  } catch (commentError) {
+    ctx.log.error({ err: commentError }, "Failed to post infra-absent rejection comment");
   }
 }
 

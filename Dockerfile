@@ -91,6 +91,14 @@ COPY --from=development --chown=bun:bun /app/src/db/migrations ./src/db/migratio
 # Production node_modules (runtime dependencies only)
 COPY --from=deps --chown=bun:bun /app/node_modules ./node_modules
 
+# Docker CLI — required when the image runs as an isolated-job pod (the
+# Claude agent shells `docker build` / `docker compose` against the dind
+# sidecar at DOCKER_HOST=tcp://localhost:2375). Copy the static client binary
+# from the official `docker:27-cli` image to avoid pulling the full dind
+# runtime into the server image. Pinned to the same major as the sidecar in
+# src/k8s/job-spawner.ts to keep client/daemon compatibility guaranteed.
+COPY --from=docker:27-cli /usr/local/bin/docker /usr/local/bin/docker
+
 USER bun
 EXPOSE 3000/tcp
 EXPOSE 3002/tcp
