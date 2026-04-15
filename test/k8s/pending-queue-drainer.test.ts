@@ -332,6 +332,94 @@ describe("drainPendingOnce — spawn failure (FR-021 no retry)", () => {
     expect(mockReleaseInFlight).toHaveBeenCalledTimes(1);
     expect(mockReleaseInFlight.mock.calls[0]?.[0]).toBe(entry.deliveryId);
   });
+
+  it("posts an infra-absent rejection comment when the drained spawn trips infra-absent (Copilot PR #21)", async () => {
+    // Import the mocked JobSpawnerError so `instanceof` matches the class
+    // the drainer sees after module mocking resolves.
+    const { JobSpawnerError } = await import("../../src/k8s/job-spawner");
+
+    const entry = makeEntry();
+    let calls = 0;
+    mockDequeuePending.mockImplementation(() => {
+      calls += 1;
+      if (calls === 1) {
+        return Promise.resolve({
+          outcome: "dequeued",
+          entry,
+          context: makeContext(),
+        } as DequeueResult);
+      }
+      return Promise.resolve({ outcome: "empty" } as DequeueResult);
+    });
+    mockSpawnIsolatedJob.mockImplementation(() =>
+      Promise.reject(
+        new (JobSpawnerError as unknown as new (k: string, m: string) => Error)(
+          "infra-absent",
+          "k8s removed",
+        ),
+      ),
+    );
+
+    // Upgrade app.getInstallationOctokit so the reconstructed BotContext
+    // has a real-looking `octokit.rest.issues.createComment` — that's what
+    // the new postInfraAbsentDrainRejection helper calls.
+    const createComment = mock(() => Promise.resolve({ data: { id: 77 } }));
+    const app = makeApp();
+    app.getInstallationOctokit = mock(() =>
+      Promise.resolve({
+        rest: { issues: { createComment } },
+      } as unknown),
+    );
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await drainPendingOnce(app as any);
+
+    expect(mockSpawnIsolatedJob).toHaveBeenCalledTimes(1);
+    expect(mockRegisterInFlight).not.toHaveBeenCalled();
+    expect(mockReleaseInFlight).toHaveBeenCalledTimes(1);
+    // The key assertion: drainer surfaced infra-absent to the user instead
+    // of silently dropping.
+    expect(createComment).toHaveBeenCalledTimes(1);
+    const callArgs = (createComment as unknown as { mock: { calls: unknown[][] } }).mock.calls[0];
+    if (callArgs !== undefined) {
+      const [arg] = callArgs as [{ body: string }];
+      expect(arg.body.toLowerCase()).toContain("kubernetes");
+      expect(arg.body.toLowerCase()).toContain("no longer reachable");
+    }
+  });
+
+  it("does NOT post an infra-absent comment for non-infra-absent spawn failures", async () => {
+    const entry = makeEntry();
+    let calls = 0;
+    mockDequeuePending.mockImplementation(() => {
+      calls += 1;
+      if (calls === 1) {
+        return Promise.resolve({
+          outcome: "dequeued",
+          entry,
+          context: makeContext(),
+        } as DequeueResult);
+      }
+      return Promise.resolve({ outcome: "empty" } as DequeueResult);
+    });
+    mockSpawnIsolatedJob.mockImplementation(() =>
+      Promise.reject(new Error("500 Internal Server Error")),
+    );
+
+    const createComment = mock(() => Promise.resolve({ data: { id: 1 } }));
+    const app = makeApp();
+    app.getInstallationOctokit = mock(() =>
+      Promise.resolve({
+        rest: { issues: { createComment } },
+      } as unknown),
+    );
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await drainPendingOnce(app as any);
+
+    expect(createComment).not.toHaveBeenCalled();
+    expect(mockReleaseInFlight).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("drainPendingOnce — overlap guard", () => {

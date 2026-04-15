@@ -6,8 +6,10 @@
  * `dispatch:isolated-job:in-flight` bounded by `MAX_CONCURRENT_ISOLATED_JOBS`.
  *
  * BotContext is stored in a separate key (`bot-context:<deliveryId>`) with a
- * 1-hour TTL so list entries stay small. Values are gzipped JSON — the raw
- * BotContext can contain large PR bodies / diffs; the TTL covers the worst
+ * 1-hour TTL so list entries stay small. Values are plain JSON today — if
+ * profiling shows large PR bodies / diffs pushing Valkey memory, wrap the
+ * `storeBotContext` / `loadBotContext` pair in gzip (data-model.md §6 lists
+ * compression as reserved-but-not-required). The 1-hour TTL covers the worst
  * case of a queue entry outliving a pod restart by more than the reasonable
  * recovery window.
  *
@@ -66,13 +68,44 @@ export type EnqueueOutcome =
   | { readonly outcome: "rejected-full"; readonly currentLength: number };
 
 /**
+ * Lua script that atomically (a) checks `LLEN` against `max`, (b) `SETEX`es
+ * the BotContext key, and (c) `RPUSH`es the entry. Returns `{1, newLen}` on
+ * success or `{-1, currentLen}` on reject-full. Atomicity matters because a
+ * naive `LLEN → RPUSH` check-then-act lets concurrent enqueues each observe
+ * `LLEN < max` and collectively push past the ceiling (Copilot PR #21
+ * review). EVAL runs on a single Redis thread, so the LLEN + RPUSH pair is
+ * serialised with respect to all other Valkey writers.
+ *
+ * KEYS:
+ *   1: pending list key
+ *   2: bot-context:<deliveryId> key
+ * ARGV:
+ *   1: max queue length (integer as string)
+ *   2: entry JSON
+ *   3: BotContext JSON
+ *   4: BotContext TTL seconds (integer as string)
+ */
+const ENQUEUE_PENDING_LUA = `
+local len = redis.call("LLEN", KEYS[1])
+local max = tonumber(ARGV[1])
+if len >= max then
+  return {-1, len}
+end
+redis.call("SETEX", KEYS[2], ARGV[4], ARGV[3])
+local newlen = redis.call("RPUSH", KEYS[1], ARGV[2])
+return {1, newlen}
+`.trim();
+
+/**
  * Enqueue a pending isolated-job request. Caller is responsible for having
  * already checked `inFlightCount()` against the capacity ceiling — this
  * function only guards the queue length against
  * `PENDING_ISOLATED_JOB_QUEUE_MAX`.
  *
- * Write order matters: `SETEX` the BotContext key FIRST so a racing dequeue
- * after `RPUSH` cannot observe a list entry whose context key is missing.
+ * Atomic via a single Lua EVAL: LLEN + (SETEX bot-context) + RPUSH run as
+ * one Redis command. Two parallel enqueues can no longer both observe
+ * `LLEN < max` and push past the ceiling, and the BotContext key is never
+ * written for an entry that failed the length check.
  *
  * Position is 1-indexed and reflects queue length AFTER this entry lands.
  */
@@ -84,18 +117,23 @@ export async function enqueuePending(
   const valkey = requireValkeyClient();
   const validated = PendingIsolatedJobEntrySchema.parse(entry);
 
-  const currentLength = await llen(valkey, PENDING_LIST_KEY);
-  if (currentLength >= opts.maxQueueLength) {
-    return { outcome: "rejected-full", currentLength };
-  }
-
-  await storeBotContext(validated.deliveryId, serializedContext);
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Valkey RPUSH returns the new list length
-  const newLength: number = await valkey.send("RPUSH", [
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Valkey EVAL returns [status, length] per the script contract above
+  const result: [number, number] = await valkey.send("EVAL", [
+    ENQUEUE_PENDING_LUA,
+    "2",
     PENDING_LIST_KEY,
+    botContextKey(validated.deliveryId),
+    String(opts.maxQueueLength),
     JSON.stringify(validated),
+    JSON.stringify(serializedContext),
+    String(BOT_CONTEXT_TTL_SECONDS),
   ]);
-  return { outcome: "enqueued", position: newLength };
+  const status = result[0];
+  const length = result[1];
+  if (status === -1) {
+    return { outcome: "rejected-full", currentLength: length };
+  }
+  return { outcome: "enqueued", position: length };
 }
 
 /** Outcome of a dequeue attempt. */

@@ -126,33 +126,37 @@ beforeEach(() => {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("enqueuePending", () => {
-  it("stores bot-context via SETEX with the documented TTL", async () => {
-    scriptSend({ LLEN: 0, RPUSH: 1 });
+describe("enqueuePending (atomic EVAL)", () => {
+  // After Copilot PR #21 review: the check-then-act LLEN+RPUSH was replaced
+  // with a single Lua EVAL that returns [status, length]. These tests mock
+  // the EVAL response directly.
 
-    const r = await enqueuePending(makeEntry(), makeContext(), { maxQueueLength: 20 });
-
-    expect(r.outcome).toBe("enqueued");
-    const setexCall = mockSend.mock.calls.find((c) => c[0] === "SETEX");
-    expect(setexCall).toBeDefined();
-    expect(setexCall?.[1][0]).toBe("bot-context:d-001");
-    expect(setexCall?.[1][1]).toBe(String(BOT_CONTEXT_TTL_SECONDS));
-  });
-
-  it("RPUSHes the entry to the pending list", async () => {
-    scriptSend({ LLEN: 0, RPUSH: 1 });
+  it("passes the pending list, bot-context key, max, entry JSON, context JSON, and TTL as EVAL args", async () => {
+    mockSend.mockImplementation((cmd: string) => {
+      if (cmd === "EVAL") return Promise.resolve([1, 1]);
+      return Promise.resolve(null);
+    });
 
     await enqueuePending(makeEntry(), makeContext(), { maxQueueLength: 20 });
 
-    const rpushCall = mockSend.mock.calls.find((c) => c[0] === "RPUSH");
-    expect(rpushCall).toBeDefined();
-    expect(rpushCall?.[1][0]).toBe(PENDING_LIST_KEY);
-    const payload = JSON.parse(rpushCall?.[1][1] ?? "null") as PendingIsolatedJobEntry;
-    expect(payload.deliveryId).toBe("d-001");
+    const evalCall = mockSend.mock.calls.find((c) => c[0] === "EVAL");
+    expect(evalCall).toBeDefined();
+    const args = evalCall?.[1] ?? [];
+    // [script, numKeys, key1, key2, max, entryJson, contextJson, ttl]
+    expect(args[1]).toBe("2");
+    expect(args[2]).toBe(PENDING_LIST_KEY);
+    expect(args[3]).toBe("bot-context:d-001");
+    expect(args[4]).toBe("20");
+    const entryPayload = JSON.parse(args[5] ?? "null") as PendingIsolatedJobEntry;
+    expect(entryPayload.deliveryId).toBe("d-001");
+    expect(args[7]).toBe(String(BOT_CONTEXT_TTL_SECONDS));
   });
 
-  it("returns 1-indexed position from RPUSH result", async () => {
-    scriptSend({ LLEN: 2, RPUSH: 3 });
+  it("returns 1-indexed position from the EVAL success tuple", async () => {
+    mockSend.mockImplementation((cmd: string) => {
+      if (cmd === "EVAL") return Promise.resolve([1, 3]);
+      return Promise.resolve(null);
+    });
 
     const r = await enqueuePending(makeEntry(), makeContext(), { maxQueueLength: 20 });
 
@@ -160,19 +164,35 @@ describe("enqueuePending", () => {
     if (r.outcome === "enqueued") expect(r.position).toBe(3);
   });
 
-  it("returns rejected-full when LLEN >= maxQueueLength; does NOT RPUSH or SETEX", async () => {
-    scriptSend({ LLEN: 20 });
+  it("returns rejected-full when the EVAL reject tuple fires; carries currentLength", async () => {
+    mockSend.mockImplementation((cmd: string) => {
+      if (cmd === "EVAL") return Promise.resolve([-1, 20]);
+      return Promise.resolve(null);
+    });
 
     const r = await enqueuePending(makeEntry(), makeContext(), { maxQueueLength: 20 });
 
     expect(r.outcome).toBe("rejected-full");
     if (r.outcome === "rejected-full") expect(r.currentLength).toBe(20);
-    expect(mockSend.mock.calls.find((c) => c[0] === "RPUSH")).toBeUndefined();
+  });
+
+  it("makes exactly one Valkey round-trip (atomicity guarantee, not two check-then-acts)", async () => {
+    mockSend.mockImplementation((cmd: string) => {
+      if (cmd === "EVAL") return Promise.resolve([1, 1]);
+      return Promise.resolve(null);
+    });
+
+    await enqueuePending(makeEntry(), makeContext(), { maxQueueLength: 20 });
+
+    // Exactly one EVAL, zero standalone LLEN / SETEX / RPUSH.
+    expect(mockSend.mock.calls.filter((c) => c[0] === "EVAL")).toHaveLength(1);
+    expect(mockSend.mock.calls.find((c) => c[0] === "LLEN")).toBeUndefined();
     expect(mockSend.mock.calls.find((c) => c[0] === "SETEX")).toBeUndefined();
+    expect(mockSend.mock.calls.find((c) => c[0] === "RPUSH")).toBeUndefined();
   });
 
   it("throws on schema-invalid entries (programming error, not queue-full)", async () => {
-    scriptSend({ LLEN: 0 });
+    mockSend.mockImplementation(() => Promise.resolve(null));
 
     let threw = false;
     try {
@@ -185,6 +205,9 @@ describe("enqueuePending", () => {
       threw = true;
     }
     expect(threw).toBe(true);
+    // Schema validation short-circuits BEFORE EVAL fires — nothing should
+    // have been written to Valkey on a programming error.
+    expect(mockSend.mock.calls.find((c) => c[0] === "EVAL")).toBeUndefined();
   });
 });
 

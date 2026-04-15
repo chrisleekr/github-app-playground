@@ -393,12 +393,15 @@ export async function dispatch(ctx: BotContext, decision: DispatchDecision): Pro
  *   3. At capacity AND queue full  → `capacity-rejected` execution row +
  *      tracking-comment rejection (FR-018: no silent downgrade).
  *
- * `infra-absent` still short-circuits before capacity is consulted because
- * `spawnIsolatedJob` only throws it once `loadKubernetesClient()` runs. That
- * happens AFTER the capacity gate here: an infra-absent deployment at
- * capacity still surfaces as infra-absent (the correct behaviour — queueing
- * forever on an infrastructure that cannot honour the request makes no
- * sense). The queue pre-check is still cheap (single Valkey `SCARD`).
+ * Ordering with `infra-absent`: `spawnIsolatedJob` detects missing K8s auth
+ * via `loadKubernetesClient()`, which runs AFTER this function's capacity
+ * gate. That means on an infra-absent deployment, the FIRST request still
+ * hits capacity=0, takes the direct-spawn branch, and fails fast with an
+ * infra-absent rejection comment. But once capacity is saturated (e.g. K8s
+ * went away AFTER some Jobs were spawned), subsequent requests take the
+ * enqueue path and sit in the queue; the drainer later trips the same
+ * `infra-absent` and surfaces it on the drained request (see
+ * `pending-queue-drainer.ts`). The `SCARD` pre-check here is cheap.
  */
 async function dispatchIsolatedJob(ctx: BotContext, decision: DispatchDecision): Promise<void> {
   const inFlight = await inFlightCount();

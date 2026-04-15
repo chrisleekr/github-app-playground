@@ -18,6 +18,8 @@
 import type { App } from "octokit";
 
 import { config } from "../config";
+// Avoid pulling in the full tracking-comment module (and therefore octokit
+// typing) — the drainer only needs a single rejection comment shape.
 import { createChildLogger, logger } from "../logger";
 import type { SerializableBotContext } from "../shared/daemon-types";
 import type { BotContext } from "../types";
@@ -152,13 +154,22 @@ async function drainLoop(app: App): Promise<void> {
       ctx.log.info({ deliveryId: ctx.deliveryId }, "drained queued isolated-job — Job spawned");
     } catch (err) {
       // FR-021: no retry on mid-run failure. Just release any slot and log.
-      // infra-absent here is unusual (we only queued because capacity was
-      // full, implying prior spawns worked) but handle it defensively.
+      //
+      // Copilot PR #21 review: a queued request whose drain trips
+      // `infra-absent` (K8s went away between enqueue and drain) used to
+      // be silently dropped. Surface it to the requester with the same
+      // rejection comment the router would have posted on a direct-spawn
+      // infra-absent, so the user isn't left with a dangling "⏳ Queued"
+      // with no resolution.
       const kind = err instanceof JobSpawnerError ? err.kind : "unknown";
       ctx.log.error(
         { err, deliveryId: ctx.deliveryId, kind },
         "drainer spawn failed — dropping entry (FR-021 no retry)",
       );
+      if (err instanceof JobSpawnerError && err.kind === "infra-absent") {
+        // eslint-disable-next-line no-await-in-loop -- drainer is sequential by design
+        await postInfraAbsentDrainRejection(ctx);
+      }
       // eslint-disable-next-line no-await-in-loop -- drainer is sequential by design
       await releaseInFlight(ctx.deliveryId);
     }
@@ -192,4 +203,28 @@ async function reconstructBotContext(
     octokit: octokit as unknown as BotContext["octokit"],
     log,
   };
+}
+
+/**
+ * Post a rejection comment to the issue/PR when the drainer trips an
+ * `infra-absent` on a previously-queued request. Mirrors the wording used
+ * by `recordInfraAbsentRejection` in the router's direct-spawn path so a
+ * user sees the same explanation regardless of whether they hit the
+ * capacity gate first.
+ */
+async function postInfraAbsentDrainRejection(ctx: BotContext): Promise<void> {
+  try {
+    await ctx.octokit.rest.issues.createComment({
+      owner: ctx.owner,
+      repo: ctx.repo,
+      issue_number: ctx.entityNumber,
+      body:
+        `**${config.triggerPhrase}** cannot complete this queued request: the isolated-job target ` +
+        `requires Kubernetes infrastructure that is no longer reachable. The platform will not ` +
+        `silently downgrade to a different target — please re-trigger once infrastructure is ` +
+        `restored, or without the \`bot:job\` label / docker keyword if shared-runner is acceptable.`,
+    });
+  } catch (commentError) {
+    ctx.log.error({ err: commentError }, "Failed to post drainer infra-absent rejection comment");
+  }
 }
