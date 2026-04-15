@@ -16,6 +16,7 @@ import { App } from "octokit";
 import { config } from "./config";
 import { closeDb, getDb } from "./db";
 import { runMigrations } from "./db/migrate";
+import { startPendingQueueDrainer, stopPendingQueueDrainer } from "./k8s/pending-queue-drainer";
 import { logger } from "./logger";
 import { recoverStaleExecutions } from "./orchestrator/history";
 import { closeValkey, getValkeyClient, isValkeyHealthy } from "./orchestrator/valkey";
@@ -305,6 +306,15 @@ async function runStartupChecks(): Promise<void> {
     logger.info({ wsPort: config.wsPort }, "Orchestrator WebSocket server started");
   }
 
+  // US3 T044: drain the pending isolated-job queue whenever in-flight
+  // capacity frees up. Only relevant when the isolated-job target is
+  // reachable — inline + daemon + shared-runner deployments never queue
+  // isolated-job requests, so spinning up the interval would just waste
+  // Valkey round-trips.
+  if (config.agentJobMode === "isolated-job" || config.agentJobMode === "auto") {
+    startPendingQueueDrainer(app);
+  }
+
   isReady = true;
   logger.info("Startup checks passed, server is ready");
 }
@@ -326,6 +336,9 @@ function shutdown(signal: string): void {
   server.close(() => {
     void (async (): Promise<void> => {
       try {
+        // Stop the isolated-job queue drainer before Valkey closes so any
+        // in-flight drain tick doesn't race with client teardown.
+        stopPendingQueueDrainer();
         // Drain the WebSocket server first so daemon disconnect cleanup
         // (which still uses the Valkey client) finishes before we close Valkey.
         await stopWebSocketServer();

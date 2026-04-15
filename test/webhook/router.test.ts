@@ -91,6 +91,26 @@ void mock.module("../../src/db", () => ({
   getDb: mockGetDb,
 }));
 
+// US3 (T044): isolated-job dispatch now consults the Valkey-backed pending
+// queue + in-flight tracker. Mock both so tests don't need a live Valkey.
+// By default the queue is empty and in-flight is under capacity, so the
+// isolated-job branch takes its "direct spawn" path — the same behaviour
+// pre-T044 tests assumed.
+const mockInFlightCount = mock(() => Promise.resolve(0));
+const mockEnqueuePending = mock(() =>
+  Promise.resolve({ outcome: "enqueued", position: 1 } as const),
+);
+const mockRegisterInFlight = mock(() => Promise.resolve(1));
+
+void mock.module("../../src/k8s/pending-queue", () => ({
+  inFlightCount: mockInFlightCount,
+  enqueuePending: mockEnqueuePending,
+  registerInFlight: mockRegisterInFlight,
+  PENDING_LIST_KEY: "dispatch:isolated-job:pending",
+  IN_FLIGHT_SET_KEY: "dispatch:isolated-job:in-flight",
+  BOT_CONTEXT_TTL_SECONDS: 3600,
+}));
+
 // Import router AFTER mocks are set up
 const { processRequest, decideDispatch, dispatch, NotImplementedError } =
   await import("../../src/webhook/router");
@@ -1012,5 +1032,127 @@ describe("processRequest (T013) — dispatch-decision log", () => {
       // Slice B: triage never runs. US2 T036 extends with triage* fields.
       expect(payload["triageInvoked"]).toBe(false);
     }
+  });
+});
+
+// ─── US3 T044 — isolated-job capacity gating ─────────────────────────────────
+
+describe("dispatch (T044, FR-018) — isolated-job capacity gating", () => {
+  // Each test resets the queue mocks so the outer describe's defaults
+  // (in-flight=0, enqueue=enqueued) don't bleed across cases.
+
+  it("under capacity: takes the direct spawn path; does NOT call enqueuePending", async () => {
+    mockInFlightCount.mockClear();
+    mockEnqueuePending.mockClear();
+    mockRegisterInFlight.mockClear();
+    mockInFlightCount.mockImplementation(() => Promise.resolve(0));
+
+    const createComment = mock(() => Promise.resolve({ data: { id: 1 } }));
+    const ctx = makeCtx({
+      octokitOpts: {
+        createCommentFn: createComment as unknown as () => Promise<{ data: { id: number } }>,
+      },
+    });
+    const decision = {
+      target: "isolated-job" as const,
+      reason: "label" as const,
+      maxTurns: 30,
+    };
+
+    // spawnIsolatedJob throws infra-absent in the test env; that's the
+    // FR-018 rejection path which ALSO bypasses registerInFlight. The test
+    // asserts the queue gate was consulted first and rejected the
+    // enqueue path (not at capacity).
+    await dispatch(ctx, decision);
+
+    expect(mockInFlightCount).toHaveBeenCalledTimes(1);
+    expect(mockEnqueuePending).not.toHaveBeenCalled();
+  });
+
+  it("at capacity: enqueues and posts a 'Queued' tracking comment (no spawn)", async () => {
+    mockInFlightCount.mockClear();
+    mockEnqueuePending.mockClear();
+    mockRegisterInFlight.mockClear();
+    mockInFlightCount.mockImplementation(() => Promise.resolve(3)); // ≥ max default
+    mockEnqueuePending.mockImplementation(() =>
+      Promise.resolve({ outcome: "enqueued", position: 2 } as const),
+    );
+
+    const createComment = mock(() => Promise.resolve({ data: { id: 42 } }));
+    const ctx = makeCtx({
+      octokitOpts: {
+        createCommentFn: createComment as unknown as () => Promise<{ data: { id: number } }>,
+      },
+    });
+    const decision = {
+      target: "isolated-job" as const,
+      reason: "label" as const,
+      maxTurns: 30,
+    };
+
+    await dispatch(ctx, decision);
+
+    expect(mockEnqueuePending).toHaveBeenCalledTimes(1);
+    expect(mockRegisterInFlight).not.toHaveBeenCalled();
+    expect(createComment).toHaveBeenCalled();
+    const commentCall = (createComment as unknown as { mock: { calls: unknown[][] } }).mock
+      .calls[0];
+    if (commentCall !== undefined) {
+      const [arg] = commentCall as [{ body: string }];
+      expect(arg.body).toContain("⏳ Queued");
+      expect(arg.body).toContain("position 2");
+    }
+  });
+
+  it("queue full: records capacity-rejected execution row + posts rejection comment; NO silent downgrade", async () => {
+    mockInFlightCount.mockClear();
+    mockEnqueuePending.mockClear();
+    mockRegisterInFlight.mockClear();
+    mockCreateExecution.mockClear();
+    mockGetDb.mockClear();
+    mockInFlightCount.mockImplementation(() => Promise.resolve(3));
+    mockEnqueuePending.mockImplementation(() =>
+      Promise.resolve({ outcome: "rejected-full", currentLength: 20 } as const),
+    );
+    // Provide a truthy db handle so `getDb() !== null` and the rejection
+    // write path runs. The mock doesn't speak SQL — createExecution is
+    // itself mocked; we just need getDb to return non-null.
+    mockGetDb.mockImplementation(() => ({}) as unknown);
+
+    const createComment = mock(() => Promise.resolve({ data: { id: 99 } }));
+    const ctx = makeCtx({
+      octokitOpts: {
+        createCommentFn: createComment as unknown as () => Promise<{ data: { id: number } }>,
+      },
+    });
+    const decision = {
+      target: "isolated-job" as const,
+      reason: "label" as const,
+      maxTurns: 30,
+    };
+
+    await dispatch(ctx, decision);
+
+    // Tracking comment surfaced the queue-full rejection.
+    expect(createComment).toHaveBeenCalled();
+    const commentCall = (createComment as unknown as { mock: { calls: unknown[][] } }).mock
+      .calls[0];
+    if (commentCall !== undefined) {
+      const [arg] = commentCall as [{ body: string }];
+      expect(arg.body.toLowerCase()).toContain("pool is at capacity");
+      expect(arg.body.toLowerCase()).toContain("will not silently downgrade");
+    }
+
+    // Execution row recorded with dispatch_reason="capacity-rejected".
+    expect(mockCreateExecution).toHaveBeenCalled();
+    const execCall = mockCreateExecution.mock.calls[0];
+    if (execCall !== undefined) {
+      const [arg] = execCall as [{ dispatchMode: string; dispatchReason: string }];
+      expect(arg.dispatchMode).toBe("isolated-job");
+      expect(arg.dispatchReason).toBe("capacity-rejected");
+    }
+
+    // Restore the default for subsequent tests.
+    mockGetDb.mockImplementation(() => null as unknown);
   });
 });

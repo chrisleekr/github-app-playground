@@ -7,6 +7,7 @@ import {
   finalizeTrackingComment,
   isAlreadyProcessed,
   renderDispatchReasonLine,
+  renderQueuePosition,
   renderTriageSection,
   type TriageCommentSection,
   updateTrackingComment,
@@ -376,5 +377,26 @@ describe("renderTriageSection (T037)", () => {
     const lines = renderTriageSection(base).split("\n");
     const summaryIdx = lines.findIndex((l) => l.startsWith("<summary>"));
     expect(lines[summaryIdx + 1]).toBe("");
+  });
+});
+
+describe("renderQueuePosition (US3 T045)", () => {
+  it("formats a 1-indexed position alongside the capacity ceiling", () => {
+    expect(renderQueuePosition(1, 3)).toBe(
+      "⏳ Queued (position 1 of 3 on isolated-job pool). Waiting for capacity…",
+    );
+    expect(renderQueuePosition(15, 20)).toBe(
+      "⏳ Queued (position 15 of 20 on isolated-job pool). Waiting for capacity…",
+    );
+  });
+
+  it("truncates non-integer inputs defensively (position and max)", () => {
+    expect(renderQueuePosition(3.9, 5.2)).toContain("position 3 of 5");
+  });
+
+  it("produces a single-line body (no newlines, no HTML)", () => {
+    const body = renderQueuePosition(2, 3);
+    expect(body).not.toContain("\n");
+    expect(body).not.toContain("<");
   });
 });

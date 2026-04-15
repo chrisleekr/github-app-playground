@@ -81,6 +81,8 @@ function makeEntry(overrides: Partial<PendingIsolatedJobEntry> = {}): PendingIso
     enqueuedAt: "2026-04-15T10:00:00.000Z",
     botContextKey: "bot-context:d-001",
     triageResult: null,
+    dispatchReason: "label",
+    maxTurns: 30,
     source: { owner: "o", repo: "r", issueOrPrNumber: 42 },
     ...overrides,
   };

@@ -22,6 +22,7 @@ import { logger } from "../logger";
 import { TriageResponseSchema } from "../orchestrator/triage";
 import { requireValkeyClient } from "../orchestrator/valkey";
 import type { SerializableBotContext } from "../shared/daemon-types";
+import { DispatchReasonSchema } from "../shared/dispatch-types";
 
 /** Redis key names — centralised so tests can assert against them. */
 export const PENDING_LIST_KEY = "dispatch:isolated-job:pending";
@@ -43,6 +44,14 @@ export const PendingIsolatedJobEntrySchema = z.object({
   enqueuedAt: z.iso.datetime(),
   botContextKey: z.string().min(1),
   triageResult: TriageResponseSchema.nullable(),
+  /**
+   * Carried so the drainer can rebuild a DispatchDecision without re-running
+   * the classifier / triage cascade. `dispatchReason` is the original
+   * router-chosen reason (label / keyword / triage / …); `maxTurns` is the
+   * complexity-resolved turn budget from `resolveMaxTurnsForComplexity`.
+   */
+  dispatchReason: DispatchReasonSchema,
+  maxTurns: z.number().int().positive(),
   source: z.object({
     owner: z.string().min(1),
     repo: z.string().min(1),
