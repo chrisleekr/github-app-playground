@@ -187,11 +187,36 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("US3 Scenario 1 — under capacity", () => {
-  it("spawns directly, registers the slot, and fires the completion watcher", async () => {
+  it("spawns directly, registers the slot, and fires the completion watcher (detached)", async () => {
     mockInFlightCount.mockImplementation(() => Promise.resolve(1));
+
+    // CodeRabbit PR #22: keep the watcher promise deliberately pending so
+    // a regression that accidentally `await`s `watchJobCompletion()`
+    // inside `dispatch` would make this test hang (detected as a timeout
+    // by the race below). If the watcher resolves immediately, we can't
+    // tell await-then-resolve-fast apart from fire-and-forget.
+    let releaseWatch: (() => void) | undefined;
+    mockWatchJobCompletion.mockImplementation(
+      () =>
+        new Promise<"succeeded">((resolve) => {
+          releaseWatch = (): void => {
+            resolve("succeeded");
+          };
+        }),
+    );
+
     const ctx = makeCtx();
 
-    await dispatch(ctx, decision);
+    const dispatchPromise = dispatch(ctx, decision);
+    const outcome = await Promise.race([
+      dispatchPromise.then(() => "resolved" as const),
+      new Promise<"timed-out">((resolve) => {
+        setTimeout(() => {
+          resolve("timed-out");
+        }, 50);
+      }),
+    ]);
+    expect(outcome).toBe("resolved");
 
     expect(mockInFlightCount).toHaveBeenCalledTimes(1);
     expect(mockSpawnIsolatedJob).toHaveBeenCalledTimes(1);
@@ -200,6 +225,10 @@ describe("US3 Scenario 1 — under capacity", () => {
     const watchCall = mockWatchJobCompletion.mock.calls[0] as unknown as [string];
     expect(watchCall[0]).toBe(ctx.deliveryId);
     expect(mockEnqueuePending).not.toHaveBeenCalled();
+
+    // Let the pending watcher promise resolve so the test exits cleanly.
+    releaseWatch?.();
+    await dispatchPromise;
   });
 });
 

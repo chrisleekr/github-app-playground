@@ -296,7 +296,12 @@ export type JobWatchOutcome = "succeeded" | "failed" | "timeout" | "abandoned";
  * real wall clock / K8s client / bundled cleanup helpers.
  */
 export interface WatchJobCompletionOptions {
-  /** Optional override for the wall-clock deadline (ms). Defaults to `config.jobActiveDeadlineSeconds * 1000`. */
+  /**
+   * Optional override for the wall-clock deadline (ms). Defaults to
+   * `config.jobActiveDeadlineSeconds * 1000`. Capped at the default — a
+   * caller may shorten the watch but MUST NOT extend it past the
+   * server-side `activeDeadlineSeconds` used when creating the Job.
+   */
   deadlineMs?: number;
   /** Optional override for the poll interval (ms). Defaults to `config.jobWatchPollIntervalMs`. */
   pollIntervalMs?: number;
@@ -347,7 +352,16 @@ export async function watchJobCompletion(
   options: WatchJobCompletionOptions = {},
 ): Promise<JobWatchOutcome> {
   const namespace = options.namespace ?? config.jobNamespace;
-  const deadlineMs = options.deadlineMs ?? config.jobActiveDeadlineSeconds * 1000;
+  // T046: cap the wall-clock deadline at the config ceiling
+  // (`config.jobActiveDeadlineSeconds`, itself bounded at 3500s by the
+  // Zod schema so the GitHub installation-token TTL stays intact). A
+  // caller-provided `deadlineMs` may shorten the watch but MUST NOT
+  // extend it past the server-side `activeDeadlineSeconds` used when
+  // creating the Job — otherwise the watcher could linger after K8s has
+  // already killed the Pod.
+  const maxDeadlineMs = config.jobActiveDeadlineSeconds * 1000;
+  const rawDeadlineMs = options.deadlineMs ?? maxDeadlineMs;
+  const deadlineMs = Math.min(rawDeadlineMs, maxDeadlineMs);
   const pollIntervalMs = options.pollIntervalMs ?? config.jobWatchPollIntervalMs;
   const now = options.injectNow ?? Date.now;
   const sleep = options.injectSleep ?? defaultSleep;
@@ -371,13 +385,19 @@ export async function watchJobCompletion(
   }
 
   try {
-    // Poll loop. `sleep` runs at the top so the first status read happens
-    // one interval after spawn — the Pod is typically still pulling images
-    // for the first few seconds and reading status that early returns nothing
-    // useful.
-
+    // Poll loop. The entire body is wrapped so any unexpected throw from
+    // `injectSleep` / `injectMarkFailed` / `bestEffortDelete` is converted
+    // to `abandoned` rather than propagating as an unhandled rejection
+    // (the docstring's "Never throws to the caller" guarantee).
+    // The outer `finally` still fires, so the in-flight slot is always
+    // released.
     while (true) {
-      await sleep(pollIntervalMs);
+      // Cap the sleep to the remaining budget so a large `pollIntervalMs`
+      // can't overshoot the deadline by a full interval. `Math.max(1, …)`
+      // guarantees forward progress when we're right at the boundary.
+      const remaining = deadlineMs - (now() - startedAt);
+      const nextSleepMs = Math.max(1, Math.min(pollIntervalMs, remaining));
+      await sleep(nextSleepMs);
 
       const elapsed = now() - startedAt;
       if (elapsed >= deadlineMs) {
@@ -419,6 +439,17 @@ export async function watchJobCompletion(
 
       // else: still Pending / Running — loop again.
     }
+  } catch (err) {
+    // Defense-in-depth: anything thrown from inside the loop (injected
+    // sleep, markFailed, bestEffortDelete, or an unexpected
+    // non-duck-typed K8s error) is converted to `abandoned`. Without
+    // this outer catch, a `void watchJobCompletion(...)` call could
+    // surface as an unhandled rejection and crash the server.
+    log.error(
+      { err: err instanceof Error ? err.message : String(err) },
+      "watchJobCompletion encountered unexpected error — abandoning watch",
+    );
+    return "abandoned";
   } finally {
     await safeRelease(release, deliveryId, log);
   }
@@ -488,17 +519,27 @@ async function safeRelease(
   try {
     await release(deliveryId);
   } catch (err) {
-    // Never let a release-time Valkey outage crash the watcher — the
-    // in-flight set entry will age out with the bot-context TTL.
+    // Never let a release-time Valkey outage crash the watcher. NOTE: the
+    // in-flight set (`dispatch:isolated-job:in-flight`) has no TTL, so a
+    // persistently failing release leaks a permanent capacity slot until
+    // an operator trims the set manually. Surfaced at ERROR level so the
+    // operator picks it up via alerting.
     log.error(
       { err: err instanceof Error ? err.message : String(err) },
-      "releaseInFlight failed after Job completion — slot accounting may drift",
+      "releaseInFlight failed after Job completion — slot LEAKED (manual cleanup required)",
     );
   }
 }
 
 function defaultSleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => {
+    // `.unref()` so an in-flight watcher's poll timer does not keep the
+    // webhook server process alive for up to the job deadline (30+ min)
+    // during graceful shutdown. The watcher is best-effort; on SIGTERM the
+    // entrypoint's own handler owns the row/comment finalisation, and K8s
+    // enforces `activeDeadlineSeconds` server-side anyway.
+    setTimeout(resolve, ms).unref();
+  });
 }
 
 async function defaultMarkFailed(deliveryId: string, errorMessage: string): Promise<void> {

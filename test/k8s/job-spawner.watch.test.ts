@@ -11,9 +11,10 @@
 
 import { describe, expect, it, mock } from "bun:test";
 
-import { watchJobCompletion } from "../../src/k8s/job-spawner";
-
-// Silence logger
+// Silence logger — mock MUST be registered before `../../src/k8s/job-spawner`
+// is imported, otherwise the real pino module is already in the module
+// cache and the mock never takes effect. `await import(...)` below defers
+// the spawner module load until after the mock is registered.
 void mock.module("../../src/logger", () => ({
   logger: {
     info: mock(() => {}),
@@ -25,6 +26,8 @@ void mock.module("../../src/logger", () => ({
     }),
   },
 }));
+
+const { watchJobCompletion } = await import("../../src/k8s/job-spawner");
 
 // ---------------------------------------------------------------------------
 // Helpers
