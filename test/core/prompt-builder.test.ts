@@ -509,3 +509,90 @@ describe("buildEnvironmentHeader", () => {
     expect(result).not.toContain("compose available");
   });
 });
+
+// ─── T022 [US1]: resolveAllowedTools — isolated-job branch ─────────────────
+
+describe("resolveAllowedTools — isolated-job branch (T021, FR-011)", () => {
+  /** Run a callback with a scoped env patch; restore on exit. */
+  function withEnv<T>(patch: Record<string, string | undefined>, fn: () => T): T {
+    const original: Record<string, string | undefined> = {};
+    for (const [k, v] of Object.entries(patch)) {
+      original[k] = process.env[k];
+      if (v === undefined) Reflect.deleteProperty(process.env, k);
+      else process.env[k] = v;
+    }
+    try {
+      return fn();
+    } finally {
+      for (const [k, v] of Object.entries(original)) {
+        if (v === undefined) Reflect.deleteProperty(process.env, k);
+        else process.env[k] = v;
+      }
+    }
+  }
+
+  const ISOLATED_JOB_TOOLS = [
+    "Bash(docker:*)",
+    "Bash(docker-compose:*)",
+    "Bash(npm:*)",
+    "Bash(npx:*)",
+    "Bash(bun:*)",
+    "Bash(bunx:*)",
+    "Bash(make:*)",
+    "Bash(sh:*)",
+    "Bash(bash:*)",
+    "Bash(cp:*)",
+    "Bash(mv:*)",
+  ];
+
+  it("does NOT include container tools when AGENT_JOB_MODE / AGENT_CONTEXT_B64 are unset", () => {
+    const tools = withEnv({ AGENT_JOB_MODE: undefined, AGENT_CONTEXT_B64: undefined }, () =>
+      resolveAllowedTools(makeCtx()),
+    );
+    for (const tool of ISOLATED_JOB_TOOLS) {
+      expect(tools).not.toContain(tool);
+    }
+  });
+
+  it("includes the full container tool set when AGENT_JOB_MODE='isolated-job'", () => {
+    const tools = withEnv({ AGENT_JOB_MODE: "isolated-job", AGENT_CONTEXT_B64: undefined }, () =>
+      resolveAllowedTools(makeCtx()),
+    );
+    for (const tool of ISOLATED_JOB_TOOLS) {
+      expect(tools).toContain(tool);
+    }
+  });
+
+  it("includes the full container tool set when AGENT_CONTEXT_B64 is non-empty", () => {
+    // Either signal alone suffices — robust to spawner partially populating env.
+    const tools = withEnv(
+      { AGENT_JOB_MODE: undefined, AGENT_CONTEXT_B64: "eyJmYWtlIjoxfQ==" },
+      () => resolveAllowedTools(makeCtx()),
+    );
+    for (const tool of ISOLATED_JOB_TOOLS) {
+      expect(tools).toContain(tool);
+    }
+  });
+
+  it("does NOT include container tools for AGENT_JOB_MODE='inline' / 'daemon' / 'shared-runner'", () => {
+    for (const mode of ["inline", "daemon", "shared-runner"]) {
+      const tools = withEnv({ AGENT_JOB_MODE: mode, AGENT_CONTEXT_B64: undefined }, () =>
+        resolveAllowedTools(makeCtx()),
+      );
+      for (const tool of ISOLATED_JOB_TOOLS) {
+        expect(tools).not.toContain(tool);
+      }
+    }
+  });
+
+  it("isolated-job tools are added even without daemonCapabilities", () => {
+    // The two paths are independent: isolated-job branch fires from env, daemon
+    // branch from the optional argument. Neither depends on the other.
+    const tools = withEnv({ AGENT_JOB_MODE: "isolated-job", AGENT_CONTEXT_B64: undefined }, () =>
+      resolveAllowedTools(makeCtx(), undefined),
+    );
+    expect(tools).toContain("Bash(docker:*)");
+    // No daemon-specific tools when daemonCapabilities is undefined.
+    expect(tools).not.toContain("mcp__daemon_capabilities__query_daemon_capabilities");
+  });
+});
