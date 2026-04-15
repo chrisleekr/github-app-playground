@@ -35,8 +35,8 @@ flowchart TD
     Done["ack, skip"]:::muted
 
     Evt --> Idem
-    Idem -->|no, already processed| Done
-    Idem -->|yes, new| ModeCfg
+    Idem -->|yes, already processed| Done
+    Idem -->|no, new| ModeCfg
     ModeCfg -->|inline| Inline
     ModeCfg -->|daemon| Daemon
     ModeCfg -->|shared-runner| Shared
@@ -72,12 +72,12 @@ flowchart TD
 | `AGENT_JOB_MODE`           | `src/config.ts`                   | Operator-level override; one of `inline` / `daemon` / `shared-runner` / `isolated-job` / `auto`.                               |
 | Label override             | `decideDispatch` (router.ts)      | Repo labels `bot:shared` / `bot:job` short-circuit the cascade.                                                                |
 | Static classifier          | `decideDispatch` (router.ts)      | Keyword / path heuristics that can route without calling the LLM.                                                              |
-| Triage call                | `runTriage` (triage.ts)           | Single-turn `haiku-3-5` call that returns `{ mode, confidence, complexity, rationale }`.                                       |
+| Triage call                | `triageRequest` (triage.ts)       | Single-turn `haiku-3-5` call that returns `{ mode, confidence, complexity, rationale }`.                                       |
 | `confidence >= threshold?` | `TRIAGE_CONFIDENCE_THRESHOLD` env | Below-threshold results fall back to `DEFAULT_DISPATCH_TARGET` with `dispatch_reason = "default-fallback"`.                    |
-| Triage failure fallback    | `runTriage` (triage.ts)           | Timeout / parse-error / llm-error / circuit-open → `DEFAULT_DISPATCH_TARGET` with `dispatch_reason = "triage-error-fallback"`. |
+| Triage failure fallback    | `triageRequest` (triage.ts)       | Timeout / parse-error / llm-error / circuit-open → `DEFAULT_DISPATCH_TARGET` with `dispatch_reason = "triage-error-fallback"`. |
 | Isolated-job capacity gate | `src/k8s/pending-queue.ts`        | Checks `inFlightCount` against `MAX_CONCURRENT_ISOLATED_JOBS`; enqueues to Valkey when at capacity.                            |
 
 ## Related telemetry
 
-- Dispatch-decision structured log: see `contracts/dispatch-telemetry.md` §1.
+- Dispatch-decision structured log: see `specs/20260415-000159-triage-dispatch-modes/contracts/dispatch-telemetry.md` §1.
 - Operator aggregate queries (events per target, triage rate, confidence/fallback, spend): `src/db/queries/dispatch-stats.ts`.
