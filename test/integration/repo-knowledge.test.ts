@@ -5,32 +5,36 @@
  * causing PostgresError "malformed array literal" the moment
  * `repo_memory` had any rows.
  *
- * The fix wraps the array with `db.array(ids)` per Bun's documented
- * pattern (https://bun.sh/docs/runtime/sql, "Create PostgreSQL array
- * literals with sql.array()").
+ * The fix switches both queries to Bun's IN-list expansion form,
+ * `WHERE id IN ${db(ids)}`, which expands the UUID array as
+ * parameterised IN-list values instead of binding it through `ANY(...)`.
  *
  * This suite exercises the two affected functions against a real
  * Postgres instance:
- *   - getRepoMemory      -> UPDATE … WHERE id = ANY(…)
- *   - deleteRepoMemories -> DELETE … WHERE id = ANY(…)
+ *   - getRepoMemory      -> UPDATE … WHERE id IN (…)
+ *   - deleteRepoMemories -> DELETE … WHERE id IN (…)
  *
- * Skips cleanly when Postgres is unreachable so the suite still runs
- * for contributors without local infra.
+ * This suite is DESTRUCTIVE: `beforeAll` drops and re-creates the
+ * `repo_memory`, `triage_results`, `executions`, and `daemons` tables.
+ * To avoid wiping a developer's local database by accident, the suite
+ * is opt-in — it only runs when `TEST_DATABASE_URL` is explicitly set.
+ * It skips cleanly otherwise so `bun test` without infra is safe.
  */
 
 import { SQL } from "bun";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 
-const TEST_DATABASE_URL =
-  process.env["TEST_DATABASE_URL"] ?? "postgres://bot:bot@localhost:5432/github_app_test";
+const TEST_DATABASE_URL = process.env["TEST_DATABASE_URL"];
 
 let sql: SQL | null = null;
-try {
-  const conn = new SQL(TEST_DATABASE_URL);
-  await conn`SELECT 1 AS ok`;
-  sql = conn;
-} catch {
-  sql = null;
+if (TEST_DATABASE_URL !== undefined && TEST_DATABASE_URL.length > 0) {
+  try {
+    const conn = new SQL(TEST_DATABASE_URL);
+    await conn`SELECT 1 AS ok`;
+    sql = conn;
+  } catch {
+    sql = null;
+  }
 }
 
 function requireSql(): SQL {
@@ -56,15 +60,20 @@ describe.skipIf(sql === null)("repo-knowledge ANY() array binding regression", (
   });
 
   afterAll(async () => {
-    if (sql === null) return;
-    await sql`DELETE FROM repo_memory WHERE repo_owner = ${TEST_OWNER}`;
+    const db = sql;
+    if (db === null) return;
+    try {
+      await db`DELETE FROM repo_memory WHERE repo_owner = ${TEST_OWNER}`;
+    } finally {
+      await db.close();
+    }
   });
 
   it("getRepoMemory updates last_read_at without ANY() binding error when rows exist", async () => {
     const db = requireSql();
 
     // Seed three unpinned rows so getRepoMemory's ORDER BY ... LIMIT 5
-    // path is exercised and the UPDATE WHERE id = ANY(…) actually fires.
+    // path is exercised and the UPDATE … WHERE id IN (…) branch actually fires.
     await db`
       INSERT INTO repo_memory (repo_owner, repo_name, category, content, pinned, updated_at)
       VALUES
@@ -75,7 +84,9 @@ describe.skipIf(sql === null)("repo-knowledge ANY() array binding regression", (
 
     const { getRepoMemory } = await import("../../src/orchestrator/repo-knowledge");
 
-    // Before the fix this throws PostgresError 22P02 "malformed array literal".
+    // Before the fix this threw PostgresError 22P02 "malformed array literal"
+    // because Bun.sql encoded the JS string[] as a comma-joined string.
+    // The IN ${db(ids)} expansion exercises the fixed code path.
     const rows = await getRepoMemory(TEST_OWNER, TEST_REPO, db);
 
     expect(rows.length).toBe(3);
@@ -112,7 +123,7 @@ describe.skipIf(sql === null)("repo-knowledge ANY() array binding regression", (
     const remaining: { content: string }[] = await db`
       SELECT content FROM repo_memory
       WHERE repo_owner = ${TEST_OWNER} AND repo_name = ${TEST_REPO}
-        AND content LIKE 'to-delete%' OR content = 'keep-me'
+        AND (content LIKE 'to-delete%' OR content = 'keep-me')
     `;
     const contents = remaining.map((r) => r.content);
     expect(contents).toContain("keep-me");
