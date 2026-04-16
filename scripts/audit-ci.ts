@@ -50,6 +50,14 @@ const stdout = new TextDecoder().decode(proc.stdout).trim();
 const stderr = new TextDecoder().decode(proc.stderr).trim();
 
 if (!stdout) {
+  // Empty stdout + non-zero exit = bun audit failed to run (network error,
+  // registry outage, Bun bug). Treating this as "no advisories" would
+  // silently disable the audit gate — fail closed instead.
+  if (proc.exitCode !== 0 && proc.exitCode !== null) {
+    console.error(`::error::bun audit exited with code ${proc.exitCode} and produced no JSON.`);
+    if (stderr) console.error(stderr);
+    process.exit(proc.exitCode);
+  }
   console.log("bun audit produced no JSON output (no advisories).");
   if (stderr) console.error(stderr);
   process.exit(0);

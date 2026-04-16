@@ -2,10 +2,11 @@
 #
 # Flow on a push to feat/fix/refactor/perf/revert/* branches:
 #   1. ci.yml runs as a called workflow — gates everything below
-#   2. semantic-release runs in dev mode (cuts a v<x.y.z>-dev-<sha7>.N tag
-#      and a GitHub pre-release)
+#   2. semantic-release runs in dev mode (cuts a v<x.y.z>-dev-<sha7>.N
+#      git tag only — no GitHub release entry and no CHANGELOG bump in
+#      dev mode; see release.config.mjs)
 #   3. docker-build.yml builds and pushes the dev image to Docker Hub —
-#      only if step 2 published a new pre-release
+#      only if step 2 published a new pre-release tag
 #
 # A CI failure means no tag is cut and no image is built. A no-op
 # semantic-release run (e.g. only chore/docs commits) means no image.
@@ -13,9 +14,17 @@ name: Dev Release
 
 on:
   push:
-    branches-ignore:
-      - main
-      - "v*"
+    # Restrict to branches that release.config.mjs is configured to
+    # release from in dev mode. Other prefixes (chore/*, docs/*, ci/*,
+    # test/*, etc.) would trigger semantic-release with "branch is not
+    # configured for release" and fail noisily. CI for those branches
+    # still runs via ci.yml on the PR sync event.
+    branches:
+      - "feat/**"
+      - "fix/**"
+      - "refactor/**"
+      - "perf/**"
+      - "revert/**"
   workflow_dispatch:
 
 concurrency:
@@ -23,14 +32,18 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write # semantic-release: tags + GitHub pre-release
+  contents: write # semantic-release: push git tag (no GitHub release in dev)
   security-events: write
   id-token: write
 
 jobs:
   ci:
     name: CI
-    if: "!contains(github.event.head_commit.message, 'skip ci')"
+    # `head_commit.message` is null on workflow_dispatch and some
+    # workflow_call invocations; coalesce to '' so contains() doesn't
+    # behave unexpectedly. Also restrict the skip-ci optimization to
+    # actual push events.
+    if: ${{ github.event_name != 'push' || !contains(github.event.head_commit.message, 'skip ci') }}
     uses: ./.github/workflows/ci.yml
     secrets: inherit
 

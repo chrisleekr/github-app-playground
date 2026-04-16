@@ -214,6 +214,11 @@ jobs:
           format: sarif
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
+          # Required when format=sarif: without this the action's entrypoint
+          # unsets TRIVY_SEVERITY (so it scans ALL severities) and exit-code
+          # then fires on any finding, not just CRITICAL/HIGH. Reference:
+          # https://github.com/aquasecurity/trivy-action/blob/v0.35.0/entrypoint.sh
+          limit-severities-for-sarif: true
           ignore-unfixed: true
           exit-code: "1"
           trivyignores: .trivyignore.yaml

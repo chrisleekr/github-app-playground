@@ -42,34 +42,9 @@ vulnerabilities:
       npm CLI only runs at image build time under trusted inputs.
     expired_at: 2026-05-12
 
-  # MEDIUM — picomatch method injection via POSIX bracket expressions
-  # (e.g. `[[:constructor:]]`). Same package, same file, same reachability
-  # analysis as CVE-2026-33671 above.
-  #
-  # Listed here because CI currently blocks on MEDIUMs too: the trivy-action
-  # entrypoint unsets TRIVY_SEVERITY when `format: sarif` is set without
-  # `limit-severities-for-sarif: true`, so the workflow's `severity: "CRITICAL,HIGH"`
-  # input is silently ignored at the exit-code stage. If that workflow bug is
-  # fixed (set `limit-severities-for-sarif: true` in docker-build.yml), this
-  # entry becomes redundant and can be removed.
-  # Reference: https://github.com/aquasecurity/trivy-action/blob/v0.35.0/entrypoint.sh
-  - id: CVE-2026-33672
-    paths:
-      - "usr/lib/node_modules/npm/node_modules/tinyglobby/node_modules/picomatch/package.json"
-    statement: >-
-      Same npm-bundled picomatch as CVE-2026-33671. Not reachable from the
-      runtime entrypoint.
-    expired_at: 2026-05-12
-
-  # MEDIUM — brace-expansion DoS via zero step value (e.g. `{1..2..0}`).
-  # Present at: /usr/lib/node_modules/npm/node_modules/brace-expansion@5.0.4
-  # Bundled transitively by npm via minimatch. Fix floor: 5.0.5 / 3.0.2 /
-  # 2.0.3 / 1.1.13; npm@11.12.1 still ships 5.0.4. Same reachability analysis
-  # as the picomatch entries above — npm CLI is not on the runtime path.
-  # Same note re: trivy-action SARIF severity behavior (see CVE-2026-33672).
-  - id: CVE-2026-33750
-    paths:
-      - "usr/lib/node_modules/npm/node_modules/brace-expansion/package.json"
-    statement: >-
-      npm-bundled brace-expansion@5.0.4. Not reachable from the runtime entrypoint.
-    expired_at: 2026-05-12
+  # NOTE: prior entries for CVE-2026-33672 (MEDIUM picomatch) and
+  # CVE-2026-33750 (MEDIUM brace-expansion) were removed when
+  # `limit-severities-for-sarif: true` was added in docker-build.yml. With
+  # that flag set the trivy-action now honors `severity: CRITICAL,HIGH` at
+  # the exit-code stage, so MEDIUMs are no longer blocking and the ignores
+  # were dead entries. If the severity filter is ever dropped, re-add them.
