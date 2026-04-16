@@ -72,6 +72,19 @@ jobs:
         env:
           TAG_NAME: ${{ inputs.tag-name }}
         run: |
+          # workflow_dispatch accepts arbitrary input. Validate TAG_NAME
+          # against the two formats release.config.mjs produces before
+          # using it in git, logs, or downstream steps:
+          #   prod: v<major>.<minor>.<patch>            (e.g. v1.2.0)
+          #   dev:  v<major>.<minor>.<patch>-dev-<sha7>.<N>
+          #                                             (e.g. v1.1.0-dev-5e062a5.1)
+          # Fail fast with a generic message — do not echo the raw value
+          # into logs (defense-in-depth vs ANSI-escape / markdown-bomb
+          # log injection via a malicious dispatch input).
+          if ! [[ "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-dev-[0-9a-f]{7}\.[0-9]+)?$ ]]; then
+            echo "ERROR: tag-name input does not match the expected format." >&2
+            exit 1
+          fi
           echo "Checking out tag: $TAG_NAME"
           git checkout "$TAG_NAME"
           CURRENT_TAG=$(git describe --exact-match --tags HEAD 2>/dev/null || echo "no-tag")
@@ -197,6 +210,18 @@ jobs:
     needs: merge
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Trivy resolves a multi-arch manifest to a SINGLE platform per scan
+    # (defaults to the host's arch when --image-platform is unset). Our
+    # merged tag is a multi-arch manifest covering linux/amd64 and
+    # linux/arm64, so we matrix the scan to explicitly cover both
+    # variants. `fail-fast: false` lets us see findings in both arches
+    # even when one fails. Refs:
+    #   https://github.com/aquasecurity/trivy/discussions/7847
+    #   https://github.com/aquasecurity/trivy-action/issues/279
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
     steps:
       - name: Checkout (for .trivyignore.yaml)
         uses: actions/checkout@v6
@@ -207,12 +232,19 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Scan image with Trivy
+      - name: Scan ${{ matrix.arch }} image with Trivy
         uses: aquasecurity/trivy-action@v0.35.0
+        env:
+          # trivy-action@v0.35.0 has no `image-platform` input, so we
+          # force platform resolution via Trivy's own env var — the
+          # binary reads `TRIVY_PLATFORM` as the equivalent of
+          # `--platform`. Without this Trivy defaults to the host arch
+          # (amd64 on ubuntu-latest) and never scans the arm64 variant.
+          TRIVY_PLATFORM: "linux/${{ matrix.arch }}"
         with:
           image-ref: "${{ env.IMAGE_NAME }}:${{ needs.merge.outputs.tag }}"
           format: sarif
-          output: trivy-results.sarif
+          output: "trivy-results-${{ matrix.arch }}.sarif"
           severity: CRITICAL,HIGH
           # Required when format=sarif: without this the action's entrypoint
           # unsets TRIVY_SEVERITY (so it scans ALL severities) and exit-code
@@ -227,5 +259,7 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
-          sarif_file: trivy-results.sarif
-          category: trivy-container-scan
+          sarif_file: "trivy-results-${{ matrix.arch }}.sarif"
+          # Distinct category per arch so the two SARIF uploads from the
+          # matrix legs do not overwrite each other in the Security tab.
+          category: "trivy-container-scan-${{ matrix.arch }}"

@@ -84,7 +84,17 @@ const now = new Date();
 function lookupAllow(ghsa: string): AllowEntry | null {
   const entry = IGNORED.find((e) => e.ghsa === ghsa);
   if (!entry) return null;
-  const expiresAt = new Date(entry.expires);
+  // Enforce YYYY-MM-DD so we can append an end-of-day time deterministically.
+  // `new Date("2026-04-30")` resolves to 00:00:00Z — the entry would be
+  // considered expired for the whole day. Treat the expiry as valid through
+  // 23:59:59.999 UTC of the stated day instead.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(entry.expires)) {
+    console.warn(
+      `::warning::Allowlist entry for ${ghsa} has invalid expires date (want YYYY-MM-DD): ${entry.expires}`,
+    );
+    return null;
+  }
+  const expiresAt = new Date(`${entry.expires}T23:59:59.999Z`);
   if (Number.isNaN(expiresAt.getTime())) {
     console.warn(
       `::warning::Allowlist entry for ${ghsa} has invalid expires date: ${entry.expires}`,
