@@ -1,3 +1,5 @@
+import type { SQL } from "bun";
+
 import { requireDb } from "../db";
 import { logger } from "../logger";
 
@@ -71,9 +73,11 @@ export async function setRepoEnvVar(
  * Returns ALL pinned non-env entries plus top 5 non-pinned by most recent activity.
  * Bumps last_read_at on all returned rows.
  */
-export async function getRepoMemory(owner: string, repo: string): Promise<RepoMemoryEntry[]> {
-  const db = requireDb();
-
+export async function getRepoMemory(
+  owner: string,
+  repo: string,
+  db: SQL = requireDb(),
+): Promise<RepoMemoryEntry[]> {
   const rows: { id: string; category: string; content: string; pinned: boolean }[] = await db`
     (
       SELECT id, category, content, pinned FROM repo_memory
@@ -92,7 +96,7 @@ export async function getRepoMemory(owner: string, repo: string): Promise<RepoMe
 
   if (rows.length > 0) {
     const ids = rows.map((r) => r.id);
-    await db`UPDATE repo_memory SET last_read_at = now() WHERE id = ANY(${ids})`;
+    await db`UPDATE repo_memory SET last_read_at = now() WHERE id IN ${db(ids)}`;
   }
 
   return rows;
@@ -147,12 +151,10 @@ export async function saveRepoLearnings(
  * Delete repo memory entries by ID.
  * Used when Claude identifies outdated or incorrect memories.
  */
-export async function deleteRepoMemories(ids: string[]): Promise<number> {
+export async function deleteRepoMemories(ids: string[], db: SQL = requireDb()): Promise<number> {
   if (ids.length === 0) return 0;
-
-  const db = requireDb();
   const deleted: { id: string }[] = await db`
-    DELETE FROM repo_memory WHERE id = ANY(${ids}) RETURNING id
+    DELETE FROM repo_memory WHERE id IN ${db(ids)} RETURNING id
   `;
   return deleted.length;
 }
