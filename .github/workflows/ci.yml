@@ -1,0 +1,80 @@
+# Quality gates only. No image build, no release.
+#
+# Triggers:
+#   - pull_request: fast feedback on every PR
+#   - push to main: post-merge sanity (catches squash-regressions; release is manual)
+#   - workflow_call: invoked by dev-release.yml and release.yml so an image
+#     is never published without these checks passing.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    name: Lint & Test
+    if: "!contains(github.event.head_commit.message, 'skip ci')"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v6
+        with:
+          # Full history so gitleaks can scan all commits via `git log -p`.
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .tool-versions
+
+      - name: Cache Bun install dir
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Format check
+        run: bun run format
+
+      - name: Dependency audit
+        # Wraps `bun audit --json` to gate on severity. `bun audit` itself
+        # exits 1 on ANY advisory regardless of --audit-level, so the
+        # wrapper restores severity-based gating + an inline GHSA allowlist.
+        run: bun run audit:ci
+
+      - name: Scan git history for secrets
+        uses: gitleaks/gitleaks-action@v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+          # gitleaks-action@v2.3.9 bundles 8.24.3 which has [[allowlists]]
+          # bugs that misfire on docs/SETUP.md. 8.30.1 has the fix.
+          GITLEAKS_VERSION: "8.30.1"
+
+      - name: Test
+        run: bun run test
+
+      - name: Build
+        run: bun run build

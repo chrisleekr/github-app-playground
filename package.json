@@ -54,6 +54,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --check .",
     "format:fix": "prettier --write .",
+    "audit:ci": "bun run scripts/audit-ci.ts",
     "check": "bun run typecheck && bun run lint && bun run format && bun run test",
     "dev:daemon": "bash scripts/run-daemon.sh",
     "dev:deps": "docker compose -f docker-compose.dev.yml up -d",

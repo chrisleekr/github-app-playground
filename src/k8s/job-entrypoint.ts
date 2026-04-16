@@ -152,5 +152,6 @@ async function main(): Promise<void> {
 }
 
 // Top-level await is fine in Bun's ESM runtime; the file is invoked via
-// `bun run src/k8s/job-entrypoint.ts` from the K8s Job spec.
+// `bun run dist/k8s/job-entrypoint.js` from the K8s Job spec (bundled from
+// this source by scripts/build.ts).
 await main();

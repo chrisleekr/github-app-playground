@@ -83,7 +83,8 @@ export function _resetK8sClientForTests(): void {
  *
  * The Pod has two containers:
  *   - `claude-agent`: same image as the webhook server, runs the entrypoint
- *     in src/k8s/job-entrypoint.ts (T020). Reads AGENT_CONTEXT_B64 to
+ *     bundled at dist/k8s/job-entrypoint.js (built from src/k8s/job-entrypoint.ts
+ *     by scripts/build.ts). Reads AGENT_CONTEXT_B64 to
  *     reconstruct the BotContext and invokes the inline pipeline with the
  *     expanded tool allow-list. Mounts /workspace as emptyDir so build
  *     artefacts don't survive the Job.
@@ -193,7 +194,7 @@ function buildJobSpec(ctx: BotContext, decision: DispatchDecision, encodedContex
             {
               name: "claude-agent",
               image,
-              command: ["bun", "run", "src/k8s/job-entrypoint.ts"],
+              command: ["bun", "run", "dist/k8s/job-entrypoint.js"],
               env: providerEnv,
               volumeMounts: [{ name: "workspace", mountPath: "/workspace" }],
               resources: {

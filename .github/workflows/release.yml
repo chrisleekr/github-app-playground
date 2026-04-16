@@ -1,0 +1,112 @@
+# Production release pipeline.
+#
+# Manual only — there is no automatic publish on push to main. Trigger
+# from the Actions UI or `gh workflow run release.yml` when a release is
+# desired.
+#
+# Flow:
+#   1. ci.yml runs as a called workflow — gates everything below
+#   2. semantic-release runs in prod mode (cuts a v<x.y.z> tag, generates
+#      CHANGELOG.md, creates a GitHub release, commits the version bump)
+#   3. docker-build.yml builds and pushes the prod image to Docker Hub
+#      with `latest` tag — only if step 2 published a new release
+name: Release
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # semantic-release: tags, release commit, GitHub release
+  security-events: write
+  id-token: write
+
+jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
+  semrel-prod:
+    name: Semantic Release (prod)
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HUSKY: 0
+      SEMREL_CHANNEL: prod
+    outputs:
+      new-release-published: ${{ steps.semrel.outputs.new-release-published }}
+      new-release-version: ${{ steps.semrel.outputs.new-release-version }}
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .tool-versions
+
+      - name: Setup Node.js for semantic-release
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Cache Bun install dir
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build project
+        run: bun run build
+
+      - name: Install semantic-release packages
+        run: |
+          npm install --no-save --no-package-lock \
+            semantic-release@^25.0.3 \
+            @semantic-release/changelog@^6.0.3 \
+            @semantic-release/commit-analyzer@^13.0.1 \
+            @semantic-release/git@^10.0.1 \
+            @semantic-release/github@^12.0.3 \
+            @semantic-release/npm@^13.1.3 \
+            @semantic-release/release-notes-generator@^14.1.0 \
+            @semantic-release/exec@^7.1.0
+
+      - name: Run semantic-release (prod)
+        id: semrel
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npx semantic-release
+          if [ -f "RELEASE_VERSION" ]; then
+            VERSION=$(cat RELEASE_VERSION)
+            echo "new-release-published=true" >> "$GITHUB_OUTPUT"
+            echo "new-release-version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "Release published: v$VERSION"
+          else
+            echo "new-release-published=false" >> "$GITHUB_OUTPUT"
+            echo "No new release published"
+          fi
+
+  docker:
+    name: Docker
+    needs: semrel-prod
+    if: needs.semrel-prod.outputs.new-release-published == 'true'
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      tag-name: "v${{ needs.semrel-prod.outputs.new-release-version }}"
+      is-dev-release: false
+    secrets: inherit
