@@ -88,7 +88,7 @@ export function _resetK8sClientForTests(): void {
  *     reconstruct the BotContext and invokes the inline pipeline with the
  *     expanded tool allow-list. Mounts /workspace as emptyDir so build
  *     artefacts don't survive the Job.
- *   - `docker` (sidecar): the docker:27-dind image, privileged, sharing
+ *   - `docker` (sidecar): the docker:29-dind image, privileged, sharing
  *     /var/lib/docker via emptyDir so the agent can shell `docker build`
  *     at DOCKER_HOST=tcp://localhost:2375.
  *
@@ -178,10 +178,13 @@ function buildJobSpec(ctx: BotContext, decision: DispatchDecision, encodedContex
           initContainers: [
             {
               // Must ship the Docker CLI — the bot's server image does not.
-              // `docker:27-cli` is small and pinned to the same major as the
+              // `docker:29-cli` is small and pinned to the same major as the
               // sidecar so client/daemon compatibility is guaranteed.
+              // Bumped 27 → 29 (2026-04-16) so the Go stdlib in the CLI
+              // binary picks up Go 1.26.x patches for the 9 CVEs Trivy
+              // flagged on 27-cli's Go 1.22.x.
               name: "wait-for-docker",
-              image: "docker:27-cli",
+              image: "docker:29-cli",
               command: [
                 "sh",
                 "-c",
@@ -204,7 +207,7 @@ function buildJobSpec(ctx: BotContext, decision: DispatchDecision, encodedContex
             },
             {
               name: "docker",
-              image: "docker:27-dind",
+              image: "docker:29-dind",
               securityContext: { privileged: true },
               env: [{ name: "DOCKER_TLS_CERTDIR", value: "" }],
               volumeMounts: [{ name: "docker-storage", mountPath: "/var/lib/docker" }],
