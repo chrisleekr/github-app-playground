@@ -184,10 +184,11 @@ const configSchema = z
     // Rotating this requires restarting both sides; the dispatcher caches it at boot.
     internalRunnerToken: z.string().optional(),
 
-    // ADR-011 reserved slot for a future second token (e.g. signed JWT). The
-    // schema requires it when mode=shared-runner/auto, but NO CODE PATH READS IT
-    // today — `internalRunnerToken` is the working knob. Setting a value here has
-    // no runtime effect.
+    // ADR-011 reserved slot for a future second token (e.g. signed JWT).
+    // Declared in the schema but NO CODE PATH READS IT today — not referenced
+    // by any refinement and not consumed by the shared-runner dispatcher.
+    // `internalRunnerToken` is the working knob; setting a value here has no
+    // runtime effect.
     sharedRunnerToken: z.string().optional(),
 
     // --- 9. Data layer ---
