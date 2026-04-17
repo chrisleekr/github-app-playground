@@ -42,34 +42,66 @@ vulnerabilities:
       npm CLI only runs at image build time under trusted inputs.
     expired_at: 2026-05-12
 
-  # MEDIUM — picomatch method injection via POSIX bracket expressions
-  # (e.g. `[[:constructor:]]`). Same package, same file, same reachability
-  # analysis as CVE-2026-33671 above.
+  # HIGH — Go stdlib CVEs in the static `docker` client binary copied from
+  # `docker:29.4.0-cli` (see Dockerfile:106, src/k8s/job-spawner.ts). Upstream
+  # Go has released 1.25.9 / 1.26.2 with the fixes, but the docker image has
+  # not yet been rebuilt — docker:29.4.0-cli pushed 2026-04-16 still ships
+  # Go 1.26.1. Verified via
+  # `docker run --rm docker:29.4.0-cli docker version --format '{{.Client.GoVersion}}'`.
   #
-  # Listed here because CI currently blocks on MEDIUMs too: the trivy-action
-  # entrypoint unsets TRIVY_SEVERITY when `format: sarif` is set without
-  # `limit-severities-for-sarif: true`, so the workflow's `severity: "CRITICAL,HIGH"`
-  # input is silently ignored at the exit-code stage. If that workflow bug is
-  # fixed (set `limit-severities-for-sarif: true` in docker-build.yml), this
-  # entry becomes redundant and can be removed.
-  # Reference: https://github.com/aquasecurity/trivy-action/blob/v0.35.0/entrypoint.sh
-  - id: CVE-2026-33672
-    paths:
-      - "usr/lib/node_modules/npm/node_modules/tinyglobby/node_modules/picomatch/package.json"
-    statement: >-
-      Same npm-bundled picomatch as CVE-2026-33671. Not reachable from the
-      runtime entrypoint.
-    expired_at: 2026-05-12
+  # Short 2-week expiry because Docker typically rebuilds within ~1–2 weeks
+  # of a Go security release. When docker:29-cli has picked up Go 1.26.2+,
+  # delete these three entries and let the CI gate reassert.
+  #
+  # Reachability rationale applies to all three entries below:
+  # - The `docker` CLI in the runtime image is invoked **only inside
+  #   isolated-job pods** by the Claude agent against a dind sidecar at
+  #   `tcp://localhost:2375` (plain TCP, no TLS) for `docker build` /
+  #   `docker compose`. CVEs in crypto/x509 chain validation are not
+  #   exercised on that code path.
+  # - The only TLS code path is `docker login` against trusted public
+  #   registries (Docker Hub / GHCR) whose certificate chains are signed
+  #   by well-known public CAs we configure — no attacker-supplied
+  #   intermediates or wildcard SANs reach the CLI.
+  # - `os.Root.Chmod` (CVE-2026-32282) is not called by the docker CLI on
+  #   any agent-triggered flow; the isolated-job pod filesystem is not
+  #   writable by any external actor who could race a symlink replacement.
 
-  # MEDIUM — brace-expansion DoS via zero step value (e.g. `{1..2..0}`).
-  # Present at: /usr/lib/node_modules/npm/node_modules/brace-expansion@5.0.4
-  # Bundled transitively by npm via minimatch. Fix floor: 5.0.5 / 3.0.2 /
-  # 2.0.3 / 1.1.13; npm@11.12.1 still ships 5.0.4. Same reachability analysis
-  # as the picomatch entries above — npm CLI is not on the runtime path.
-  # Same note re: trivy-action SARIF severity behavior (see CVE-2026-33672).
-  - id: CVE-2026-33750
+  - id: CVE-2026-33810
     paths:
-      - "usr/lib/node_modules/npm/node_modules/brace-expansion/package.json"
+      - "usr/local/bin/docker"
     statement: >-
-      npm-bundled brace-expansion@5.0.4. Not reachable from the runtime entrypoint.
-    expired_at: 2026-05-12
+      Go 1.26.1 stdlib in docker:29.4.0-cli (crypto/x509 wildcard SAN case
+      bypass on excluded DNS constraints). Fix requires Go 1.26.2 — docker
+      image lag. CLI's only TLS path is `docker login` against trusted public
+      registries, not attacker-supplied cert chains.
+    expired_at: 2026-04-30
+
+  - id: CVE-2026-32282
+    paths:
+      - "usr/local/bin/docker"
+    statement: >-
+      Go 1.26.1 stdlib in docker:29.4.0-cli (os.Root.Chmod symlink TOCTOU on
+      Linux). Fix in Go 1.25.9 / 1.26.2 — docker image lag. docker CLI does
+      not invoke Root.Chmod on any agent-triggered flow; isolated-job pod
+      filesystem is not writable by any external attacker who could race a
+      symlink replacement.
+    expired_at: 2026-04-30
+
+  - id: CVE-2026-32280
+    paths:
+      - "usr/local/bin/docker"
+    statement: >-
+      Go 1.26.1 stdlib in docker:29.4.0-cli (crypto/x509 chain-building DoS
+      via unbounded intermediates). Fix in Go 1.25.9 / 1.26.2 — docker image
+      lag. Only TLS path is `docker login` against trusted public registries
+      — no attacker-supplied intermediate certificate chains reach x509
+      chain-building.
+    expired_at: 2026-04-30
+
+  # NOTE: prior entries for CVE-2026-33672 (MEDIUM picomatch) and
+  # CVE-2026-33750 (MEDIUM brace-expansion) were removed when
+  # `limit-severities-for-sarif: true` was added in docker-build.yml. With
+  # that flag set the trivy-action now honors `severity: CRITICAL,HIGH` at
+  # the exit-code stage, so MEDIUMs are no longer blocking and the ignores
+  # were dead entries. If the severity filter is ever dropped, re-add them.

@@ -14,6 +14,7 @@ bun run lint            # ESLint check
 bun run lint:fix        # ESLint auto-fix
 bun run format          # Check formatting with prettier
 bun run format:fix      # Auto-fix formatting with prettier
+bun run audit:ci        # Severity-gated dependency audit (used by CI)
 bun run dev:deps        # Start local Valkey + Postgres (Docker Compose)
 bun run dev:deps:down   # Stop local infrastructure
 ```
@@ -84,6 +85,24 @@ The scheduled research workflow in `.github/workflows/research.yml` also uses `C
 - Pre-commit hooks via Husky + lint-staged (auto-format + lint on staged files).
 - Conventional commits enforced via commitlint.
 
+## CI/CD Pipeline
+
+Four workflow files form the pipeline; each owns one responsibility.
+
+| Workflow                             | Trigger                                                   | Owns                                                                                                            |
+| ------------------------------------ | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `.github/workflows/ci.yml`           | `pull_request` + `push: main` + `workflow_call`           | Quality gates only: typecheck, lint, format, audit:ci, gitleaks, test, build                                    |
+| `.github/workflows/dev-release.yml`  | `push: branches-ignore: [main, v*]` + `workflow_dispatch` | Calls `ci.yml` → semantic-release dev (pre-release tag) → calls `docker-build.yml`                              |
+| `.github/workflows/release.yml`      | `workflow_dispatch` only (manual)                         | Calls `ci.yml` → semantic-release prod → calls `docker-build.yml`                                               |
+| `.github/workflows/docker-build.yml` | `workflow_call` + `workflow_dispatch`                     | Reusable image builder: matrix split-and-merge (amd64 native + arm64 native via `ubuntu-24.04-arm`), Trivy scan |
+
+- **Bun version is single-sourced** via `.tool-versions` (`bun 1.3.12`). All workflows use `oven-sh/setup-bun@v2` with `bun-version-file: .tool-versions`.
+- **`audit:ci` (`scripts/audit-ci.ts`)** wraps `bun audit --json` to gate on severity: blocks on high+critical, warns on moderate+low, with an inline `IGNORED` GHSA allowlist (each entry must carry an `expires` date). Required because `bun audit` exits 1 on **any** finding regardless of `--audit-level`.
+- **Semantic release config** (`release.config.mjs`) is single-file with `SEMREL_CHANNEL=dev|prod` env switching — replaces the previous file-swap hack.
+- **Prod releases are manual.** Push to main only triggers `ci.yml` (sanity). Cut a release with `gh workflow run release.yml`.
+- Multi-arch images: amd64 builds on `ubuntu-latest`, arm64 builds natively on `ubuntu-24.04-arm` (free for public repos). Manifest assembled by `docker buildx imagetools create`. GHA cache scoped per arch.
+- Defense-in-depth on workflow injection: every dynamic input flowing into a `run:` block is passed via `env:` first.
+
 ## Active Technologies
 
 - TypeScript 5.9.3 (strict mode with `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `useUnknownInCatchVariables`) on Bun ≥1.3.12 (see `package.json` `packageManager` pin). Existing deps — `octokit`, `@anthropic-ai/claude-agent-sdk`, `@modelcontextprotocol/sdk`, `pino`, `zod`, Bun built-in `WebSocket` + `RedisClient`. New — `@anthropic-ai/bedrock-sdk` (Bedrock path in the `src/ai/llm-client.ts` single-turn adaptor) and `@kubernetes/client-node` (in-cluster Job spawning for the isolated-job dispatch target). `@anthropic-ai/sdk` is already a transitive dep of `claude-agent-sdk`. (20260415-000159-triage-dispatch-modes)
@@ -97,5 +116,6 @@ The scheduled research workflow in `.github/workflows/research.yml` also uses `C
 
 ## Recent Changes
 
+- 20260416-pipeline-redesign: CI/CD pipeline restructured for single-responsibility separation. Replaced `push.yml` + `semantic-release.yml` (which entangled lint-and-test, dev release, and docker build) with four single-purpose workflows: `ci.yml` (quality gates only), `dev-release.yml` (feature-branch orchestrator: ci → semrel-dev → docker), `release.yml` (manual prod orchestrator: ci → semrel-prod → docker), and a rewritten reusable `docker-build.yml` (matrix split-and-merge native amd64+arm64, no QEMU). Bun version single-sourced via `.tool-versions` (resolved drift between 1.3.8 in push.yml/semrel.yml and 1.3.12 in docker-build.yml/Dockerfile/package.json). `audit:ci` script (`scripts/audit-ci.ts`) wraps `bun audit --json` to restore severity-based gating (block high+critical, warn moderate+low, time-boxed GHSA allowlist) — `bun audit` itself exits 1 on any finding regardless of `--audit-level`. Single env-switched `release.config.mjs` (`SEMREL_CHANNEL=dev|prod`) replaces the file-swap hack. Prod release is now manual (`gh workflow run release.yml`); push-to-main only runs `ci.yml`. Job-spawner pod entrypoint moved from `src/k8s/job-entrypoint.ts` (TS source absent from production image) to `dist/k8s/job-entrypoint.js` (built by `scripts/build.ts`) — fixes a latent isolated-job-target bug. Defense-in-depth: every dynamic workflow input passes through `env:` before reaching any `run:` block.
 - 20260410-164348-scheduled-research-workflow: Config-only (no `src/` changes) — adds `.github/workflows/research.yml` invoking `anthropics/claude-code-action@v1` once daily (`cron: "0 5 * * *"` = 3pm AEST / 4pm AEDT) and on `workflow_dispatch` with an optional `focus_area` input. Hard 1-hour wall-clock budget (`timeout-minutes: 60`), at most one labelled GitHub issue per run, agent restricted to read + `WebSearch`/`WebFetch` + `gh issue/label create`, two repo secrets (`CLAUDE_CODE_OAUTH_TOKEN`, `PERSONAL_ACCESS_TOKEN`), `permissions: contents:read + issues:write + id-token:write`, `concurrency: research-workflow / cancel-in-progress: false`. 10 fixed focus areas mapped to `src/` subsystems. Two-label scheme (`research` + `area: <name>`). Inherits documented workarounds from `chrisleekr/personal-claw` `research.yml` (`allowed_bots: '*'`, `--disallowedTools ""`, PAT instead of OIDC). **Defense-in-depth against workflow injection**: every GitHub-context value (including `github.event.inputs.focus_area`) is passed via `env:` blocks rather than interpolated into `run:` scripts; the user-supplied `focus_area` is additionally validated against `^[a-z][a-z0-9-]{0,31}$` BEFORE being used (rejected values fall back to a random pick and log only their length, never the value itself) — satisfies Constitution Principle IV. **Failure surfacing**: relies on GitHub Actions' built-in workflow-failure email; no custom alerting. **Cost observability**: per Constitution Principle VI bullet 2, `claude-code-action`'s own per-turn cost output is captured by GitHub Actions stdout and retrieved post-mortem via `gh run view <run-id> --log | grep -iE 'cost|tokens|duration|usage'` (see `specs/.../research.md` §19 and `quickstart.md` Day-2 ops). **Test coverage gap** (Constitution Principle V) justified in `plan.md` Complexity Tracking; mitigated via `actionlint` static check + mandatory manual smoke test before merge (see `quickstart.md`).
 - 20260409-081113-project-housekeeping: Housekeeping — test coverage raised to 90% per-file threshold (lines + functions; Bun's `coverageThreshold` is applied per-file, not aggregated), ESLint migrated to unified `typescript-eslint` with `strictTypeChecked` preset, CI security scanning added (`bun audit`, `trivy` container scan with blocking `exit-code: "1"`, `gitleaks` full-history scan with `fetch-depth: 0`), Docker HEALTHCHECK on `/healthz`, gitleaks pre-commit hook, retry.ts input validation (maxAttempts/initialDelayMs/maxDelayMs/backoffFactor all reject NaN/Infinity/below-min with descriptive errors), `package.json` security overrides converted to exact version pins.

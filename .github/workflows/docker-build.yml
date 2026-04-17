@@ -1,21 +1,37 @@
+# Reusable image builder. No checks, no release — orchestrators invoke this
+# via workflow_call after gating on ci.yml + semantic-release.
+#
+# Multi-platform via the documented split-and-merge pattern:
+#   https://docs.docker.com/build/ci/github-actions/multi-platform/#distribute-build-across-multiple-runners
+# - amd64 builds on ubuntu-latest (x86_64)
+# - arm64 builds on ubuntu-24.04-arm (free for public repos:
+#     https://github.blog/changelog/2025-01-16-linux-arm64-hosted-runners-now-available-for-free-in-public-repositories-public-preview/)
+# - Each platform pushes by digest only; merge job assembles the manifest list.
+# - GHA cache is scoped per arch so amd64 and arm64 don't trample each other.
+#
+# Trivy scans the assembled manifest tag with the existing time-boxed
+# .trivyignore.yaml allowlist.
+#
+# Defense-in-depth: every workflow input that flows into a `run:` block is
+# passed through `env:` first to prevent script-injection at YAML-render time.
 name: Docker Build & Push
 
 on:
   workflow_call:
     inputs:
       tag-name:
-        description: "The tag name to build (e.g., v1.0.0)"
+        description: "Git tag to build (e.g., v1.0.0 or v1.0.0-dev-abc1234.1)"
         required: true
         type: string
       is-dev-release:
-        description: "Whether this is a dev/pre-release"
+        description: "Whether this is a dev/pre-release (controls `latest` tag)"
         required: false
         type: boolean
         default: false
   workflow_dispatch:
     inputs:
       tag-name:
-        description: "The tag name to build (e.g., v1.0.0)"
+        description: "Git tag to build (must already exist)"
         required: true
         type: string
       is-dev-release:
@@ -24,56 +40,71 @@ on:
         type: boolean
         default: false
 
-# Refer: https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds#generating-artifact-attestations-for-your-builds
 permissions:
   contents: read
   security-events: write # Required: upload Trivy SARIF to GitHub Security tab
 
 env:
-  BUN_VERSION: "1.3.12"
+  IMAGE_NAME: chrisleekr/github-app-playground
 
 jobs:
-  docker:
-    name: Build & Push Docker Image
-    runs-on: ubuntu-latest
+  build:
+    name: Build (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            arch: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            arch: arm64
     steps:
-      - name: Checkout code
+      - name: Checkout source code
         uses: actions/checkout@v6
         with:
-          fetch-depth: 0 # Fetch all history and tags
+          fetch-depth: 0 # Need tags
 
       - name: Checkout specific tag
+        env:
+          TAG_NAME: ${{ inputs.tag-name }}
         run: |
-          TAG_NAME="${{ inputs.tag-name }}"
+          # workflow_dispatch accepts arbitrary input. Validate TAG_NAME
+          # against the two formats release.config.mjs produces before
+          # using it in git, logs, or downstream steps:
+          #   prod: v<major>.<minor>.<patch>            (e.g. v1.2.0)
+          #   dev:  v<major>.<minor>.<patch>-dev-<sha7>.<N>
+          #                                             (e.g. v1.1.0-dev-5e062a5.1)
+          # Fail fast with a generic message — do not echo the raw value
+          # into logs (defense-in-depth vs ANSI-escape / markdown-bomb
+          # log injection via a malicious dispatch input).
+          if ! [[ "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-dev-[0-9a-f]{7}\.[0-9]+)?$ ]]; then
+            echo "ERROR: tag-name input does not match the expected format." >&2
+            exit 1
+          fi
           echo "Checking out tag: $TAG_NAME"
-          git checkout $TAG_NAME
-
-          # Verify we're on the correct tag
+          git checkout "$TAG_NAME"
           CURRENT_TAG=$(git describe --exact-match --tags HEAD 2>/dev/null || echo "no-tag")
-          echo "Current tag after checkout: $CURRENT_TAG"
-
           if [ "$CURRENT_TAG" != "$TAG_NAME" ]; then
-            echo "ERROR: Failed to checkout tag $TAG_NAME. Currently on: $CURRENT_TAG"
+            echo "ERROR: Failed to checkout tag $TAG_NAME (currently on: $CURRENT_TAG)"
             exit 1
           fi
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Build project
-        run: bun run build
+      - name: Extract build metadata
+        id: meta
+        env:
+          TAG_NAME: ${{ inputs.tag-name }}
+        run: |
+          PACKAGE_VERSION="${TAG_NAME#v}"
+          GIT_HASH=$(git rev-parse --short HEAD)
+          echo "package_version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "git_hash=$GIT_HASH" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
 
       - name: Login to Docker Hub
         uses: docker/login-action@v4
@@ -81,97 +112,154 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Extract version and build metadata
-        id: meta
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          target: production
+          platforms: ${{ matrix.platform }}
+          # Push without a tag, by digest only — the merge job tags it.
+          outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+          build-args: |
+            PACKAGE_VERSION=${{ steps.meta.outputs.package_version }}
+            GIT_HASH=${{ steps.meta.outputs.git_hash }}
+            NODE_ENV=production
+
+      - name: Export digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
         run: |
-          TAG_NAME="${{ inputs.tag-name }}"
+          mkdir -p "${RUNNER_TEMP}/digests"
+          touch "${RUNNER_TEMP}/digests/${DIGEST#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    name: Merge manifest
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Compute tag
+        id: tag
+        env:
+          TAG_NAME: ${{ inputs.tag-name }}
+        run: |
           PACKAGE_VERSION="${TAG_NAME#v}"
-          GIT_HASH=$(git rev-parse --short HEAD)
-          IS_DEV_RELEASE=${{ inputs.is-dev-release }}
+          echo "tag=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
 
-          echo "PACKAGE_VERSION=$PACKAGE_VERSION" >> $GITHUB_ENV
-          echo "GIT_HASH=$GIT_HASH" >> $GITHUB_ENV
-          echo "IS_DEV_RELEASE=$IS_DEV_RELEASE" >> $GITHUB_ENV
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
 
-          echo "Package Version: $PACKAGE_VERSION"
-          echo "Git Hash: $GIT_HASH"
-          echo "Is Dev Release: $IS_DEV_RELEASE"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
 
-      - name: Generate Docker tags and labels
-        id: docker-meta
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Docker metadata
+        id: meta
         uses: docker/metadata-action@v6
         with:
-          images: chrisleekr/github-app-playground
+          images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=${{ env.PACKAGE_VERSION }}
-            type=raw,value=latest,enable=${{ env.IS_DEV_RELEASE == 'false' }}
-          labels: |
-            org.opencontainers.image.version=${{ env.PACKAGE_VERSION }}
-            org.opencontainers.image.revision=${{ env.GIT_HASH }}
+            type=raw,value=${{ steps.tag.outputs.tag }}
+            type=raw,value=latest,enable=${{ inputs.is-dev-release == false }}
 
-      - name: Build and push Docker image - Dev/Alpha
-        if: env.IS_DEV_RELEASE == 'true'
-        uses: docker/build-push-action@v7
+      - name: Create manifest list and push
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          IMAGE: ${{ env.IMAGE_NAME }}
+        # SC2046 intentional: both $(...) substitutions must expand as
+        # space-separated args to `imagetools create` (one -t per tag, one
+        # image ref per digest). Quoting would collapse them into a single
+        # arg and break the command.
+        run: |
+          # shellcheck disable=SC2046
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf "${IMAGE}@sha256:%s " *)
+
+      - name: Inspect image
+        env:
+          IMAGE: ${{ env.IMAGE_NAME }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: docker buildx imagetools inspect "${IMAGE}:${TAG}"
+
+  scan:
+    name: Trivy scan
+    needs: merge
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Trivy resolves a multi-arch manifest to a SINGLE platform per scan
+    # (defaults to the host's arch when --image-platform is unset). Our
+    # merged tag is a multi-arch manifest covering linux/amd64 and
+    # linux/arm64, so we matrix the scan to explicitly cover both
+    # variants. `fail-fast: false` lets us see findings in both arches
+    # even when one fails. Refs:
+    #   https://github.com/aquasecurity/trivy/discussions/7847
+    #   https://github.com/aquasecurity/trivy-action/issues/279
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - name: Checkout (for .trivyignore.yaml)
+        uses: actions/checkout@v6
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
         with:
-          context: .
-          file: Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          target: production
-          cache-from: type=registry,ref=chrisleekr/github-app-playground:cache
-          cache-to: type=registry,mode=max,ref=chrisleekr/github-app-playground:cache
-          build-args: |
-            PACKAGE_VERSION=${{ env.PACKAGE_VERSION }}
-            GIT_HASH=${{ env.GIT_HASH }}
-            NODE_ENV=production
-          tags: ${{ steps.docker-meta.outputs.tags }}
-          labels: ${{ steps.docker-meta.outputs.labels }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and push Docker image - Production
-        if: env.IS_DEV_RELEASE == 'false'
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          target: production
-          cache-from: type=registry,ref=chrisleekr/github-app-playground:cache
-          cache-to: type=registry,mode=max,ref=chrisleekr/github-app-playground:cache
-          build-args: |
-            PACKAGE_VERSION=${{ env.PACKAGE_VERSION }}
-            GIT_HASH=${{ env.GIT_HASH }}
-            NODE_ENV=production
-          tags: ${{ steps.docker-meta.outputs.tags }}
-          labels: ${{ steps.docker-meta.outputs.labels }}
-
-      - name: Image digest
-        run: echo "Image pushed with digest ${{ steps.docker-meta.outputs.digest }}"
-
-      - name: Scan image with Trivy
+      - name: Scan ${{ matrix.arch }} image with Trivy
         uses: aquasecurity/trivy-action@v0.35.0
+        env:
+          # trivy-action@v0.35.0 has no `image-platform` input, so we
+          # force platform resolution via Trivy's own env var — the
+          # binary reads `TRIVY_PLATFORM` as the equivalent of
+          # `--platform`. Without this Trivy defaults to the host arch
+          # (amd64 on ubuntu-latest) and never scans the arm64 variant.
+          TRIVY_PLATFORM: "linux/${{ matrix.arch }}"
         with:
-          image-ref: "chrisleekr/github-app-playground:${{ env.PACKAGE_VERSION }}"
-          format: "sarif"
-          output: "trivy-results.sarif"
-          severity: "CRITICAL,HIGH"
-          ignore-unfixed: true # Only block on vulnerabilities with available patches
-          # trivy-action defaults exit-code: 0 (non-blocking). Combined with
-          # ignore-unfixed: true above, exit-code: "1" makes the step fail
-          # ONLY on HIGH/CRITICAL findings with available patches — matching
-          # the spec's edge-case statement that exploitable vulnerabilities
-          # with available fixes should be blocking.
+          image-ref: "${{ env.IMAGE_NAME }}:${{ needs.merge.outputs.tag }}"
+          format: sarif
+          output: "trivy-results-${{ matrix.arch }}.sarif"
+          severity: CRITICAL,HIGH
+          # Required when format=sarif: without this the action's entrypoint
+          # unsets TRIVY_SEVERITY (so it scans ALL severities) and exit-code
+          # then fires on any finding, not just CRITICAL/HIGH. Reference:
+          # https://github.com/aquasecurity/trivy-action/blob/v0.35.0/entrypoint.sh
+          limit-severities-for-sarif: true
+          ignore-unfixed: true
           exit-code: "1"
-          # Time-boxed CVE allowlist. The action does NOT auto-discover a
-          # .trivyignore(.yaml) at repo root — it must be passed explicitly
-          # via this input. Every entry in the file must carry a statement
-          # and an expired_at forcing re-review. See .trivyignore.yaml and
-          # https://trivy.dev/latest/docs/configuration/filtering/#trivyignoreyaml
-          trivyignores: ".trivyignore.yaml"
+          trivyignores: .trivyignore.yaml
 
       - name: Upload Trivy SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@v4
-        if: always() # Upload even if the scan found issues
+        if: always()
         with:
-          sarif_file: "trivy-results.sarif"
-          category: "trivy-container-scan"
+          sarif_file: "trivy-results-${{ matrix.arch }}.sarif"
+          # Distinct category per arch so the two SARIF uploads from the
+          # matrix legs do not overwrite each other in the Security tab.
+          category: "trivy-container-scan-${{ matrix.arch }}"

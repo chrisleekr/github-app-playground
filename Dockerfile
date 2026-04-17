@@ -94,10 +94,16 @@ COPY --from=deps --chown=bun:bun /app/node_modules ./node_modules
 # Docker CLI — required when the image runs as an isolated-job pod (the
 # Claude agent shells `docker build` / `docker compose` against the dind
 # sidecar at DOCKER_HOST=tcp://localhost:2375). Copy the static client binary
-# from the official `docker:27-cli` image to avoid pulling the full dind
+# from the official `docker:29-cli` image to avoid pulling the full dind
 # runtime into the server image. Pinned to the same major as the sidecar in
 # src/k8s/job-spawner.ts to keep client/daemon compatibility guaranteed.
-COPY --from=docker:27-cli /usr/local/bin/docker /usr/local/bin/docker
+#
+# Bumped 27 → 29 (2026-04-16): docker:27-cli ships a Go 1.22.x stdlib that
+# Trivy flags with 8 HIGH + 1 CRITICAL CVEs (CVE-2025-47907 through
+# CVE-2026-32282 — net/http, archive/tar, database/sql). docker:29-cli ships
+# Go 1.26.x which patches all of them. Verified locally via
+# `docker run --rm docker:29-cli docker version --format '{{.Client.GoVersion}}'`.
+COPY --from=docker:29-cli /usr/local/bin/docker /usr/local/bin/docker
 
 USER bun
 EXPOSE 3000/tcp

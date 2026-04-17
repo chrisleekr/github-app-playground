@@ -41,4 +41,26 @@ if (!mcpResult.success) {
   process.exit(1);
 }
 
+// Build 3: Isolated-job pod entrypoint — outputs dist/k8s/job-entrypoint.js
+// Referenced by job-spawner.ts as the container command. Bundling into dist
+// keeps the production image self-contained (the production stage in
+// Dockerfile only copies dist/, not src/).
+const jobEntrypointResult = await Bun.build({
+  entrypoints: ["./src/k8s/job-entrypoint.ts"],
+  outdir: "./dist/k8s",
+  target: "bun",
+  minify: isProduction,
+  sourcemap: isProduction ? "external" : "inline",
+  splitting: false,
+  naming: "job-entrypoint.js",
+});
+
+if (!jobEntrypointResult.success) {
+  console.error("Build failed (job-entrypoint):");
+  for (const log of jobEntrypointResult.logs) {
+    console.error(log);
+  }
+  process.exit(1);
+}
+
 console.log("Build completed successfully");
