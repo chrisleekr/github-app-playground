@@ -6,14 +6,25 @@ import { z } from "zod";
  */
 const configSchema = z
   .object({
+    // --- 1. GitHub App credentials (server mode) ---
+
     // GitHub App credentials — required for server mode, optional for daemon-only mode.
     // Daemon mode (ORCHESTRATOR_URL set) does not need these; validated in superRefine.
     appId: z.string().optional(),
     privateKey: z.string().optional(),
     webhookSecret: z.string().optional(),
 
-    // AI provider selection: "anthropic" (default) or "bedrock"
+    // --- 2. AI provider selection ---
+
+    // AI provider selection: "anthropic" (default) or "bedrock".
+    // "bedrock" additionally requires `awsRegion` + `model` — enforced in validateProviderCredentials.
     provider: z.enum(["anthropic", "bedrock"]).default("anthropic"),
+
+    // Model override — required when provider=bedrock (Bedrock uses different model ID format),
+    // optional for anthropic (SDK uses its default).
+    model: z.string().min(1).optional(),
+
+    // --- 3. Anthropic direct-API credentials ---
 
     // Claude API credentials — when provider=anthropic, at least one of these is required
     // (both may be set; the Claude CLI's own auth precedence chain picks one at runtime:
@@ -24,48 +35,76 @@ const configSchema = z
     anthropicApiKey: z.string().optional(),
     claudeCodeOauthToken: z.string().optional(),
 
-    // Model override — required when provider=bedrock (Bedrock uses different model ID format),
-    // optional for anthropic (SDK uses its default)
-    model: z.string().min(1).optional(),
+    // --- 4. AWS Bedrock credentials ---
 
-    // AWS Bedrock — required fields validated in superRefine below
+    // Target AWS region for Bedrock. Required when provider=bedrock.
     awsRegion: z.string().optional(),
     // Local dev: AWS SSO profile (after: le aws login -e dev).
     // Passed to the Claude Code subprocess env so the AWS SDK credential chain resolves it.
     awsProfile: z.string().optional(),
-    // Explicit key credentials (CI/CD or non-SSO environments)
+    // Explicit key credentials — use in CI/CD or non-SSO environments. Prefer
+    // `awsProfile` locally and `awsBearerTokenBedrock` (OIDC) in GitHub Actions.
     awsAccessKeyId: z.string().optional(),
     awsSecretAccessKey: z.string().optional(),
     awsSessionToken: z.string().optional(),
-    // OIDC bearer token (GitHub Actions with aws-actions/configure-aws-credentials)
+    // OIDC bearer token — set automatically by aws-actions/configure-aws-credentials
+    // in GitHub Actions. Do not hand-set in long-running environments.
     awsBearerTokenBedrock: z.string().optional(),
-    // Optional Bedrock endpoint override
+    // Overrides the Bedrock runtime endpoint. Leave unset unless fronting Bedrock
+    // with a VPC endpoint or proxy — otherwise the SDK picks the correct regional URL.
     anthropicBedrockBaseUrl: z.string().optional(),
 
-    // Context7 (optional - higher rate limits with key)
+    // --- 5. App runtime / behaviour ---
+
+    // Context7 MCP API key — optional. Unset works but is rate-limited; setting it
+    // only lifts the rate limit. Does not change auth mode or tool availability.
     context7ApiKey: z.string().optional(),
 
-    // Repo checkout base directory
+    // Parent directory for per-delivery repo clones. Created on boot via
+    // mkdir(..., { recursive: true }) in src/core/checkout.ts. Each delivery gets
+    // a unique subdir under this path and the subdir is deleted after the run.
     cloneBaseDir: z.string().default("/tmp/bot-workspaces"),
 
-    // App configuration
+    // Git clone depth for repo checkout. Increase for PRs with deeply diverged branches.
+    // Set via CLONE_DEPTH env var (default: 50).
+    cloneDepth: z.coerce.number().int().positive().default(50),
+
+    // Mention string that triggers the bot. MUST match the GitHub App's bot login
+    // exactly; a mismatch silently drops every webhook event because the trigger
+    // matcher returns no hit.
     triggerPhrase: z.string().default("@chrisleekr-bot"),
+
+    // HTTP port for the webhook listener. Independent of `wsPort` (orchestrator WS).
     port: z.coerce.number().int().positive().default(3000),
+
+    // pino log level. Raise to "debug" or "trace" only for short investigations;
+    // "debug" surfaces full webhook payloads (contains owner/repo data).
     logLevel: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
+
+    // Runtime environment tag. "production" additionally enables the ws:// warning
+    // on `orchestratorUrl` (installation tokens + DAEMON_AUTH_TOKEN transit in
+    // cleartext on ws://).
     nodeEnv: z.enum(["production", "development", "test"]).default("production"),
+
     // Limits concurrent Claude agent executions to prevent API budget exhaustion
     // and resource saturation. Set via MAX_CONCURRENT_REQUESTS env var.
     maxConcurrentRequests: z.coerce.number().int().positive().default(3),
+
     // Wall-clock timeout for a single Claude agent execution in milliseconds.
     // Guards against resource exhaustion from hung model responses or MCP servers.
     // Set via AGENT_TIMEOUT_MS env var (default: 10 minutes).
     agentTimeoutMs: z.coerce.number().int().positive().default(600_000),
-    // Override max turns for the Claude Agent SDK. When set, takes precedence over
-    // complexity-based turns. Set via AGENT_MAX_TURNS env var.
+
+    // Override max turns for the Claude Agent SDK, used as a FALLBACK ONLY on
+    // two code paths: (a) src/orchestrator/connection-handler.ts when the
+    // daemon receives a job with no router-supplied maxTurns, and (b)
+    // src/core/executor.ts when invoked without an explicit `maxTurns`
+    // argument. The webhook router (decideDispatch) does NOT read this — on
+    // every non-triage-success branch it returns `defaultMaxTurns`, so
+    // AGENT_MAX_TURNS does not shift the router-driven per-request budget.
+    // Set via AGENT_MAX_TURNS env var.
     agentMaxTurns: z.coerce.number().int().positive().optional(),
-    // Git clone depth for repo checkout. Increase for PRs with deeply diverged branches.
-    // Set via CLONE_DEPTH env var (default: 50).
-    cloneDepth: z.coerce.number().int().positive().default(50),
+
     // Absolute path to the Claude Code CLI entry point (cli.js).
     // Required when claude-code is installed globally (e.g. Docker) rather than as a
     // local node_modules dependency, because the SDK defaults to {cwd}/dist/cli.js.
@@ -91,14 +130,18 @@ const configSchema = z
         return parsed.length === 0 ? undefined : parsed;
       }),
 
-    // --- Dispatch mode (Phase 2+, Phase 3 triage-dispatch-modes) ---
+    // --- 6. Dispatch mode (Phase 2+, Phase 3 triage-dispatch-modes) ---
+
     // AGENT_JOB_MODE determines how triggered work is executed platform-wide.
     // "inline" (default) = current behaviour, no external deps needed.
     // "auto" = run the dispatch cascade (label → keyword → triage) per event.
+    // Any value other than "inline" activates validateDataLayerConfig, which then
+    // requires DATABASE_URL + VALKEY_URL + DAEMON_AUTH_TOKEN.
     // Canonical target names per DispatchTarget enum + "auto" as a mode.
     agentJobMode: z
       .enum(["inline", "daemon", "shared-runner", "isolated-job", "auto"])
       .default("inline"),
+
     // Per-event fallback when triage is sub-threshold or errored. Must be a
     // concrete DispatchTarget (never "auto"). "inline" is rejected when
     // agentJobMode === "auto" (enforced in superRefine) because falling
@@ -107,44 +150,84 @@ const configSchema = z
       .enum(["inline", "daemon", "shared-runner", "isolated-job"])
       .default("shared-runner"),
 
-    // --- K8s Job spawner (shared-runner + isolated-job) ---
+    // --- 7. K8s Job spawner (isolated-job target) ---
+
+    // K8s namespace for the spawned Job. The spawning pod's ServiceAccount must
+    // hold create/get/list/delete on jobs/pods in this namespace or job spawn fails.
     jobNamespace: z.string().default("github-app"),
+
+    // Container image for the isolated-job Pod. When unset, falls back to the
+    // literal "github-app-playground:local" (see src/k8s/job-spawner.ts). Must be
+    // pullable by the cluster's image registry. Used only by the isolated-job target.
     jobImage: z.string().optional(),
+
+    // K8s Job.ttlSecondsAfterFinished: cluster GC's the Pod after success/failure.
+    // Set too low and `kubectl logs <pod>` fails before logs can be retrieved.
     jobTtlSeconds: z.coerce.number().int().positive().default(300),
+
     // K8s `activeDeadlineSeconds` — hard wall-clock ceiling on an isolated-
     // job run. K8s enforces server-side; the app-side watcher polls status
     // and, on timeout, deletes the Job, writes a `status="timeout"`
     // execution row, and releases the in-flight slot. Keep strictly below
     // the installation-token TTL (GitHub: 3600s).
     jobActiveDeadlineSeconds: z.coerce.number().int().positive().max(3500).default(1800),
+
     // Client-side poll interval used by `watchJobCompletion`. Too-frequent
     // polling burns K8s API budget; too-slow polling delays releaseInFlight
     // past true completion and causes the capacity gate to under-provision.
     jobWatchPollIntervalMs: z.coerce.number().int().positive().default(5000),
+
+    // --- 8. Shared-runner HTTP target ---
+
     // Internal HTTP endpoint for the shared-runner pool. Required when
     // agentJobMode is "shared-runner" or "auto" (enforced in superRefine).
     internalRunnerUrl: z.url().optional(),
 
-    // --- Data layer ---
+    // Shared secret sent on the `X-Internal-Token` header by the dispatcher
+    // (src/k8s/shared-runner-dispatcher.ts) and validated by the remote
+    // shared-runner service's own auth middleware (out-of-tree; lives in the
+    // deployment that serves `internalRunnerUrl`). Rotating this requires
+    // restarting both sides; the dispatcher caches it at boot.
+    internalRunnerToken: z.string().optional(),
+
+    // ADR-011 reserved slot for a future second token (e.g. signed JWT).
+    // Declared in the schema but NO CODE PATH READS IT today — not referenced
+    // by any refinement and not consumed by the shared-runner dispatcher.
+    // `internalRunnerToken` is the working knob; setting a value here has no
+    // runtime effect.
+    sharedRunnerToken: z.string().optional(),
+
+    // --- 9. Data layer ---
+
+    // Required iff agentJobMode !== "inline" (see validateDataLayerConfig).
+    // `valkeyUrl` backs the isolated-job pending queue + in-flight set and the
+    // daemon job queue. `databaseUrl` backs the `executions` + `triage_results`
+    // + `dispatch_decisions` tables.
     valkeyUrl: z.string().optional(),
     databaseUrl: z.string().optional(),
 
-    // --- Orchestrator ---
+    // --- 10. Orchestrator ---
+
+    // Orchestrator WebSocket listener port. Bound ONLY in server mode
+    // (src/orchestrator/ws-server.ts). Daemons connect OUT to this port; they do
+    // not bind. Must differ from `port` to avoid a collision in single-process mode.
     wsPort: z.coerce.number().int().positive().default(3002),
+
+    // Placeholder — parsed and validated, but NOT READ anywhere in code today.
+    // No breach check, no persistence, no enforcement — setting this has no
+    // runtime effect. The `executions.cost_usd` column records the agent's
+    // self-reported `total_cost_usd` from the SDK, NOT this config value.
     jobMaxCostUsd: z.coerce.number().positive().default(80),
 
-    // --- Shared runner auth (ADR-011) ---
-    sharedRunnerToken: z.string().optional(),
-    internalRunnerToken: z.string().optional(),
+    // --- 11. Daemon / Orchestrator WebSocket (Phase 2) ---
 
-    // --- Daemon / Orchestrator (Phase 2) ---
+    // Shared secret for the daemon ⇄ orchestrator WebSocket handshake. A mismatch
+    // on either side rejects the connection. Required when agentJobMode !== "inline".
     daemonAuthToken: z.string().optional(),
-    heartbeatIntervalMs: z.coerce.number().int().positive().default(30_000),
-    heartbeatTimeoutMs: z.coerce.number().int().positive().default(90_000),
-    staleExecutionThresholdMs: z.coerce.number().int().positive().default(600_000),
-    daemonDrainTimeoutMs: z.coerce.number().int().positive().default(300_000),
-    jobMaxRetries: z.coerce.number().int().nonnegative().default(3),
-    offerTimeoutMs: z.coerce.number().int().positive().default(5_000),
+
+    // Presence of ORCHESTRATOR_URL flips the process from SERVER mode to
+    // DAEMON mode: the webhook HTTP server does NOT start and GitHub App
+    // credentials are not required. Must be ws:// or wss:// (validated below).
     orchestratorUrl: z
       .string()
       .optional()
@@ -157,35 +240,91 @@ const configSchema = z
           return false;
         }
       }, "ORCHESTRATOR_URL must be a valid ws:// or wss:// URL"),
+
+    // Daemon ping cadence. Paired with heartbeatTimeoutMs — orchestrator evicts
+    // a daemon that misses heartbeats past the timeout. Keep `timeoutMs ≥ 2 ×
+    // intervalMs` to tolerate one dropped packet.
+    heartbeatIntervalMs: z.coerce.number().int().positive().default(30_000),
+    heartbeatTimeoutMs: z.coerce.number().int().positive().default(90_000),
+
+    // How long an execution may sit in status="running" before the watcher treats
+    // it as abandoned and marks it failed. Should generally be ≥ agentTimeoutMs
+    // so a legitimate long run isn't reaped mid-flight; the built-in default
+    // equals agentTimeoutMs (both 600_000ms), which is the minimum safe setting.
+    staleExecutionThresholdMs: z.coerce.number().int().positive().default(600_000),
+
+    // Post-SIGTERM window the daemon uses to finish in-flight work before
+    // force-exit. The default (300_000ms) is intentionally shorter than
+    // agentTimeoutMs — operators who want to guarantee no mid-run kills on
+    // graceful shutdown should raise this to ≥ agentTimeoutMs.
+    daemonDrainTimeoutMs: z.coerce.number().int().positive().default(300_000),
+
+    // Retries for TRANSIENT daemon dispatch failures only. FR-021 forbids retry
+    // on isolated-job failures, so the isolated-job path ignores this knob entirely.
+    jobMaxRetries: z.coerce.number().int().nonnegative().default(3),
+
+    // How long the orchestrator waits for a daemon in the pool to claim a job
+    // offer before falling through to the next dispatch target.
+    offerTimeoutMs: z.coerce.number().int().positive().default(5_000),
+
+    // Advisory hint REPORTED to the orchestrator after an update signal. The
+    // daemon itself always calls initiateGracefulShutdown() regardless of value
+    // (src/daemon/main.ts) — the orchestrator is the actual consumer.
     daemonUpdateStrategy: z.enum(["exit", "pull", "notify"]).default("exit"),
+
+    // Delay before the daemon initiates shutdown after receiving an update signal.
+    // Gives the orchestrator room to drain in-flight offers before the daemon disconnects.
     daemonUpdateDelayMs: z.coerce.number().int().nonnegative().default(0),
+
+    // Placeholder — declared in the schema but NEVER READ anywhere in code.
+    // Setting true/false has no runtime effect today.
     daemonEphemeral: z.boolean().default(false),
+
+    // Minimum free resource gates published in the daemon's heartbeat. The
+    // orchestrator refuses to dispatch to a daemon that reports below either floor.
     daemonMemoryFloorMb: z.coerce.number().int().nonnegative().default(512),
     daemonDiskFloorMb: z.coerce.number().int().nonnegative().default(1024),
 
-    // --- Triage pre-classifier (auto mode) ---
+    // --- 12. Triage pre-classifier (auto mode) ---
+
+    // Kill-switch for the triage LLM call. When false, the router skips the call
+    // and falls back to defaultDispatchTarget with dispatchReason="triage-error-fallback"
+    // (src/orchestrator/triage.ts). Flip to false during a triage provider incident
+    // to suppress cost without redeploying.
     triageEnabled: z.boolean().default(true),
+
+    // Model ID for the single-turn triage call via src/ai/llm-client.ts. Affects
+    // triage latency/cost only — does NOT change the main agent's model.
     triageModel: z.string().default("haiku-3-5"),
+
     // Per /speckit.clarify Q5 — strict (1.0) on day 1 so only perfectly
     // confident triage decisions are accepted; below threshold falls back
     // to defaultDispatchTarget.
     triageConfidenceThreshold: z.coerce.number().min(0).max(1).default(1.0),
+
+    // Cap on the triage JSON response. The response schema is small (~60 tokens),
+    // so values much above 100 are waste and only risk letting a malformed
+    // response chew budget.
     triageMaxTokens: z.coerce.number().int().positive().default(256),
+
     // Hard cap per triage LLM call. Beyond this, the call is treated as a
     // failure and the circuit breaker's consecutive-failure counter increments.
     triageTimeoutMs: z.coerce.number().int().positive().default(5_000),
 
-    // --- Complexity → maxTurns mapping (FR-008a) ---
-    // Each env var is independently operator-configurable. The router maps
-    // the triage complexity field to one of the three specific values below;
-    // if triage is skipped or returns an unknown complexity, DEFAULT_MAXTURNS
-    // is used instead.
+    // --- 13. Complexity → maxTurns mapping (FR-008a) ---
+    // Applied ONLY on the triage-success branch of decideDispatch (triage
+    // parsed AND confidence ≥ threshold) — see src/webhook/router.ts. On every
+    // other router branch (deterministic label/keyword hit, sub-threshold
+    // triage, triage error, static mode, inline) the router returns
+    // `defaultMaxTurns`; `agentMaxTurns` is NOT consulted in the router path.
+    // Each env var is independently operator-configurable.
     triageMaxTurnsTrivial: z.coerce.number().int().positive().default(10),
     triageMaxTurnsModerate: z.coerce.number().int().positive().default(30),
     triageMaxTurnsComplex: z.coerce.number().int().positive().default(50),
     defaultMaxTurns: z.coerce.number().int().positive().default(30),
 
-    // --- Isolated-job capacity back-pressure (FR-018, US3) ---
+    // --- 14. Isolated-job capacity back-pressure (FR-018, US3) ---
+
     // Ceiling on the Redis set dispatch:isolated-job:in-flight. Requests
     // above this cap enqueue on the pending list (below) until a slot frees.
     maxConcurrentIsolatedJobs: z.coerce.number().int().positive().default(3),
@@ -386,17 +525,6 @@ export type Config = z.infer<typeof configSchema>;
 export { configSchema };
 
 /**
- * ToS guard: CLAUDE_CODE_OAUTH_TOKEN is a personal Max/Pro subscription credential.
- * The Agent SDK Note prohibits serving other users' repos from that quota, so OAuth
- * mode requires an owner allowlist as a hard startup precondition — not just a
- * documentation warning. API-key deployments remain unrestricted (in-policy for
- * pay-as-you-go). See https://code.claude.com/docs/en/agent-sdk/overview
- *
- * Lives outside `.superRefine` so the schema stays lean and the policy rule is
- * expressed as one clear assertion — exported so tests can exercise it directly
- * against a parsed `Config` without round-tripping env vars.
- */
-/**
  * Isolated-job dispatch requires Kubernetes API auth — either in-cluster
  * (KUBERNETES_SERVICE_HOST injected by the pod spec) or out-of-cluster
  * (KUBECONFIG path to a kubeconfig file). If neither is present when the
@@ -421,6 +549,17 @@ export function warnIfIsolatedJobWithoutKubernetesAuth(cfg: Config): void {
   );
 }
 
+/**
+ * ToS guard: CLAUDE_CODE_OAUTH_TOKEN is a personal Max/Pro subscription credential.
+ * The Agent SDK Note prohibits serving other users' repos from that quota, so OAuth
+ * mode requires an owner allowlist as a hard startup precondition — not just a
+ * documentation warning. API-key deployments remain unrestricted (in-policy for
+ * pay-as-you-go). See https://code.claude.com/docs/en/agent-sdk/overview
+ *
+ * Lives outside `.superRefine` so the schema stays lean and the policy rule is
+ * expressed as one clear assertion — exported so tests can exercise it directly
+ * against a parsed `Config` without round-tripping env vars.
+ */
 export function assertOauthRequiresAllowlist(cfg: Config): void {
   if (
     cfg.provider === "anthropic" &&
@@ -455,13 +594,20 @@ export function parseBooleanEnv(name: string, raw: string | undefined): boolean 
  */
 function loadConfig(): Config {
   const cfg = configSchema.parse({
+    // Group 1 — GitHub App credentials
     appId: process.env["GITHUB_APP_ID"],
     privateKey: process.env["GITHUB_APP_PRIVATE_KEY"],
     webhookSecret: process.env["GITHUB_WEBHOOK_SECRET"],
+
+    // Group 2 — AI provider selection
     provider: process.env["CLAUDE_PROVIDER"],
+    model: process.env["CLAUDE_MODEL"],
+
+    // Group 3 — Anthropic direct-API credentials
     anthropicApiKey: process.env["ANTHROPIC_API_KEY"],
     claudeCodeOauthToken: process.env["CLAUDE_CODE_OAUTH_TOKEN"],
-    model: process.env["CLAUDE_MODEL"],
+
+    // Group 4 — AWS Bedrock credentials
     awsRegion: process.env["AWS_REGION"],
     awsProfile: process.env["AWS_PROFILE"],
     awsAccessKeyId: process.env["AWS_ACCESS_KEY_ID"],
@@ -469,8 +615,11 @@ function loadConfig(): Config {
     awsSessionToken: process.env["AWS_SESSION_TOKEN"],
     awsBearerTokenBedrock: process.env["AWS_BEARER_TOKEN_BEDROCK"],
     anthropicBedrockBaseUrl: process.env["ANTHROPIC_BEDROCK_BASE_URL"],
+
+    // Group 5 — App runtime / behaviour
     context7ApiKey: process.env["CONTEXT7_API_KEY"],
     cloneBaseDir: process.env["CLONE_BASE_DIR"],
+    cloneDepth: process.env["CLONE_DEPTH"],
     triggerPhrase: process.env["TRIGGER_PHRASE"],
     port: process.env["PORT"],
     logLevel: process.env["LOG_LEVEL"],
@@ -478,63 +627,62 @@ function loadConfig(): Config {
     maxConcurrentRequests: process.env["MAX_CONCURRENT_REQUESTS"],
     agentTimeoutMs: process.env["AGENT_TIMEOUT_MS"],
     agentMaxTurns: process.env["AGENT_MAX_TURNS"],
-    cloneDepth: process.env["CLONE_DEPTH"],
     claudeCodePath: process.env["CLAUDE_CODE_PATH"],
     allowedOwners: process.env["ALLOWED_OWNERS"],
 
-    // Dispatch mode
+    // Group 6 — Dispatch mode
     agentJobMode: process.env["AGENT_JOB_MODE"],
     defaultDispatchTarget: process.env["DEFAULT_DISPATCH_TARGET"],
 
-    // K8s Job spawner + shared-runner
+    // Group 7 — K8s Job spawner (isolated-job target)
     jobNamespace: process.env["JOB_NAMESPACE"],
     jobImage: process.env["JOB_IMAGE"],
     jobTtlSeconds: process.env["JOB_TTL_SECONDS"],
     jobActiveDeadlineSeconds: process.env["JOB_ACTIVE_DEADLINE_SECONDS"],
     jobWatchPollIntervalMs: process.env["JOB_WATCH_POLL_INTERVAL_MS"],
-    internalRunnerUrl: process.env["INTERNAL_RUNNER_URL"],
 
-    // Data layer
+    // Group 8 — Shared-runner HTTP target
+    internalRunnerUrl: process.env["INTERNAL_RUNNER_URL"],
+    internalRunnerToken: process.env["INTERNAL_RUNNER_TOKEN"],
+    sharedRunnerToken: process.env["SHARED_RUNNER_TOKEN"],
+
+    // Group 9 — Data layer
     valkeyUrl: process.env["VALKEY_URL"],
     databaseUrl: process.env["DATABASE_URL"],
 
-    // Orchestrator
+    // Group 10 — Orchestrator
     wsPort: process.env["WS_PORT"],
     jobMaxCostUsd: process.env["JOB_MAX_COST_USD"],
 
-    // Shared runner auth
-    sharedRunnerToken: process.env["SHARED_RUNNER_TOKEN"],
-    internalRunnerToken: process.env["INTERNAL_RUNNER_TOKEN"],
-
-    // Daemon / Orchestrator
+    // Group 11 — Daemon / Orchestrator WebSocket
     daemonAuthToken: process.env["DAEMON_AUTH_TOKEN"],
+    orchestratorUrl: process.env["ORCHESTRATOR_URL"],
     heartbeatIntervalMs: process.env["HEARTBEAT_INTERVAL_MS"],
     heartbeatTimeoutMs: process.env["HEARTBEAT_TIMEOUT_MS"],
     staleExecutionThresholdMs: process.env["STALE_EXECUTION_THRESHOLD_MS"],
     daemonDrainTimeoutMs: process.env["DAEMON_DRAIN_TIMEOUT_MS"],
     jobMaxRetries: process.env["JOB_MAX_RETRIES"],
     offerTimeoutMs: process.env["OFFER_TIMEOUT_MS"],
-    orchestratorUrl: process.env["ORCHESTRATOR_URL"],
     daemonUpdateStrategy: process.env["DAEMON_UPDATE_STRATEGY"],
     daemonUpdateDelayMs: process.env["DAEMON_UPDATE_DELAY_MS"],
     daemonEphemeral: parseBooleanEnv("DAEMON_EPHEMERAL", process.env["DAEMON_EPHEMERAL"]),
     daemonMemoryFloorMb: process.env["DAEMON_MEMORY_FLOOR_MB"],
     daemonDiskFloorMb: process.env["DAEMON_DISK_FLOOR_MB"],
 
-    // Triage — strict boolean parsing; rejects unrecognized values at startup.
+    // Group 12 — Triage — strict boolean parsing; rejects unrecognized values at startup.
     triageEnabled: parseBooleanEnv("TRIAGE_ENABLED", process.env["TRIAGE_ENABLED"]),
     triageModel: process.env["TRIAGE_MODEL"],
     triageConfidenceThreshold: process.env["TRIAGE_CONFIDENCE_THRESHOLD"],
     triageMaxTokens: process.env["TRIAGE_MAX_TOKENS"],
     triageTimeoutMs: process.env["TRIAGE_TIMEOUT_MS"],
 
-    // Complexity → maxTurns (FR-008a)
+    // Group 13 — Complexity → maxTurns (FR-008a)
     triageMaxTurnsTrivial: process.env["TRIAGE_MAXTURNS_TRIVIAL"],
     triageMaxTurnsModerate: process.env["TRIAGE_MAXTURNS_MODERATE"],
     triageMaxTurnsComplex: process.env["TRIAGE_MAXTURNS_COMPLEX"],
     defaultMaxTurns: process.env["DEFAULT_MAXTURNS"],
 
-    // Isolated-job capacity back-pressure (US3)
+    // Group 14 — Isolated-job capacity back-pressure (US3)
     maxConcurrentIsolatedJobs: process.env["MAX_CONCURRENT_ISOLATED_JOBS"],
     pendingIsolatedJobQueueMax: process.env["PENDING_ISOLATED_JOB_QUEUE_MAX"],
   });
