@@ -95,9 +95,13 @@ const configSchema = z
     // Set via AGENT_TIMEOUT_MS env var (default: 10 minutes).
     agentTimeoutMs: z.coerce.number().int().positive().default(600_000),
 
-    // Override max turns for the Claude Agent SDK. When set, wins over
-    // `defaultMaxTurns` but LOSES to triage-derived turns on successful triage.
-    // Leave unset to let the complexity → maxTurns mapping decide.
+    // Override max turns for the Claude Agent SDK, used as a FALLBACK ONLY on
+    // two code paths: (a) src/orchestrator/connection-handler.ts when the
+    // daemon receives a job with no router-supplied maxTurns, and (b)
+    // src/core/executor.ts when invoked without an explicit `maxTurns`
+    // argument. The webhook router (decideDispatch) does NOT read this — on
+    // every non-triage-success branch it returns `defaultMaxTurns`, so
+    // AGENT_MAX_TURNS does not shift the router-driven per-request budget.
     // Set via AGENT_MAX_TURNS env var.
     agentMaxTurns: z.coerce.number().int().positive().optional(),
 
@@ -179,9 +183,11 @@ const configSchema = z
     // agentJobMode is "shared-runner" or "auto" (enforced in superRefine).
     internalRunnerUrl: z.url().optional(),
 
-    // Bearer token sent on `X-Internal-Token` by the dispatcher and validated by
-    // the shared-runner's own middleware (src/k8s/shared-runner-dispatcher.ts).
-    // Rotating this requires restarting both sides; the dispatcher caches it at boot.
+    // Shared secret sent on the `X-Internal-Token` header by the dispatcher
+    // (src/k8s/shared-runner-dispatcher.ts) and validated by the remote
+    // shared-runner service's own auth middleware (out-of-tree; lives in the
+    // deployment that serves `internalRunnerUrl`). Rotating this requires
+    // restarting both sides; the dispatcher caches it at boot.
     internalRunnerToken: z.string().optional(),
 
     // ADR-011 reserved slot for a future second token (e.g. signed JWT).
@@ -207,8 +213,10 @@ const configSchema = z
     // not bind. Must differ from `port` to avoid a collision in single-process mode.
     wsPort: z.coerce.number().int().positive().default(3002),
 
-    // Placeholder — captured on the result row but NEVER CHECKED OR ENFORCED today.
-    // Setting this does nothing in the current codebase.
+    // Placeholder — parsed and validated, but NOT READ anywhere in code today.
+    // No breach check, no persistence, no enforcement — setting this has no
+    // runtime effect. The `executions.cost_usd` column records the agent's
+    // self-reported `total_cost_usd` from the SDK, NOT this config value.
     jobMaxCostUsd: z.coerce.number().positive().default(80),
 
     // --- 11. Daemon / Orchestrator WebSocket (Phase 2) ---
@@ -240,11 +248,15 @@ const configSchema = z
     heartbeatTimeoutMs: z.coerce.number().int().positive().default(90_000),
 
     // How long an execution may sit in status="running" before the watcher treats
-    // it as abandoned and marks it failed. Must exceed agentTimeoutMs.
+    // it as abandoned and marks it failed. Should generally be ≥ agentTimeoutMs
+    // so a legitimate long run isn't reaped mid-flight; the built-in default
+    // equals agentTimeoutMs (both 600_000ms), which is the minimum safe setting.
     staleExecutionThresholdMs: z.coerce.number().int().positive().default(600_000),
 
     // Post-SIGTERM window the daemon uses to finish in-flight work before
-    // force-exit. Set ≥ agentTimeoutMs to avoid mid-run kills on graceful shutdown.
+    // force-exit. The default (300_000ms) is intentionally shorter than
+    // agentTimeoutMs — operators who want to guarantee no mid-run kills on
+    // graceful shutdown should raise this to ≥ agentTimeoutMs.
     daemonDrainTimeoutMs: z.coerce.number().int().positive().default(300_000),
 
     // Retries for TRANSIENT daemon dispatch failures only. FR-021 forbids retry
@@ -300,8 +312,11 @@ const configSchema = z
     triageTimeoutMs: z.coerce.number().int().positive().default(5_000),
 
     // --- 13. Complexity → maxTurns mapping (FR-008a) ---
-    // Applied ONLY when triage succeeds AND confidence ≥ threshold. Otherwise
-    // the router uses agentMaxTurns (if set) else defaultMaxTurns.
+    // Applied ONLY on the triage-success branch of decideDispatch (triage
+    // parsed AND confidence ≥ threshold) — see src/webhook/router.ts. On every
+    // other router branch (deterministic label/keyword hit, sub-threshold
+    // triage, triage error, static mode, inline) the router returns
+    // `defaultMaxTurns`; `agentMaxTurns` is NOT consulted in the router path.
     // Each env var is independently operator-configurable.
     triageMaxTurnsTrivial: z.coerce.number().int().positive().default(10),
     triageMaxTurnsModerate: z.coerce.number().int().positive().default(30),
