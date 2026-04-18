@@ -32,7 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Targeted upgrade keeps rebuilds reproducible; CI Trivy gate catches new flags.
 RUN apt-get update && \
   apt-get upgrade -y --no-install-recommends \
-    openssl libssl3t64 openssl-provider-legacy && \
+  openssl libssl3t64 openssl-provider-legacy && \
   rm -rf /var/lib/apt/lists/*
 
 # NodeSource node_20.x bundles npm 10.x with HIGH-CVE vendored deps (tar,
@@ -41,7 +41,7 @@ RUN apt-get update && \
 RUN npm install -g npm@11
 
 # Claude Code CLI required by @anthropic-ai/claude-agent-sdk.
-RUN npm install -g @anthropic-ai/claude-code@2.1.101
+RUN npm install -g @anthropic-ai/claude-code@2.1.114
 
 # Stage: Build — install all deps and bundle the main app.
 FROM base AS development
