@@ -53,7 +53,6 @@ const CLI_TOOL_NAMES = [
   "gh",
   "gcloud",
   "az",
-  "oc",
   // Kubernetes
   "kubectl",
   "helm",
