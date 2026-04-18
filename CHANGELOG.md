@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/chrisleekr/github-app-playground/compare/v1.1.0...v1.1.1) (2026-04-18)
+
+
+### Bug Fixes
+
+* **deploy:** set NODE_ENV=production during build and bundle daemon entrypoint ([#31](https://github.com/chrisleekr/github-app-playground/issues/31)) ([87ae7e2](https://github.com/chrisleekr/github-app-playground/commit/87ae7e2b2a3b30bca3401121346f50ddfded059f))
+
 # [1.1.0](https://github.com/chrisleekr/github-app-playground/compare/v1.0.0...v1.1.0) (2026-04-17)
 
 
