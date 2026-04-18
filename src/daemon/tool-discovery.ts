@@ -2,13 +2,22 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, statfsSync } from "node:fs";
 import { cpus, freemem, hostname, platform, totalmem } from "node:os";
 
-import { logger } from "../logger";
 import {
   type DaemonCapabilities,
   daemonCapabilitiesSchema,
   type DaemonResources,
   type DiscoveredTool,
 } from "../shared/daemon-types";
+
+// Minimal logger shape used by this module. We avoid importing `../logger` at
+// the top level because it transitively loads `../config`, which runs Zod
+// validation at import time and requires runtime secrets. The build-time
+// manifest generator (scripts/generate-capabilities-manifest.ts) imports
+// `probeStaticCapabilities` from this file and must not pull in app config.
+interface ToolDiscoveryLogger {
+  warn: (obj: Record<string, unknown>, msg: string) => void;
+  debug: (obj: Record<string, unknown>, msg: string) => void;
+}
 
 const SUPPORTED_PLATFORMS = ["linux", "darwin", "win32"] as const;
 type SupportedPlatform = (typeof SUPPORTED_PLATFORMS)[number];
@@ -274,7 +283,7 @@ export interface StaticDaemonCapabilities {
   containerRuntime: StaticContainerRuntime | null;
 }
 
-function loadStaticManifest(): StaticDaemonCapabilities | null {
+function loadStaticManifest(logger: ToolDiscoveryLogger): StaticDaemonCapabilities | null {
   try {
     if (!existsSync(STATIC_MANIFEST_PATH)) return null;
 
@@ -331,7 +340,10 @@ export async function probeStaticCapabilities(): Promise<StaticDaemonCapabilitie
  * when the manifest is absent (dev loop, locally built image).
  */
 export async function discoverCapabilities(cloneBaseDir: string): Promise<DaemonCapabilities> {
-  const bakedManifest = loadStaticManifest();
+  // Lazy import: see ToolDiscoveryLogger comment above for why this cannot
+  // be a top-level import.
+  const { logger } = await import("../logger");
+  const bakedManifest = loadStaticManifest(logger);
   const staticCaps = bakedManifest ?? (await probeStaticCapabilities());
 
   const resources = getCurrentResources();
