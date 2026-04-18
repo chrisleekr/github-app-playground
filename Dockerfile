@@ -52,6 +52,10 @@ RUN npm install -g @anthropic-ai/claude-code@2.1.101
 # Stage 1: Build — install all deps and bundle the main app
 FROM base AS development
 ENV HUSKY=0
+# Bun's bundler inlines `process.env.NODE_ENV` at build time and defaults to
+# "development" when unset, which causes dist/app.js to require `pino-pretty`
+# (a devDependency absent from the production image) via src/logger.ts.
+ENV NODE_ENV=production
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 COPY . .
