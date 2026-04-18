@@ -63,4 +63,25 @@ if (!jobEntrypointResult.success) {
   process.exit(1);
 }
 
+// Build 4: Daemon worker entry point — outputs dist/daemon/main.js
+// Invoked by the chart's daemon Deployment via `bun run dist/daemon/main.js`.
+// Self-contained bundle (splitting: false) since the daemon runs as its own process.
+const daemonResult = await Bun.build({
+  entrypoints: ["./src/daemon/main.ts"],
+  outdir: "./dist/daemon",
+  target: "bun",
+  minify: isProduction,
+  sourcemap: isProduction ? "external" : "inline",
+  splitting: false,
+  naming: "main.js",
+});
+
+if (!daemonResult.success) {
+  console.error("Build failed (daemon):");
+  for (const log of daemonResult.logs) {
+    console.error(log);
+  }
+  process.exit(1);
+}
+
 console.log("Build completed successfully");

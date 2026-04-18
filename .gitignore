@@ -99,6 +99,7 @@ Thumbs.db
 
 mcp-config.json
 
+.claude/scheduled_tasks.lock
 
 # Spec Kit — ephemeral/local artifacts only
 .specify/extensions/.cache/
