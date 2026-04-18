@@ -319,6 +319,11 @@ export function resolveAllowedTools(
       tools.push(`Bash(${daemonCapabilities.containerRuntime.name}:*)`);
     }
 
+    // Scope-narrowed sudoers rule in Dockerfile.daemon lets the `bun` user run
+    // ONLY `apt-get update` and `apt-get install -y <pkg>`; the allow-list
+    // matches that scope so the audit story is clean.
+    tools.push("Bash(sudo apt-get:*)");
+
     // Daemon capabilities MCP tool
     tools.push("mcp__daemon_capabilities__query_daemon_capabilities");
 
@@ -360,6 +365,19 @@ You are running on a daemon worker process with the following environment:
 Platform: ${platform} | Shells: ${shellNames.join(", ") || "none"} | Package managers: ${pkgMgrs.join(", ") || "none"}
 CLI tools: ${tools.join(", ") || "none"} | Container runtime: ${containerStatus}
 Resources: ${resources.cpuCount} CPUs, ${resources.memoryFreeMb}MB free memory, ${resources.diskFreeMb}MB free disk
+
+## On-Demand Package Installation
+
+This daemon has full autonomous \`apt-get\` access. If a tool you need is not in
+the baked inventory above, you MAY install it before proceeding:
+
+  sudo apt-get update
+  sudo apt-get install -y <package>
+
+Configured apt sources: Debian trixie, NodeSource, GitHub CLI, Microsoft
+(azure-cli), Charmbracelet, MongoDB, Google Cloud SDK. Install only packages
+required to complete the task; do not install speculative extras. Record any
+install in your tracking comment so reviewers see what was added at job-time.
 </daemon_environment>
 `.trim();
 }

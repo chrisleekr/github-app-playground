@@ -1,16 +1,27 @@
 # Reusable image builder. No checks, no release — orchestrators invoke this
 # via workflow_call after gating on ci.yml + semantic-release.
 #
+# Ships TWO images per release:
+#   - chrisleekr/github-app-playground:<tag>-orchestrator  (lean, webhook server)
+#   - chrisleekr/github-app-playground:<tag>-daemon        (rich, Claude worker)
+# Orchestrator additionally publishes a bare `<tag>` alias so existing
+# consumers that pull `chrisleekr/github-app-playground:<version>` keep working.
+# `:latest` is published on prod releases only, on the orchestrator variant.
+#
 # Multi-platform via the documented split-and-merge pattern:
 #   https://docs.docker.com/build/ci/github-actions/multi-platform/#distribute-build-across-multiple-runners
-# - amd64 builds on ubuntu-latest (x86_64)
+# - amd64 builds on ubuntu-24.04 (x86_64)
 # - arm64 builds on ubuntu-24.04-arm (free for public repos:
 #     https://github.blog/changelog/2025-01-16-linux-arm64-hosted-runners-now-available-for-free-in-public-repositories-public-preview/)
-# - Each platform pushes by digest only; merge job assembles the manifest list.
-# - GHA cache is scoped per arch so amd64 and arm64 don't trample each other.
+# - Runners are explicitly pinned (not `ubuntu-latest`) so the rolling alias
+#   can't silently flip to 26.04 and break the build.
+# - Each (arch, variant) leg pushes by digest only; merge job assembles the
+#   manifest list per variant.
+# - GHA cache is scoped per (arch, variant) so the four legs don't trample
+#   each other.
 #
-# Trivy scans the assembled manifest tag with the existing time-boxed
-# .trivyignore.yaml allowlist.
+# Trivy scans each (arch, variant) manifest tag separately with the existing
+# time-boxed .trivyignore.yaml allowlist.
 #
 # Defense-in-depth: every workflow input that flows into a `run:` block is
 # passed through `env:` first to prevent script-injection at YAML-render time.
@@ -42,45 +53,58 @@ on:
 
 permissions:
   contents: read
-  security-events: write # Required: upload Trivy SARIF to GitHub Security tab
+  security-events: write
 
 env:
   IMAGE_NAME: chrisleekr/github-app-playground
 
 jobs:
   build:
-    name: Build (${{ matrix.platform }})
+    name: Build (${{ matrix.variant }} / ${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: linux/amd64
-            runner: ubuntu-latest
-            arch: amd64
-          - platform: linux/arm64
-            runner: ubuntu-24.04-arm
-            arch: arm64
+          - {
+              platform: linux/amd64,
+              runner: ubuntu-24.04,
+              arch: amd64,
+              variant: orchestrator,
+              dockerfile: Dockerfile.orchestrator,
+            }
+          - {
+              platform: linux/arm64,
+              runner: ubuntu-24.04-arm,
+              arch: arm64,
+              variant: orchestrator,
+              dockerfile: Dockerfile.orchestrator,
+            }
+          - {
+              platform: linux/amd64,
+              runner: ubuntu-24.04,
+              arch: amd64,
+              variant: daemon,
+              dockerfile: Dockerfile.daemon,
+            }
+          - {
+              platform: linux/arm64,
+              runner: ubuntu-24.04-arm,
+              arch: arm64,
+              variant: daemon,
+              dockerfile: Dockerfile.daemon,
+            }
     steps:
       - name: Checkout source code
         uses: actions/checkout@v6
         with:
-          fetch-depth: 0 # Need tags
+          fetch-depth: 0
 
       - name: Checkout specific tag
         env:
           TAG_NAME: ${{ inputs.tag-name }}
         run: |
-          # workflow_dispatch accepts arbitrary input. Validate TAG_NAME
-          # against the two formats release.config.mjs produces before
-          # using it in git, logs, or downstream steps:
-          #   prod: v<major>.<minor>.<patch>            (e.g. v1.2.0)
-          #   dev:  v<major>.<minor>.<patch>-dev-<sha7>.<N>
-          #                                             (e.g. v1.1.0-dev-5e062a5.1)
-          # Fail fast with a generic message — do not echo the raw value
-          # into logs (defense-in-depth vs ANSI-escape / markdown-bomb
-          # log injection via a malicious dispatch input).
           if ! [[ "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-dev-[0-9a-f]{7}\.[0-9]+)?$ ]]; then
             echo "ERROR: tag-name input does not match the expected format." >&2
             exit 1
@@ -117,13 +141,12 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: Dockerfile
+          file: ${{ matrix.dockerfile }}
           target: production
           platforms: ${{ matrix.platform }}
-          # Push without a tag, by digest only — the merge job tags it.
           outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+          cache-from: type=gha,scope=${{ matrix.arch }}-${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}-${{ matrix.variant }}
           build-args: |
             PACKAGE_VERSION=${{ steps.meta.outputs.package_version }}
             GIT_HASH=${{ steps.meta.outputs.git_hash }}
@@ -139,32 +162,39 @@ jobs:
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:
-          name: digests-${{ matrix.arch }}
+          name: digests-${{ matrix.variant }}-${{ matrix.arch }}
           path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
           retention-days: 1
 
   merge:
-    name: Merge manifest
+    name: Merge manifest (${{ matrix.variant }})
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [orchestrator, daemon]
     outputs:
-      tag: ${{ steps.tag.outputs.tag }}
+      orchestrator-tag: ${{ steps.emit.outputs.orchestrator-tag }}
+      daemon-tag: ${{ steps.emit.outputs.daemon-tag }}
     steps:
       - name: Compute tag
         id: tag
         env:
           TAG_NAME: ${{ inputs.tag-name }}
+          VARIANT: ${{ matrix.variant }}
         run: |
           PACKAGE_VERSION="${TAG_NAME#v}"
-          echo "tag=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "variant_tag=${PACKAGE_VERSION}-${VARIANT}" >> "$GITHUB_OUTPUT"
 
       - name: Download digests
         uses: actions/download-artifact@v4
         with:
           path: ${{ runner.temp }}/digests
-          pattern: digests-*
+          pattern: digests-${{ matrix.variant }}-*
           merge-multiple: true
 
       - name: Set up Docker Buildx
@@ -182,17 +212,14 @@ jobs:
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=${{ steps.tag.outputs.tag }}
-            type=raw,value=latest,enable=${{ inputs.is-dev-release == false }}
+            type=raw,value=${{ steps.tag.outputs.variant_tag }}
+            type=raw,value=${{ steps.tag.outputs.version }},enable=${{ matrix.variant == 'orchestrator' }}
+            type=raw,value=latest,enable=${{ matrix.variant == 'orchestrator' && inputs.is-dev-release == false }}
 
       - name: Create manifest list and push
         working-directory: ${{ runner.temp }}/digests
         env:
           IMAGE: ${{ env.IMAGE_NAME }}
-        # SC2046 intentional: both $(...) substitutions must expand as
-        # space-separated args to `imagetools create` (one -t per tag, one
-        # image ref per digest). Quoting would collapse them into a single
-        # arg and break the command.
         run: |
           # shellcheck disable=SC2046
           docker buildx imagetools create \
@@ -202,26 +229,27 @@ jobs:
       - name: Inspect image
         env:
           IMAGE: ${{ env.IMAGE_NAME }}
-          TAG: ${{ steps.tag.outputs.tag }}
+          TAG: ${{ steps.tag.outputs.variant_tag }}
         run: docker buildx imagetools inspect "${IMAGE}:${TAG}"
 
+      - name: Emit per-variant tag for downstream jobs
+        id: emit
+        env:
+          VARIANT: ${{ matrix.variant }}
+          VARIANT_TAG: ${{ steps.tag.outputs.variant_tag }}
+        run: |
+          echo "${VARIANT}-tag=${VARIANT_TAG}" >> "$GITHUB_OUTPUT"
+
   scan:
-    name: Trivy scan
+    name: Trivy scan (${{ matrix.variant }} / ${{ matrix.arch }})
     needs: merge
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    # Trivy resolves a multi-arch manifest to a SINGLE platform per scan
-    # (defaults to the host's arch when --image-platform is unset). Our
-    # merged tag is a multi-arch manifest covering linux/amd64 and
-    # linux/arm64, so we matrix the scan to explicitly cover both
-    # variants. `fail-fast: false` lets us see findings in both arches
-    # even when one fails. Refs:
-    #   https://github.com/aquasecurity/trivy/discussions/7847
-    #   https://github.com/aquasecurity/trivy-action/issues/279
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         arch: [amd64, arm64]
+        variant: [orchestrator, daemon]
     steps:
       - name: Checkout (for .trivyignore.yaml)
         uses: actions/checkout@v6
@@ -232,24 +260,28 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Scan ${{ matrix.arch }} image with Trivy
+      - name: Resolve image tag for variant
+        id: imgtag
+        env:
+          ORCHESTRATOR_TAG: ${{ needs.merge.outputs.orchestrator-tag }}
+          DAEMON_TAG: ${{ needs.merge.outputs.daemon-tag }}
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          if [ "$VARIANT" = "orchestrator" ]; then
+            echo "tag=$ORCHESTRATOR_TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=$DAEMON_TAG" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@v0.35.0
         env:
-          # trivy-action@v0.35.0 has no `image-platform` input, so we
-          # force platform resolution via Trivy's own env var — the
-          # binary reads `TRIVY_PLATFORM` as the equivalent of
-          # `--platform`. Without this Trivy defaults to the host arch
-          # (amd64 on ubuntu-latest) and never scans the arm64 variant.
           TRIVY_PLATFORM: "linux/${{ matrix.arch }}"
         with:
-          image-ref: "${{ env.IMAGE_NAME }}:${{ needs.merge.outputs.tag }}"
+          image-ref: "${{ env.IMAGE_NAME }}:${{ steps.imgtag.outputs.tag }}"
           format: sarif
-          output: "trivy-results-${{ matrix.arch }}.sarif"
+          output: "trivy-results-${{ matrix.variant }}-${{ matrix.arch }}.sarif"
           severity: CRITICAL,HIGH
-          # Required when format=sarif: without this the action's entrypoint
-          # unsets TRIVY_SEVERITY (so it scans ALL severities) and exit-code
-          # then fires on any finding, not just CRITICAL/HIGH. Reference:
-          # https://github.com/aquasecurity/trivy-action/blob/v0.35.0/entrypoint.sh
           limit-severities-for-sarif: true
           ignore-unfixed: true
           exit-code: "1"
@@ -259,7 +291,5 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
-          sarif_file: "trivy-results-${{ matrix.arch }}.sarif"
-          # Distinct category per arch so the two SARIF uploads from the
-          # matrix legs do not overwrite each other in the Security tab.
-          category: "trivy-container-scan-${{ matrix.arch }}"
+          sarif_file: "trivy-results-${{ matrix.variant }}-${{ matrix.arch }}.sarif"
+          category: "trivy-container-scan-${{ matrix.variant }}-${{ matrix.arch }}"

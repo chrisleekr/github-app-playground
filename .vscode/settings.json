@@ -44,6 +44,7 @@
   "cSpell.words": [
     "AWSECS",
     "AWSS",
+    "behaviour",
     "buildkitd",
     "buildx",
     "bunfig",
@@ -64,6 +65,7 @@
     "isready",
     "localise",
     "loglevel",
+    "MAXTURNS",
     "modelcontextprotocol",
     "oninitialized",
     "pgdata",

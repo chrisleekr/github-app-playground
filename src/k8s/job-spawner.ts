@@ -148,9 +148,7 @@ function buildJobSpec(ctx: BotContext, decision: DispatchDecision, encodedContex
     if (config.awsRegion !== undefined) {
       providerEnv.push({ name: "AWS_REGION", value: config.awsRegion });
     }
-    if (config.model !== undefined) {
-      providerEnv.push({ name: "CLAUDE_MODEL", value: config.model });
-    }
+    providerEnv.push({ name: "CLAUDE_MODEL", value: config.model });
   }
 
   return {

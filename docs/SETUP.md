@@ -524,17 +524,18 @@ See [Amazon Bedrock identity-based policy examples](https://docs.aws.amazon.com/
 
 ### Troubleshooting
 
-| Symptom                               | Check                                                                                                            |
-| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Webhook returns 401/403               | `GITHUB_WEBHOOK_SECRET` must exactly match the value set in app settings (no trailing newline)                   |
-| Bot does not respond                  | Confirm the app is installed on the target repository; check that the subscribed events match the comment type   |
-| `GITHUB_APP_PRIVATE_KEY` error        | Set the full `.pem` contents including `-----BEGIN RSA PRIVATE KEY-----` / `-----END RSA PRIVATE KEY-----` lines |
-| Webhook timeout (> 10 s on GitHub)    | Processing runs async after `200 OK`; check pod logs for errors — GitHub may show timeout but work proceeds      |
-| `ANTHROPIC_API_KEY is required`       | `CLAUDE_PROVIDER` defaults to `anthropic`; set `ANTHROPIC_API_KEY` or switch to `bedrock`                        |
-| `AWS_REGION is required`              | Set `AWS_REGION` when `CLAUDE_PROVIDER=bedrock`                                                                  |
-| `CLAUDE_MODEL is required`            | Bedrock uses a different model ID format; set e.g. `CLAUDE_MODEL=us.anthropic.claude-sonnet-4-6`                 |
-| Bedrock `UnrecognizedClientException` | AWS credentials are missing or expired; verify the credential method in use (see Section 8)                      |
-| Pod OOM killed                        | Reduce `MAX_CONCURRENT_REQUESTS` or increase the memory available to the process                                 |
-| `/readyz` returns 503                 | Server is shutting down (SIGTERM received); a restart is in progress — normal during graceful shutdown           |
-| Clone directory full                  | `CLONE_BASE_DIR` is out of disk space; reduce `MAX_CONCURRENT_REQUESTS` or free up disk                          |
-| Context7 server not active            | `CONTEXT7_API_KEY` is empty or unset; without a key the Context7 MCP server is disabled automatically            |
+| Symptom                               | Check                                                                                                                                         |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Webhook returns 401/403               | `GITHUB_WEBHOOK_SECRET` must exactly match the value set in app settings (no trailing newline)                                                |
+| Bot does not respond                  | Confirm the app is installed on the target repository; check that the subscribed events match the comment type                                |
+| `GITHUB_APP_PRIVATE_KEY` error        | Set the full `.pem` contents including `-----BEGIN RSA PRIVATE KEY-----` / `-----END RSA PRIVATE KEY-----` lines                              |
+| `ERR_OSSL_BAD_END_LINE`               | The single-line `"...\n..."` form (literal backslash+n) is normalized automatically in v1.2.0+ — upgrade if you see this on older deployments |
+| Webhook timeout (> 10 s on GitHub)    | Processing runs async after `200 OK`; check pod logs for errors — GitHub may show timeout but work proceeds                                   |
+| `ANTHROPIC_API_KEY is required`       | `CLAUDE_PROVIDER` defaults to `anthropic`; set `ANTHROPIC_API_KEY` or switch to `bedrock`                                                     |
+| `AWS_REGION is required`              | Set `AWS_REGION` when `CLAUDE_PROVIDER=bedrock`                                                                                               |
+| `CLAUDE_MODEL is required`            | Bedrock uses a different model ID format; set e.g. `CLAUDE_MODEL=us.anthropic.claude-sonnet-4-6`                                              |
+| Bedrock `UnrecognizedClientException` | AWS credentials are missing or expired; verify the credential method in use (see Section 8)                                                   |
+| Pod OOM killed                        | Reduce `MAX_CONCURRENT_REQUESTS` or increase the memory available to the process                                                              |
+| `/readyz` returns 503                 | Server is shutting down (SIGTERM received); a restart is in progress — normal during graceful shutdown                                        |
+| Clone directory full                  | `CLONE_BASE_DIR` is out of disk space; reduce `MAX_CONCURRENT_REQUESTS` or free up disk                                                       |
+| Context7 server not active            | `CONTEXT7_API_KEY` is empty or unset; without a key the Context7 MCP server is disabled automatically                                         |

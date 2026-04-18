@@ -1,0 +1,286 @@
+# syntax=docker/dockerfile:1
+# hadolint global ignore=DL3008,DL3015,DL3059,DL4006
+
+# Daemon image — Claude Code execution worker. Ships with a rich CLI toolchain
+# so Claude's Bash tool can handle arbitrary tasks autonomously, PLUS a
+# scope-narrowed sudoers rule that lets `bun` install additional packages on
+# demand. See Dockerfile.orchestrator for the thin twin.
+#
+# The base/deps/development stages between SHARED-BASE-BEGIN/END are
+# byte-identical to Dockerfile.orchestrator; enforced by
+# scripts/check-dockerfile-base-sync.ts in CI.
+
+# --- SHARED-BASE-BEGIN ---
+FROM oven/bun:1.3.12 AS base
+WORKDIR /app
+
+# Node.js required by Claude Code CLI; git required for repo checkout.
+# GPG-based NodeSource installation (avoids curl-pipe-bash pattern).
+# ca-certificates and gnupg are required for GPG key verification.
+# curl is REQUIRED by the production HEALTHCHECK — do not remove.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  curl git ca-certificates gnupg && \
+  mkdir -p /etc/apt/keyrings && \
+  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+  | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
+  echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" \
+  > /etc/apt/sources.list.d/nodesource.list && \
+  apt-get update && \
+  apt-get install -y --no-install-recommends nodejs && \
+  rm -rf /var/lib/apt/lists/*
+
+# Base-image CVE patches: oven/bun:1.3.12 bakes in openssl 3.5.4-1~deb13u2.
+# Targeted upgrade keeps rebuilds reproducible; CI Trivy gate catches new flags.
+RUN apt-get update && \
+  apt-get upgrade -y --no-install-recommends \
+    openssl libssl3t64 openssl-provider-legacy && \
+  rm -rf /var/lib/apt/lists/*
+
+# NodeSource node_20.x bundles npm 10.x with HIGH-CVE vendored deps (tar,
+# minimatch, glob, cross-spawn, brace-expansion). npm 11.x ships patched
+# vendored deps. Tracks 11.x major (unlike the exact pins elsewhere).
+RUN npm install -g npm@11
+
+# Claude Code CLI required by @anthropic-ai/claude-agent-sdk.
+RUN npm install -g @anthropic-ai/claude-code@2.1.101
+
+# Stage: Build — install all deps and bundle the main app.
+FROM base AS development
+ENV HUSKY=0
+# Bun's bundler inlines `process.env.NODE_ENV` at build time and defaults to
+# "development" when unset, which causes dist/app.js to require `pino-pretty`
+# (a devDependency absent from production) via src/logger.ts.
+ENV NODE_ENV=production
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
+COPY . .
+RUN bun run build
+
+# Stage: Production deps only.
+FROM base AS deps
+COPY package.json bun.lock ./
+# --ignore-scripts: husky is a devDependency — skip prepare/postinstall hooks.
+RUN bun install --frozen-lockfile --production --ignore-scripts
+# --- SHARED-BASE-END ---
+
+# -----------------------------------------------------------------------------
+# Stage: daemon-tools — apt packages + third-party repos + sha-pinned binaries
+# -----------------------------------------------------------------------------
+FROM base AS daemon-tools
+ARG TARGETARCH
+ARG INSTALL_GCLOUD=true
+ARG INSTALL_LANGS="go rust"
+
+# Tool versions — bumped together by renovate/dependabot; Trivy gate catches
+# any CVE regressions on the next scan. Verified 2026-04-18.
+ARG KUBECTL_VERSION=v1.35.4
+ARG HELM_VERSION=v4.1.4
+ARG TERRAFORM_VERSION=1.14.8
+ARG AWSCLI_VERSION=2.27.41
+ARG YQ_VERSION=v4.53.2
+ARG ASDF_VERSION=v0.18.1
+ARG NVM_VERSION=v0.40.4
+ARG KUSTOMIZE_VERSION=v5.8.1
+ARG K9S_VERSION=v0.50.18
+ARG STERN_VERSION=v1.33.1
+ARG ARGOCD_VERSION=v3.3.7
+ARG FLUX_VERSION=v2.8.5
+ARG TFLINT_VERSION=v0.61.0
+ARG SHELLCHECK_VERSION=v0.11.0
+ARG HADOLINT_VERSION=v2.14.0
+ARG OC_VERSION=4.18.0
+ARG MKCERT_VERSION=v1.4.4
+ARG GO_VERSION=1.23.5
+ARG POETRY_VERSION=1.8.4
+
+# 1. Debian apt staples + language runtimes + data clients.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      vim nano less tree htop procps lsof strace file sudo \
+      netcat-openbsd dnsutils iputils-ping openssh-client rsync \
+      ripgrep fd-find zsh tmux bat direnv fzf httpie \
+      default-mysql-client postgresql-client redis-tools sqlite3 \
+      python3 python3-pip python3-venv pipx \
+      make build-essential ansible pandoc imagemagick \
+      unzip zip wget \
+      ca-certificates gnupg \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/batcat /usr/local/bin/bat \
+    && ln -sf /usr/bin/fdfind /usr/local/bin/fd
+
+# 2. Third-party apt repos (signed): gh, Microsoft (azure-cli), Charmbracelet
+#    (gum/glow), MongoDB (mongosh), Google Cloud SDK (gated).
+RUN install -m 0755 -d /etc/apt/keyrings && \
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      | tee /etc/apt/keyrings/githubcli-archive-keyring.gpg >/dev/null && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+      > /etc/apt/sources.list.d/github-cli.list && \
+    curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
+      | gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/azure-cli/ trixie main" \
+      > /etc/apt/sources.list.d/azure-cli.list && \
+    curl -fsSL https://repo.charm.sh/apt/gpg.key \
+      | gpg --dearmor -o /etc/apt/keyrings/charm.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" \
+      > /etc/apt/sources.list.d/charm.list && \
+    curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc \
+      | gpg --dearmor -o /etc/apt/keyrings/mongodb.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/mongodb.gpg] https://repo.mongodb.org/apt/debian bookworm/mongodb-org/8.0 main" \
+      > /etc/apt/sources.list.d/mongodb.list && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends gh azure-cli gum glow mongodb-mongosh && \
+    rm -rf /var/lib/apt/lists/*
+
+# 3. Kubernetes + IaC binaries. $TARGETARCH comes from buildx (amd64|arm64).
+# hadolint ignore=DL4001
+RUN set -eux; \
+    curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl" \
+      -o /usr/local/bin/kubectl && chmod +x /usr/local/bin/kubectl; \
+    curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-${TARGETARCH}.tar.gz" \
+      | tar -xz -C /tmp && mv "/tmp/linux-${TARGETARCH}/helm" /usr/local/bin/helm && \
+      rm -rf "/tmp/linux-${TARGETARCH}"; \
+    curl -fsSL "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_${TARGETARCH}.zip" \
+      -o /tmp/terraform.zip && unzip -q /tmp/terraform.zip -d /usr/local/bin/ && \
+      rm /tmp/terraform.zip && chmod +x /usr/local/bin/terraform; \
+    curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_${TARGETARCH}.tar.gz" \
+      | tar -xz -C /usr/local/bin/ && chmod +x /usr/local/bin/kustomize; \
+    K9S_URL="https://github.com/derailed/k9s/releases/download/${K9S_VERSION}/k9s_Linux_${TARGETARCH}.tar.gz"; \
+    curl -fsSL "$K9S_URL" | tar -xz -C /tmp k9s && mv /tmp/k9s /usr/local/bin/ && chmod +x /usr/local/bin/k9s; \
+    curl -fsSL "https://github.com/stern/stern/releases/download/${STERN_VERSION}/stern_${STERN_VERSION#v}_linux_${TARGETARCH}.tar.gz" \
+      | tar -xz -C /tmp stern && mv /tmp/stern /usr/local/bin/ && chmod +x /usr/local/bin/stern; \
+    curl -fsSL "https://github.com/argoproj/argo-cd/releases/download/${ARGOCD_VERSION}/argocd-linux-${TARGETARCH}" \
+      -o /usr/local/bin/argocd && chmod +x /usr/local/bin/argocd; \
+    curl -fsSL "https://github.com/fluxcd/flux2/releases/download/${FLUX_VERSION}/flux_${FLUX_VERSION#v}_linux_${TARGETARCH}.tar.gz" \
+      | tar -xz -C /tmp flux && mv /tmp/flux /usr/local/bin/ && chmod +x /usr/local/bin/flux; \
+    curl -fsSL "https://github.com/terraform-linters/tflint/releases/download/${TFLINT_VERSION}/tflint_linux_${TARGETARCH}.zip" \
+      -o /tmp/tflint.zip && unzip -q /tmp/tflint.zip -d /usr/local/bin/ && rm /tmp/tflint.zip && chmod +x /usr/local/bin/tflint; \
+    curl -fsSL "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_${TARGETARCH}" \
+      -o /usr/local/bin/yq && chmod +x /usr/local/bin/yq
+
+# 4. Linters + misc utilities (shellcheck, hadolint, mkcert). shellcheck ships
+#    an x86_64 tarball for both Debian arches; hadolint uses arch-specific URLs.
+# hadolint ignore=DL4001
+RUN set -eux; \
+    SC_ARCH="x86_64"; [ "${TARGETARCH}" = "arm64" ] && SC_ARCH="aarch64" || true; \
+    curl -fsSL "https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.${SC_ARCH}.tar.xz" \
+      | tar -xJ -C /tmp && mv "/tmp/shellcheck-${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/ && \
+      rm -rf "/tmp/shellcheck-${SHELLCHECK_VERSION}"; \
+    HAD_ARCH="x86_64"; [ "${TARGETARCH}" = "arm64" ] && HAD_ARCH="arm64" || true; \
+    curl -fsSL "https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VERSION}/hadolint-Linux-${HAD_ARCH}" \
+      -o /usr/local/bin/hadolint && chmod +x /usr/local/bin/hadolint; \
+    curl -fsSL "https://dl.filippo.io/mkcert/${MKCERT_VERSION}?for=linux/${TARGETARCH}" \
+      -o /usr/local/bin/mkcert && chmod +x /usr/local/bin/mkcert
+
+# 5. AWS CLI v2 — official installer, arch-aware.
+# hadolint ignore=DL4001
+RUN set -eux; \
+    AWS_ARCH="x86_64"; [ "${TARGETARCH}" = "arm64" ] && AWS_ARCH="aarch64" || true; \
+    curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-${AWS_ARCH}-${AWSCLI_VERSION}.zip" \
+      -o /tmp/awscliv2.zip && unzip -q /tmp/awscliv2.zip -d /tmp && \
+      /tmp/aws/install && rm -rf /tmp/awscliv2.zip /tmp/aws
+
+# 6. OpenShift CLI.
+# hadolint ignore=DL4001
+RUN set -eux; \
+    OC_ARCH=""; [ "${TARGETARCH}" = "arm64" ] && OC_ARCH="-arm64" || true; \
+    curl -fsSL "https://mirror.openshift.com/pub/openshift-v4/${TARGETARCH}/clients/ocp/${OC_VERSION}/openshift-client-linux${OC_ARCH}.tar.gz" \
+      | tar -xz -C /tmp oc && mv /tmp/oc /usr/local/bin/ && chmod +x /usr/local/bin/oc
+
+# 7. uv (astral-sh) + poetry via pipx. Redirect installer output to /usr/local
+#    — /root is mode 700 in oven/bun:1.3.12, unreadable to the final USER bun
+#    (UID 1000), so default $HOME/.local/bin targets would land dead-on-arrival.
+ENV PIPX_HOME=/usr/local/pipx \
+    PIPX_BIN_DIR=/usr/local/bin \
+    UV_INSTALL_DIR=/usr/local/bin \
+    CARGO_HOME=/usr/local/cargo \
+    RUSTUP_HOME=/usr/local/rustup
+ENV PATH="/usr/local/go/bin:/usr/local/cargo/bin:${PATH}"
+# hadolint ignore=DL4001
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
+    pipx install "poetry==${POETRY_VERSION}"
+
+# 8. Language toolchains (gated via INSTALL_LANGS).
+# hadolint ignore=DL4001
+RUN set -eux; \
+    if echo "${INSTALL_LANGS}" | grep -qw go; then \
+      curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz" \
+        | tar -xz -C /usr/local; \
+    fi; \
+    if echo "${INSTALL_LANGS}" | grep -qw rust; then \
+      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --default-toolchain stable --profile minimal; \
+    fi
+
+# 9. Version managers: asdf (Go binary, shim-based) + nvm (bash script).
+# hadolint ignore=DL4001
+RUN set -eux; \
+    curl -fsSL "https://github.com/asdf-vm/asdf/releases/download/${ASDF_VERSION}/asdf-${ASDF_VERSION}-linux-${TARGETARCH}.tar.gz" \
+      | tar -xz -C /usr/local/bin asdf && chmod +x /usr/local/bin/asdf; \
+    mkdir -p /usr/local/nvm && \
+    git clone --depth 1 --branch "${NVM_VERSION}" https://github.com/nvm-sh/nvm.git /usr/local/nvm && \
+    printf 'export NVM_DIR=/usr/local/nvm\n[ -s "$NVM_DIR/nvm.sh" ] && \\. "$NVM_DIR/nvm.sh"\n' \
+      > /etc/profile.d/nvm.sh
+
+# 10. Google Cloud SDK (gated; ~500 MB).
+RUN if [ "${INSTALL_GCLOUD}" = "true" ]; then \
+      curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+        | gpg --dearmor -o /etc/apt/keyrings/cloud-google.gpg && \
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/cloud-google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
+        > /etc/apt/sources.list.d/google-cloud-sdk.list && \
+      apt-get update && apt-get install -y --no-install-recommends google-cloud-cli && \
+      rm -rf /var/lib/apt/lists/*; \
+    fi
+
+# 11. Sudoers carve-out: full-autonomous apt access for the `bun` user.
+#     Scope-narrowed to `apt-get update` + `apt-get install -y <pkg>` — no
+#     remove, no purge, no arbitrary sudo. `visudo -cf` validates the file
+#     and fails the build if the rule is malformed.
+RUN echo 'bun ALL=(ALL) NOPASSWD: /usr/bin/apt-get update, /usr/bin/apt-get install -y *, /usr/bin/apt-get install --no-install-recommends -y *' \
+      > /etc/sudoers.d/bun-apt \
+ && chmod 0440 /etc/sudoers.d/bun-apt \
+ && visudo -cf /etc/sudoers.d/bun-apt
+
+# 12. Bake the static capability manifest for fast daemon startup.
+#     Must run AFTER every tool install above. Consumed at daemon startup by
+#     src/daemon/tool-discovery.ts → loadStaticManifest().
+COPY package.json bun.lock tsconfig.json ./
+COPY src/ ./src/
+COPY scripts/generate-capabilities-manifest.ts ./scripts/generate-capabilities-manifest.ts
+RUN bun install --frozen-lockfile --production --ignore-scripts \
+ && bun run scripts/generate-capabilities-manifest.ts /app/daemon-capabilities.static.json \
+ && rm -rf node_modules scripts/generate-capabilities-manifest.ts src/ package.json bun.lock tsconfig.json
+
+# -----------------------------------------------------------------------------
+# Stage: production — final daemon image.
+# -----------------------------------------------------------------------------
+FROM daemon-tools AS production
+
+ARG PACKAGE_VERSION=untagged
+ARG GIT_HASH=unspecified
+
+# Agent SDK defaults cwd-relative; point at the npm-global install.
+ENV CLAUDE_CODE_PATH=/usr/lib/node_modules/@anthropic-ai/claude-code/cli.js
+
+LABEL maintainer="Chris Lee"
+LABEL com.chrisleekr.bot.package-version=${PACKAGE_VERSION}
+LABEL com.chrisleekr.bot.git-hash=${GIT_HASH}
+LABEL com.chrisleekr.bot.variant=daemon
+
+# Docker CLI — Claude agents shell `docker build`/`docker compose` against a
+# dind sidecar. Matches src/k8s/job-spawner.ts major pin for client/daemon
+# compatibility. docker:29-cli ships Go 1.26.x which patches CVE-2025-47907 +
+# CVE-2026-32282 (net/http, archive/tar, database/sql).
+COPY --from=docker:29-cli /usr/local/bin/docker /usr/local/bin/docker
+
+# Bundled app and MCP stdio servers (dist/app.js, dist/daemon/main.js, dist/mcp/servers/*.js).
+COPY --from=development --chown=bun:bun /app/dist ./dist
+COPY --from=development --chown=bun:bun /app/package.json ./
+
+# SQL migration files — not bundled, copied as-is (daemon may run migrations).
+COPY --from=development --chown=bun:bun /app/src/db/migrations ./src/db/migrations
+
+# Production node_modules (runtime dependencies only).
+COPY --from=deps --chown=bun:bun /app/node_modules ./node_modules
+
+USER bun
+# No HTTP port; K8s probes own liveness/readiness via the daemon registry.
+CMD ["bun", "run", "dist/daemon/main.js"]
