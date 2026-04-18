@@ -277,9 +277,8 @@ export interface StaticDaemonCapabilities {
 
 function loadStaticManifest(): StaticDaemonCapabilities | null {
   try {
-     
     if (!existsSync(STATIC_MANIFEST_PATH)) return null;
-     
+
     const raw = readFileSync(STATIC_MANIFEST_PATH, "utf-8");
     return JSON.parse(raw) as StaticDaemonCapabilities;
   } catch (err) {
