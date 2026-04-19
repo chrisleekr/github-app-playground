@@ -126,7 +126,7 @@ const CLI_TOOL_NAMES = [
  * sidestep eslint-plugin-security's object-injection rule on dynamic-key reads.
  */
 const VERSION_FLAGS = new Map<string, string[]>([
-  ["kubectl", ["version", "--client=true", "--output=yaml"]],
+  ["kubectl", ["version", "--client=true"]],
   ["helm", ["version", "--short"]],
   ["asdf", ["--version"]],
 ]);
@@ -178,7 +178,9 @@ async function discoverTool(name: string): Promise<DiscoveredTool> {
         timeout: 5_000,
       });
       const firstLine = versionOut.trim().split("\n")[0] ?? versionOut.trim();
-      version = firstLine.replace(/^[^0-9]*/, "") || firstLine;
+      // eslint-disable-next-line @typescript-eslint/prefer-regexp-exec -- capture-group match is clearer than exec() here
+      const semverMatch = firstLine.match(/v?(\d+\.\d+(?:\.\d+)?(?:[-.+][\w.-]{0,32})?)/);
+      version = semverMatch?.[1] ?? firstLine;
     } catch {
       // Version check failed but binary exists
     }
