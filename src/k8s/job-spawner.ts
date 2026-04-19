@@ -118,7 +118,7 @@ export function jobNameForDelivery(deliveryId: string): string {
 
 function buildJobSpec(ctx: BotContext, decision: DispatchDecision, encodedContext: string): V1Job {
   const namespace = config.jobNamespace;
-  const image = config.jobImage ?? "github-app-playground:local";
+  const image = config.jobImage ?? "github-app-playground:local-orchestrator";
   const ttlSeconds = config.jobTtlSeconds;
   const jobName = jobNameForDelivery(ctx.deliveryId);
 
