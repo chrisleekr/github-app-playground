@@ -1,0 +1,1602 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A GitHub App webhook server powered by the Claude Agent SDK.">
+      
+      
+      
+        <link rel="canonical" href="https://chrisleekr.github.io/github-app-playground/ARCHITECTURE/">
+      
+      
+        <link rel="prev" href="../SETUP/">
+      
+      
+        <link rel="next" href="../CONFIGURATION/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Architecture - GitHub App Playground</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        
+        <link rel="stylesheet" href="../assets/external/fonts.googleapis.com/css.49ea35f2.css">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Architecture - GitHub App Playground" />
+<meta property="og:description" content="A GitHub App webhook server powered by the Claude Agent SDK." />
+<meta property="og:image" content="https://chrisleekr.github.io/github-app-playground/assets/images/social/ARCHITECTURE.png" />
+<meta property="og:image:type" content="image/png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:url" content="https://chrisleekr.github.io/github-app-playground/ARCHITECTURE/" />
+<meta property="twitter:card" content="summary_large_image" />
+<meta property="twitter:title" content="Architecture - GitHub App Playground" />
+<meta property="twitter:description" content="A GitHub App webhook server powered by the Claude Agent SDK." />
+<meta property="twitter:image" content="https://chrisleekr.github.io/github-app-playground/assets/images/social/ARCHITECTURE.png" />
+</head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="teal">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#architecture" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="GitHub App Playground" class="md-header__button md-logo" aria-label="GitHub App Playground" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            GitHub App Playground
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Architecture
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="teal"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="teal"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Share" aria-label="Share" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/chrisleekr/github-app-playground" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    chrisleekr/github-app-playground
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../SETUP/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Setup
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../CONFIGURATION/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Configuration
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../OBSERVABILITY/" class="md-tabs__link">
+          
+  
+  
+  Operator guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../DEPLOYMENT/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Deployment
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../EXTENDING/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Extending
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../CONTRIBUTING/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../CHANGELOG/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="GitHub App Playground" class="md-nav__button md-logo" aria-label="GitHub App Playground" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    GitHub App Playground
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/chrisleekr/github-app-playground" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    chrisleekr/github-app-playground
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../SETUP/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#request-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Request flow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#key-concepts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key concepts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dispatch-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dispatch Flow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Dispatch Flow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#targets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Targets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-target-topology" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-target topology
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Per-target topology">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#inline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        inline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#daemon" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        daemon
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#shared-runner" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        shared-runner
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#isolated-job" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        isolated-job
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cascade" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cascade
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-each-request-was-routed-the-way-it-was" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why each request was routed the way it was
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#directory-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Directory layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#further-reading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Further reading
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../CONFIGURATION/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operator guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operator guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../OBSERVABILITY/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../TRIAGE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Triage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../DAEMON/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Daemon mode
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../KUBERNETES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kubernetes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../DEPLOYMENT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../EXTENDING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Extending
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../CONTRIBUTING/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../CHANGELOG/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#request-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Request flow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#key-concepts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key concepts
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dispatch-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dispatch Flow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Dispatch Flow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#targets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Targets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-target-topology" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-target topology
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Per-target topology">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#inline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        inline
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#daemon" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        daemon
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#shared-runner" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        shared-runner
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#isolated-job" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        isolated-job
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cascade" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cascade
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#why-each-request-was-routed-the-way-it-was" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why each request was routed the way it was
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#directory-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Directory layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#further-reading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Further reading
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/chrisleekr/github-app-playground/edit/main/docs/ARCHITECTURE.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h1>
+<p>A single HTTP server process receives GitHub webhook events, acknowledges within 10 seconds, and runs the heavy work asynchronously. Every event walks the same path: verify → route → classify → dispatch → run the inline pipeline → finalise the tracking comment.</p>
+<h2 id="request-flow">Request flow<a class="headerlink" href="#request-flow" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>flowchart TD
+    GH["GitHub webhook&lt;br/&gt;POST /api/github/webhooks"]:::entry
+    VERIFY["Verify HMAC-SHA256"]:::guard
+    ACK["200 OK within 10 seconds"]:::ack
+    ROUTE["Router&lt;br/&gt;idempotency + allowlist + concurrency"]:::guard
+    SC["Static classifier&lt;br/&gt;label and keyword cascade"]:::decide
+    TR["Haiku triage&lt;br/&gt;auto mode, ambiguous only"]:::decide
+    TGT{{"Dispatch target"}}:::fork
+    IN["inline"]:::target
+    DM["daemon"]:::target
+    SR["shared-runner"]:::target
+    IJ["isolated-job"]:::target
+    PIPE["Inline pipeline&lt;br/&gt;clone → prompt → Claude Agent SDK"]:::work
+    FIN["Finalise tracking comment&lt;br/&gt;success, error, or cost summary"]:::done
+
+    GH --&gt; VERIFY --&gt; ACK
+    ACK -. async .-&gt; ROUTE
+    ROUTE --&gt; SC
+    SC --&gt;|deterministic| TGT
+    SC --&gt;|ambiguous + auto mode| TR
+    TR --&gt; TGT
+    TGT --&gt; IN
+    TGT --&gt; DM
+    TGT --&gt; SR
+    TGT --&gt; IJ
+    IN --&gt; PIPE
+    DM --&gt; PIPE
+    SR --&gt; PIPE
+    IJ --&gt; PIPE
+    PIPE --&gt; FIN
+
+    classDef entry fill:#0b5cad,stroke:#083e74,color:#ffffff
+    classDef guard fill:#164a3a,stroke:#0d2c24,color:#ffffff
+    classDef ack fill:#2a6f2a,stroke:#1a4d1a,color:#ffffff
+    classDef decide fill:#8a5a00,stroke:#5c3d00,color:#ffffff
+    classDef fork fill:#6a2080,stroke:#451454,color:#ffffff
+    classDef target fill:#114a82,stroke:#0a2f56,color:#ffffff
+    classDef work fill:#4a2e7a,stroke:#311f50,color:#ffffff
+    classDef done fill:#2a6f2a,stroke:#1a4d1a,color:#ffffff</code></pre>
+<h2 id="key-concepts">Key concepts<a class="headerlink" href="#key-concepts" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Async processing.</strong> The webhook handler must respond within 10 seconds, so the router fires the pipeline with <code>fire-and-forget</code> semantics after the 200 OK is queued. Every box downstream of <code>ACK</code> runs after the HTTP response is already on the wire.</li>
+<li><strong>Idempotency is two-layered.</strong> The fast path is an in-memory <code>Map</code> keyed by the <code>X-GitHub-Delivery</code> header — cheap, but lost on restart. The durable path (<code>isAlreadyProcessed</code> in <code>src/core/tracking-comment.ts</code>) scans GitHub issue/PR comments for the hidden delivery marker embedded in the tracking comment, so duplicate deliveries are still detected across pod restarts, OOM kills, and crash loops — this works <strong>without</strong> <code>DATABASE_URL</code>. <code>DATABASE_URL</code> is only required to persist execution/dispatch history across restarts; it is not what provides durable idempotency.</li>
+<li><strong>One request, one clone.</strong> Each delivery clones the repo into a unique temp directory under <code>CLONE_BASE_DIR</code>. Claude operates on local files via <code>cwd</code>. The directory is removed after the run regardless of outcome.</li>
+<li><strong>MCP servers.</strong> Tracking-comment updates, inline PR reviews, and (optionally) Context7 library docs are exposed as MCP servers the agent can call. Git changes are made via the Bash tool against the cloned repo, not through a dedicated MCP server.</li>
+</ul>
+<h2 id="dispatch-flow">Dispatch Flow<a class="headerlink" href="#dispatch-flow" title="Permanent link">&para;</a></h2>
+<p>The router picks one of four targets per event. Auto mode lets an LLM classifier make the choice when the deterministic cascade is ambiguous; every other mode short-circuits before the LLM call.</p>
+<h3 id="targets">Targets<a class="headerlink" href="#targets" title="Permanent link">&para;</a></h3>
+<p>The four concrete execution targets (see <code>src/shared/dispatch-types.ts</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Target</th>
+<th>When used</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>inline</code></td>
+<td>Default single-pod mode. The webhook server runs the pipeline in-process.</td>
+</tr>
+<tr>
+<td><code>daemon</code></td>
+<td>A long-running worker process accepts job offers over WebSocket and executes the pipeline. Useful for horizontal scaling without K8s.</td>
+</tr>
+<tr>
+<td><code>shared-runner</code></td>
+<td>An internal HTTP endpoint (<code>INTERNAL_RUNNER_URL</code>) hosts a pool; the dispatcher POSTs the job and the pool handles the pipeline.</td>
+</tr>
+<tr>
+<td><code>isolated-job</code></td>
+<td>A Kubernetes Job is spawned per request with a DinD sidecar. Appropriate for untrusted repos or long, resource-heavy tasks.</td>
+</tr>
+</tbody>
+</table>
+<p><code>auto</code> is a platform-wide <em>mode</em> (<code>AGENT_JOB_MODE=auto</code>), not a target — it resolves per event into one of the four above.</p>
+<h3 id="per-target-topology">Per-target topology<a class="headerlink" href="#per-target-topology" title="Permanent link">&para;</a></h3>
+<p>Each target is a different runtime topology. The same <code>inline-pipeline.ts</code> runs at the bottom of all of them — what differs is <em>where</em> it runs and <em>how</em> the request gets there.</p>
+<h4 id="inline"><code>inline</code><a class="headerlink" href="#inline" title="Permanent link">&para;</a></h4>
+<pre class="mermaid"><code>flowchart LR
+    WH["Webhook server&lt;br/&gt;src/app.ts"]:::entry
+    PIPE["Inline pipeline&lt;br/&gt;src/core/inline-pipeline.ts"]:::work
+    CLONE["Local clone&lt;br/&gt;CLONE_BASE_DIR / tmp dir"]:::store
+    GH["GitHub API&lt;br/&gt;tracking comment + git"]:::ext
+
+    WH --&gt;|in-process call| PIPE
+    PIPE --&gt;|git clone| CLONE
+    PIPE --&gt;|GraphQL + REST| GH
+    PIPE --&gt;|finalise| GH
+
+    classDef entry fill:#0b5cad,stroke:#083e74,color:#ffffff
+    classDef work fill:#4a2e7a,stroke:#311f50,color:#ffffff
+    classDef store fill:#5c3d00,stroke:#3d2900,color:#ffffff
+    classDef ext fill:#114a82,stroke:#0a2f56,color:#ffffff</code></pre>
+<p>Single process. No external infrastructure beyond Postgres (optional) and the GitHub API. This is also the universal fallback when a chosen target's infra is missing — see the <code>infra-absent</code> reason in <a href="../OBSERVABILITY/">Observability</a>.</p>
+<h4 id="daemon"><code>daemon</code><a class="headerlink" href="#daemon" title="Permanent link">&para;</a></h4>
+<pre class="mermaid"><code>flowchart LR
+    WH["Webhook server&lt;br/&gt;orchestrator role"]:::entry
+    REG["Daemon registry&lt;br/&gt;src/orchestrator/daemon-registry.ts"]:::guard
+    DISP["Job dispatcher&lt;br/&gt;src/orchestrator/job-dispatcher.ts"]:::decide
+    DM["Daemon process&lt;br/&gt;src/daemon/main.ts"]:::target
+    PIPE["Inline pipeline&lt;br/&gt;on daemon host"]:::work
+    GH["GitHub API"]:::ext
+
+    DM -.-&gt;|persistent WS connect| REG
+    WH --&gt; DISP
+    DISP --&gt;|JobOffer| DM
+    DM --&gt;|JobAccept or JobReject| DISP
+    DM --&gt; PIPE
+    PIPE --&gt; GH
+    DM --&gt;|JobResult| DISP
+    DISP --&gt;|finalise| GH
+
+    classDef entry fill:#0b5cad,stroke:#083e74,color:#ffffff
+    classDef guard fill:#164a3a,stroke:#0d2c24,color:#ffffff
+    classDef decide fill:#8a5a00,stroke:#5c3d00,color:#ffffff
+    classDef target fill:#114a82,stroke:#0a2f56,color:#ffffff
+    classDef work fill:#4a2e7a,stroke:#311f50,color:#ffffff
+    classDef ext fill:#114a82,stroke:#0a2f56,color:#ffffff</code></pre>
+<p>Daemons hold a persistent WebSocket to the orchestrator (<code>src/orchestrator/ws-server.ts</code>). Each job is offered to one matching daemon; on <code>JobReject</code> (capacity, capability mismatch) the dispatcher offers the next candidate. Pipeline runs on the daemon host with its own clone — the webhook server never touches the repo. See <a href="../DAEMON/">DAEMON.md</a>.</p>
+<h4 id="shared-runner"><code>shared-runner</code><a class="headerlink" href="#shared-runner" title="Permanent link">&para;</a></h4>
+<pre class="mermaid"><code>flowchart LR
+    WH["Webhook server"]:::entry
+    SRD["Shared-runner dispatcher&lt;br/&gt;src/k8s/shared-runner-dispatcher.ts"]:::decide
+    POOL["Internal runner pool&lt;br/&gt;POST INTERNAL_RUNNER_URL / internal/run"]:::target
+    PIPE["Inline pipeline&lt;br/&gt;on pool worker"]:::work
+    GH["GitHub API"]:::ext
+
+    WH --&gt; SRD
+    SRD --&gt;|HTTP POST + bearer token| POOL
+    POOL --&gt; PIPE
+    PIPE --&gt; GH
+    POOL --&gt;|HTTP response| SRD
+    SRD --&gt;|finalise| GH
+
+    classDef entry fill:#0b5cad,stroke:#083e74,color:#ffffff
+    classDef decide fill:#8a5a00,stroke:#5c3d00,color:#ffffff
+    classDef target fill:#114a82,stroke:#0a2f56,color:#ffffff
+    classDef work fill:#4a2e7a,stroke:#311f50,color:#ffffff
+    classDef ext fill:#114a82,stroke:#0a2f56,color:#ffffff</code></pre>
+<p>Stateless HTTP hop authenticated with <code>INTERNAL_RUNNER_TOKEN</code>. The pool itself lives outside this repo; this app only knows the URL and the response contract. Used when broader tooling is needed without per-request Docker isolation.</p>
+<h4 id="isolated-job"><code>isolated-job</code><a class="headerlink" href="#isolated-job" title="Permanent link">&para;</a></h4>
+<pre class="mermaid"><code>flowchart LR
+    WH["Webhook server"]:::entry
+    SP["Job spawner&lt;br/&gt;src/k8s/job-spawner.ts"]:::decide
+    CAP{{"Capacity guard&lt;br/&gt;MAX_CONCURRENT_ISOLATED_JOBS"}}:::fork
+    QUE["Pending queue&lt;br/&gt;Valkey list"]:::store
+    DR["Drainer&lt;br/&gt;pending-queue-drainer.ts"]:::guard
+    K8S["Kubernetes Job&lt;br/&gt;app + docker:29-dind sidecar"]:::target
+    PIPE["Inline pipeline&lt;br/&gt;inside Job pod"]:::work
+    GH["GitHub API"]:::ext
+
+    WH --&gt; SP
+    SP --&gt; CAP
+    CAP --&gt;|under cap| K8S
+    CAP --&gt;|at cap| QUE
+    QUE --&gt; DR
+    DR --&gt;|when slot frees| K8S
+    K8S --&gt; PIPE
+    PIPE --&gt; GH
+
+    classDef entry fill:#0b5cad,stroke:#083e74,color:#ffffff
+    classDef guard fill:#164a3a,stroke:#0d2c24,color:#ffffff
+    classDef decide fill:#8a5a00,stroke:#5c3d00,color:#ffffff
+    classDef fork fill:#6a2080,stroke:#451454,color:#ffffff
+    classDef target fill:#114a82,stroke:#0a2f56,color:#ffffff
+    classDef work fill:#4a2e7a,stroke:#311f50,color:#ffffff
+    classDef store fill:#5c3d00,stroke:#3d2900,color:#ffffff
+    classDef ext fill:#114a82,stroke:#0a2f56,color:#ffffff</code></pre>
+<p>Per-request Kubernetes Job. The privileged <code>docker:29-dind</code> sidecar shares its Docker socket with the app container so agent tooling can build and run containers. When the in-flight count hits <code>MAX_CONCURRENT_ISOLATED_JOBS</code>, requests enqueue in a bounded Valkey list (<code>PENDING_ISOLATED_JOB_QUEUE_MAX</code>); the drainer re-attempts as slots free. A full queue produces the <code>capacity-rejected</code> reason. See <a href="../KUBERNETES/">KUBERNETES.md</a>.</p>
+<h3 id="cascade">Cascade<a class="headerlink" href="#cascade" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>Label.</strong> If the triggering PR or issue carries <code>bot:shared</code>, <code>bot:job</code>, or a similar label, the target is fixed and the LLM is never called.</li>
+<li><strong>Keyword.</strong> Deterministic keywords in the mention body (e.g. "run on isolated") can force a target. Still no LLM.</li>
+<li><strong>Triage.</strong> In <code>AGENT_JOB_MODE=auto</code>, if steps 1–2 returned "ambiguous", a single-turn Haiku call classifies the request (<code>mode</code>, <code>confidence</code>, <code>complexity</code>, <code>rationale</code>). At or above <code>TRIAGE_CONFIDENCE_THRESHOLD</code>, the returned <code>mode</code> is used. Below the threshold, the router falls back to <code>DEFAULT_DISPATCH_TARGET</code>.</li>
+<li><strong>Non-auto fallback.</strong> In any mode other than <code>auto</code>, an ambiguous classifier result yields <code>DEFAULT_DISPATCH_TARGET</code> directly — no LLM call.</li>
+<li><strong>Capacity guard.</strong> The isolated-job queue enforces <code>MAX_CONCURRENT_ISOLATED_JOBS</code>. Requests beyond that enqueue on a bounded Valkey list (<code>PENDING_ISOLATED_JOB_QUEUE_MAX</code>); when the list is full, the request is rejected with reason <code>capacity-rejected</code>.</li>
+<li><strong>Infra guard.</strong> If the chosen target's infrastructure (K8s credentials, Valkey, Postgres, shared-runner URL) is not configured, the router records <code>infra-absent</code> and falls back.</li>
+</ol>
+<h3 id="why-each-request-was-routed-the-way-it-was">Why each request was routed the way it was<a class="headerlink" href="#why-each-request-was-routed-the-way-it-was" title="Permanent link">&para;</a></h3>
+<p>Every dispatch decision writes a <code>dispatch_reason</code> log field and, when <code>DATABASE_URL</code> is configured, a <code>dispatch_decisions</code> row. The eight canonical values (from <code>src/shared/dispatch-types.ts</code>) are listed in <a href="../OBSERVABILITY/">Observability</a>.</p>
+<h2 id="directory-layout">Directory layout<a class="headerlink" href="#directory-layout" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Directory</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>src/webhook/</code></td>
+<td>Event routing (<code>router.ts</code>) and per-event handlers (<code>events/</code>, one file per event type).</td>
+</tr>
+<tr>
+<td><code>src/core/</code></td>
+<td>The inline pipeline: context → fetch → format → prompt → checkout → execute → finalise.</td>
+</tr>
+<tr>
+<td><code>src/ai/</code></td>
+<td>Provider-agnostic LLM client (Anthropic + Bedrock) used by triage.</td>
+</tr>
+<tr>
+<td><code>src/orchestrator/</code></td>
+<td>WebSocket server, daemon registry, job queue, triage. Embedded in the webhook server when <code>AGENT_JOB_MODE !== "inline"</code>.</td>
+</tr>
+<tr>
+<td><code>src/daemon/</code></td>
+<td>Standalone worker process. WebSocket client that accepts one job offer at a time.</td>
+</tr>
+<tr>
+<td><code>src/k8s/</code></td>
+<td>Isolated-job target: Job spawner, pending queue, drainer.</td>
+</tr>
+<tr>
+<td><code>src/mcp/</code></td>
+<td>MCP server registry. Add new servers here.</td>
+</tr>
+<tr>
+<td><code>src/db/</code></td>
+<td>Postgres layer. Migration runner, connection singleton, observability queries. Active only when <code>DATABASE_URL</code> is set.</td>
+</tr>
+<tr>
+<td><code>src/shared/</code></td>
+<td>Types shared between server and daemon (WebSocket messages, dispatch enums).</td>
+</tr>
+<tr>
+<td><code>src/utils/</code></td>
+<td>Retry, sanitisation, circuit breaker.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="further-reading">Further reading<a class="headerlink" href="#further-reading" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../CONFIGURATION/">Configuration</a> — every environment variable the app reads.</li>
+<li><a href="../DEPLOYMENT/">Deployment</a> — Docker build args, health probes, resource sizing.</li>
+<li><a href="../EXTENDING/">Extending</a> — add webhook handlers and MCP servers.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../SETUP/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Setup">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Setup
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../CONFIGURATION/" class="md-footer__link md-footer__link--next" aria-label="Next: Configuration">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Configuration
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+      <div class="md-progress" data-md-component="progress" role="progressbar"></div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.instant.progress", "navigation.tabs", "navigation.sections", "navigation.top", "navigation.footer", "toc.follow", "search.suggest", "search.highlight", "search.share", "content.code.copy", "content.code.select", "content.code.annotate", "content.action.edit"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
