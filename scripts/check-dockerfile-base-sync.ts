@@ -38,6 +38,15 @@ function extractSharedBlock(filePath: string): string {
   if (endIdx <= beginIdx) {
     throw new Error(`${filePath}: '${END_MARKER}' must appear after '${BEGIN_MARKER}'`);
   }
+  // Enforce the "exactly once per file" contract from the header comment —
+  // otherwise indexOf silently picks the first pair and drift in a second
+  // block would go undetected.
+  if (contents.indexOf(BEGIN_MARKER, beginIdx + 1) !== -1) {
+    throw new Error(`${filePath}: duplicate '${BEGIN_MARKER}' marker`);
+  }
+  if (contents.indexOf(END_MARKER, endIdx + 1) !== -1) {
+    throw new Error(`${filePath}: duplicate '${END_MARKER}' marker`);
+  }
   // Include both marker lines; mismatch on the markers themselves also fails.
   return contents.slice(beginIdx, endIdx + END_MARKER.length);
 }
