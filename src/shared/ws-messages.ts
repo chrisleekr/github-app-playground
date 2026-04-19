@@ -2,18 +2,14 @@ import { z } from "zod";
 
 import { daemonCapabilitiesSchema } from "./daemon-types";
 
-// ---------------------------------------------------------------------------
 // Message envelope -- every WS message follows this shape
-// ---------------------------------------------------------------------------
 
 const messageEnvelopeBase = {
   id: z.uuid(),
   timestamp: z.number(),
 };
 
-// ---------------------------------------------------------------------------
 // Server -> Daemon messages
-// ---------------------------------------------------------------------------
 
 const daemonRegisteredSchema = z.object({
   type: z.literal("daemon:registered"),
@@ -106,9 +102,7 @@ export const serverMessageSchema = z.discriminatedUnion("type", [
   errorSchema,
 ]);
 
-// ---------------------------------------------------------------------------
 // Daemon -> Server messages
-// ---------------------------------------------------------------------------
 
 const daemonRegisterSchema = z.object({
   type: z.literal("daemon:register"),
@@ -209,9 +203,7 @@ export const daemonMessageSchema = z.discriminatedUnion("type", [
   daemonDrainingSchema,
 ]);
 
-// ---------------------------------------------------------------------------
 // Inferred TypeScript types
-// ---------------------------------------------------------------------------
 
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
 export type DaemonMessage = z.infer<typeof daemonMessageSchema>;
@@ -234,16 +226,12 @@ export type JobResultMessage = z.infer<typeof jobResultSchema>;
 export type DaemonUpdateAcknowledgedMessage = z.infer<typeof daemonUpdateAcknowledgedSchema>;
 export type DaemonDrainingMessage = z.infer<typeof daemonDrainingSchema>;
 
-// ---------------------------------------------------------------------------
 // WebSocket protocol version
-// ---------------------------------------------------------------------------
 
 /** Current protocol version. Major bump = breaking change = reject connection. */
 export const PROTOCOL_VERSION = "1.0.0";
 
-// ---------------------------------------------------------------------------
 // Custom WebSocket close codes
-// ---------------------------------------------------------------------------
 
 export const WS_CLOSE_CODES = {
   GRACEFUL_SHUTDOWN: { code: 1000, reason: "graceful shutdown" },
@@ -253,9 +241,7 @@ export const WS_CLOSE_CODES = {
   INCOMPATIBLE_PROTOCOL: { code: 4003, reason: "incompatible protocol version" },
 } as const;
 
-// ---------------------------------------------------------------------------
 // Error codes
-// ---------------------------------------------------------------------------
 
 export const WS_ERROR_CODES = {
   INVALID_MESSAGE: "INVALID_MESSAGE",
@@ -266,9 +252,7 @@ export const WS_ERROR_CODES = {
   INTERNAL_ERROR: "INTERNAL_ERROR",
 } as const;
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 /** Create a message envelope with a fresh UUID and current timestamp. */
 export function createMessageEnvelope(overrideId?: string): { id: string; timestamp: number } {

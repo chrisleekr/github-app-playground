@@ -30,9 +30,7 @@ const ACTIONS_FILE = join(WORK_DIR, ".daemon-actions.json");
 
 const VALID_CATEGORIES = ["setup", "architecture", "conventions", "env", "gotchas"] as const;
 
-// ---------------------------------------------------------------------------
 // Action file helpers
-// ---------------------------------------------------------------------------
 
 interface SaveAction {
   type: "save";
@@ -66,9 +64,7 @@ function appendAction(action: DaemonAction): void {
   writeFileSync(ACTIONS_FILE, JSON.stringify(actions, null, 2)); // eslint-disable-line security/detect-non-literal-fs-filename
 }
 
-// ---------------------------------------------------------------------------
 // MCP Server
-// ---------------------------------------------------------------------------
 
 const server = new McpServer({
   name: "repo_memory",
@@ -142,9 +138,7 @@ server.registerTool(
   },
 );
 
-// ---------------------------------------------------------------------------
 // Start
-// ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
   const transport = new StdioServerTransport();

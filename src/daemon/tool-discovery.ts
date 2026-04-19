@@ -131,13 +131,9 @@ const VERSION_FLAGS = new Map<string, string[]>([
   ["asdf", ["--version"]],
 ]);
 
-// ---------------------------------------------------------------------------
 // Resource snapshot (always dynamic)
-// ---------------------------------------------------------------------------
 
-/**
- * Get current system resources (CPU, memory, disk). Called on every heartbeat.
- */
+/** Called on every heartbeat for fresh values. */
 export function getCurrentResources(): DaemonResources {
   const cpuCount = cpus().length;
   const memoryTotalMb = Math.round(totalmem() / (1024 * 1024));
@@ -154,9 +150,7 @@ export function getCurrentResources(): DaemonResources {
   return { cpuCount, memoryTotalMb, memoryFreeMb, diskFreeMb };
 }
 
-// ---------------------------------------------------------------------------
 // Tool discovery helpers
-// ---------------------------------------------------------------------------
 
 async function discoverTool(name: string): Promise<DiscoveredTool> {
   // nvm is a shell function sourced from /usr/local/nvm/nvm.sh, not a binary.
@@ -198,9 +192,7 @@ async function discoverToolsParallel(names: readonly string[]): Promise<Discover
   return Promise.all(names.map((n) => discoverTool(n)));
 }
 
-// ---------------------------------------------------------------------------
 // Container runtime probe
-// ---------------------------------------------------------------------------
 
 async function probeContainerRuntimeStatic(): Promise<StaticContainerRuntime | null> {
   // Serial by design: prefer docker; only probe podman if docker is absent.
@@ -231,9 +223,7 @@ async function probeContainerDaemonRunning(name: "docker" | "podman"): Promise<b
   }
 }
 
-// ---------------------------------------------------------------------------
 // Ephemeral detection
-// ---------------------------------------------------------------------------
 
 function detectEphemeral(): boolean {
   if (existsSync("/.dockerenv")) return true;
@@ -241,9 +231,7 @@ function detectEphemeral(): boolean {
   return false;
 }
 
-// ---------------------------------------------------------------------------
 // Auth + repo probes
-// ---------------------------------------------------------------------------
 
 async function probeAuthContexts(): Promise<string[]> {
   const contexts: string[] = [];
@@ -270,9 +258,7 @@ async function listCachedRepos(cloneBaseDir: string): Promise<string[]> {
   return cachedRepos;
 }
 
-// ---------------------------------------------------------------------------
 // Static manifest loader
-// ---------------------------------------------------------------------------
 
 // Validated against staticDaemonCapabilitiesSchema on load so shape drift
 // (schema change without rebuilding the image) triggers a fall-through to
@@ -292,9 +278,7 @@ function loadStaticManifest(logger: ToolDiscoveryLogger): StaticDaemonCapabiliti
   }
 }
 
-// ---------------------------------------------------------------------------
 // Full probe (slow path — used by manifest generator and dev fallback)
-// ---------------------------------------------------------------------------
 
 /**
  * Probe the host for all static capability fields. Used by
@@ -325,9 +309,7 @@ export async function probeStaticCapabilities(): Promise<StaticDaemonCapabilitie
   };
 }
 
-// ---------------------------------------------------------------------------
 // Public entry point
-// ---------------------------------------------------------------------------
 
 /**
  * Discover daemon capabilities. Fast path: load static fields from the baked

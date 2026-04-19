@@ -266,9 +266,7 @@ export async function spawnIsolatedJob(
   return { success: true, durationMs: 0 };
 }
 
-// ---------------------------------------------------------------------------
 // Completion watcher (T046 + T047 + T048)
-// ---------------------------------------------------------------------------
 
 /**
  * Terminal outcome of `watchJobCompletion`. Each outcome maps to a

@@ -18,9 +18,7 @@ import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { PendingIsolatedJobEntry } from "../../src/k8s/pending-queue";
 import type { SerializableBotContext } from "../../src/shared/daemon-types";
 
-// ---------------------------------------------------------------------------
 // Mock Valkey client
-// ---------------------------------------------------------------------------
 
 interface MockSend {
   (cmd: string, args: string[]): Promise<unknown>;
@@ -71,9 +69,7 @@ const {
   storeBotContext,
 } = await import("../../src/k8s/pending-queue");
 
-// ---------------------------------------------------------------------------
 // Fixtures
-// ---------------------------------------------------------------------------
 
 function makeEntry(overrides: Partial<PendingIsolatedJobEntry> = {}): PendingIsolatedJobEntry {
   return {
@@ -122,9 +118,7 @@ beforeEach(() => {
   mockSend.mockImplementation(() => Promise.resolve(null));
 });
 
-// ---------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
 
 describe("enqueuePending (atomic EVAL)", () => {
   // After Copilot PR #21 review: the check-then-act LLEN+RPUSH was replaced

@@ -2,9 +2,7 @@ import { z } from "zod";
 
 import type { BotContext } from "../types";
 
-// ---------------------------------------------------------------------------
 // Zod schemas (validated at boundary, types inferred below)
-// ---------------------------------------------------------------------------
 
 export const discoveredToolSchema = z.object({
   name: z.string(),
@@ -68,9 +66,7 @@ export const daemonCapabilitiesSchema = z.object({
   maxUptimeMs: z.number().positive().nullable(),
 });
 
-// ---------------------------------------------------------------------------
 // Inferred TypeScript types
-// ---------------------------------------------------------------------------
 
 export type DiscoveredTool = z.infer<typeof discoveredToolSchema>;
 export type ContainerRuntime = z.infer<typeof containerRuntimeSchema>;
@@ -80,9 +76,7 @@ export type DaemonCapabilities = z.infer<typeof daemonCapabilitiesSchema>;
 export type StaticDaemonCapabilities = z.infer<typeof staticDaemonCapabilitiesSchema>;
 export type StaticContainerRuntime = z.infer<typeof staticContainerRuntimeSchema>;
 
-// ---------------------------------------------------------------------------
 // Orchestrator-side daemon info
-// ---------------------------------------------------------------------------
 
 export interface DaemonInfo {
   id: string;
@@ -104,9 +98,7 @@ export interface DaemonInfo {
   firstSeenAt: number;
 }
 
-// ---------------------------------------------------------------------------
 // In-memory orchestrator state types
-// ---------------------------------------------------------------------------
 
 export interface PendingOffer {
   offerId: string;
@@ -133,9 +125,7 @@ export interface HeartbeatState {
   missedPongs: number;
 }
 
-// ---------------------------------------------------------------------------
 // Daemon-side active job tracking (FM-9)
-// ---------------------------------------------------------------------------
 
 export interface ActiveJob {
   offerId: string;
@@ -145,9 +135,7 @@ export interface ActiveJob {
   startedAt: number;
 }
 
-// ---------------------------------------------------------------------------
 // SerializableBotContext
-// ---------------------------------------------------------------------------
 
 /**
  * BotContext fields that can be JSON-serialized for WebSocket transmission.

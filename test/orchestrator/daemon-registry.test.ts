@@ -11,9 +11,7 @@ import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { DaemonCapabilities } from "../../src/shared/daemon-types";
 import type { DaemonRegisterMessage } from "../../src/shared/ws-messages";
 
-// ---------------------------------------------------------------------------
 // Mock dependencies
-// ---------------------------------------------------------------------------
 
 const mockLoggerInfo = mock(() => {});
 const mockLoggerWarn = mock(() => {});
@@ -92,9 +90,7 @@ const {
   decrementDaemonActiveJobs,
 } = await import("../../src/orchestrator/daemon-registry");
 
-// ---------------------------------------------------------------------------
 // Test fixtures
-// ---------------------------------------------------------------------------
 
 function makeCapabilities(overrides: Partial<DaemonCapabilities> = {}): DaemonCapabilities {
   return {
@@ -138,9 +134,7 @@ function makeRegisterMessage(
   };
 }
 
-// ---------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
 
 beforeEach(() => {
   mockSend.mockClear();

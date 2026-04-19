@@ -9,9 +9,7 @@ import { beforeEach, describe, expect, it, mock } from "bun:test";
 
 import type { QueuedJob } from "../../src/orchestrator/job-queue";
 
-// ---------------------------------------------------------------------------
 // Mock dependencies
-// ---------------------------------------------------------------------------
 
 const mockLoggerInfo = mock(() => {});
 const mockLoggerWarn = mock(() => {});
@@ -67,9 +65,7 @@ void mock.module("../../src/config", () => ({
 const { enqueueJob, tryDequeueJob, dequeueJob, requeueJob } =
   await import("../../src/orchestrator/job-queue");
 
-// ---------------------------------------------------------------------------
 // Test fixtures
-// ---------------------------------------------------------------------------
 
 function makeQueuedJob(overrides: Partial<QueuedJob> = {}): QueuedJob {
   return {
@@ -88,9 +84,7 @@ function makeQueuedJob(overrides: Partial<QueuedJob> = {}): QueuedJob {
   };
 }
 
-// ---------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
 
 describe("job-queue", () => {
   beforeEach(() => {

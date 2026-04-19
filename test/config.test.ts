@@ -631,9 +631,7 @@ describe("assertOauthRequiresAllowlist", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
 // T005: new env-var defaults, cross-field rules, and K8s-auth warning.
-// ---------------------------------------------------------------------------
 
 describe("configSchema — triage-dispatch-modes new defaults (T004/T005)", () => {
   const ANTHROPIC_BASE = {

@@ -15,9 +15,7 @@ import { beforeEach, describe, expect, it, mock } from "bun:test";
 
 import type { CreateExecutionParams } from "../../src/orchestrator/history";
 
-// ---------------------------------------------------------------------------
 // Mock dependencies
-// ---------------------------------------------------------------------------
 
 const mockLoggerInfo = mock(() => {});
 const mockLoggerWarn = mock(() => {});
@@ -94,9 +92,7 @@ const {
 // Also import decrementDaemonActiveJobs to spy on it for stale recovery tests
 const _daemonRegistry = await import("../../src/orchestrator/daemon-registry");
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 /** Type-safe accessor for mock call args — avoids `!` assertions and `as NonNullable<>`. */
 function firstCall<T>(m: { mock: { calls: T[][] } }): T[] {
@@ -107,9 +103,7 @@ function firstCall<T>(m: { mock: { calls: T[][] } }): T[] {
   return call;
 }
 
-// ---------------------------------------------------------------------------
 // Test fixtures
-// ---------------------------------------------------------------------------
 
 function makeCreateParams(overrides: Partial<CreateExecutionParams> = {}): CreateExecutionParams {
   return {
@@ -125,9 +119,7 @@ function makeCreateParams(overrides: Partial<CreateExecutionParams> = {}): Creat
   };
 }
 
-// ---------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
 
 beforeEach(() => {
   mockDbFn.mockClear();
