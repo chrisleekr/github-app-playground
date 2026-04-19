@@ -25,6 +25,17 @@ let capabilities: DaemonCapabilities;
 let wsClient: DaemonWsClient;
 let draining = false;
 let spotCheckInterval: Timer | null = null;
+let ephemeralIdleCheckInterval: Timer | null = null;
+/**
+ * Wall-clock timestamp of the last moment this daemon saw activity
+ * (registered, took a job offer, or finished one). Used only by the
+ * ephemeral idle-exit loop.
+ */
+let lastActiveAtMs = Date.now();
+
+function markActive(): void {
+  lastActiveAtMs = Date.now();
+}
 
 // Platform-aware drain timeout (T040, FM-10)
 
@@ -153,8 +164,16 @@ function handleMessage(msg: ServerMessage): void {
     }
 
     case "job:payload":
+      markActive();
       void executeJob(msg, capabilities, (m) => {
         wsClient.send(m);
+        if (
+          typeof m === "object" &&
+          m !== null &&
+          (m as { type?: unknown }).type === "job:result"
+        ) {
+          markActive();
+        }
       });
       break;
 
@@ -240,6 +259,37 @@ function startSpotTerminationPolling(): void {
   spotCheckInterval.unref();
 }
 
+// Ephemeral idle-exit (DAEMON_EPHEMERAL=true only)
+
+/**
+ * When the daemon runs as an ephemeral K8s Pod, it must exit after a
+ * period of idleness so the Pod is reclaimed and the orchestrator doesn't
+ * keep paying for unused capacity. The persistent pool never exits on
+ * idle — those Pods are replaced by operators, not self-terminated.
+ */
+function startEphemeralIdleLoop(): void {
+  if (!capabilities.ephemeral) return;
+  const idleTimeoutMs = config.ephemeralDaemonIdleTimeoutMs;
+  ephemeralIdleCheckInterval = setInterval(() => {
+    if (draining) return;
+    const active = getActiveJobCount();
+    if (active > 0) {
+      markActive();
+      return;
+    }
+    const idleFor = Date.now() - lastActiveAtMs;
+    if (idleFor >= idleTimeoutMs) {
+      if (ephemeralIdleCheckInterval !== null) {
+        clearInterval(ephemeralIdleCheckInterval);
+        ephemeralIdleCheckInterval = null;
+      }
+      logger.info({ idleForMs: idleFor, idleTimeoutMs }, "Ephemeral daemon idle — exiting");
+      initiateGracefulShutdown("ephemeral idle timeout");
+    }
+  }, 5_000);
+  ephemeralIdleCheckInterval.unref();
+}
+
 // Main
 
 async function main(): Promise<void> {
@@ -296,6 +346,7 @@ async function main(): Promise<void> {
   wsClient.connect();
 
   startSpotTerminationPolling();
+  startEphemeralIdleLoop();
 
   // Signal handlers (FM-5)
   process.on("SIGTERM", () => {

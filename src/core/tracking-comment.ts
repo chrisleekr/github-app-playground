@@ -6,36 +6,20 @@ import type { BotContext } from "../types";
 const SPINNER_HTML = `<img src="https://github.com/user-attachments/assets/5ac382c7-e004-429b-8e35-7feb3e8f9c6f" width="14px" height="14px" style="vertical-align: middle; margin-left: 4px;" />`;
 
 /**
- * Render the one-line "why here?" line required by SC-007.
- *
- * Consumed both by humans debugging a dispatch decision and by the
- * dispatch-telemetry tests (T053). Keep deterministic; inline code fences
- * for enum values are fine.
- *
- * For "capacity-rejected" and "infra-absent" the target argument describes
- * the target that was *attempted* (and refused), not a successful landing.
- * Triage detail (confidence, complexity, rationale) is rendered by a
- * separate helper added in US2 (T037) so this one stays usable in rejection
- * paths where no TriageResult exists.
+ * Render the one-line "why here?" line required by SC-007. The dispatch
+ * target is always `daemon`; the reason distinguishes persistent vs
+ * ephemeral routing.
  */
 export function renderDispatchReasonLine(reason: DispatchReason, target: DispatchTarget): string {
   switch (reason) {
-    case "label":
-      return `Routed to \`${target}\` via explicit dispatch label.`;
-    case "keyword":
-      return `Routed to \`${target}\` — matched a keyword rule (e.g. docker / compose / dind).`;
-    case "triage":
-      return `Routed to \`${target}\` via auto-mode triage (LLM classifier accepted).`;
-    case "default-fallback":
-      return `Routed to \`${target}\` — triage confidence below threshold; using configured default.`;
-    case "triage-error-fallback":
-      return `Routed to \`${target}\` — triage unavailable (timeout / parse-error / circuit-open); using configured default.`;
-    case "static-default":
-      return `Routed to \`${target}\` — no explicit signal and auto-mode is off; using platform default.`;
-    case "capacity-rejected":
-      return `\`${target}\` pool at capacity; request rejected (no silent downgrade).`;
-    case "infra-absent":
-      return `\`${target}\` target infrastructure not configured; request rejected.`;
+    case "persistent-daemon":
+      return `Routed to \`${target}\` — claimed by the persistent daemon pool.`;
+    case "ephemeral-daemon-triage":
+      return `Routed to \`${target}\` — triage flagged the request as heavy; spawned an ephemeral daemon Pod.`;
+    case "ephemeral-daemon-overflow":
+      return `Routed to \`${target}\` — persistent queue at capacity; spawned an ephemeral daemon Pod.`;
+    case "ephemeral-spawn-failed":
+      return `\`${target}\` scale-up rejected: ephemeral-daemon Pod spawn failed (Kubernetes infrastructure unavailable).`;
   }
 }
 
@@ -44,9 +28,8 @@ export function renderDispatchReasonLine(reason: DispatchReason, target: Dispatc
  * from `TriageResult` so this module has no dependency on the orchestrator.
  */
 export interface TriageCommentSection {
-  readonly mode: "daemon" | "shared-runner" | "isolated-job";
+  readonly heavy: boolean;
   readonly confidence: number;
-  readonly complexity: "trivial" | "moderate" | "complex";
   readonly rationale: string;
   readonly provider: "anthropic" | "bedrock";
   readonly model: string;
@@ -55,51 +38,30 @@ export interface TriageCommentSection {
 }
 
 /**
- * Render the optional triage details block (T037) per research.md R6 — a
- * collapsible `<details>` so the tracking comment stays short by default
- * and expands on click. Only called when `triage` is defined; callers omit
- * it for non-auto / sub-threshold paths where no result was produced.
- *
- * Markdown inside a `<details>` element requires a blank line after the
- * `<summary>` for GitHub to render tables/lists reliably.
- */
-/**
  * HTML-escape untrusted strings before embedding inside a `<details>` block.
  * `rationale` is model-generated; without escaping, a stray `</details>`
  * (or any `<…>` tag) could break out of the collapsible section or render
- * unintended HTML. Escaping `&<>` is sufficient for this context — we do
- * not embed rationale inside attributes.
+ * unintended HTML.
  */
 function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 /**
- * FR-018 / US3: when the isolated-job pool is at capacity, the request is
- * enqueued and the tracking comment surfaces its position. `position` is
- * 1-indexed (the head of the queue is 1); `max` is the configured
- * `MAX_CONCURRENT_ISOLATED_JOBS`. Kept as a pure helper so US3 integration
- * tests can assert the exact string without mounting the entire comment
- * pipeline.
+ * Render the optional triage details block as a collapsible `<details>`
+ * section so the tracking comment stays short by default.
  *
- * The inputs are integers from trusted config + Valkey RPUSH return, so no
- * escaping is required — unlike `renderTriageSection.rationale` which is
- * model-generated. Coerced to integer via `Math.trunc` as a defensive check
- * against a future caller passing a float.
+ * Markdown inside a `<details>` element requires a blank line after the
+ * `<summary>` for GitHub to render tables/lists reliably.
  */
-export function renderQueuePosition(position: number, max: number): string {
-  const p = Math.trunc(position);
-  const m = Math.trunc(max);
-  return `⏳ Queued (position ${String(p)} of ${String(m)} on isolated-job pool). Waiting for capacity…`;
-}
-
 export function renderTriageSection(triage: TriageCommentSection): string {
   const confidencePct = (triage.confidence * 100).toFixed(0);
   const costFmt = triage.costUsd < 0.001 ? "<US$0.001" : `US$${triage.costUsd.toFixed(4)}`;
   const safeRationale = escapeHtml(triage.rationale);
+  const heavyLabel = triage.heavy ? "heavy" : "not heavy";
   return [
     "<details>",
-    `<summary>Triage details — mode: <code>${triage.mode}</code>, confidence: ${confidencePct}%, complexity: ${triage.complexity}</summary>`,
+    `<summary>Triage details — classification: <code>${heavyLabel}</code>, confidence: ${confidencePct}%</summary>`,
     "",
     `**Rationale:** ${safeRationale}`,
     "",

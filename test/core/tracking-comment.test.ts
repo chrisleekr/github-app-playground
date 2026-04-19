@@ -7,7 +7,6 @@ import {
   finalizeTrackingComment,
   isAlreadyProcessed,
   renderDispatchReasonLine,
-  renderQueuePosition,
   renderTriageSection,
   type TriageCommentSection,
   updateTrackingComment,
@@ -266,11 +265,11 @@ describe("finalizeTrackingComment", () => {
   });
 });
 
-describe("renderDispatchReasonLine (SC-007)", () => {
+describe("renderDispatchReasonLine", () => {
   it("produces a non-empty one-sentence string for every DispatchReason value", () => {
     const seen = new Set<string>();
     for (const reason of DISPATCH_REASONS) {
-      const line = renderDispatchReasonLine(reason, "shared-runner");
+      const line = renderDispatchReasonLine(reason, "daemon");
       expect(line).toBeString();
       expect(line.length).toBeGreaterThan(0);
       expect(line.length).toBeLessThanOrEqual(200);
@@ -281,41 +280,32 @@ describe("renderDispatchReasonLine (SC-007)", () => {
     expect(seen.size).toBe(DISPATCH_REASONS.length);
   });
 
-  it("includes the target name verbatim in the output", () => {
+  it("includes the target name verbatim in every output", () => {
     for (const reason of DISPATCH_REASONS) {
-      for (const target of ["inline", "daemon", "shared-runner", "isolated-job"] as const) {
-        const line = renderDispatchReasonLine(reason, target);
-        expect(line).toContain(target);
-      }
+      const line = renderDispatchReasonLine(reason, "daemon");
+      expect(line).toContain("daemon");
     }
   });
 
-  it("uses distinguishable vocabulary for each reason (regression guard)", () => {
-    expect(renderDispatchReasonLine("label", "shared-runner")).toMatch(/\blabel\b/i);
-    expect(renderDispatchReasonLine("keyword", "isolated-job")).toMatch(/\bkeyword\b/i);
-    expect(renderDispatchReasonLine("triage", "shared-runner")).toMatch(/\btriage\b/i);
-    expect(renderDispatchReasonLine("default-fallback", "shared-runner")).toMatch(
-      /below threshold/i,
+  it("uses distinguishable vocabulary for each reason", () => {
+    expect(renderDispatchReasonLine("persistent-daemon", "daemon")).toMatch(/persistent/i);
+    expect(renderDispatchReasonLine("ephemeral-daemon-triage", "daemon")).toMatch(/triage/i);
+    expect(renderDispatchReasonLine("ephemeral-daemon-triage", "daemon")).toMatch(/heavy/i);
+    expect(renderDispatchReasonLine("ephemeral-daemon-overflow", "daemon")).toMatch(/capacity/i);
+    expect(renderDispatchReasonLine("ephemeral-spawn-failed", "daemon")).toMatch(
+      /Kubernetes|infrastructure|unavailable/i,
     );
-    expect(renderDispatchReasonLine("triage-error-fallback", "shared-runner")).toMatch(
-      /unavailable/i,
-    );
-    expect(renderDispatchReasonLine("static-default", "inline")).toMatch(/platform default/i);
-    expect(renderDispatchReasonLine("capacity-rejected", "isolated-job")).toMatch(/capacity/i);
-    expect(renderDispatchReasonLine("infra-absent", "isolated-job")).toMatch(/infrastructure/i);
   });
 
-  it("rejection reasons do not use 'Routed' (nothing was routed)", () => {
-    expect(renderDispatchReasonLine("capacity-rejected", "isolated-job")).not.toMatch(/^Routed/);
-    expect(renderDispatchReasonLine("infra-absent", "isolated-job")).not.toMatch(/^Routed/);
+  it("spawn-failed reason does not use 'Routed' (nothing was routed)", () => {
+    expect(renderDispatchReasonLine("ephemeral-spawn-failed", "daemon")).not.toMatch(/^Routed/);
   });
 });
 
-describe("renderTriageSection (T037)", () => {
+describe("renderTriageSection", () => {
   const base: TriageCommentSection = {
-    mode: "daemon",
+    heavy: false,
     confidence: 0.87,
-    complexity: "moderate",
     rationale: "Adds one endpoint and a unit test; standard tooling suffices.",
     provider: "anthropic",
     model: "claude-3-5-haiku-20241022",
@@ -330,18 +320,17 @@ describe("renderTriageSection (T037)", () => {
     expect(out).toContain("<summary>");
   });
 
-  it("includes mode, confidence %, and complexity in the summary", () => {
-    const out = renderTriageSection(base);
-    expect(out).toContain("<code>daemon</code>");
-    expect(out).toContain("87%");
-    expect(out).toContain("moderate");
+  it("surfaces the binary heavy classification and confidence in the summary", () => {
+    expect(renderTriageSection(base)).toContain("not heavy");
+    expect(renderTriageSection(base)).toContain("87%");
+    expect(renderTriageSection({ ...base, heavy: true })).toContain("heavy");
   });
 
   it("renders the rationale verbatim when it contains no HTML-special characters", () => {
     expect(renderTriageSection(base)).toContain(base.rationale);
   });
 
-  it("HTML-escapes rationale to prevent <details> break-out (Copilot PR #20)", () => {
+  it("HTML-escapes rationale to prevent <details> break-out", () => {
     const hostile = renderTriageSection({
       ...base,
       rationale: "close </details><script>alert(1)</script> tag",
@@ -358,13 +347,11 @@ describe("renderTriageSection (T037)", () => {
   });
 
   it("formats cost below US$0.001 as '<US$0.001'", () => {
-    const out = renderTriageSection({ ...base, costUsd: 0.0004 });
-    expect(out).toContain("<US$0.001");
+    expect(renderTriageSection({ ...base, costUsd: 0.0004 })).toContain("<US$0.001");
   });
 
   it("formats cost ≥ US$0.001 with 4 decimals", () => {
-    const out = renderTriageSection({ ...base, costUsd: 0.0032 });
-    expect(out).toContain("US$0.0032");
+    expect(renderTriageSection({ ...base, costUsd: 0.0032 })).toContain("US$0.0032");
   });
 
   it("renders provider and model in backticks", () => {
@@ -377,26 +364,5 @@ describe("renderTriageSection (T037)", () => {
     const lines = renderTriageSection(base).split("\n");
     const summaryIdx = lines.findIndex((l) => l.startsWith("<summary>"));
     expect(lines[summaryIdx + 1]).toBe("");
-  });
-});
-
-describe("renderQueuePosition (US3 T045)", () => {
-  it("formats a 1-indexed position alongside the capacity ceiling", () => {
-    expect(renderQueuePosition(1, 3)).toBe(
-      "⏳ Queued (position 1 of 3 on isolated-job pool). Waiting for capacity…",
-    );
-    expect(renderQueuePosition(15, 20)).toBe(
-      "⏳ Queued (position 15 of 20 on isolated-job pool). Waiting for capacity…",
-    );
-  });
-
-  it("truncates non-integer inputs defensively (position and max)", () => {
-    expect(renderQueuePosition(3.9, 5.2)).toContain("position 3 of 5");
-  });
-
-  it("produces a single-line body (no newlines, no HTML)", () => {
-    const body = renderQueuePosition(2, 3);
-    expect(body).not.toContain("\n");
-    expect(body).not.toContain("<");
   });
 });

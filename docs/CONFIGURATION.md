@@ -49,45 +49,31 @@ Server mode only. If `ORCHESTRATOR_URL` is set, the process runs in daemon mode 
 
 ## Dispatch
 
-| Variable                  | Default         | Notes                                                                                                                                                                             |
-| ------------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AGENT_JOB_MODE`          | `inline`        | Platform-wide mode: `inline`, `daemon`, `shared-runner`, `isolated-job`, or `auto`. Any value other than `inline` requires `VALKEY_URL`, `DATABASE_URL`, and `DAEMON_AUTH_TOKEN`. |
-| `DEFAULT_DISPATCH_TARGET` | `shared-runner` | Fallback target when triage is sub-threshold or errors. Cannot be `inline` when mode is `auto`.                                                                                   |
+Dispatch collapsed to a single target (`daemon`). The router decides only **which reason** a job lands there and whether to spawn an ephemeral daemon — see [Architecture → Dispatch Flow](ARCHITECTURE.md#dispatch-flow).
 
-## Isolated-job target (Kubernetes)
+## Ephemeral daemons (Kubernetes scale-up)
 
-Applies when `AGENT_JOB_MODE=isolated-job`, `auto`, or when a label forces `isolated-job`.
+Used when the orchestrator needs to add daemon capacity on demand. Spawned Pods run the same daemon image with `DAEMON_EPHEMERAL=true` and exit after idle.
 
-| Variable                         | Default                       | Notes                                                                                                |
-| -------------------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `JOB_NAMESPACE`                  | `github-app`                  | Namespace for spawned Jobs. ServiceAccount needs `create/get/list/delete` on `jobs` and `pods` here. |
-| `JOB_IMAGE`                      | `github-app-playground:local` | Container image for the Job pod.                                                                     |
-| `JOB_TTL_SECONDS`                | `300`                         | `ttlSecondsAfterFinished`. Too low and `kubectl logs` fails before logs can be retrieved.            |
-| `JOB_ACTIVE_DEADLINE_SECONDS`    | `1800` (schema max `3500`)    | Hard K8s-side wall-clock ceiling. Cap of `3500` leaves 100s under GitHub's 3600s token TTL.          |
-| `JOB_WATCH_POLL_INTERVAL_MS`     | `5000`                        | How often the watcher polls Job status.                                                              |
-| `MAX_CONCURRENT_ISOLATED_JOBS`   | `3`                           | In-flight capacity gate.                                                                             |
-| `PENDING_ISOLATED_JOB_QUEUE_MAX` | `20`                          | Bounded overflow queue. When full, requests are rejected with `dispatch_reason=capacity-rejected`.   |
-| `KUBECONFIG`                     | auto (in-cluster)             | Kubernetes client config path. The client auto-detects in-cluster via `KUBERNETES_SERVICE_HOST`.     |
+| Variable                                 | Default           | Notes                                                                                                                                |
+| ---------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `DAEMON_EPHEMERAL`                       | `false`           | Set to `true` on ephemeral daemon Pods (injected by the spawner). Controls idle-exit behaviour on the daemon.                        |
+| `EPHEMERAL_DAEMON_IDLE_TIMEOUT_MS`       | `120000`          | Ephemeral daemon exits after this much idle time (no active job).                                                                    |
+| `EPHEMERAL_DAEMON_SPAWN_COOLDOWN_MS`     | `30000`           | Minimum time between ephemeral spawns (orchestrator side). During cooldown, heavy/overflow signals fall back to `persistent-daemon`. |
+| `EPHEMERAL_DAEMON_SPAWN_QUEUE_THRESHOLD` | `3`               | Queue length that triggers an `ephemeral-daemon-overflow` spawn.                                                                     |
+| `EPHEMERAL_DAEMON_NAMESPACE`             | `default`         | Kubernetes namespace for spawned ephemeral Pods. The orchestrator ServiceAccount needs `create/get/delete` on `pods` here.           |
+| `KUBECONFIG`                             | auto (in-cluster) | Kubernetes client config path. The client auto-detects in-cluster via `KUBERNETES_SERVICE_HOST`.                                     |
 
-## Shared-runner target
-
-Applies when `AGENT_JOB_MODE=shared-runner`, `auto`, or when a label forces `shared-runner`.
-
-| Variable                | Default | Notes                                                                                    |
-| ----------------------- | ------- | ---------------------------------------------------------------------------------------- |
-| `INTERNAL_RUNNER_URL`   | —       | Internal HTTP endpoint for the shared-runner pool.                                       |
-| `INTERNAL_RUNNER_TOKEN` | —       | Sent on the `X-Internal-Token` header. Paired with the remote service's auth middleware. |
-
-`SHARED_RUNNER_TOKEN` is accepted by the schema but not read by any code path — do not rely on it.
+The orchestrator also expects a pre-existing `daemon-secrets` K8s Secret in `EPHEMERAL_DAEMON_NAMESPACE`, mounted into the spawned Pod via `envFrom: secretRef: daemon-secrets`. See [DAEMON.md](DAEMON.md) and [DEPLOYMENT.md](DEPLOYMENT.md) for the full Pod spec and RBAC.
 
 ## Data layer
 
-Required when `AGENT_JOB_MODE !== "inline"`.
+Required whenever the orchestrator role is active (i.e. the webhook server process, which always runs the orchestrator).
 
-| Variable       | Default | Notes                                                                                                                               |
-| -------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `VALKEY_URL`   | —       | Backs the isolated-job pending queue, in-flight set, and daemon job queue.                                                          |
-| `DATABASE_URL` | —       | Postgres connection for `executions`, `triage_results`, `dispatch_decisions`. Unset disables durable idempotency and observability. |
+| Variable       | Default | Notes                                                                                                         |
+| -------------- | ------- | ------------------------------------------------------------------------------------------------------------- |
+| `VALKEY_URL`   | —       | Backs the daemon job queue, in-flight set, and the ephemeral-spawn cooldown.                                  |
+| `DATABASE_URL` | —       | Postgres connection for `executions`, `triage_results`. Unset disables durable idempotency and observability. |
 
 ## Orchestrator and daemon
 
@@ -95,7 +81,7 @@ Required when `AGENT_JOB_MODE !== "inline"`.
 | ------------------------------ | -------- | ----------------------------------------------------------------------------------------------------------- |
 | `WS_PORT`                      | `3002`   | Orchestrator WebSocket listener. Bound only in server mode. Must differ from `PORT`.                        |
 | `ORCHESTRATOR_URL`             | —        | Presence flips the process from server mode to **daemon** mode. Must be `ws://` or `wss://`.                |
-| `DAEMON_AUTH_TOKEN`            | —        | Shared secret for the daemon ⇄ orchestrator handshake. Required outside inline mode.                        |
+| `DAEMON_AUTH_TOKEN`            | —        | Shared secret for the daemon ⇄ orchestrator handshake. Required on both orchestrator and daemon processes.  |
 | `HEARTBEAT_INTERVAL_MS`        | `30000`  | Daemon → orchestrator ping cadence.                                                                         |
 | `HEARTBEAT_TIMEOUT_MS`         | `90000`  | Eviction threshold. Keep `≥ 2 × HEARTBEAT_INTERVAL_MS` to tolerate a dropped packet.                        |
 | `STALE_EXECUTION_THRESHOLD_MS` | `600000` | How long a `running` execution may sit before the watcher marks it failed. Set `≥ AGENT_TIMEOUT_MS`.        |
@@ -107,33 +93,23 @@ Required when `AGENT_JOB_MODE !== "inline"`.
 | `DAEMON_MEMORY_FLOOR_MB`       | `512`    | Minimum free memory the orchestrator requires before dispatching.                                           |
 | `DAEMON_DISK_FLOOR_MB`         | `1024`   | Minimum free disk the orchestrator requires before dispatching.                                             |
 
-`DAEMON_EPHEMERAL` and `JOB_MAX_COST_USD` are validated but not consumed by any code path today — setting them has no runtime effect.
+## Triage
 
-## Triage (auto mode)
+| Variable                      | Default     | Notes                                                                                              |
+| ----------------------------- | ----------- | -------------------------------------------------------------------------------------------------- |
+| `TRIAGE_ENABLED`              | `true`      | Kill-switch. When `false`, triage returns `heavy=false` and the job routes to `persistent-daemon`. |
+| `TRIAGE_MODEL`                | `haiku-3-5` | Alias resolved at runtime. Affects triage cost and latency only.                                   |
+| `TRIAGE_CONFIDENCE_THRESHOLD` | `1.0`       | Below this, triage is treated as sub-threshold and the job routes to `persistent-daemon`.          |
+| `TRIAGE_MAX_TOKENS`           | `256`       | Cap on the JSON response. Values above ~100 are wasted budget.                                     |
+| `TRIAGE_TIMEOUT_MS`           | `5000`      | Per-call wall clock. Beyond this, the circuit-breaker counter increments.                          |
+| `DEFAULT_MAXTURNS`            | `30`        | Agent turn cap. Applied on every execution — triage no longer influences `maxTurns`.               |
 
-| Variable                      | Default     | Notes                                                                                                                                                |
-| ----------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TRIAGE_ENABLED`              | `true`      | Kill-switch. When `false`, every `auto`-mode ambiguous request falls back to `DEFAULT_DISPATCH_TARGET` with `dispatch_reason=triage-error-fallback`. |
-| `TRIAGE_MODEL`                | `haiku-3-5` | Alias resolved at runtime. Affects triage cost and latency only.                                                                                     |
-| `TRIAGE_CONFIDENCE_THRESHOLD` | `1.0`       | Below this, triage falls back to the default target. Day-1 default is strict.                                                                        |
-| `TRIAGE_MAX_TOKENS`           | `256`       | Cap on the JSON response. Values above ~100 are wasted budget.                                                                                       |
-| `TRIAGE_TIMEOUT_MS`           | `5000`      | Per-call wall clock. Beyond this, the circuit-breaker counter increments.                                                                            |
-| `TRIAGE_MAXTURNS_TRIVIAL`     | `10`        | Applied on triage-success when complexity is `trivial`.                                                                                              |
-| `TRIAGE_MAXTURNS_MODERATE`    | `30`        | Applied on triage-success when complexity is `moderate`.                                                                                             |
-| `TRIAGE_MAXTURNS_COMPLEX`     | `50`        | Applied on triage-success when complexity is `complex`.                                                                                              |
-| `DEFAULT_MAXTURNS`            | `30`        | Applied on every non-triage-success branch.                                                                                                          |
-
-See [Triage](TRIAGE.md) for the full cascade and the six fallback reasons that appear in logs.
+See [Triage](TRIAGE.md) for the binary `heavy` signal, circuit breaker, and the six fallback reasons that appear in logs.
 
 ## Mode matrix — what's required when
 
-| Mode                                              | Also required                                                            |
-| ------------------------------------------------- | ------------------------------------------------------------------------ |
-| `inline`                                          | Just the GitHub App credentials and one AI provider credential.          |
-| `daemon`, `shared-runner`, `isolated-job`, `auto` | `VALKEY_URL`, `DATABASE_URL`, `DAEMON_AUTH_TOKEN`.                       |
-| `shared-runner` or `auto`                         | `INTERNAL_RUNNER_URL`, `INTERNAL_RUNNER_TOKEN`.                          |
-| `isolated-job` or `auto`                          | `JOB_IMAGE`, plus a ServiceAccount with Job/Pod RBAC in `JOB_NAMESPACE`. |
-| `auto`                                            | `DEFAULT_DISPATCH_TARGET` cannot be `inline`.                            |
-| Daemon process (`ORCHESTRATOR_URL` set)           | `DAEMON_AUTH_TOKEN`. GitHub App credentials are NOT required.            |
-
-> **`auto` mode caveat.** The router may dispatch to **any** of the four targets, so configure credentials for every target the cascade can reach — not just the `DEFAULT_DISPATCH_TARGET`. Missing infrastructure is detected at dispatch time, not at startup, and surfaces as `dispatch_reason=infra-absent` in logs (the request then falls through to the configured default).
+| Role                                    | Required                                                                                               |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Orchestrator (webhook server)           | GitHub App credentials, one AI provider credential, `VALKEY_URL`, `DATABASE_URL`, `DAEMON_AUTH_TOKEN`. |
+| Ephemeral-daemon scale-up               | K8s API access + RBAC on `pods` in `EPHEMERAL_DAEMON_NAMESPACE`, `daemon-secrets` Secret.              |
+| Daemon process (`ORCHESTRATOR_URL` set) | `DAEMON_AUTH_TOKEN`. GitHub App credentials are NOT required.                                          |

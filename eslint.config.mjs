@@ -11,6 +11,7 @@ export default tseslint.config(
       "node_modules/**",
       "coverage/**",
       "scripts/**",
+      "site/**",
       "*.config.js",
       "*.config.mjs",
       "*.config.cjs",

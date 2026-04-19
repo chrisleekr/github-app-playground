@@ -50,10 +50,9 @@ function readDaemonActionsFile(
 /**
  * Build the options object passed to `finalizeTrackingComment` on success.
  *
- * Exists because `exactOptionalPropertyTypes` forbids assigning `undefined` to
- * optional properties — we have to omit them instead. Extracted so the two
- * conditional branches don't count against runInlinePipeline's cyclomatic
- * complexity budget.
+ * `exactOptionalPropertyTypes` forbids assigning `undefined` to optional
+ * properties — we must omit them instead. Extracted so the conditional
+ * branches don't count against runPipeline's cyclomatic complexity budget.
  */
 function buildFinalOpts(result: ExecutionResult): {
   success: boolean;
@@ -73,40 +72,23 @@ function buildFinalOpts(result: ExecutionResult): {
 }
 
 /**
- * Inline processing pipeline — executes the full Claude Agent SDK workflow.
- *
- * Pipeline:
- * 1. Create tracking comment ("Working...")
- * 2. Get installation token
- * 3. Fetch PR/issue data via GraphQL
- * 4. Build prompt with full context
- * 5. Clone repo to temp directory
- * 6. Resolve MCP servers and allowed tools
- * 7. Execute Claude Agent SDK
- * 8. Finalize tracking comment (success/error/cost)
- * 9. Cleanup temp directory
+ * Optional overrides for the daemon (via `job:payload`) to honor
+ * orchestrator-provided execution limits and to track the workspace path.
  */
-/**
- * Optional overrides for callers (e.g. daemon mode) that want to honor
- * orchestrator-provided execution limits instead of the pipeline defaults.
- * - `maxTurns` overrides the Agent SDK turn budget
- * - `allowedTools` overrides the tool allowlist from `resolveAllowedTools`
- */
-export interface RunInlinePipelineOverrides {
+export interface RunPipelineOverrides {
   maxTurns?: number;
   allowedTools?: string[];
   /**
    * Fires once the pipeline has cloned the repo and knows the workspace path.
-   * Used by the daemon `executeJob()` to track workDir for cancellation and
-   * SIGKILL cleanup without a second (redundant) clone.
+   * Used by the daemon to track workDir for cancellation and SIGKILL cleanup.
    */
   onWorkDirReady?: (workDir: string) => void;
 }
 
 /**
  * Write orchestrator-provided env vars as `.env` in the agent workspace so the
- * agent subprocess (which runs with cwd=workDir) can read them. No-op when the
- * map is absent or empty. Values are written verbatim — callers own escaping.
+ * agent subprocess (cwd=workDir) can read them. Values are written verbatim —
+ * callers own escaping.
  */
 function writeEnvFile(
   workDir: string,
@@ -122,9 +104,24 @@ function writeEnvFile(
   log.info({ keyCount: Object.keys(envVars).length }, "Wrote .env from orchestrator env vars");
 }
 
-export async function runInlinePipeline(
+/**
+ * Claude Agent SDK execution pipeline. Every dispatched job runs through this
+ * function — currently only invoked by the daemon job-executor.
+ *
+ * Pipeline:
+ * 1. Create tracking comment ("Working...")
+ * 2. Get installation token
+ * 3. Fetch PR/issue data via GraphQL
+ * 4. Build prompt with full context
+ * 5. Clone repo to temp directory
+ * 6. Resolve MCP servers and allowed tools
+ * 7. Execute Claude Agent SDK
+ * 8. Finalize tracking comment (success/error/cost)
+ * 9. Cleanup temp directory
+ */
+export async function runPipeline(
   ctx: BotContext,
-  overrides: RunInlinePipelineOverrides = {},
+  overrides: RunPipelineOverrides = {},
 ): Promise<ExecutionResult> {
   let trackingCommentId: number | undefined;
 
@@ -138,36 +135,26 @@ export async function runInlinePipeline(
         log: ctx.log,
       });
     }
-    // Capture as const so TypeScript can narrow it inside arrow-function closures below.
     const resolvedTrackingCommentId = trackingCommentId;
 
-    // Step 2: Get an installation token for API calls and git clone
-    // The octokit instance on ctx is already authenticated for this installation,
-    // but we need a raw token for git clone auth URL.
-    // Use octokit's auth to get the installation access token.
     const { token: installationToken } = (await ctx.octokit.auth({
       type: "installation",
     })) as { token: string };
 
-    // Step 3: Fetch PR/issue data via GraphQL
     const data = await retryWithBackoff(() => fetchGitHubData(ctx), {
       maxAttempts: 3,
       initialDelayMs: 2000,
       log: ctx.log,
     });
 
-    // Build an enriched context with branch data resolved from GraphQL.
-    // Creates a new object instead of mutating ctx to avoid hidden temporal dependencies.
     const enrichedCtx: EnrichedBotContext = {
       ...ctx,
       headBranch: data.headBranch ?? ctx.headBranch ?? ctx.defaultBranch,
       baseBranch: data.baseBranch ?? ctx.baseBranch ?? ctx.defaultBranch,
     };
 
-    // Step 4: Build the full prompt
     const prompt = buildPrompt(enrichedCtx, data, resolvedTrackingCommentId);
 
-    // Dry-run mode: return a synthetic result without executing Claude or cloning the repo.
     if (ctx.dryRun === true) {
       ctx.log.info(
         { promptLength: prompt.length, headBranch: enrichedCtx.headBranch },
@@ -176,17 +163,12 @@ export async function runInlinePipeline(
       return { success: true, durationMs: 0, costUsd: 0, numTurns: 0, dryRun: true };
     }
 
-    // Step 5: Clone repo to temp directory
     const { workDir, cleanup } = await checkoutRepo(enrichedCtx, installationToken);
     overrides.onWorkDirReady?.(workDir);
 
     try {
-      // Write orchestrator-provided .env into the just-cloned workspace so the
-      // agent subprocess can read it. Must happen inside this try so cleanup()
-      // still removes the file on every exit path.
       writeEnvFile(workDir, enrichedCtx.envVars, enrichedCtx.log);
 
-      // Step 6: Resolve MCP servers for this context
       const mcpServers = resolveMcpServers(
         enrichedCtx,
         resolvedTrackingCommentId,
@@ -197,13 +179,9 @@ export async function runInlinePipeline(
         },
       );
 
-      // Step 7: Resolve allowed tools (or honor caller override, e.g. from
-      // orchestrator `job:payload` in daemon mode — keeps daemon execution in
-      // lockstep with the orchestrator-approved tool allowlist).
       const allowedTools =
         overrides.allowedTools ?? resolveAllowedTools(enrichedCtx, enrichedCtx.daemonCapabilities);
 
-      // Step 8: Execute Claude Agent SDK
       const result = await executeAgent({
         ctx: enrichedCtx,
         prompt,
@@ -213,9 +191,6 @@ export async function runInlinePipeline(
         ...(overrides.maxTurns !== undefined ? { maxTurns: overrides.maxTurns } : {}),
       });
 
-      // Step 9: Finalize tracking comment with results.
-      // Post-success bookkeeping errors must NOT mark the execution as failed —
-      // the agent work already completed successfully at this point.
       if (resolvedTrackingCommentId !== undefined) {
         try {
           const finalOpts = buildFinalOpts(result);
@@ -245,7 +220,6 @@ export async function runInlinePipeline(
         "Request processing completed",
       );
 
-      // Read daemon actions before cleanup destroys the workDir
       const daemonActions = readDaemonActionsFile(workDir, enrichedCtx.log);
 
       return {
@@ -255,8 +229,6 @@ export async function runInlinePipeline(
           : {}),
       };
     } finally {
-      // Step 10: Cleanup temp directory (always, even on error).
-      // Wrapped to avoid masking the original error if cleanup fails.
       try {
         await cleanup();
       } catch (cleanupError) {
@@ -265,11 +237,8 @@ export async function runInlinePipeline(
     }
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error));
-    // Log the full error server-side only — do not expose internal details in the comment.
     ctx.log.error({ err }, "Request processing failed");
 
-    // Update tracking comment with a generic user-facing message to avoid leaking
-    // internal error details (paths, API keys, server addresses) to GitHub contributors.
     if (trackingCommentId !== undefined) {
       const commentId = trackingCommentId;
       try {

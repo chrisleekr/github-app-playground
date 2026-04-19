@@ -32,9 +32,9 @@ Single HTTP server (`src/app.ts`) using `octokit` App class. Webhook events arri
 
 **Event handler** (`src/webhook/events/`): parse event → unified `BotContext` → check for `@chrisleekr-bot` trigger → fire-and-forget `processRequest()`
 
-**Router** (`src/webhook/router.ts`): routing concerns — idempotency (in-memory `Map` + durable tracking comment check), owner allowlist, concurrency guard, then delegates to the inline pipeline.
+**Router** (`src/webhook/router.ts`): idempotency (in-memory `Map` + durable tracking-comment check), owner allowlist, concurrency guard, triage, and scale-up decision. On heavy/overflow it spawns an ephemeral daemon K8s Pod (`src/k8s/ephemeral-daemon-spawner.ts`). The job is then enqueued for any daemon in the fleet to claim over WebSocket. The webhook server never executes the pipeline in-process.
 
-**Inline pipeline** (`src/core/inline-pipeline.ts`):
+**Pipeline** (`src/core/pipeline.ts`, executed by the daemon):
 
 1. Create tracking comment ("Working…")
 2. Get installation token
@@ -49,10 +49,11 @@ Single HTTP server (`src/app.ts`) using `octokit` App class. Webhook events arri
 ## Architecture
 
 - `src/webhook/` — Event routing (`router.ts`) and per-event handlers (`events/`, one file per event type)
-- `src/core/` — Pipeline: context → fetch → format → prompt → checkout → execute. The inline pipeline (`inline-pipeline.ts`) is the main execution path.
+- `src/core/` — Pipeline: context → fetch → format → prompt → checkout → execute. `pipeline.ts` is the single execution path (run inside the daemon, never in-process in the webhook server).
 - `src/db/` — Database layer (Postgres via `Bun.sql`). Connection singleton (`index.ts`), migration runner (`migrate.ts`), SQL migrations (`migrations/`). Only active when `DATABASE_URL` is configured.
-- `src/orchestrator/` — WebSocket server, daemon registry, job queue, job dispatcher, execution history, Valkey client, concurrency tracking. Embedded in the webhook server process when `AGENT_JOB_MODE !== "inline"`.
-- `src/daemon/` — Standalone daemon worker process. Connects to orchestrator via WebSocket, discovers local capabilities, accepts/rejects job offers, executes jobs via inline pipeline. Entry: `src/daemon/main.ts`.
+- `src/orchestrator/` — WebSocket server, daemon registry, job queue, job dispatcher, execution history, Valkey client, concurrency tracking, ephemeral-daemon scaler. Embedded in the webhook server process.
+- `src/daemon/` — Standalone daemon worker process (persistent or ephemeral). Connects to the orchestrator via WebSocket, discovers local capabilities, accepts/rejects job offers, executes jobs via `src/core/pipeline.ts`. When `DAEMON_EPHEMERAL=true`, exits after `EPHEMERAL_DAEMON_IDLE_TIMEOUT_MS` of idle. Entry: `src/daemon/main.ts`.
+- `src/k8s/` — Ephemeral daemon Pod spawner (`ephemeral-daemon-spawner.ts`). Creates a bare Pod running the same daemon image with `DAEMON_EPHEMERAL=true`.
 - `src/shared/` — Types shared between server and daemon: WebSocket message schemas (`ws-messages.ts`), daemon capability types (`daemon-types.ts`).
 - `src/mcp/` — MCP server registry and servers (extensible: add new servers). Includes `daemon-capabilities` server for daemon environment awareness.
 - `src/utils/` — Retry logic, sanitization
@@ -115,7 +116,7 @@ The `docs/` tree is published as a MkDocs Material site at <https://chrisleekr.g
 - `src/shared/dispatch-types.ts` targets or reasons → `docs/OBSERVABILITY.md` + `docs/ARCHITECTURE.md`
 - `src/orchestrator/triage.ts` fallback reasons or model config → `docs/TRIAGE.md`
 - `src/webhook/` routing or idempotency behaviour → `docs/ARCHITECTURE.md`
-- `src/k8s/` queue, drainer, or manifest expectations → `docs/KUBERNETES.md`
+- `src/k8s/ephemeral-daemon-spawner.ts` Pod-spec changes → `docs/DAEMON.md` (ephemeral section) + `docs/DEPLOYMENT.md` (RBAC)
 - `src/daemon/` lifecycle → `docs/DAEMON.md`
 - New MCP server in `src/mcp/` → `docs/EXTENDING.md`
 - New Pino log field or metric → `docs/OBSERVABILITY.md`
@@ -124,9 +125,9 @@ Validate locally with `bun run docs:build` before pushing. If no matching doc ex
 
 ## Active Technologies
 
-- TypeScript 5.9.3 (strict mode with `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `useUnknownInCatchVariables`) on Bun ≥1.3.12 (see `package.json` `packageManager` pin). Existing deps — `octokit`, `@anthropic-ai/claude-agent-sdk`, `@modelcontextprotocol/sdk`, `pino`, `zod`, Bun built-in `WebSocket` + `RedisClient`. New — `@anthropic-ai/bedrock-sdk` (Bedrock path in the `src/ai/llm-client.ts` single-turn adaptor) and `@kubernetes/client-node` (in-cluster Job spawning for the isolated-job dispatch target). `@anthropic-ai/sdk` is already a transitive dep of `claude-agent-sdk`. (20260415-000159-triage-dispatch-modes)
-- **Dispatch taxonomy**: `DispatchTarget` = `inline` | `daemon` | `shared-runner` | `isolated-job`; `DispatchReason` = `label` | `keyword` | `triage` | `default-fallback` | `triage-error-fallback` | `static-default` | `capacity-rejected` | `infra-absent`. Canonical source: `src/shared/dispatch-types.ts`. Cascade reference: `docs/dispatch-flow.md`. (20260415-000159-triage-dispatch-modes)
-- PostgreSQL 17 via `Bun.sql` singleton (`executions` + `triage_results` tables from migrations `001_initial.sql` / `003_dispatch_decisions.sql`); Valkey 8 (Redis-compatible) via Bun built-in `RedisClient` for the pending isolated-job queue and the Phase 2 daemon job queue. Operator FR-014 aggregates in `src/db/queries/dispatch-stats.ts`. (20260415-000159-triage-dispatch-modes)
+- TypeScript 5.9.3 (strict mode with `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `useUnknownInCatchVariables`) on Bun ≥1.3.12 (see `package.json` `packageManager` pin). Deps — `octokit`, `@anthropic-ai/claude-agent-sdk`, `@anthropic-ai/bedrock-sdk` (Bedrock single-turn adaptor in `src/ai/llm-client.ts`), `@modelcontextprotocol/sdk`, `@kubernetes/client-node` (ephemeral-daemon Pod spawning in `src/k8s/ephemeral-daemon-spawner.ts`), `pino`, `zod`, Bun built-in `WebSocket` + `RedisClient`. `@anthropic-ai/sdk` is a transitive dep of `claude-agent-sdk`.
+- **Dispatch taxonomy (post-collapse)**: `DispatchTarget` = `daemon` (singleton — kept as a field for DB/log stability); `DispatchReason` = `persistent-daemon` | `ephemeral-daemon-triage` | `ephemeral-daemon-overflow` | `ephemeral-spawn-failed`. Canonical source: `src/shared/dispatch-types.ts`. (20260419-collapse-dispatch-to-daemon)
+- PostgreSQL 17 via `Bun.sql` singleton (`executions` + `triage_results` tables from migrations `001_initial.sql` → `004_collapse_dispatch_to_daemon.sql`); Valkey 8 (Redis-compatible) via Bun built-in `RedisClient` for the daemon job queue. Operator aggregates in `src/db/queries/dispatch-stats.ts`.
 
 - TypeScript 5.9.3 strict mode on Bun >=1.3.8 + `octokit`, `@anthropic-ai/claude-agent-sdk`, `@modelcontextprotocol/sdk`, `pino`, `zod` (all existing). New: Bun built-in `WebSocket` + `RedisClient` (zero new npm dependencies). (20260413-191249-daemon-orchestrator-core)
 - PostgreSQL 17 (pgvector-ready, existing `executions` + `daemons` tables from `001_initial.sql`) + Valkey 8 (Redis 7.2-compatible, via Bun built-in `RedisClient`) (20260413-191249-daemon-orchestrator-core)
