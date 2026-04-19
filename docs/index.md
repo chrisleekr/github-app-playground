@@ -9,19 +9,27 @@ A GitHub App that responds to `@chrisleekr-bot` mentions on pull requests and is
 
 <div class="grid cards" markdown>
 
-- :material-cog: **[Setup](SETUP.md)**
+- :material-cog:{ .lg .middle } **[Setup](SETUP.md)**
+
+  ***
 
   GitHub App creation, local tunnel, environment variables.
 
-- :material-vector-triangle: **[Architecture](ARCHITECTURE.md)**
+- :material-vector-triangle:{ .lg .middle } **[Architecture](ARCHITECTURE.md)**
+
+  ***
 
   End-to-end request flow and dispatch cascade, from webhook to tracking comment.
 
-- :material-rocket-launch: **[Deployment](DEPLOYMENT.md)**
+- :material-rocket-launch:{ .lg .middle } **[Deployment](DEPLOYMENT.md)**
+
+  ***
 
   Docker build, health probes, resource sizing.
 
-- :material-puzzle: **[Extending](EXTENDING.md)**
+- :material-puzzle:{ .lg .middle } **[Extending](EXTENDING.md)**
+
+  ***
 
   Add new webhook handlers and MCP servers.
 
