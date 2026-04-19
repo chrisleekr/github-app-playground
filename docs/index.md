@@ -7,39 +7,12 @@ hide:
 
 A GitHub App that responds to `@chrisleekr-bot` mentions on pull requests and issues, powered by the Claude Agent SDK. It routes each incoming webhook through a dispatch cascade (inline, daemon, shared-runner, or isolated Kubernetes Job) so a single deployment can serve both trivial chores and long-running refactors.
 
-<!-- prettier-ignore-start -->
-<!-- Material for MkDocs grid-cards require 4-space indentation for card
-     body content (heading → `---` separator → description paragraph).
-     Do not let prettier collapse the indentation to 2 spaces — that makes
-     the body escape the <li> and the cards render empty. -->
-<div class="grid cards" markdown>
+## Start here
 
-- :material-cog:{ .lg .middle } **[Setup](SETUP.md)**
-
-  ***
-
-  GitHub App creation, local tunnel, environment variables.
-
-- :material-vector-triangle:{ .lg .middle } **[Architecture](ARCHITECTURE.md)**
-
-  ***
-
-  End-to-end request flow and dispatch cascade, from webhook to tracking comment.
-
-- :material-rocket-launch:{ .lg .middle } **[Deployment](DEPLOYMENT.md)**
-
-  ***
-
-  Docker build, health probes, resource sizing.
-
-- :material-puzzle:{ .lg .middle } **[Extending](EXTENDING.md)**
-
-  ***
-
-  Add new webhook handlers and MCP servers.
-
-</div>
-<!-- prettier-ignore-end -->
+- **[Setup](SETUP.md)** — GitHub App creation, local tunnel, environment variables.
+- **[Architecture](ARCHITECTURE.md)** — end-to-end request flow and dispatch cascade, from webhook to tracking comment.
+- **[Deployment](DEPLOYMENT.md)** — Docker build, health probes, resource sizing.
+- **[Extending](EXTENDING.md)** — add new webhook handlers and MCP servers.
 
 ## Operator guides
 
