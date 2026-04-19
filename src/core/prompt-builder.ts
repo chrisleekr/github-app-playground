@@ -319,10 +319,16 @@ export function resolveAllowedTools(
       tools.push(`Bash(${daemonCapabilities.containerRuntime.name}:*)`);
     }
 
-    // Scope-narrowed sudoers rule in Dockerfile.daemon lets the `bun` user run
-    // ONLY `apt-get update` and `apt-get install -y <pkg>`; the allow-list
-    // matches that scope so the audit story is clean.
-    tools.push("Bash(sudo apt-get:*)");
+    // Sudoers rule in Dockerfile.daemon restricts the `bun` user to
+    // `apt-get update` and `apt-get install` with upstream package-name
+    // arguments only. Mirror that scope here so the model doesn't plan
+    // commands (remove/purge/local-file install) that will be denied at
+    // runtime.
+    tools.push(
+      "Bash(sudo apt-get update:*)",
+      "Bash(sudo apt-get install -y:*)",
+      "Bash(sudo apt-get install --no-install-recommends -y:*)",
+    );
 
     // Daemon capabilities MCP tool
     tools.push("mcp__daemon_capabilities__query_daemon_capabilities");
@@ -368,11 +374,15 @@ Resources: ${resources.cpuCount} CPUs, ${resources.memoryFreeMb}MB free memory, 
 
 ## On-Demand Package Installation
 
-This daemon has full autonomous \`apt-get\` access. If a tool you need is not in
-the baked inventory above, you MAY install it before proceeding:
+This daemon has scoped \`apt-get\` access: only \`update\` and \`install\` are
+permitted, and only upstream package names from configured sources. Local
+\`.deb\` files, URLs, and \`remove\`/\`purge\` are denied at the sudoers layer.
+If a tool you need is not in the baked inventory above, you MAY install it
+before proceeding:
 
   sudo apt-get update
   sudo apt-get install -y <package>
+  # or: sudo apt-get install --no-install-recommends -y <package>
 
 Configured apt sources: Debian trixie, NodeSource, GitHub CLI, Microsoft
 (azure-cli), Charmbracelet, MongoDB, Google Cloud SDK. Install only packages
