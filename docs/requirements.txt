@@ -1,0 +1,4 @@
+mkdocs-material>=9.5,<10
+Pillow>=10,<12
+cairosvg>=2.7,<3
+mike>=2.1,<3

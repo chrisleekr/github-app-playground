@@ -105,6 +105,23 @@ Four workflow files form the pipeline; each owns one responsibility.
 - Multi-arch images: amd64 builds on `ubuntu-24.04`, arm64 builds natively on `ubuntu-24.04-arm` (free for public repos). Both runners are explicitly pinned (not `ubuntu-latest`) so the rolling alias can't silently flip to a new major and break the build — see the header of `.github/workflows/docker-build.yml`. Manifest assembled by `docker buildx imagetools create`. GHA cache scoped per arch.
 - Defense-in-depth on workflow injection: every dynamic input flowing into a `run:` block is passed via `env:` first.
 
+## Documentation
+
+The `docs/` tree is published as a MkDocs Material site at <https://chrisleekr.github.io/github-app-playground/>. Local preview: `bun run docs:install` once, then `bun run docs:serve` for live reload or `bun run docs:build` for the strict build CI runs.
+
+**Keep docs in sync with code.** When a PR changes any of these surfaces, update the matching page in `docs/` in the same PR:
+
+- `src/config.ts` env var schema → `docs/CONFIGURATION.md`
+- `src/shared/dispatch-types.ts` targets or reasons → `docs/OBSERVABILITY.md` + `docs/ARCHITECTURE.md`
+- `src/orchestrator/triage.ts` fallback reasons or model config → `docs/TRIAGE.md`
+- `src/webhook/` routing or idempotency behaviour → `docs/ARCHITECTURE.md`
+- `src/k8s/` queue, drainer, or manifest expectations → `docs/KUBERNETES.md`
+- `src/daemon/` lifecycle → `docs/DAEMON.md`
+- New MCP server in `src/mcp/` → `docs/EXTENDING.md`
+- New Pino log field or metric → `docs/OBSERVABILITY.md`
+
+Validate locally with `bun run docs:build` before pushing. If no matching doc exists yet, flag the gap in the PR description rather than shipping silently.
+
 ## Active Technologies
 
 - TypeScript 5.9.3 (strict mode with `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `useUnknownInCatchVariables`) on Bun ≥1.3.12 (see `package.json` `packageManager` pin). Existing deps — `octokit`, `@anthropic-ai/claude-agent-sdk`, `@modelcontextprotocol/sdk`, `pino`, `zod`, Bun built-in `WebSocket` + `RedisClient`. New — `@anthropic-ai/bedrock-sdk` (Bedrock path in the `src/ai/llm-client.ts` single-turn adaptor) and `@kubernetes/client-node` (in-cluster Job spawning for the isolated-job dispatch target). `@anthropic-ai/sdk` is already a transitive dep of `claude-agent-sdk`. (20260415-000159-triage-dispatch-modes)

@@ -1,70 +1,72 @@
-# GitHub App Playground - @chrisleekr-bot
+# GitHub App Playground — @chrisleekr-bot
 
-GitHub App that responds to `@chrisleekr-bot` mentions on PRs and issues — powered by Claude Agent SDK.
+A GitHub App that responds to `@chrisleekr-bot` mentions on pull requests and issues, powered by the Claude Agent SDK. Each event is routed through a dispatch cascade (inline, daemon, shared-runner, or isolated Kubernetes Job) so one deployment can serve both trivial chores and long-running refactors.
 
-Ported from [claude-code-action](https://github.com/anthropics/claude-code-action) tag mode to a standalone webhook server.
+📖 **Documentation:** <https://chrisleekr.github.io/github-app-playground/>
 
-## Features
+## What it does
 
-- **Code review**: Mention `@chrisleekr-bot` on a PR for AI-powered code review
-- **Code changes**: Ask the bot to fix bugs, refactor, or implement features
-- **Q&A**: Ask questions about the codebase on issues or PRs
-- **Extensible**: Add new webhook events, MCP servers, or behaviors
+- **Code review** — mention the bot on a PR for AI-powered review.
+- **Code changes** — ask it to fix bugs, refactor, or implement features.
+- **Q&A** — ask questions about the codebase on issues or PRs.
+- **Extensible** — add new webhook events or MCP servers without touching the core pipeline.
 
-## Setup
-
-See [docs/SETUP.md](./docs/SETUP.md) for the full GitHub App creation and configuration guide.
-
-### Quick Start (Development)
-
-```bash
-cp .env.example .env   # Fill in credentials (see SETUP.md for details)
-bun install
-bun run dev:deps       # Start local Valkey + Postgres (optional, for non-inline modes)
-bun run dev
-```
-
-## Architecture
+## Architecture at a glance
 
 ```mermaid
-sequenceDiagram
-    actor User
-    participant GitHub
-    participant Bot as Bot Server
-    participant Claude as Claude Agent SDK
-    participant MCP as MCP Servers
-
-    User->>GitHub: Mentions @chrisleekr-bot<br/>in a PR or issue comment
-    GitHub->>Bot: POST /api/github/webhooks
-    Bot-->>GitHub: 200 OK (responds immediately)
-
-    Note over Bot,Claude: Heavy work runs asynchronously after 200 OK
-
-    Bot->>GitHub: Creates "Working..." tracking comment
-    Bot->>GitHub: Fetches PR/issue context via GraphQL
-    Bot->>GitHub: Clones repository (shallow, branch-specific)
-    Bot->>Claude: Runs agent with full prompt and cloned repo
-    loop Until task complete
-        Claude->>MCP: Calls tools (read/write files, post comments, create inline reviews)
-        MCP->>GitHub: Updates tracking comment / posts inline review
-    end
-    Bot->>GitHub: Finalizes tracking comment with result summary
+flowchart LR
+    GH["GitHub<br/>webhook"]:::entry
+    SRV["Webhook server<br/>verify + ack 200"]:::guard
+    RTR["Router<br/>classify + dispatch"]:::decide
+    TGT{{"Target"}}:::fork
+    INL["inline"]:::target
+    DMN["daemon"]:::target
+    SHR["shared-runner"]:::target
+    ISO["isolated-job"]:::target
+    AGT["Claude Agent SDK<br/>on cloned repo"]:::work
+    CMT["Tracking comment<br/>result + cost"]:::done
+    GH --> SRV --> RTR --> TGT
+    TGT --> INL --> AGT
+    TGT --> DMN --> AGT
+    TGT --> SHR --> AGT
+    TGT --> ISO --> AGT
+    AGT --> CMT
+    classDef entry fill:#0b3d91,stroke:#061d4a,color:#ffffff
+    classDef guard fill:#1f6feb,stroke:#0b3d91,color:#ffffff
+    classDef decide fill:#8250df,stroke:#4b1d99,color:#ffffff
+    classDef fork fill:#d29922,stroke:#7d5c00,color:#1a1a1a
+    classDef target fill:#1a7f37,stroke:#0b4a1e,color:#ffffff
+    classDef work fill:#bf3989,stroke:#71204f,color:#ffffff
+    classDef done fill:#2da44e,stroke:#0b4a1e,color:#ffffff
 ```
 
-See [CLAUDE.md](./CLAUDE.md) for a quick architecture overview and [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for the full request-flow diagram and directory structure.
+See [Architecture](https://chrisleekr.github.io/github-app-playground/ARCHITECTURE/) for the full flow, including idempotency, triage, and the inline pipeline stages.
 
-## Deployment
+## Quick start
 
-See [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) for Docker build args, health probes, resource sizing, and graceful shutdown details.
+```bash
+cp .env.example .env            # Fill in credentials
+bun install
+bun run dev:deps                # Local Valkey + Postgres (optional, non-inline modes)
+bun run dev                     # Watch mode
+```
 
-## Extending
+Full setup, configuration reference, architecture diagrams, and deployment recipes live in the [documentation site](https://chrisleekr.github.io/github-app-playground/).
 
-See [docs/EXTENDING.md](./docs/EXTENDING.md) for how to add new webhook event handlers and MCP servers.
+## Documentation
+
+The docs site is built from Markdown in `docs/` using [MkDocs Material](https://squidfunk.github.io/mkdocs-material/). To preview locally:
+
+```bash
+bun run docs:install            # One-time: pip install -r docs/requirements.txt
+bun run docs:serve              # Live reload at http://localhost:8000
+bun run docs:build              # Strict build — run before opening a doc PR
+```
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for local setup, testing, linting, and commit message conventions.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for local setup, testing, linting, and commit message conventions. Any PR that touches env-var validation, dispatch logic, or MCP surfaces must update the matching page under `docs/` in the same change — see the `## Documentation` section of [CLAUDE.md](./CLAUDE.md).
 
 ## License
 
-Private
+MIT
