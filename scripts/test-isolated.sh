@@ -16,7 +16,11 @@ for f in test/**/*.test.ts; do
     ((failed++))
     failures+=("$f")
     echo "FAIL: $f"
-    echo "$output" | grep '(fail)' | head -5
+    # Print full output — module load failures don't emit '(fail)' lines,
+    # so the prior grep hid the root cause in CI.
+    echo "----- begin output -----"
+    echo "$output"
+    echo "----- end output -----"
   fi
 done
 
