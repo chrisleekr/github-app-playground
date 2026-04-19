@@ -32,12 +32,22 @@ import { logger } from "../logger";
 import { CircuitBreaker } from "../utils/circuit-breaker";
 import { sanitizeContent } from "../utils/sanitize";
 
-/** Zod schema — binary heavy classifier. */
-export const TriageResponseSchema = z.object({
-  heavy: z.boolean(),
-  confidence: z.number().min(0).max(1),
-  rationale: z.string().min(1).max(500),
-});
+/**
+ * Zod schema — binary heavy classifier.
+ *
+ * `.strict()` so legacy pre-collapse fields (`mode`, `complexity`) on a
+ * response from a stale provider/proxy are a hard parse error instead of
+ * being silently stripped. That forces the `parse-error` fallback branch
+ * in `triageRequest`, which is safer than silently absorbing a shape we
+ * no longer model.
+ */
+export const TriageResponseSchema = z
+  .object({
+    heavy: z.boolean(),
+    confidence: z.number().min(0).max(1),
+    rationale: z.string().min(1).max(500),
+  })
+  .strict();
 export type TriageResponse = z.infer<typeof TriageResponseSchema>;
 
 export interface TriageResult extends TriageResponse {

@@ -12,7 +12,7 @@ flowchart TD
     ROUTE["Router<br/>idempotency + allowlist + concurrency"]:::guard
     TR["Haiku triage<br/>binary heavy classifier"]:::decide
     QUEUE["Orchestrator job queue<br/>Valkey list"]:::store
-    SCALE{{"Scale-up decision<br/>heavy OR queue ≥ threshold?<br/>and cooldown elapsed?"}}:::fork
+    SCALE{{"Scale-up decision<br/>heavy OR queue ≥ threshold<br/>AND no persistent slots?<br/>and cooldown elapsed?"}}:::fork
     SPAWN["K8s API<br/>create bare Pod<br/>DAEMON_EPHEMERAL=true"]:::decide
     FLEET["Daemon fleet<br/>persistent + ephemeral<br/>WebSocket connections"]:::target
     PIPE["runPipeline<br/>clone → prompt → Claude Agent SDK"]:::work
@@ -22,7 +22,7 @@ flowchart TD
     ACK -. async .-> ROUTE
     ROUTE --> TR
     TR --> QUEUE
-    ROUTE --> SCALE
+    QUEUE --> SCALE
     SCALE -->|yes| SPAWN
     SPAWN --> FLEET
     SCALE -->|no, or cooldown active| FLEET

@@ -41,8 +41,11 @@ export async function enqueueJob(job: QueuedJob): Promise<void> {
  * persistent-daemon routing instead of trapping a job.
  */
 export async function getQueueLength(): Promise<number> {
-  const valkey = requireValkeyClient();
   try {
+    // `requireValkeyClient()` itself throws when the client isn't ready, so
+    // acquire inside the try block — otherwise the "return 0 on any read
+    // error" contract silently loses to the client acquisition throw.
+    const valkey = requireValkeyClient();
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Valkey LLEN returns number
     const len: number = await valkey.send("LLEN", [QUEUE_KEY]);
     return typeof len === "number" && Number.isFinite(len) ? len : 0;

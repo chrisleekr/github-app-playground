@@ -56,13 +56,25 @@ describe("TriageResponse schema — invalid inputs", () => {
   });
 
   it("rejects legacy pre-collapse shape (mode/complexity)", () => {
-    const r = TriageResponseSchema.safeParse({
+    // Schema is `.strict()` — missing required `heavy` *or* extra
+    // legacy keys is enough to fail. Cover both so future contributors
+    // know the unknown-key rejection is intentional.
+    const missingHeavy = TriageResponseSchema.safeParse({
       mode: "daemon",
       confidence: 0.5,
       complexity: "trivial",
       rationale: "legacy shape",
     });
-    expect(r.success).toBe(false);
+    expect(missingHeavy.success).toBe(false);
+
+    const legacyKeysPresent = TriageResponseSchema.safeParse({
+      heavy: true,
+      confidence: 0.5,
+      rationale: "legacy fields present",
+      mode: "daemon",
+      complexity: "trivial",
+    });
+    expect(legacyKeysPresent.success).toBe(false);
   });
 
   it("rejects confidence outside [0, 1]", () => {

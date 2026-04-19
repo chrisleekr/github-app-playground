@@ -104,7 +104,7 @@ Required whenever the orchestrator role is active (i.e. the webhook server proce
 | `TRIAGE_TIMEOUT_MS`           | `5000`      | Per-call wall clock. Beyond this, the circuit-breaker counter increments.                          |
 | `DEFAULT_MAXTURNS`            | `30`        | Agent turn cap. Applied on every execution — triage no longer influences `maxTurns`.               |
 
-See [Triage](TRIAGE.md) for the binary `heavy` signal, circuit breaker, and the five fallback reasons that appear in logs.
+See [Triage](TRIAGE.md) for the binary `heavy` signal, circuit breaker, and the six fallback reasons that appear in logs.
 
 ## Mode matrix — what's required when
 

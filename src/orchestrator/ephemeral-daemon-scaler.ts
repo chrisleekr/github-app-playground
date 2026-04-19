@@ -68,6 +68,19 @@ export function markSpawn(now: number): void {
   lastSpawnAtMs = now;
 }
 
+/**
+ * Release a cooldown reservation *only* if it still matches the caller's
+ * attempt timestamp. If a newer reservation has already overtaken it (e.g.
+ * a later spawn won the race while this one's K8s call was still in
+ * flight), leave the newer timestamp in place. An unconditional reset
+ * would reopen the thundering-herd window the cooldown is meant to close.
+ */
+export function rollbackSpawn(expectedTimestampMs: number): void {
+  if (lastSpawnAtMs === expectedTimestampMs) {
+    lastSpawnAtMs = 0;
+  }
+}
+
 /** Test-only: reset the module-level cooldown state between test cases. */
 export function _resetEphemeralScalerForTests(): void {
   lastSpawnAtMs = 0;

@@ -314,7 +314,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: github-app-playground-ephemeral-spawner
-  namespace: default
+  # Role lives in the namespace where ephemeral daemon Pods will be created.
+  namespace: ${EPHEMERAL_DAEMON_NAMESPACE}
 rules:
   - apiGroups: [""]
     resources: ["pods"]
@@ -324,11 +325,13 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: github-app-playground-ephemeral-spawner
-  namespace: default
+  # Must match the Role namespace above.
+  namespace: ${EPHEMERAL_DAEMON_NAMESPACE}
 subjects:
   - kind: ServiceAccount
     name: github-app-playground
-    namespace: default
+    # Namespace where the orchestrator ServiceAccount actually lives.
+    namespace: ${ORCHESTRATOR_NAMESPACE}
 roleRef:
   kind: Role
   name: github-app-playground-ephemeral-spawner
@@ -339,4 +342,4 @@ Without these verbs, every scale-up attempt yields `dispatch_reason=ephemeral-sp
 
 ### `daemon-secrets` Secret
 
-Spawned ephemeral daemon Pods receive their configuration via `envFrom: secretRef: daemon-secrets`. Create this Secret once in `EPHEMERAL_DAEMON_NAMESPACE` with the GitHub App credentials used by the orchestrator (so the daemon can reuse the installation-token path), Claude provider keys, and the data-layer URLs (`DATABASE_URL`, `VALKEY_URL`). See [DAEMON.md](DAEMON.md) for the full key list.
+Spawned ephemeral daemon Pods receive their configuration via `envFrom: secretRef: daemon-secrets`. Create this Secret once in `EPHEMERAL_DAEMON_NAMESPACE` with only the daemon runtime values it needs — `DAEMON_AUTH_TOKEN`, Claude provider keys, and the daemon-side data-layer URLs (`DATABASE_URL`, `VALKEY_URL`). Do **not** copy GitHub App private-key material into this Secret: the orchestrator mints installation tokens and hands them to the daemon per job, so expanding the blast radius to every ephemeral Pod is unnecessary. See [DAEMON.md](DAEMON.md) for the full key list.

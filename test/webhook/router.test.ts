@@ -30,10 +30,14 @@ void mock.module("../../src/db", () => ({
   getDb: mockGetDb,
 }));
 
-const mockSpawnEphemeralDaemon = mock(() => Promise.resolve({ podName: "ephemeral-daemon-xyz" }));
+// Align with production: `spawnEphemeralDaemon` returns the Pod name as a
+// bare string and `EphemeralSpawnError.kind` uses the 4-value taxonomy
+// from `src/k8s/ephemeral-daemon-spawner.ts`. Drift here would exercise
+// a branch the router can never hit in production.
+const mockSpawnEphemeralDaemon = mock(() => Promise.resolve("ephemeral-daemon-xyz"));
 class MockEphemeralSpawnError extends Error {
   constructor(
-    public kind: "infra-absent" | "k8s-error",
+    public kind: "infra-absent" | "auth-load-failed" | "api-rejected" | "api-unavailable",
     message: string,
   ) {
     super(message);
@@ -56,9 +60,11 @@ const mockDecideEphemeralSpawn = mock(
       | { spawn: false; skipReason: "no-signal" | "cooldown" },
 );
 const mockMarkSpawn = mock(() => {});
+const mockRollbackSpawn = mock(() => {});
 void mock.module("../../src/orchestrator/ephemeral-daemon-scaler", () => ({
   decideEphemeralSpawn: mockDecideEphemeralSpawn,
   markSpawn: mockMarkSpawn,
+  rollbackSpawn: mockRollbackSpawn,
 }));
 
 const mockCreateExecution = mock(() => Promise.resolve());
@@ -175,10 +181,9 @@ function withConfig<T>(patch: Record<string, unknown>, fn: () => T | Promise<T>)
 beforeEach(() => {
   mockIsAlreadyProcessed.mockClear();
   mockSpawnEphemeralDaemon.mockClear();
-  mockSpawnEphemeralDaemon.mockImplementation(() =>
-    Promise.resolve({ podName: "ephemeral-daemon-xyz" }),
-  );
+  mockSpawnEphemeralDaemon.mockImplementation(() => Promise.resolve("ephemeral-daemon-xyz"));
   mockMarkSpawn.mockClear();
+  mockRollbackSpawn.mockClear();
   mockDecideEphemeralSpawn.mockClear();
   mockDecideEphemeralSpawn.mockImplementation(() => ({ spawn: false, skipReason: "no-signal" }));
   mockGetPersistentPoolFreeSlots.mockClear();
@@ -272,10 +277,10 @@ describe("logDispatchDecision", () => {
     logDispatchDecision(ctx, {
       target: "daemon",
       reason: "ephemeral-spawn-failed",
-      spawnError: "k8s-error: 403 forbidden",
+      spawnError: "api-unavailable: 403 forbidden",
     });
     const [obj] = calls[0] ?? [{}];
-    expect(obj["spawnError"]).toBe("k8s-error: 403 forbidden");
+    expect(obj["spawnError"]).toBe("api-unavailable: 403 forbidden");
   });
 });
 
@@ -350,18 +355,20 @@ describe("decideDispatch", () => {
           trigger: "triage-heavy",
         });
         mockSpawnEphemeralDaemon.mockRejectedValueOnce(
-          new MockEphemeralSpawnError("k8s-error", "api-server unreachable"),
+          new MockEphemeralSpawnError("api-unavailable", "api-server unreachable"),
         );
         const decision = await decideDispatch(makeCtx());
         expect(decision.reason).toBe("ephemeral-spawn-failed");
-        expect(decision.spawnError).toBe("k8s-error: api-server unreachable");
+        expect(decision.spawnError).toBe("api-unavailable: api-server unreachable");
         // The router reserves the cooldown slot BEFORE awaiting the K8s
         // round-trip (to prevent a thundering herd of concurrent spawns)
-        // and then rolls it back to 0 on failure so the next attempt
-        // isn't blocked. Net effect: two markSpawn calls, neither of
-        // which leaves a live cooldown behind.
-        expect(mockMarkSpawn).toHaveBeenCalledTimes(2);
-        expect(mockMarkSpawn.mock.calls.at(-1)?.[0]).toBe(0);
+        // and then rolls it back on failure so the next attempt isn't
+        // blocked. `rollbackSpawn` takes the reserved timestamp and only
+        // clears the slot if it still matches — preventing it from
+        // trampling a concurrent successful reservation.
+        expect(mockMarkSpawn).toHaveBeenCalledTimes(1);
+        expect(mockRollbackSpawn).toHaveBeenCalledTimes(1);
+        expect(mockRollbackSpawn.mock.calls[0]?.[0]).toBe(mockMarkSpawn.mock.calls[0]?.[0]);
       },
     );
   });
@@ -394,7 +401,7 @@ describe("dispatch", () => {
     await dispatch(ctx, {
       target: "daemon",
       reason: "ephemeral-spawn-failed",
-      spawnError: "k8s-error: boom",
+      spawnError: "api-unavailable: boom",
     });
     const createComment = (
       ctx.octokit as unknown as {
@@ -404,7 +411,7 @@ describe("dispatch", () => {
     expect(createComment).toHaveBeenCalledTimes(1);
     const body = (createComment.mock.calls[0] as [{ body: string }])[0].body;
     expect(body).toContain("Kubernetes infrastructure");
-    expect(body).toContain("k8s-error: boom");
+    expect(body).toContain("api-unavailable: boom");
   });
 
   it("enqueues to daemon when no claimable daemon is ready", async () => {

@@ -9,7 +9,11 @@ import {
   isAtCapacity,
 } from "../orchestrator/concurrency";
 import { getPersistentPoolFreeSlots } from "../orchestrator/daemon-registry";
-import { decideEphemeralSpawn, markSpawn } from "../orchestrator/ephemeral-daemon-scaler";
+import {
+  decideEphemeralSpawn,
+  markSpawn,
+  rollbackSpawn,
+} from "../orchestrator/ephemeral-daemon-scaler";
 import { createExecution } from "../orchestrator/history";
 import { dispatchJob } from "../orchestrator/job-dispatcher";
 import { enqueueJob, getQueueLength, type QueuedJob } from "../orchestrator/job-queue";
@@ -240,8 +244,11 @@ export async function decideDispatch(ctx: BotContext): Promise<DispatchDecision>
       ...(triageAttempted && { triageAttempted: true }),
     };
   } catch (err) {
-    // Spawn failed — release the cooldown so the next request can retry.
-    markSpawn(0);
+    // Spawn failed — release only *our* reservation. Unconditionally
+    // zeroing the timestamp would stomp on a newer concurrent spawn
+    // that already won the cooldown race while this call was in flight,
+    // reopening the thundering-herd window the cooldown exists to close.
+    rollbackSpawn(spawnAttemptAt);
     const kind = err instanceof EphemeralSpawnError ? err.kind : undefined;
     const message =
       err instanceof EphemeralSpawnError

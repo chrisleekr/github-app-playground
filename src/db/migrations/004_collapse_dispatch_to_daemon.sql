@@ -19,10 +19,16 @@ ALTER TABLE executions DROP CONSTRAINT IF EXISTS executions_dispatch_reason_chec
 ALTER TABLE executions DROP CONSTRAINT IF EXISTS executions_dispatch_mode_check;
 ALTER TABLE triage_results DROP CONSTRAINT IF EXISTS triage_results_mode_check;
 
+-- Mirror the open-ended guard used for executions.dispatch_reason below:
+-- rewrite any row whose target/mode is not already 'daemon', regardless of
+-- whether it comes from the documented legacy set. Without this, a stray
+-- value from an operator backfill or an older-branch deploy would survive
+-- the UPDATE and fail the CHECK (= 'daemon') added later in this file,
+-- aborting the whole transaction.
 UPDATE executions SET dispatch_target = 'daemon'
- WHERE dispatch_target IN ('inline', 'shared-runner', 'isolated-job');
+ WHERE dispatch_target IS DISTINCT FROM 'daemon';
 UPDATE executions SET dispatch_mode = 'daemon'
- WHERE dispatch_mode IN ('inline', 'shared-runner', 'isolated-job');
+ WHERE dispatch_mode IS DISTINCT FROM 'daemon';
 
 -- Rewrite any reason not already in the post-collapse set. Keeping this
 -- unconditional (rather than enumerating legacy values) defends against

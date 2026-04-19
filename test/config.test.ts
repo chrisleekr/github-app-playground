@@ -109,6 +109,19 @@ describe("configSchema — data layer validation", () => {
     });
     expect(result.success).toBe(true);
   });
+
+  it("still requires DAEMON_AUTH_TOKEN in daemon mode (ORCHESTRATOR_URL set)", () => {
+    // The DB/Valkey waiver must not cascade into waiving daemon auth —
+    // an orchestrator-connected daemon without a shared token would
+    // accept unauthenticated connections on restart.
+    const { daemonAuthToken, ...withoutToken } = ANTHROPIC_BASE;
+    expect(daemonAuthToken).toBeDefined();
+    const result = configSchema.safeParse({
+      ...withoutToken,
+      orchestratorUrl: "wss://orchestrator.example.com",
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("configSchema — ephemeral-daemon defaults", () => {
@@ -194,7 +207,12 @@ describe("assertOauthRequiresAllowlist", () => {
   });
 
   it("throws when OAuth is set without an allowlist", () => {
-    const cfg = { ...baseOauthCfg, allowedOwners: undefined };
+    // With `exactOptionalPropertyTypes`, the absence of a property is
+    // distinct from an explicit `undefined`. Destructure the property
+    // out so this test actually models "no allowlist configured" — not
+    // "allowlist is undefined-valued".
+    const { allowedOwners, ...cfg } = baseOauthCfg;
+    expect(allowedOwners).toBeDefined();
     expect(() => {
       assertOauthRequiresAllowlist(cfg);
     }).toThrow(/ALLOWED_OWNERS/);
