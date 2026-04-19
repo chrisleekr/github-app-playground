@@ -33,6 +33,27 @@ export const networkInfoSchema = z.object({
   latencyMs: z.number().nonnegative().optional(),
 });
 
+// Subset of containerRuntimeSchema baked into the static manifest at image
+// build time. `daemonRunning` is probed per-pod and merged in at runtime.
+export const staticContainerRuntimeSchema = z.object({
+  name: z.enum(["docker", "podman"]),
+  path: z.string(),
+  version: z.string(),
+  composeAvailable: z.boolean(),
+});
+
+// Subset of daemonCapabilitiesSchema baked into the static manifest. Excludes
+// runtime-varying fields (resources, network, cachedRepos, ephemeral, auth,
+// maxUptimeMs, containerRuntime.daemonRunning). Used to validate the baked
+// JSON so shape drift fails fast and falls back to a full probe.
+export const staticDaemonCapabilitiesSchema = z.object({
+  platform: z.enum(["linux", "darwin", "win32"]),
+  shells: z.array(discoveredToolSchema),
+  packageManagers: z.array(discoveredToolSchema),
+  cliTools: z.array(discoveredToolSchema),
+  containerRuntime: staticContainerRuntimeSchema.nullable(),
+});
+
 export const daemonCapabilitiesSchema = z.object({
   platform: z.enum(["linux", "darwin", "win32"]),
   shells: z.array(discoveredToolSchema),
@@ -56,6 +77,8 @@ export type ContainerRuntime = z.infer<typeof containerRuntimeSchema>;
 export type DaemonResources = z.infer<typeof daemonResourcesSchema>;
 export type NetworkInfo = z.infer<typeof networkInfoSchema>;
 export type DaemonCapabilities = z.infer<typeof daemonCapabilitiesSchema>;
+export type StaticDaemonCapabilities = z.infer<typeof staticDaemonCapabilitiesSchema>;
+export type StaticContainerRuntime = z.infer<typeof staticContainerRuntimeSchema>;
 
 // ---------------------------------------------------------------------------
 // Orchestrator-side daemon info

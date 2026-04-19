@@ -1,12 +1,18 @@
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { existsSync, readFileSync, statfsSync } from "node:fs";
 import { cpus, freemem, hostname, platform, totalmem } from "node:os";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 import {
   type DaemonCapabilities,
   daemonCapabilitiesSchema,
   type DaemonResources,
   type DiscoveredTool,
+  type StaticContainerRuntime,
+  type StaticDaemonCapabilities,
+  staticDaemonCapabilitiesSchema,
 } from "../shared/daemon-types";
 
 // Minimal logger shape used by this module. We avoid importing `../logger` at
@@ -79,6 +85,7 @@ const CLI_TOOL_NAMES = [
   "hadolint",
   // Version managers
   "asdf",
+  "nvm",
   // Data clients
   "mysql",
   "psql",
@@ -151,7 +158,7 @@ export function getCurrentResources(): DaemonResources {
 // Tool discovery helpers
 // ---------------------------------------------------------------------------
 
-function discoverTool(name: string): DiscoveredTool {
+async function discoverTool(name: string): Promise<DiscoveredTool> {
   // nvm is a shell function sourced from /usr/local/nvm/nvm.sh, not a binary.
   // `which nvm` always fails in a non-interactive shell, so fall back to a
   // filesystem check when the script is installed at the baked path.
@@ -164,19 +171,19 @@ function discoverTool(name: string): DiscoveredTool {
   }
 
   try {
-    const pathResult = execFileSync("which", [name], {
+    const { stdout: whichOut } = await execFileAsync("which", [name], {
       encoding: "utf-8",
       timeout: 5_000,
-    }).trim();
+    });
+    const pathResult = whichOut.trim();
     let version = "unknown";
     try {
       const args = VERSION_FLAGS.get(name) ?? ["--version"];
-      const raw = execFileSync(name, args, {
+      const { stdout: versionOut } = await execFileAsync(name, args, {
         encoding: "utf-8",
         timeout: 5_000,
-        stdio: ["pipe", "pipe", "pipe"],
-      }).trim();
-      const firstLine = raw.split("\n")[0] ?? raw;
+      });
+      const firstLine = versionOut.trim().split("\n")[0] ?? versionOut.trim();
       version = firstLine.replace(/^[^0-9]*/, "") || firstLine;
     } catch {
       // Version check failed but binary exists
@@ -188,27 +195,24 @@ function discoverTool(name: string): DiscoveredTool {
 }
 
 async function discoverToolsParallel(names: readonly string[]): Promise<DiscoveredTool[]> {
-  return Promise.all(names.map((n) => Promise.resolve(discoverTool(n))));
+  return Promise.all(names.map((n) => discoverTool(n)));
 }
 
 // ---------------------------------------------------------------------------
 // Container runtime probe
 // ---------------------------------------------------------------------------
 
-interface StaticContainerRuntime {
-  name: "docker" | "podman";
-  path: string;
-  version: string;
-  composeAvailable: boolean;
-}
-
-function probeContainerRuntimeStatic(): StaticContainerRuntime | null {
+async function probeContainerRuntimeStatic(): Promise<StaticContainerRuntime | null> {
+  // Serial by design: prefer docker; only probe podman if docker is absent.
+  // Parallelising would waste a subprocess in the common case.
   for (const rt of ["docker", "podman"] as const) {
-    const tool = discoverTool(rt);
+    // eslint-disable-next-line no-await-in-loop -- intentional serial probe
+    const tool = await discoverTool(rt);
     if (!tool.functional) continue;
     let composeAvailable = false;
     try {
-      execFileSync(rt, ["compose", "version"], { timeout: 5_000, stdio: "pipe" });
+      // eslint-disable-next-line no-await-in-loop -- only runs once (return below)
+      await execFileAsync(rt, ["compose", "version"], { timeout: 5_000 });
       composeAvailable = true;
     } catch {
       // compose not available
@@ -218,9 +222,9 @@ function probeContainerRuntimeStatic(): StaticContainerRuntime | null {
   return null;
 }
 
-function probeContainerDaemonRunning(name: "docker" | "podman"): boolean {
+async function probeContainerDaemonRunning(name: "docker" | "podman"): Promise<boolean> {
   try {
-    execFileSync(name, ["info"], { timeout: 5_000, stdio: "pipe" });
+    await execFileAsync(name, ["info"], { timeout: 5_000 });
     return true;
   } catch {
     return false;
@@ -241,10 +245,10 @@ function detectEphemeral(): boolean {
 // Auth + repo probes
 // ---------------------------------------------------------------------------
 
-function probeAuthContexts(): string[] {
+async function probeAuthContexts(): Promise<string[]> {
   const contexts: string[] = [];
   try {
-    execFileSync("gh", ["auth", "status"], { timeout: 5_000, stdio: "pipe" });
+    await execFileAsync("gh", ["auth", "status"], { timeout: 5_000 });
     contexts.push("github");
   } catch {
     // Not authenticated
@@ -270,29 +274,19 @@ async function listCachedRepos(cloneBaseDir: string): Promise<string[]> {
 // Static manifest loader
 // ---------------------------------------------------------------------------
 
-/**
- * Subset of DaemonCapabilities baked at build time. Excludes fields that vary
- * per pod (resources, network, authContexts, cachedRepos, ephemeral,
- * maxUptimeMs, containerRuntime.daemonRunning).
- */
-export interface StaticDaemonCapabilities {
-  platform: SupportedPlatform;
-  shells: DiscoveredTool[];
-  packageManagers: DiscoveredTool[];
-  cliTools: DiscoveredTool[];
-  containerRuntime: StaticContainerRuntime | null;
-}
-
+// Validated against staticDaemonCapabilitiesSchema on load so shape drift
+// (schema change without rebuilding the image) triggers a fall-through to
+// the full probe rather than a cryptic crash later at merge time.
 function loadStaticManifest(logger: ToolDiscoveryLogger): StaticDaemonCapabilities | null {
   try {
     if (!existsSync(STATIC_MANIFEST_PATH)) return null;
 
     const raw = readFileSync(STATIC_MANIFEST_PATH, "utf-8");
-    return JSON.parse(raw) as StaticDaemonCapabilities;
+    return staticDaemonCapabilitiesSchema.parse(JSON.parse(raw));
   } catch (err) {
     logger.warn(
       { err, path: STATIC_MANIFEST_PATH },
-      "Failed to load static capabilities manifest; falling back to probe",
+      "Failed to load or validate static capabilities manifest; falling back to probe",
     );
     return null;
   }
@@ -315,10 +309,11 @@ export async function probeStaticCapabilities(): Promise<StaticDaemonCapabilitie
     );
   }
 
-  const [shells, packageManagers, cliTools] = await Promise.all([
+  const [shells, packageManagers, cliTools, containerRuntime] = await Promise.all([
     discoverToolsParallel(SHELL_NAMES),
     discoverToolsParallel(PACKAGE_MANAGER_NAMES),
     discoverToolsParallel(CLI_TOOL_NAMES),
+    probeContainerRuntimeStatic(),
   ]);
 
   return {
@@ -326,7 +321,7 @@ export async function probeStaticCapabilities(): Promise<StaticDaemonCapabilitie
     shells,
     packageManagers,
     cliTools,
-    containerRuntime: probeContainerRuntimeStatic(),
+    containerRuntime,
   };
 }
 
@@ -347,15 +342,17 @@ export async function discoverCapabilities(cloneBaseDir: string): Promise<Daemon
   const staticCaps = bakedManifest ?? (await probeStaticCapabilities());
 
   const resources = getCurrentResources();
-  const authContexts = probeAuthContexts();
-  const cachedRepos = await listCachedRepos(cloneBaseDir);
+  const [authContexts, cachedRepos] = await Promise.all([
+    probeAuthContexts(),
+    listCachedRepos(cloneBaseDir),
+  ]);
   const ephemeral = detectEphemeral();
 
   const containerRuntime =
     staticCaps.containerRuntime !== null
       ? {
           ...staticCaps.containerRuntime,
-          daemonRunning: probeContainerDaemonRunning(staticCaps.containerRuntime.name),
+          daemonRunning: await probeContainerDaemonRunning(staticCaps.containerRuntime.name),
         }
       : null;
 
