@@ -55,3 +55,8 @@ setIfEmpty("GITHUB_WEBHOOK_SECRET", "test-webhook-secret");
 // ANTHROPIC_API_KEY: Required because CLAUDE_PROVIDER is forced to "anthropic" above,
 // and superRefine enforces the key for that provider.
 setIfEmpty("ANTHROPIC_API_KEY", "test-anthropic-key");
+// Post-dispatch-collapse, validateDataLayerConfig requires DATABASE_URL and
+// VALKEY_URL in server mode (ORCHESTRATOR_URL unset). Without these, config
+// load aborts before any test can run in CI, where no .env is present.
+setIfEmpty("DATABASE_URL", "postgres://test:test@localhost:5432/test");
+setIfEmpty("VALKEY_URL", "redis://localhost:6379");

@@ -16,11 +16,9 @@ for f in test/**/*.test.ts; do
     ((failed++))
     failures+=("$f")
     echo "FAIL: $f"
-    # Print full output — module load failures don't emit '(fail)' lines,
-    # so the prior grep hid the root cause in CI.
-    echo "----- begin output -----"
+    # Full output — module load failures don't emit '(fail)' lines, so a
+    # filtered view would hide the root cause.
     echo "$output"
-    echo "----- end output -----"
   fi
 done
 
