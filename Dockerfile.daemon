@@ -238,6 +238,16 @@ RUN printf '%s\n' \
   && chmod 0440 /etc/sudoers.d/bun-apt \
   && visudo -cf /etc/sudoers.d/bun-apt
 
+# 11b. Hand mutable toolchain homes to `bun`. Installers above run as root, so
+#      CARGO_HOME, RUSTUP_HOME, PIPX_HOME, and NVM_DIR are root-owned and the
+#      final `USER bun` can't write registries/caches (cargo install, rustup
+#      update, pipx install, nvm install all EACCES otherwise). Guarded with
+#      `-d` so gated dirs (rust off in INSTALL_LANGS) don't fail the build.
+RUN set -eux; \
+  for d in /usr/local/pipx /usr/local/cargo /usr/local/rustup /usr/local/nvm; do \
+  [ -d "$d" ] && chown -R bun:bun "$d" || true; \
+  done
+
 # 12. Docker CLI — Claude agents shell `docker build`/`docker compose` against a
 #     dind sidecar. Matches src/k8s/job-spawner.ts major pin for client/daemon
 #     compatibility. docker:29-cli ships Go 1.26.x which patches CVE-2025-47907
