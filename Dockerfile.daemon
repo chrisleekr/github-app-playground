@@ -72,8 +72,10 @@ ARG INSTALL_GCLOUD=true
 ARG INSTALL_LANGS="go rust"
 
 # Tool versions — bumped together by renovate/dependabot; Trivy gate catches
-# any CVE regressions on the next scan. Verified 2026-04-18.
+# any CVE regressions on the next scan.
+# https://dl.k8s.io/release/stable.txt
 ARG KUBECTL_VERSION=v1.35.4
+# https://github.com/helm/helm/releases
 ARG HELM_VERSION=v4.1.4
 ARG TERRAFORM_VERSION=1.14.8
 ARG AWSCLI_VERSION=2.27.41

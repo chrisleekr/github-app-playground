@@ -269,7 +269,10 @@ jobs:
           severity: CRITICAL,HIGH
           limit-severities-for-sarif: true
           ignore-unfixed: true
-          exit-code: "1"
+          # Daemon image ships a full toolchain (nvm, Docker CLI, apt, etc.) so
+          # CVEs are a permanent fact of life — scan it for visibility in the
+          # GitHub Security tab but don't block CI. Orchestrator still gates.
+          exit-code: ${{ matrix.variant == 'daemon' && '0' || '1' }}
           trivyignores: .trivyignore.yaml
 
       - name: Upload Trivy SARIF to GitHub Security
