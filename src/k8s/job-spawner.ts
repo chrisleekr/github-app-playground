@@ -118,7 +118,7 @@ export function jobNameForDelivery(deliveryId: string): string {
 
 function buildJobSpec(ctx: BotContext, decision: DispatchDecision, encodedContext: string): V1Job {
   const namespace = config.jobNamespace;
-  const image = config.jobImage ?? "github-app-playground:local";
+  const image = config.jobImage ?? "github-app-playground:local-orchestrator";
   const ttlSeconds = config.jobTtlSeconds;
   const jobName = jobNameForDelivery(ctx.deliveryId);
 
@@ -148,9 +148,7 @@ function buildJobSpec(ctx: BotContext, decision: DispatchDecision, encodedContex
     if (config.awsRegion !== undefined) {
       providerEnv.push({ name: "AWS_REGION", value: config.awsRegion });
     }
-    if (config.model !== undefined) {
-      providerEnv.push({ name: "CLAUDE_MODEL", value: config.model });
-    }
+    providerEnv.push({ name: "CLAUDE_MODEL", value: config.model });
   }
 
   return {
@@ -268,9 +266,7 @@ export async function spawnIsolatedJob(
   return { success: true, durationMs: 0 };
 }
 
-// ---------------------------------------------------------------------------
 // Completion watcher (T046 + T047 + T048)
-// ---------------------------------------------------------------------------
 
 /**
  * Terminal outcome of `watchJobCompletion`. Each outcome maps to a

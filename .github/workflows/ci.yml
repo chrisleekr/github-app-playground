@@ -62,6 +62,9 @@ jobs:
       - name: Format check
         run: bun run format
 
+      - name: Dockerfile base-sync guard
+        run: bun run check:dockerfile-base-sync
+
       - name: Dependency audit
         # Wraps `bun audit --json` to gate on severity. `bun audit` itself
         # exits 1 on ANY advisory regardless of --audit-level, so the

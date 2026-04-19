@@ -13,10 +13,8 @@ import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { PendingIsolatedJobEntry } from "../../src/k8s/pending-queue";
 import type { SerializableBotContext } from "../../src/shared/daemon-types";
 
-// ---------------------------------------------------------------------------
 // Mocks — set up BEFORE importing the subject module so dynamic mocks take
 // effect on first import.
-// ---------------------------------------------------------------------------
 
 const mockInFlightCount = mock(() => Promise.resolve(0));
 const mockDequeuePending = mock(() =>
@@ -72,9 +70,7 @@ void mock.module("../../src/logger", () => ({
 
 const { drainPendingOnce } = await import("../../src/k8s/pending-queue-drainer");
 
-// ---------------------------------------------------------------------------
 // Fixtures
-// ---------------------------------------------------------------------------
 
 function makeEntry(overrides: Partial<PendingIsolatedJobEntry> = {}): PendingIsolatedJobEntry {
   return {
@@ -142,9 +138,7 @@ beforeEach(() => {
   mockSpawnIsolatedJob.mockImplementation(() => Promise.resolve({ success: true, durationMs: 0 }));
 });
 
-// ---------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
 
 describe("drainPendingOnce — empty queue", () => {
   it("returns immediately when the queue is empty", async () => {

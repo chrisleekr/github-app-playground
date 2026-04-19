@@ -68,7 +68,7 @@ export async function executeAgent({
       workDir,
       mcpServerCount: Object.keys(mcpServers).length,
       provider: config.provider,
-      configModel: config.model ?? "(undefined)",
+      configModel: config.model,
       configPermissionMode: "bypassPermissions",
       allowedToolsCount: allowedTools.length,
     },
@@ -90,9 +90,7 @@ export async function executeAgent({
     systemPrompt: { type: "preset", preset: "claude_code" },
     env: buildProviderEnv(),
   };
-  if (config.model !== undefined) {
-    queryOptions.model = config.model;
-  }
+  queryOptions.model = config.model;
   if (config.claudeCodePath !== undefined) {
     queryOptions.pathToClaudeCodeExecutable = config.claudeCodePath;
   }

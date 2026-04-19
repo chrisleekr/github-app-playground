@@ -16,9 +16,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 
-// ---------------------------------------------------------------------------
 // Mock dependencies BEFORE importing valkey
-// ---------------------------------------------------------------------------
 
 const mockLoggerInfo = mock(() => {});
 const mockLoggerWarn = mock(() => {});
@@ -56,12 +54,10 @@ void mock.module("../../src/config", () => ({
   config: mockConfig,
 }));
 
-// ---------------------------------------------------------------------------
 // Import the real valkey module.
 // NOTE: In multi-file runs, mock.module("../../src/orchestrator/valkey", ...)
 // from other test files may intercept this import. When run individually, the
 // real module is loaded and coverage is counted.
-// ---------------------------------------------------------------------------
 
 const valkey = await import("../../src/orchestrator/valkey");
 

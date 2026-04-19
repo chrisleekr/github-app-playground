@@ -319,6 +319,17 @@ export function resolveAllowedTools(
       tools.push(`Bash(${daemonCapabilities.containerRuntime.name}:*)`);
     }
 
+    // Sudoers rule in Dockerfile.daemon restricts the `bun` user to
+    // `apt-get update` and `apt-get install` with upstream package-name
+    // arguments only. Mirror that scope here so the model doesn't plan
+    // commands (remove/purge/local-file install) that will be denied at
+    // runtime.
+    tools.push(
+      "Bash(sudo apt-get update:*)",
+      "Bash(sudo apt-get install -y:*)",
+      "Bash(sudo apt-get install --no-install-recommends -y:*)",
+    );
+
     // Daemon capabilities MCP tool
     tools.push("mcp__daemon_capabilities__query_daemon_capabilities");
 
@@ -360,6 +371,23 @@ You are running on a daemon worker process with the following environment:
 Platform: ${platform} | Shells: ${shellNames.join(", ") || "none"} | Package managers: ${pkgMgrs.join(", ") || "none"}
 CLI tools: ${tools.join(", ") || "none"} | Container runtime: ${containerStatus}
 Resources: ${resources.cpuCount} CPUs, ${resources.memoryFreeMb}MB free memory, ${resources.diskFreeMb}MB free disk
+
+## On-Demand Package Installation
+
+This daemon has scoped \`apt-get\` access: only \`update\` and \`install\` are
+permitted, and only upstream package names from configured sources. Local
+\`.deb\` files, URLs, and \`remove\`/\`purge\` are denied at the sudoers layer.
+If a tool you need is not in the baked inventory above, you MAY install it
+before proceeding:
+
+  sudo apt-get update
+  sudo apt-get install -y <package>
+  # or: sudo apt-get install --no-install-recommends -y <package>
+
+Configured apt sources: Debian trixie, NodeSource, GitHub CLI, Microsoft
+(azure-cli), Charmbracelet, MongoDB, Google Cloud SDK. Install only packages
+required to complete the task; do not install speculative extras. Record any
+install in your tracking comment so reviewers see what was added at job-time.
 </daemon_environment>
 `.trim();
 }

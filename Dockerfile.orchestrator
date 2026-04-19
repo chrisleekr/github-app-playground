@@ -1,0 +1,95 @@
+# syntax=docker/dockerfile:1
+# hadolint global ignore=DL3008
+
+# Orchestrator image — webhook server + WebSocket daemon registry + triage.
+# Stays lean: no developer CLI toolchain, no docker CLI (orchestrator does not
+# shell to docker). Daemon tooling lives in Dockerfile.daemon.
+#
+# The base/deps/development stages are byte-identical to Dockerfile.daemon
+# between the SHARED-BASE-BEGIN/END markers; scripts/check-dockerfile-base-sync.ts
+# enforces this in CI.
+
+# --- SHARED-BASE-BEGIN ---
+FROM oven/bun:1.3.12 AS base
+WORKDIR /app
+
+# Node.js required by Claude Code CLI; git required for repo checkout.
+# GPG-based NodeSource installation (avoids curl-pipe-bash pattern).
+# ca-certificates and gnupg are required for GPG key verification.
+# curl is REQUIRED by the production HEALTHCHECK — do not remove.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  curl git ca-certificates gnupg && \
+  mkdir -p /etc/apt/keyrings && \
+  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+  | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
+  echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" \
+  > /etc/apt/sources.list.d/nodesource.list && \
+  apt-get update && \
+  apt-get install -y --no-install-recommends nodejs && \
+  rm -rf /var/lib/apt/lists/*
+
+# Base-image CVE patches: oven/bun:1.3.12 bakes in openssl 3.5.4-1~deb13u2.
+# Targeted upgrade keeps rebuilds reproducible; CI Trivy gate catches new flags.
+RUN apt-get update && \
+  apt-get install --only-upgrade -y --no-install-recommends \
+  openssl libssl3t64 openssl-provider-legacy && \
+  rm -rf /var/lib/apt/lists/*
+
+# NodeSource node_20.x bundles npm 10.x with HIGH-CVE vendored deps (tar,
+# minimatch, glob, cross-spawn, brace-expansion). npm 11.x ships patched
+# vendored deps. Tracks 11.x major (unlike the exact pins elsewhere).
+RUN npm install -g npm@11
+
+# Claude Code CLI required by @anthropic-ai/claude-agent-sdk.
+RUN npm install -g @anthropic-ai/claude-code@2.1.114
+
+# Stage: Build — install all deps and bundle the main app.
+FROM base AS development
+ENV HUSKY=0
+# Bun's bundler inlines `process.env.NODE_ENV` at build time and defaults to
+# "development" when unset, which causes dist/app.js to require `pino-pretty`
+# (a devDependency absent from production) via src/logger.ts.
+ENV NODE_ENV=production
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile
+COPY . .
+RUN bun run build
+
+# Stage: Production deps only.
+FROM base AS deps
+COPY package.json bun.lock ./
+# --ignore-scripts: husky is a devDependency — skip prepare/postinstall hooks.
+RUN bun install --frozen-lockfile --production --ignore-scripts
+# --- SHARED-BASE-END ---
+
+# Stage: Orchestrator production image.
+FROM base AS production
+
+ARG PACKAGE_VERSION=untagged
+ARG GIT_HASH=unspecified
+
+# claude-code is installed globally by npm (see base stage above).
+# The Agent SDK defaults to {cwd}/dist/cli.js which does not exist in this image.
+ENV CLAUDE_CODE_PATH=/usr/lib/node_modules/@anthropic-ai/claude-code/cli.js
+
+LABEL maintainer="Chris Lee"
+LABEL com.chrisleekr.bot.package-version=${PACKAGE_VERSION}
+LABEL com.chrisleekr.bot.git-hash=${GIT_HASH}
+LABEL com.chrisleekr.bot.variant=orchestrator
+
+# Bundled app and MCP stdio servers (dist/app.js, dist/mcp/servers/*.js)
+COPY --from=development --chown=bun:bun /app/dist ./dist
+COPY --from=development --chown=bun:bun /app/package.json ./
+
+# SQL migration files — not bundled by Bun.build, copied as-is.
+COPY --from=development --chown=bun:bun /app/src/db/migrations ./src/db/migrations
+
+# Production node_modules (runtime dependencies only).
+COPY --from=deps --chown=bun:bun /app/node_modules ./node_modules
+
+USER bun
+EXPOSE 3000/tcp
+EXPOSE 3002/tcp
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:3000/healthz || exit 1
+CMD ["bun", "run", "dist/app.js"]

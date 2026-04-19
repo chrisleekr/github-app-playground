@@ -3,9 +3,7 @@ import type { SQL } from "bun";
 import { requireDb } from "../db";
 import { logger } from "../logger";
 
-// ---------------------------------------------------------------------------
 // Types
-// ---------------------------------------------------------------------------
 
 export interface RepoMemoryEntry {
   id: string;
@@ -14,9 +12,7 @@ export interface RepoMemoryEntry {
   pinned: boolean;
 }
 
-// ---------------------------------------------------------------------------
 // Env vars (category = 'env_var')
-// ---------------------------------------------------------------------------
 
 /**
  * Get all env vars for a repo as a key-value map.
@@ -64,9 +60,7 @@ export async function setRepoEnvVar(
   `;
 }
 
-// ---------------------------------------------------------------------------
 // Memory (category != 'env_var')
-// ---------------------------------------------------------------------------
 
 /**
  * Get repo memory entries using LRU + pinned strategy.

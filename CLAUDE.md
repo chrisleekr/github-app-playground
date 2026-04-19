@@ -72,6 +72,8 @@ The runtime bot in `src/` supports three authentication modes (see `src/config.t
 2. **`CLAUDE_CODE_OAUTH_TOKEN`** — Max/Pro subscription OAuth token (`sk-ant-oat...`, generated via `claude setup-token`). **Requires `ALLOWED_OWNERS`** to be set to a single-tenant value, because the [Agent SDK Note](https://code.claude.com/docs/en/agent-sdk/overview) prohibits serving other users' repos from a personal subscription quota. The token is forwarded to the Claude CLI subprocess via `buildProviderEnv()` in `src/core/executor.ts`; the CLI's own [auth precedence chain](https://code.claude.com/docs/en/authentication#authentication-precedence) picks between credentials if multiple are set.
 3. **AWS Bedrock** — full credential chain via `CLAUDE_PROVIDER=bedrock` + `AWS_REGION` + `CLAUDE_MODEL` (Bedrock model ID format). Credential resolution handled by the AWS SDK inside the subprocess.
 
+Default agent execution model when `CLAUDE_MODEL` is unset and `CLAUDE_PROVIDER=anthropic`: `claude-opus-4-7` (Opus 4.7). The Bedrock path still requires an explicit `CLAUDE_MODEL` (Bedrock model IDs differ from Anthropic's).
+
 The scheduled research workflow in `.github/workflows/research.yml` also uses `CLAUDE_CODE_OAUTH_TOKEN`, but via `anthropics/claude-code-action@v1` — that path is separately sanctioned for CI and is not subject to the `ALLOWED_OWNERS` requirement.
 
 ## Code Conventions
@@ -89,18 +91,18 @@ The scheduled research workflow in `.github/workflows/research.yml` also uses `C
 
 Four workflow files form the pipeline; each owns one responsibility.
 
-| Workflow                             | Trigger                                                   | Owns                                                                                                            |
-| ------------------------------------ | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `.github/workflows/ci.yml`           | `pull_request` + `push: main` + `workflow_call`           | Quality gates only: typecheck, lint, format, audit:ci, gitleaks, test, build                                    |
-| `.github/workflows/dev-release.yml`  | `push: branches-ignore: [main, v*]` + `workflow_dispatch` | Calls `ci.yml` → semantic-release dev (pre-release tag) → calls `docker-build.yml`                              |
-| `.github/workflows/release.yml`      | `workflow_dispatch` only (manual)                         | Calls `ci.yml` → semantic-release prod → calls `docker-build.yml`                                               |
-| `.github/workflows/docker-build.yml` | `workflow_call` + `workflow_dispatch`                     | Reusable image builder: matrix split-and-merge (amd64 native + arm64 native via `ubuntu-24.04-arm`), Trivy scan |
+| Workflow                             | Trigger                                                   | Owns                                                                                                               |
+| ------------------------------------ | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `.github/workflows/ci.yml`           | `pull_request` + `push: main` + `workflow_call`           | Quality gates only: typecheck, lint, format, audit:ci, gitleaks, test, build                                       |
+| `.github/workflows/dev-release.yml`  | `push: branches-ignore: [main, v*]` + `workflow_dispatch` | Calls `ci.yml` → semantic-release dev (pre-release tag) → calls `docker-build.yml`                                 |
+| `.github/workflows/release.yml`      | `workflow_dispatch` only (manual)                         | Calls `ci.yml` → semantic-release prod → calls `docker-build.yml`                                                  |
+| `.github/workflows/docker-build.yml` | `workflow_call` + `workflow_dispatch`                     | Reusable image builder: matrix split-and-merge (amd64 on `ubuntu-24.04` + arm64 on `ubuntu-24.04-arm`), Trivy scan |
 
 - **Bun version is single-sourced** via `.tool-versions` (`bun 1.3.12`). All workflows use `oven-sh/setup-bun@v2` with `bun-version-file: .tool-versions`.
 - **`audit:ci` (`scripts/audit-ci.ts`)** wraps `bun audit --json` to gate on severity: blocks on high+critical, warns on moderate+low, with an inline `IGNORED` GHSA allowlist (each entry must carry an `expires` date). Required because `bun audit` exits 1 on **any** finding regardless of `--audit-level`.
 - **Semantic release config** (`release.config.mjs`) is single-file with `SEMREL_CHANNEL=dev|prod` env switching — replaces the previous file-swap hack.
 - **Prod releases are manual.** Push to main only triggers `ci.yml` (sanity). Cut a release with `gh workflow run release.yml`.
-- Multi-arch images: amd64 builds on `ubuntu-latest`, arm64 builds natively on `ubuntu-24.04-arm` (free for public repos). Manifest assembled by `docker buildx imagetools create`. GHA cache scoped per arch.
+- Multi-arch images: amd64 builds on `ubuntu-24.04`, arm64 builds natively on `ubuntu-24.04-arm` (free for public repos). Both runners are explicitly pinned (not `ubuntu-latest`) so the rolling alias can't silently flip to a new major and break the build — see the header of `.github/workflows/docker-build.yml`. Manifest assembled by `docker buildx imagetools create`. GHA cache scoped per arch.
 - Defense-in-depth on workflow injection: every dynamic input flowing into a `run:` block is passed via `env:` first.
 
 ## Active Technologies

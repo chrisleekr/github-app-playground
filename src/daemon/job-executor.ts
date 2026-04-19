@@ -109,9 +109,7 @@ export function evaluateOffer(
   return { accept: true };
 }
 
-// ---------------------------------------------------------------------------
 // Helpers extracted from executeJob to reduce complexity / statement count
-// ---------------------------------------------------------------------------
 
 /** Validate critical context fields at boundary. Returns false if invalid (sends error result). */
 function validateJobContext(

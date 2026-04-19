@@ -21,7 +21,9 @@ const configSchema = z
     provider: z.enum(["anthropic", "bedrock"]).default("anthropic"),
 
     // Model override — required when provider=bedrock (Bedrock uses different model ID format),
-    // optional for anthropic (SDK uses its default).
+    // optional input for anthropic. The schema-level .transform below defaults the
+    // anthropic path to "claude-opus-4-7", so the inferred Config.model is `string`
+    // (not `string | undefined`) — consumers do not need to handle the undefined case.
     model: z.string().min(1).optional(),
 
     // --- 3. Anthropic direct-API credentials ---
@@ -338,7 +340,19 @@ const configSchema = z
     validateDataLayerConfig(data, ctx);
     validateAutoModeDefault(data, ctx);
     validateSharedRunnerAuth(data, ctx);
-  });
+  })
+  // Runs only if .superRefine added no issues, so by this point:
+  //   - provider=bedrock guarantees data.model is defined
+  //     (validateProviderCredentials errors otherwise)
+  //   - provider=anthropic falls through with data.model possibly undefined
+  // We default the anthropic branch to Opus 4.7 here. Doing it in .transform
+  // narrows the inferred Config type: `model` becomes `string`, not
+  // `string | undefined`, so downstream code drops the defensive `?.` / `??`.
+  // Override via CLAUDE_MODEL when cost-sensitive.
+  .transform((data) => ({
+    ...data,
+    model: data.model ?? "claude-opus-4-7",
+  }));
 
 /**
  * Validate GitHub App credentials are present in server mode.
@@ -596,7 +610,12 @@ function loadConfig(): Config {
   const cfg = configSchema.parse({
     // Group 1 — GitHub App credentials
     appId: process.env["GITHUB_APP_ID"],
-    privateKey: process.env["GITHUB_APP_PRIVATE_KEY"],
+    // Normalize literal "\n" escape sequences to real newlines. K8s Secrets
+    // populated from SETUP.md's single-line `"---BEGIN---\n...\n---END---"`
+    // pattern decode to bytes that contain backslash+n, not 0x0a, which
+    // trips Node's createPrivateKey with ERR_OSSL_BAD_END_LINE (issue #7).
+    // Idempotent: real newlines do not match /\\n/.
+    privateKey: process.env["GITHUB_APP_PRIVATE_KEY"]?.replace(/\\n/g, "\n"),
     webhookSecret: process.env["GITHUB_WEBHOOK_SECRET"],
 
     // Group 2 — AI provider selection
@@ -686,6 +705,7 @@ function loadConfig(): Config {
     maxConcurrentIsolatedJobs: process.env["MAX_CONCURRENT_ISOLATED_JOBS"],
     pendingIsolatedJobQueueMax: process.env["PENDING_ISOLATED_JOB_QUEUE_MAX"],
   });
+
   assertOauthRequiresAllowlist(cfg);
   warnIfIsolatedJobWithoutKubernetesAuth(cfg);
 

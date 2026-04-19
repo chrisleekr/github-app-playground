@@ -29,9 +29,7 @@ void mock.module("../../src/logger", () => ({
 
 const { watchJobCompletion } = await import("../../src/k8s/job-spawner");
 
-// ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
 
 interface StatusResponse {
   status?: {
@@ -80,9 +78,7 @@ function fakeClock(): { now: () => number; sleep: (ms: number) => Promise<void> 
   };
 }
 
-// ---------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
 
 describe("watchJobCompletion — succeeded", () => {
   it("returns 'succeeded' when status.succeeded >= 1", async () => {

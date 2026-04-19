@@ -26,9 +26,7 @@ import {
 import type { BotContext } from "../../src/types";
 import { type DispatchDecision, logDispatchDecision } from "../../src/webhook/router";
 
-// ---------------------------------------------------------------------------
 // Fixtures
-// ---------------------------------------------------------------------------
 
 interface LogCall {
   readonly fields: Record<string, unknown>;
@@ -91,9 +89,7 @@ const triageFixture = {
 const REASONS_WITH_TRIAGE = new Set<DispatchReason>(["triage", "default-fallback"]);
 const REASONS_WITH_ATTEMPT_ONLY = new Set<DispatchReason>(["triage-error-fallback"]);
 
-// ---------------------------------------------------------------------------
 // Tests
-// ---------------------------------------------------------------------------
 
 describe("dispatch-decision structured log — contract §1", () => {
   for (const reason of DISPATCH_REASONS) {

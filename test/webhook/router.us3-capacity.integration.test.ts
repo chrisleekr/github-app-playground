@@ -20,9 +20,7 @@ import type { Octokit } from "octokit";
 
 import type { BotContext } from "../../src/types";
 
-// ---------------------------------------------------------------------------
 // Module-level mocks (all external collaborators)
-// ---------------------------------------------------------------------------
 
 type EnqueueOutcome =
   | { readonly outcome: "enqueued"; readonly position: number }
@@ -102,15 +100,11 @@ void mock.module("../../src/logger", () => ({
   },
 }));
 
-// ---------------------------------------------------------------------------
 // Imports under test (after mocks)
-// ---------------------------------------------------------------------------
 
 const { dispatch } = await import("../../src/webhook/router");
 
-// ---------------------------------------------------------------------------
 // Fixtures
-// ---------------------------------------------------------------------------
 
 const silentLog = {
   info: mock(() => {}),
@@ -182,9 +176,7 @@ afterEach(() => {
   mockGetDb.mockImplementation(() => null as unknown);
 });
 
-// ---------------------------------------------------------------------------
 // Scenario 1 — under capacity
-// ---------------------------------------------------------------------------
 
 describe("US3 Scenario 1 — under capacity", () => {
   it("spawns directly, registers the slot, and fires the completion watcher (detached)", async () => {
@@ -232,9 +224,7 @@ describe("US3 Scenario 1 — under capacity", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
 // Scenario 2 — at capacity, queue has room
-// ---------------------------------------------------------------------------
 
 describe("US3 Scenario 2 — at capacity, queue has room", () => {
   it("enqueues, posts a 'Queued' comment, does NOT spawn, does NOT fire watcher", async () => {
@@ -260,9 +250,7 @@ describe("US3 Scenario 2 — at capacity, queue has room", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
 // Scenario 3 — queue full (FR-018 no downgrade)
-// ---------------------------------------------------------------------------
 
 describe("US3 Scenario 3 — queue full", () => {
   it("writes capacity-rejected execution row, posts rejection comment, never downgrades", async () => {
