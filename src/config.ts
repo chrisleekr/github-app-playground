@@ -348,8 +348,7 @@ const configSchema = z
   // We default the anthropic branch to Opus 4.7 here. Doing it in .transform
   // narrows the inferred Config type: `model` becomes `string`, not
   // `string | undefined`, so downstream code drops the defensive `?.` / `??`.
-  // Opus runs ~5× Sonnet cost per token; override via CLAUDE_MODEL when
-  // cost-sensitive.
+  // Override via CLAUDE_MODEL when cost-sensitive.
   .transform((data) => ({
     ...data,
     model: data.model ?? "claude-opus-4-7",
