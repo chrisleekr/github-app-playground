@@ -176,9 +176,6 @@ jobs:
       fail-fast: false
       matrix:
         variant: [orchestrator, daemon]
-    outputs:
-      orchestrator-tag: ${{ steps.emit.outputs.orchestrator-tag }}
-      daemon-tag: ${{ steps.emit.outputs.daemon-tag }}
     steps:
       - name: Compute tag
         id: tag
@@ -232,14 +229,6 @@ jobs:
           TAG: ${{ steps.tag.outputs.variant_tag }}
         run: docker buildx imagetools inspect "${IMAGE}:${TAG}"
 
-      - name: Emit per-variant tag for downstream jobs
-        id: emit
-        env:
-          VARIANT: ${{ matrix.variant }}
-          VARIANT_TAG: ${{ steps.tag.outputs.variant_tag }}
-        run: |
-          echo "${VARIANT}-tag=${VARIANT_TAG}" >> "$GITHUB_OUTPUT"
-
   scan:
     name: Trivy scan (${{ matrix.variant }} / ${{ matrix.arch }})
     needs: merge
@@ -260,18 +249,14 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Resolve image tag for variant
+      - name: Compute image tag
         id: imgtag
         env:
-          ORCHESTRATOR_TAG: ${{ needs.merge.outputs.orchestrator-tag }}
-          DAEMON_TAG: ${{ needs.merge.outputs.daemon-tag }}
+          TAG_NAME: ${{ inputs.tag-name }}
           VARIANT: ${{ matrix.variant }}
         run: |
-          if [ "$VARIANT" = "orchestrator" ]; then
-            echo "tag=$ORCHESTRATOR_TAG" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=$DAEMON_TAG" >> "$GITHUB_OUTPUT"
-          fi
+          PACKAGE_VERSION="${TAG_NAME#v}"
+          echo "tag=${PACKAGE_VERSION}-${VARIANT}" >> "$GITHUB_OUTPUT"
 
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@v0.35.0
