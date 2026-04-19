@@ -144,7 +144,8 @@ jobs:
           file: ${{ matrix.dockerfile }}
           target: production
           platforms: ${{ matrix.platform }}
-          outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=${{ env.IMAGE_NAME
+            }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=${{ matrix.arch }}-${{ matrix.variant }}
           cache-to: type=gha,mode=max,scope=${{ matrix.arch }}-${{ matrix.variant }}
           build-args: |
@@ -160,7 +161,7 @@ jobs:
           touch "${RUNNER_TEMP}/digests/${DIGEST#sha256:}"
 
       - name: Upload digest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: digests-${{ matrix.variant }}-${{ matrix.arch }}
           path: ${{ runner.temp }}/digests/*
@@ -188,7 +189,7 @@ jobs:
           echo "variant_tag=${PACKAGE_VERSION}-${VARIANT}" >> "$GITHUB_OUTPUT"
 
       - name: Download digests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: ${{ runner.temp }}/digests
           pattern: digests-${{ matrix.variant }}-*

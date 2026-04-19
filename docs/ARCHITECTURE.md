@@ -70,6 +70,122 @@ The four concrete execution targets (see `src/shared/dispatch-types.ts`):
 
 `auto` is a platform-wide _mode_ (`AGENT_JOB_MODE=auto`), not a target — it resolves per event into one of the four above.
 
+### Per-target topology
+
+Each target is a different runtime topology. The same `inline-pipeline.ts` runs at the bottom of all of them — what differs is _where_ it runs and _how_ the request gets there.
+
+#### `inline`
+
+```mermaid
+flowchart LR
+    WH["Webhook server<br/>src/app.ts"]:::entry
+    PIPE["Inline pipeline<br/>src/core/inline-pipeline.ts"]:::work
+    CLONE["Local clone<br/>CLONE_BASE_DIR / tmp dir"]:::store
+    GH["GitHub API<br/>tracking comment + git"]:::ext
+
+    WH -->|in-process call| PIPE
+    PIPE -->|git clone| CLONE
+    PIPE -->|GraphQL + REST| GH
+    PIPE -->|finalise| GH
+
+    classDef entry fill:#0b5cad,stroke:#083e74,color:#ffffff
+    classDef work fill:#4a2e7a,stroke:#311f50,color:#ffffff
+    classDef store fill:#5c3d00,stroke:#3d2900,color:#ffffff
+    classDef ext fill:#114a82,stroke:#0a2f56,color:#ffffff
+```
+
+Single process. No external infrastructure beyond Postgres (optional) and the GitHub API. This is also the universal fallback when a chosen target's infra is missing — see the `infra-absent` reason in [Observability](OBSERVABILITY.md).
+
+#### `daemon`
+
+```mermaid
+flowchart LR
+    WH["Webhook server<br/>orchestrator role"]:::entry
+    REG["Daemon registry<br/>src/orchestrator/daemon-registry.ts"]:::guard
+    DISP["Job dispatcher<br/>src/orchestrator/job-dispatcher.ts"]:::decide
+    DM["Daemon process<br/>src/daemon/main.ts"]:::target
+    PIPE["Inline pipeline<br/>on daemon host"]:::work
+    GH["GitHub API"]:::ext
+
+    DM -.->|persistent WS connect| REG
+    WH --> DISP
+    DISP -->|JobOffer| DM
+    DM -->|JobAccept or JobReject| DISP
+    DM --> PIPE
+    PIPE --> GH
+    DM -->|JobResult| DISP
+    DISP -->|finalise| GH
+
+    classDef entry fill:#0b5cad,stroke:#083e74,color:#ffffff
+    classDef guard fill:#164a3a,stroke:#0d2c24,color:#ffffff
+    classDef decide fill:#8a5a00,stroke:#5c3d00,color:#ffffff
+    classDef target fill:#114a82,stroke:#0a2f56,color:#ffffff
+    classDef work fill:#4a2e7a,stroke:#311f50,color:#ffffff
+    classDef ext fill:#114a82,stroke:#0a2f56,color:#ffffff
+```
+
+Daemons hold a persistent WebSocket to the orchestrator (`src/orchestrator/ws-server.ts`). Each job is offered to one matching daemon; on `JobReject` (capacity, capability mismatch) the dispatcher offers the next candidate. Pipeline runs on the daemon host with its own clone — the webhook server never touches the repo. See [DAEMON.md](DAEMON.md).
+
+#### `shared-runner`
+
+```mermaid
+flowchart LR
+    WH["Webhook server"]:::entry
+    SRD["Shared-runner dispatcher<br/>src/k8s/shared-runner-dispatcher.ts"]:::decide
+    POOL["Internal runner pool<br/>POST INTERNAL_RUNNER_URL / internal/run"]:::target
+    PIPE["Inline pipeline<br/>on pool worker"]:::work
+    GH["GitHub API"]:::ext
+
+    WH --> SRD
+    SRD -->|HTTP POST + bearer token| POOL
+    POOL --> PIPE
+    PIPE --> GH
+    POOL -->|HTTP response| SRD
+    SRD -->|finalise| GH
+
+    classDef entry fill:#0b5cad,stroke:#083e74,color:#ffffff
+    classDef decide fill:#8a5a00,stroke:#5c3d00,color:#ffffff
+    classDef target fill:#114a82,stroke:#0a2f56,color:#ffffff
+    classDef work fill:#4a2e7a,stroke:#311f50,color:#ffffff
+    classDef ext fill:#114a82,stroke:#0a2f56,color:#ffffff
+```
+
+Stateless HTTP hop authenticated with `INTERNAL_RUNNER_TOKEN`. The pool itself lives outside this repo; this app only knows the URL and the response contract. Used when broader tooling is needed without per-request Docker isolation.
+
+#### `isolated-job`
+
+```mermaid
+flowchart LR
+    WH["Webhook server"]:::entry
+    SP["Job spawner<br/>src/k8s/job-spawner.ts"]:::decide
+    CAP{{"Capacity guard<br/>MAX_CONCURRENT_ISOLATED_JOBS"}}:::fork
+    QUE["Pending queue<br/>Valkey list"]:::store
+    DR["Drainer<br/>pending-queue-drainer.ts"]:::guard
+    K8S["Kubernetes Job<br/>app + docker:29-dind sidecar"]:::target
+    PIPE["Inline pipeline<br/>inside Job pod"]:::work
+    GH["GitHub API"]:::ext
+
+    WH --> SP
+    SP --> CAP
+    CAP -->|under cap| K8S
+    CAP -->|at cap| QUE
+    QUE --> DR
+    DR -->|when slot frees| K8S
+    K8S --> PIPE
+    PIPE --> GH
+
+    classDef entry fill:#0b5cad,stroke:#083e74,color:#ffffff
+    classDef guard fill:#164a3a,stroke:#0d2c24,color:#ffffff
+    classDef decide fill:#8a5a00,stroke:#5c3d00,color:#ffffff
+    classDef fork fill:#6a2080,stroke:#451454,color:#ffffff
+    classDef target fill:#114a82,stroke:#0a2f56,color:#ffffff
+    classDef work fill:#4a2e7a,stroke:#311f50,color:#ffffff
+    classDef store fill:#5c3d00,stroke:#3d2900,color:#ffffff
+    classDef ext fill:#114a82,stroke:#0a2f56,color:#ffffff
+```
+
+Per-request Kubernetes Job. The privileged `docker:29-dind` sidecar shares its Docker socket with the app container so agent tooling can build and run containers. When the in-flight count hits `MAX_CONCURRENT_ISOLATED_JOBS`, requests enqueue in a bounded Valkey list (`PENDING_ISOLATED_JOB_QUEUE_MAX`); the drainer re-attempts as slots free. A full queue produces the `capacity-rejected` reason. See [KUBERNETES.md](KUBERNETES.md).
+
 ### Cascade
 
 1. **Label.** If the triggering PR or issue carries `bot:shared`, `bot:job`, or a similar label, the target is fixed and the LLM is never called.

@@ -87,7 +87,7 @@ spec:
 ## Key constraints
 
 - `terminationGracePeriodSeconds` should match or exceed `DAEMON_DRAIN_TIMEOUT_MS` so SIGTERM has time to drain in-flight work before SIGKILL.
-- `JOB_ACTIVE_DEADLINE_SECONDS` must be strictly below the GitHub installation-token TTL (3600s). The default `1800` leaves margin.
+- `JOB_ACTIVE_DEADLINE_SECONDS` must stay below the GitHub installation-token TTL (3600s) so the Job cannot outlive its credentials. The Zod schema caps the value at `3500` (100s of headroom); the default `1800` leaves much more margin.
 - `JOB_TTL_SECONDS` controls how long completed Job pods survive for log retrieval. Too low and `kubectl logs` fails.
 - The Job pod for isolated runs needs a DinD sidecar with `securityContext.privileged: true` if the agent will invoke Docker. This is a deliberate trade-off for isolated mode; if you don't need DinD, prefer `shared-runner`.
 

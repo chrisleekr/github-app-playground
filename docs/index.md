@@ -27,6 +27,12 @@ A GitHub App that responds to `@chrisleekr-bot` mentions on pull requests and is
 
 </div>
 
-## Status
+## Operator guides
 
-This site tracks the `main` branch and reflects the current documentation set, including both setup and operator-facing guides (configuration, observability, triage, daemon, Kubernetes). See the repository `CHANGELOG.md` for release history.
+- [Configuration](CONFIGURATION.md) — every environment variable the app reads.
+- [Observability](OBSERVABILITY.md) — log fields, dispatch reasons, alerts.
+- [Triage](TRIAGE.md) — auto-mode classifier behaviour and tuning.
+- [Daemon mode](DAEMON.md) — standalone worker process.
+- [Kubernetes](KUBERNETES.md) — isolated-job mode with RBAC and deployment skeleton.
+
+This site tracks the `main` branch. See the repository `CHANGELOG.md` for release history.

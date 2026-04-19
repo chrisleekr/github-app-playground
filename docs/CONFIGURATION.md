@@ -63,7 +63,7 @@ Applies when `AGENT_JOB_MODE=isolated-job`, `auto`, or when a label forces `isol
 | `JOB_NAMESPACE`                  | `github-app`                  | Namespace for spawned Jobs. ServiceAccount needs `create/get/list/delete` on `jobs` and `pods` here. |
 | `JOB_IMAGE`                      | `github-app-playground:local` | Container image for the Job pod.                                                                     |
 | `JOB_TTL_SECONDS`                | `300`                         | `ttlSecondsAfterFinished`. Too low and `kubectl logs` fails before logs can be retrieved.            |
-| `JOB_ACTIVE_DEADLINE_SECONDS`    | `1800` (max `3500`)           | Hard K8s-side wall-clock ceiling. Keep strictly below the GitHub installation-token TTL of 3600s.    |
+| `JOB_ACTIVE_DEADLINE_SECONDS`    | `1800` (schema max `3500`)    | Hard K8s-side wall-clock ceiling. Cap of `3500` leaves 100s under GitHub's 3600s token TTL.          |
 | `JOB_WATCH_POLL_INTERVAL_MS`     | `5000`                        | How often the watcher polls Job status.                                                              |
 | `MAX_CONCURRENT_ISOLATED_JOBS`   | `3`                           | In-flight capacity gate.                                                                             |
 | `PENDING_ISOLATED_JOB_QUEUE_MAX` | `20`                          | Bounded overflow queue. When full, requests are rejected with `dispatch_reason=capacity-rejected`.   |
@@ -135,3 +135,5 @@ See [Triage](TRIAGE.md) for the full cascade and the six fallback reasons that a
 | `isolated-job` or `auto`                          | `JOB_IMAGE`, plus a ServiceAccount with Job/Pod RBAC in `JOB_NAMESPACE`. |
 | `auto`                                            | `DEFAULT_DISPATCH_TARGET` cannot be `inline`.                            |
 | Daemon process (`ORCHESTRATOR_URL` set)           | `DAEMON_AUTH_TOKEN`. GitHub App credentials are NOT required.            |
+
+> **`auto` mode caveat.** The router may dispatch to **any** of the four targets, so configure credentials for every target the cascade can reach — not just the `DEFAULT_DISPATCH_TARGET`. Missing infrastructure is detected at dispatch time, not at startup, and surfaces as `dispatch_reason=infra-absent` in logs (the request then falls through to the configured default).
