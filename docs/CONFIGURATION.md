@@ -70,10 +70,10 @@ The orchestrator also expects a pre-existing `daemon-secrets` K8s Secret in `EPH
 
 Required whenever the orchestrator role is active (i.e. the webhook server process, which always runs the orchestrator).
 
-| Variable       | Default | Notes                                                                                                         |
-| -------------- | ------- | ------------------------------------------------------------------------------------------------------------- |
-| `VALKEY_URL`   | —       | Backs the daemon job queue, in-flight set, and the ephemeral-spawn cooldown.                                  |
-| `DATABASE_URL` | —       | Postgres connection for `executions`, `triage_results`. Unset disables durable idempotency and observability. |
+| Variable       | Default | Notes                                                                                                                                                                                                                |
+| -------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VALKEY_URL`   | —       | Backs the daemon job queue, in-flight set, and the ephemeral-spawn cooldown.                                                                                                                                         |
+| `DATABASE_URL` | —       | Postgres connection for `executions` and `triage_results`. Unset disables durable observability and telemetry aggregates. Durable idempotency itself comes from GitHub tracking comments and works without Postgres. |
 
 ## Orchestrator and daemon
 
@@ -108,8 +108,8 @@ See [Triage](TRIAGE.md) for the binary `heavy` signal, circuit breaker, and the 
 
 ## Mode matrix — what's required when
 
-| Role                                    | Required                                                                                               |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Orchestrator (webhook server)           | GitHub App credentials, one AI provider credential, `VALKEY_URL`, `DATABASE_URL`, `DAEMON_AUTH_TOKEN`. |
-| Ephemeral-daemon scale-up               | K8s API access + RBAC on `pods` in `EPHEMERAL_DAEMON_NAMESPACE`, `daemon-secrets` Secret.              |
-| Daemon process (`ORCHESTRATOR_URL` set) | `DAEMON_AUTH_TOKEN`. GitHub App credentials are NOT required.                                          |
+| Role                                    | Required                                                                                                                                                                         |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Orchestrator (webhook server)           | GitHub App credentials, one AI provider credential, `VALKEY_URL`, `DATABASE_URL`, `DAEMON_AUTH_TOKEN`.                                                                           |
+| Ephemeral-daemon scale-up               | K8s API access + RBAC on `pods` in `EPHEMERAL_DAEMON_NAMESPACE`, `daemon-secrets` Secret.                                                                                        |
+| Daemon process (`ORCHESTRATOR_URL` set) | `DAEMON_AUTH_TOKEN` and one AI provider credential (`ANTHROPIC_API_KEY` / `CLAUDE_CODE_OAUTH_TOKEN` / Bedrock env). GitHub App credentials and data-layer URLs are NOT required. |

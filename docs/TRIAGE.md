@@ -37,9 +37,9 @@ All six appear in Pino logs as `triage_fallback_reason`. Canonical values live i
 
 ## Cost implications
 
-Every event incurs one Haiku call. For a busy install, that is the dominant marginal cost. Mitigations:
+Every event attempts triage; when `TRIAGE_ENABLED=false` or the breaker is open the call short-circuits _before_ hitting Haiku, so those paths are free. When the call proceeds, one Haiku invocation is the dominant marginal cost on a busy install. Mitigations:
 
-- Raise `TRIAGE_CONFIDENCE_THRESHOLD` (default `1.0`) to accept fewer heavy verdicts — cheaper in compute terms but will route more borderline jobs to the persistent pool.
+- `TRIAGE_CONFIDENCE_THRESHOLD` defaults to `1.0` (strictest) — _lower_ it toward `0.8`–`0.9` to accept more heavy verdicts; _raising_ it above `1.0` is not supported and would gate out every response. The compute cost is unchanged either way (the Haiku call still happens); the knob only controls whether the result routes an ephemeral spawn.
 - Flip `TRIAGE_ENABLED=false` during a provider incident to suppress spend without redeploying. While disabled, every event is treated as `heavy=false`.
 - Keep `TRIAGE_MAX_TOKENS` low (the response schema is ~40 tokens).
 

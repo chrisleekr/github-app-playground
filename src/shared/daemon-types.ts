@@ -70,7 +70,14 @@ export const daemonCapabilitiesSchema = z.object({
    * persistent-pool free slots when deciding whether to spawn an
    * ephemeral daemon.
    */
-  maxConcurrentJobs: z.number().int().positive(),
+  // `.default(3)` mirrors `DAEMON_MAX_CONCURRENT_JOBS` and, more importantly,
+  // keeps the field backward-compatible on the wire: an older daemon image
+  // that predates this refactor will omit the field entirely, and the
+  // orchestrator must still be able to register it (zod fills in 3 so the
+  // capabilities row parses cleanly and the daemon stays in the pool). The
+  // field is still effectively required for any daemon built from this PR —
+  // the daemon-side `detectCapabilities()` always sets it.
+  maxConcurrentJobs: z.number().int().positive().default(3),
 });
 
 // Inferred TypeScript types
