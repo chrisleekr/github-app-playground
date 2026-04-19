@@ -189,8 +189,23 @@ const DECR_IF_POSITIVE_LUA = `
  * Valkey value must not starve the scaler.
  */
 export async function getPersistentPoolFreeSlots(): Promise<number> {
-  const valkey = requireValkeyClient();
-  const ids = await getActiveDaemons();
+  let valkey: ReturnType<typeof requireValkeyClient>;
+  let ids: string[];
+  try {
+    // Matches the defensive posture of `getQueueLength()`: a Valkey blip
+    // must not throw out of the scaler and fail dispatch for every event.
+    // Return 0 so the scaler treats the pool as saturated — if heavy or
+    // overflow still fires, an ephemeral spawn is attempted; otherwise
+    // routing proceeds to the persistent queue unchanged.
+    valkey = requireValkeyClient();
+    ids = await getActiveDaemons();
+  } catch (err) {
+    logger.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      "Failed to enumerate active daemons — treating persistent free slots as 0",
+    );
+    return 0;
+  }
   let free = 0;
   for (const id of ids) {
     try {
