@@ -29,4 +29,4 @@ A GitHub App that responds to `@chrisleekr-bot` mentions on pull requests and is
 
 ## Status
 
-This site tracks the `main` branch. Operator-facing pages (configuration reference, Kubernetes isolated-job mode, observability, AI triage, daemon) land in subsequent updates — see the repository `CHANGELOG.md` for progress.
+This site tracks the `main` branch and reflects the current documentation set, including both setup and operator-facing guides (configuration, observability, triage, daemon, Kubernetes). See the repository `CHANGELOG.md` for release history.

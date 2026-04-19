@@ -49,7 +49,7 @@ flowchart TD
 ## Key concepts
 
 - **Async processing.** The webhook handler must respond within 10 seconds, so the router fires the pipeline with `fire-and-forget` semantics after the 200 OK is queued. Every box downstream of `ACK` runs after the HTTP response is already on the wire.
-- **Idempotency is two-layered.** The fast path is an in-memory `Map` keyed by the `X-GitHub-Delivery` header — cheap, but lost on restart. The durable path asks GitHub whether a tracking comment already exists for the delivery — surviving pod restarts, OOM kills, and crash loops. Set `DATABASE_URL` to keep dispatch-decision history across restarts; without it, idempotency is in-memory only.
+- **Idempotency is two-layered.** The fast path is an in-memory `Map` keyed by the `X-GitHub-Delivery` header — cheap, but lost on restart. The durable path (`isAlreadyProcessed` in `src/core/tracking-comment.ts`) scans GitHub issue/PR comments for the hidden delivery marker embedded in the tracking comment, so duplicate deliveries are still detected across pod restarts, OOM kills, and crash loops — this works **without** `DATABASE_URL`. `DATABASE_URL` is only required to persist execution/dispatch history across restarts; it is not what provides durable idempotency.
 - **One request, one clone.** Each delivery clones the repo into a unique temp directory under `CLONE_BASE_DIR`. Claude operates on local files via `cwd`. The directory is removed after the run regardless of outcome.
 - **MCP servers.** Tracking-comment updates, inline PR reviews, and (optionally) Context7 library docs are exposed as MCP servers the agent can call. Git changes are made via the Bash tool against the cloned repo, not through a dedicated MCP server.
 

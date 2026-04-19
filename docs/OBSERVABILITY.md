@@ -22,16 +22,16 @@ Structured JSON logs via [pino](https://getpino.io) are the primary signal. Ever
 
 Canonical source: `src/shared/dispatch-types.ts`.
 
-| Reason                  | When the router sets it                                       |
-| ----------------------- | ------------------------------------------------------------- |
-| `label`                 | An explicit `bot:*` label forced the target.                  |
-| `keyword`               | A deterministic keyword in the mention body matched.          |
-| `triage`                | Auto-mode Haiku call returned a confident classification.     |
-| `default-fallback`      | Triage parsed but `confidence < TRIAGE_CONFIDENCE_THRESHOLD`. |
-| `triage-error-fallback` | Triage timed out, errored, or the circuit breaker was open.   |
-| `static-default`        | Static cascade was ambiguous in a non-auto mode.              |
-| `capacity-rejected`     | Isolated-job queue was full; request refused.                 |
-| `infra-absent`          | Chosen target's infrastructure is not configured.             |
+| Reason                  | When the router sets it                                                                                        |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `label`                 | An explicit `bot:*` label forced the target.                                                                   |
+| `keyword`               | A deterministic keyword in the mention body matched.                                                           |
+| `triage`                | Auto-mode Haiku call returned a confident classification.                                                      |
+| `default-fallback`      | Triage parsed but `confidence < TRIAGE_CONFIDENCE_THRESHOLD`.                                                  |
+| `triage-error-fallback` | Triage timed out, errored, or the circuit breaker was open.                                                    |
+| `static-default`        | Static cascade was ambiguous in a non-auto mode.                                                               |
+| `capacity-rejected`     | Isolated-job queue was full; request refused.                                                                  |
+| `infra-absent`          | Isolated-job dispatch could not run because Kubernetes auth/config was missing (see `src/k8s/job-spawner.ts`). |
 
 ## Aggregate reporting
 
