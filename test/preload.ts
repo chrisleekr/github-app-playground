@@ -23,9 +23,16 @@ process.env["CLAUDE_PROVIDER"] = "anthropic";
 delete process.env["ALLOWED_OWNERS"];
 delete process.env["CLAUDE_CODE_OAUTH_TOKEN"];
 
-// Force inline mode for tests — most tests assume inline pipeline execution.
-// Individual tests that need non-inline behavior override config.agentJobMode directly.
-process.env["AGENT_JOB_MODE"] = "inline";
+// DAEMON_AUTH_TOKEN is required post-dispatch-collapse (validated in
+// validateDataLayerConfig). Individual tests that need to exercise missing
+// auth flip this back to undefined within a save/restore block.
+process.env["DAEMON_AUTH_TOKEN"] = "test-daemon-token";
+
+// A developer's .env may set TRIGGER_PHRASE to a local-dev variant
+// (e.g. @chrisleekr-bot-dev) which would leak into tests that hardcode
+// the production phrase. Pin to the default so test assertions stay
+// deterministic across machines.
+process.env["TRIGGER_PHRASE"] = "@chrisleekr-bot";
 
 // Helper: set env var to a fallback when absent or empty.
 // ?? (nullish coalescing) only replaces null/undefined, not "". A local .env

@@ -64,6 +64,13 @@ export const daemonCapabilitiesSchema = z.object({
   cachedRepos: z.array(z.string()),
   ephemeral: z.boolean(),
   maxUptimeMs: z.number().positive().nullable(),
+  /**
+   * Local concurrency cap the daemon will accept. Sourced from
+   * `DAEMON_MAX_CONCURRENT_JOBS`. The orchestrator reads this to compute
+   * persistent-pool free slots when deciding whether to spawn an
+   * ephemeral daemon.
+   */
+  maxConcurrentJobs: z.number().int().positive(),
 });
 
 // Inferred TypeScript types

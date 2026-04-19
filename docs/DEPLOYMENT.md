@@ -10,7 +10,7 @@ from separate Dockerfiles but share a byte-identical base layer.
 
 | Image          | Dockerfile                | Role                                                                                                      | Needs outbound network                                   |
 | -------------- | ------------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `orchestrator` | `Dockerfile.orchestrator` | Webhook server, WebSocket daemon registry, triage classifier, inline execution path                       | GitHub API, Anthropic/Bedrock, Postgres, Valkey          |
+| `orchestrator` | `Dockerfile.orchestrator` | Webhook server, WebSocket daemon registry, triage classifier, ephemeral daemon spawner                    | GitHub API, Anthropic/Bedrock, Postgres, Valkey, K8s API |
 | `daemon`       | `Dockerfile.daemon`       | Fat worker image with real toolchains (kubectl, helm, terraform, aws, gcloud, docker CLI, go, rust, etc.) | Orchestrator WebSocket (outbound), GitHub API, Anthropic |
 
 The two images intentionally diverge after a shared base because their cost and
@@ -201,7 +201,7 @@ readinessProbe:
 
 For the **daemon**, replace HTTP probes with an `exec` probe that checks the
 daemon is still connected to the orchestrator — see
-[KUBERNETES.md](KUBERNETES.md) for a working example.
+[DAEMON.md](DAEMON.md) for a working example.
 
 ---
 
@@ -225,8 +225,7 @@ spec:
 The daemon has its own drain contract driven by `DAEMON_DRAIN_TIMEOUT_MS` — it
 finishes the job it is currently executing, rejects new offers, then
 disconnects. Match `terminationGracePeriodSeconds` to `DAEMON_DRAIN_TIMEOUT_MS`
-on the daemon's Pod spec (see [DAEMON.md](DAEMON.md) and
-[KUBERNETES.md](KUBERNETES.md)).
+on the daemon's Pod spec (see [DAEMON.md](DAEMON.md)).
 
 ---
 
@@ -235,8 +234,7 @@ on the daemon's Pod spec (see [DAEMON.md](DAEMON.md) and
 ### Orchestrator sizing
 
 I/O-bound — network calls to GitHub and the LLM provider, WebSocket fan-out,
-SQL writes. Memory is dominated by the number of concurrent inline executions
-(when `AGENT_JOB_MODE=inline`) and by Postgres/Valkey connection pools.
+SQL writes, occasional K8s API calls to spawn ephemeral daemons. The orchestrator never runs the pipeline itself, so 1 GB is typically enough.
 
 | `MAX_CONCURRENT_REQUESTS` | Memory limit | CPU      |
 | ------------------------- | ------------ | -------- |
@@ -244,14 +242,10 @@ SQL writes. Memory is dominated by the number of concurrent inline executions
 | 3 (default)               | 2 GB         | 1–2 vCPU |
 | 5                         | 3 GB         | 2 vCPU   |
 
-If the orchestrator is dispatching to daemons / shared-runners / isolated-jobs
-(`AGENT_JOB_MODE=daemon` or `auto`), the inline path is rarely exercised and
-1 GB is usually enough.
-
 ### Daemon sizing
 
 Dominated by whatever Claude runs inside it — `kubectl`, `terraform plan`,
-`aws cli`, `docker build` through the DinD sidecar. Start with:
+`aws cli`, `docker build`. Start with:
 
 | Concurrent jobs     | Memory limit | CPU      |
 | ------------------- | ------------ | -------- |
@@ -259,7 +253,8 @@ Dominated by whatever Claude runs inside it — `kubectl`, `terraform plan`,
 | 3 (typical default) | 4 GB         | 2–4 vCPU |
 
 Set concurrency via `DAEMON_MAX_CONCURRENT_JOBS`. The image itself is ~2 GB
-unpacked — plan for the node.
+unpacked — plan for the node. The same sizing applies to ephemeral daemon
+Pods — the spawner uses the same image.
 
 ### Disk
 
@@ -293,12 +288,55 @@ containers:
 The full schema lives in [CONFIGURATION.md](CONFIGURATION.md). Production
 defaults worth double-checking:
 
-| Variable                  | Production recommendation                                                                                                   |
-| ------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `NODE_ENV`                | `production` (the `development` stage bakes this in at build time; keep it set at runtime too)                              |
-| `LOG_LEVEL`               | `info` — `debug` is very verbose and exposes webhook payloads                                                               |
-| `MAX_CONCURRENT_REQUESTS` | Start at `3`; tune against memory limits and LLM budget                                                                     |
-| `CLONE_BASE_DIR`          | Override if `/tmp` is on a small or shared filesystem                                                                       |
-| `PORT`                    | `3000` (must match `containerPort` and probe paths)                                                                         |
-| `WS_PORT`                 | `3002` (orchestrator WebSocket; keep behind cluster network)                                                                |
-| `AGENT_JOB_MODE`          | Pick `inline` / `daemon` / `shared-runner` / `isolated-job` / `auto` — see [ARCHITECTURE.md](ARCHITECTURE.md#dispatch-flow) |
+| Variable                  | Production recommendation                                                                      |
+| ------------------------- | ---------------------------------------------------------------------------------------------- |
+| `NODE_ENV`                | `production` (the `development` stage bakes this in at build time; keep it set at runtime too) |
+| `LOG_LEVEL`               | `info` — `debug` is very verbose and exposes webhook payloads                                  |
+| `MAX_CONCURRENT_REQUESTS` | Start at `3`; tune against memory limits and LLM budget                                        |
+| `CLONE_BASE_DIR`          | Override if `/tmp` is on a small or shared filesystem                                          |
+| `PORT`                    | `3000` (must match `containerPort` and probe paths)                                            |
+| `WS_PORT`                 | `3002` (orchestrator WebSocket; keep behind cluster network)                                   |
+
+---
+
+## Ephemeral-daemon K8s requirements
+
+If you want the orchestrator to spawn ephemeral daemon Pods on demand, two
+cluster-side prerequisites must be in place in `EPHEMERAL_DAEMON_NAMESPACE`:
+
+### Orchestrator RBAC
+
+The orchestrator's ServiceAccount needs `create`, `get`, and `delete` on
+`pods` in `EPHEMERAL_DAEMON_NAMESPACE`:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: github-app-playground-ephemeral-spawner
+  namespace: default
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["create", "get", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: github-app-playground-ephemeral-spawner
+  namespace: default
+subjects:
+  - kind: ServiceAccount
+    name: github-app-playground
+    namespace: default
+roleRef:
+  kind: Role
+  name: github-app-playground-ephemeral-spawner
+  apiGroup: rbac.authorization.k8s.io
+```
+
+Without these verbs, every scale-up attempt yields `dispatch_reason=ephemeral-spawn-failed` and the job is rejected with a tracking-comment infra error.
+
+### `daemon-secrets` Secret
+
+Spawned ephemeral daemon Pods receive their configuration via `envFrom: secretRef: daemon-secrets`. Create this Secret once in `EPHEMERAL_DAEMON_NAMESPACE` with the GitHub App credentials used by the orchestrator (so the daemon can reuse the installation-token path), Claude provider keys, and the data-layer URLs (`DATABASE_URL`, `VALKEY_URL`). See [DAEMON.md](DAEMON.md) for the full key list.

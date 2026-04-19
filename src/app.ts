@@ -16,7 +16,6 @@ import { App } from "octokit";
 import { config } from "./config";
 import { closeDb, getDb } from "./db";
 import { runMigrations } from "./db/migrate";
-import { startPendingQueueDrainer, stopPendingQueueDrainer } from "./k8s/pending-queue-drainer";
 import { logger } from "./logger";
 import { recoverStaleExecutions } from "./orchestrator/history";
 import { closeValkey, getValkeyClient, isValkeyHealthy } from "./orchestrator/valkey";
@@ -103,9 +102,8 @@ const server = http.createServer((req, res) => {
   }
   if (req.url === "/readyz") {
     // Readiness: should we receive traffic?
-    // In non-inline mode, also check Valkey health (FM-7).
-    const valkeyOk = config.agentJobMode === "inline" || isValkeyHealthy();
-    const ready = isReady && valkeyOk;
+    // Server mode always needs Valkey (FM-7); daemon mode skips this file entirely.
+    const ready = isReady && isValkeyHealthy();
     res
       .writeHead(ready ? 200 : 503, { "Content-Type": "text/plain" })
       .end(ready ? "ready" : "not ready");
@@ -300,20 +298,9 @@ async function runStartupChecks(): Promise<void> {
     await recoverStaleExecutions(db);
   }
 
-  if (config.agentJobMode !== "inline") {
-    getValkeyClient();
-    startWebSocketServer();
-    logger.info({ wsPort: config.wsPort }, "Orchestrator WebSocket server started");
-  }
-
-  // US3 T044: drain the pending isolated-job queue whenever in-flight
-  // capacity frees up. Only relevant when the isolated-job target is
-  // reachable — inline + daemon + shared-runner deployments never queue
-  // isolated-job requests, so spinning up the interval would just waste
-  // Valkey round-trips.
-  if (config.agentJobMode === "isolated-job" || config.agentJobMode === "auto") {
-    startPendingQueueDrainer(app);
-  }
+  getValkeyClient();
+  startWebSocketServer();
+  logger.info({ wsPort: config.wsPort }, "Orchestrator WebSocket server started");
 
   isReady = true;
   logger.info("Startup checks passed, server is ready");
@@ -336,9 +323,6 @@ function shutdown(signal: string): void {
   server.close(() => {
     void (async (): Promise<void> => {
       try {
-        // Stop the isolated-job queue drainer before Valkey closes so any
-        // in-flight drain tick doesn't race with client teardown.
-        stopPendingQueueDrainer();
         // Drain the WebSocket server first so daemon disconnect cleanup
         // (which still uses the Valkey client) finishes before we close Valkey.
         await stopWebSocketServer();

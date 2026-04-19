@@ -50,12 +50,12 @@ export function resolveMcpServers(
   }
 
   // Tier 3, R-011 — daemon capabilities MCP server
-  if (config.agentJobMode !== "inline" && opts?.daemonCapabilities !== undefined) {
+  if (opts?.daemonCapabilities !== undefined) {
     servers["daemon_capabilities"] = daemonCapabilitiesServerDef(opts.daemonCapabilities);
   }
 
   // Repo memory MCP server — persistent learnings across executions
-  if (config.agentJobMode !== "inline" && opts?.workDir !== undefined) {
+  if (opts?.workDir !== undefined) {
     servers["repo_memory"] = repoMemoryServerDef(opts.workDir, opts.repoMemory ?? []);
   }
 

@@ -226,11 +226,17 @@ async function probeContainerDaemonRunning(name: "docker" | "podman"): Promise<b
 }
 
 // Ephemeral detection
+//
+// Returns true only when the daemon was spawned as an auto-scaling ephemeral
+// Pod via the orchestrator's `spawnEphemeralDaemon`. Persistent daemons deployed
+// via Helm / Deployment must leave `DAEMON_EPHEMERAL` unset so they are not
+// excluded from `getPersistentPoolFreeSlots` and do not self-terminate on idle.
+// Container-env probes (`/.dockerenv`, `KUBERNETES_SERVICE_HOST`) are not a
+// substitute: both persistent and ephemeral daemons run in containers.
 
 function detectEphemeral(): boolean {
-  if (existsSync("/.dockerenv")) return true;
-  if (process.env["KUBERNETES_SERVICE_HOST"] !== undefined) return true;
-  return false;
+  const raw = process.env["DAEMON_EPHEMERAL"]?.trim().toLowerCase();
+  return raw === "true" || raw === "1" || raw === "yes";
 }
 
 // Auth + repo probes
@@ -352,6 +358,10 @@ export async function discoverCapabilities(cloneBaseDir: string): Promise<Daemon
     cachedRepos,
     ephemeral,
     maxUptimeMs: ephemeral ? 3_600_000 : null,
+    maxConcurrentJobs: Math.max(
+      1,
+      Number.parseInt(process.env["DAEMON_MAX_CONCURRENT_JOBS"] ?? "3", 10),
+    ),
   };
 
   logger.debug(

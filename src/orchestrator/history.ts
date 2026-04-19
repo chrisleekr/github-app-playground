@@ -24,21 +24,18 @@ export interface CreateExecutionParams {
   triggerUsername: string;
   dispatchMode: string;
   /**
-   * Optional dispatch-decision reason. When omitted the DB DEFAULT
-   * ('static-default') applies. Callers on rejection / classifier paths pass
-   * the actual DispatchReason (e.g. "infra-absent", "label", "keyword") so
-   * analytics can distinguish them from the default fallback.
+   * Dispatch-decision reason. Callers pass the resolved DispatchReason
+   * (e.g. "persistent-daemon", "ephemeral-daemon-triage", "ephemeral-spawn-failed")
+   * so analytics can distinguish spawn outcomes from steady-state routing.
    */
   dispatchReason?: string;
   /**
-   * Triage denorm fields per data-model.md §4. Populated only when
-   * `dispatchReason === "triage"` (or "default-fallback" when triage parsed
-   * but was sub-threshold). Enables FR-014 aggregate queries to read
-   * confidence/cost without joining to `triage_results`.
+   * Triage denorm fields. Populated whenever the triage LLM produced a
+   * result so FR-014 aggregates can read confidence/cost without joining
+   * to `triage_results`.
    */
   triageConfidence?: number;
   triageCostUsd?: number;
-  triageComplexity?: "trivial" | "moderate" | "complex";
   contextJson?: SerializableBotContext;
 }
 
@@ -52,9 +49,7 @@ export async function createExecution(params: CreateExecutionParams): Promise<st
 
   const hasDispatchReason = params.dispatchReason !== undefined;
   const hasTriageFields =
-    params.triageConfidence !== undefined ||
-    params.triageCostUsd !== undefined ||
-    params.triageComplexity !== undefined;
+    params.triageConfidence !== undefined || params.triageCostUsd !== undefined;
 
   // Guard: triage denorm columns must only accompany an explicit reason.
   // Without this, callers could accidentally persist triage_* columns
@@ -75,15 +70,14 @@ export async function createExecution(params: CreateExecutionParams): Promise<st
       INSERT INTO executions (
         delivery_id, repo_owner, repo_name, entity_number, entity_type,
         event_name, trigger_username, dispatch_mode, dispatch_target, dispatch_reason,
-        triage_confidence, triage_cost_usd, triage_complexity,
+        triage_confidence, triage_cost_usd,
         status, context_json
       ) VALUES (
         ${params.deliveryId}, ${params.repoOwner}, ${params.repoName},
         ${params.entityNumber}, ${params.entityType}, ${params.eventName},
         ${params.triggerUsername}, ${params.dispatchMode}, ${params.dispatchMode},
-        ${params.dispatchReason ?? "static-default"},
+        ${params.dispatchReason ?? "persistent-daemon"},
         ${params.triageConfidence ?? null}, ${params.triageCostUsd ?? null},
-        ${params.triageComplexity ?? null},
         'queued', ${params.contextJson ?? null}
       )
       RETURNING id

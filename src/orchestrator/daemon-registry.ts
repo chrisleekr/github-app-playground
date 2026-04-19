@@ -1,6 +1,10 @@
 import { getDb } from "../db";
 import { logger } from "../logger";
-import type { DaemonCapabilities, DaemonInfo } from "../shared/daemon-types";
+import {
+  type DaemonCapabilities,
+  daemonCapabilitiesSchema,
+  type DaemonInfo,
+} from "../shared/daemon-types";
 import type { DaemonRegisterMessage } from "../shared/ws-messages";
 import { requireValkeyClient } from "./valkey";
 
@@ -168,6 +172,48 @@ const DECR_IF_POSITIVE_LUA = `
     return -1
   end
 `;
+
+/**
+ * Sum the spare capacity across the persistent daemon pool — i.e.
+ * `maxConcurrentJobs - activeJobs` for every active non-ephemeral daemon.
+ * Used by the ephemeral-daemon scaler to decide whether an overflow spawn
+ * is actually justified.
+ *
+ * Read path:
+ *  - `active_daemons` set enumerates live daemons.
+ *  - Per daemon, the capabilities JSON at `daemon:{id}` identifies ephemeral
+ *    status + its local concurrency cap.
+ *  - `daemon:{id}:active_jobs` carries the current in-flight count.
+ *
+ * Silently treats parse/read failures as 0 contribution — a mis-shaped
+ * Valkey value must not starve the scaler.
+ */
+export async function getPersistentPoolFreeSlots(): Promise<number> {
+  const valkey = requireValkeyClient();
+  const ids = await getActiveDaemons();
+  let free = 0;
+  for (const id of ids) {
+    try {
+      // eslint-disable-next-line no-await-in-loop, @typescript-eslint/no-unsafe-assignment -- Valkey GET returns string | null
+      const capsRaw: string | null = await valkey.send("GET", [`daemon:${id}`]);
+      if (capsRaw === null) continue;
+      const parsed = daemonCapabilitiesSchema.safeParse(JSON.parse(capsRaw));
+      if (!parsed.success) continue;
+      if (parsed.data.ephemeral) continue;
+
+      // eslint-disable-next-line no-await-in-loop
+      const active = await getDaemonActiveJobs(id);
+      const slots = parsed.data.maxConcurrentJobs - active;
+      if (slots > 0) free += slots;
+    } catch (err) {
+      logger.debug(
+        { err: err instanceof Error ? err.message : String(err), daemonId: id },
+        "Failed to read daemon capacity — skipping",
+      );
+    }
+  }
+  return free;
+}
 
 export async function decrementDaemonActiveJobs(daemonId: string): Promise<void> {
   const valkey = requireValkeyClient();

@@ -1,11 +1,8 @@
 /**
- * Contract test for the triage-response JSON schema (T027).
- *
- * Validates that the Zod schema in `src/orchestrator/triage.ts` stays in
- * lock-step with the JSON Schema in
- * `specs/.../contracts/triage-response.schema.json`. Drift causes a
- * production incident (the router would accept responses the model's
- * API documentation says it won't emit, or reject ones it will).
+ * Contract test for the post-collapse binary triage-response schema.
+ * After the dispatch collapse triage returns `{ heavy, confidence, rationale }`
+ * — no mode, no complexity. The router maps `heavy` onto the ephemeral-daemon
+ * scaler signal.
  */
 
 import { describe, expect, it } from "bun:test";
@@ -13,145 +10,92 @@ import { describe, expect, it } from "bun:test";
 import { TriageResponseSchema } from "../../src/orchestrator/triage";
 
 describe("TriageResponse schema — valid inputs", () => {
-  it("accepts a canonical daemon response", () => {
+  it("accepts a canonical heavy=true response", () => {
     const r = TriageResponseSchema.safeParse({
-      mode: "daemon",
+      heavy: true,
       confidence: 0.85,
-      complexity: "moderate",
-      rationale: "Adds one endpoint and a unit test; standard tooling suffices.",
+      rationale: "Touches migrations + multi-service deployment — high blast radius.",
     });
     expect(r.success).toBe(true);
   });
 
-  it("accepts each of the 3 modes × 3 complexities (9 combos)", () => {
-    const modes = ["daemon", "shared-runner", "isolated-job"] as const;
-    const complexities = ["trivial", "moderate", "complex"] as const;
-    for (const mode of modes) {
-      for (const complexity of complexities) {
-        const r = TriageResponseSchema.safeParse({
-          mode,
-          confidence: 0.5,
-          complexity,
-          rationale: "ok",
-        });
-        expect(r.success).toBe(true);
-      }
-    }
+  it("accepts a canonical heavy=false response", () => {
+    const r = TriageResponseSchema.safeParse({
+      heavy: false,
+      confidence: 0.9,
+      rationale: "One-line comment fix; no tests required.",
+    });
+    expect(r.success).toBe(true);
   });
 
   it("accepts confidence at the boundaries (0.0 and 1.0)", () => {
     expect(
-      TriageResponseSchema.safeParse({
-        mode: "daemon",
-        confidence: 0.0,
-        complexity: "trivial",
-        rationale: "x",
-      }).success,
+      TriageResponseSchema.safeParse({ heavy: false, confidence: 0.0, rationale: "x" }).success,
     ).toBe(true);
     expect(
-      TriageResponseSchema.safeParse({
-        mode: "daemon",
-        confidence: 1.0,
-        complexity: "trivial",
-        rationale: "x",
-      }).success,
+      TriageResponseSchema.safeParse({ heavy: true, confidence: 1.0, rationale: "x" }).success,
     ).toBe(true);
   });
 
   it("accepts a rationale at the 500-char upper bound", () => {
     const rationale = "x".repeat(500);
     expect(
-      TriageResponseSchema.safeParse({
-        mode: "daemon",
-        confidence: 0.5,
-        complexity: "trivial",
-        rationale,
-      }).success,
+      TriageResponseSchema.safeParse({ heavy: false, confidence: 0.5, rationale }).success,
     ).toBe(true);
   });
 });
 
 describe("TriageResponse schema — invalid inputs", () => {
-  it("rejects an unknown mode (schema drift)", () => {
+  it("rejects non-boolean heavy", () => {
+    expect(
+      TriageResponseSchema.safeParse({ heavy: "true", confidence: 0.5, rationale: "x" }).success,
+    ).toBe(false);
+    expect(
+      TriageResponseSchema.safeParse({ heavy: 1, confidence: 0.5, rationale: "x" }).success,
+    ).toBe(false);
+  });
+
+  it("rejects legacy pre-collapse shape (mode/complexity)", () => {
     const r = TriageResponseSchema.safeParse({
-      mode: "inline",
-      confidence: 0.9,
+      mode: "daemon",
+      confidence: 0.5,
       complexity: "trivial",
-      rationale: "inline is not a triage target",
+      rationale: "legacy shape",
     });
     expect(r.success).toBe(false);
   });
 
   it("rejects confidence outside [0, 1]", () => {
     expect(
-      TriageResponseSchema.safeParse({
-        mode: "daemon",
-        confidence: 1.01,
-        complexity: "trivial",
-        rationale: "x",
-      }).success,
+      TriageResponseSchema.safeParse({ heavy: true, confidence: 1.01, rationale: "x" }).success,
     ).toBe(false);
     expect(
-      TriageResponseSchema.safeParse({
-        mode: "daemon",
-        confidence: -0.01,
-        complexity: "trivial",
-        rationale: "x",
-      }).success,
+      TriageResponseSchema.safeParse({ heavy: true, confidence: -0.01, rationale: "x" }).success,
     ).toBe(false);
-  });
-
-  it("rejects an unknown complexity value", () => {
-    const r = TriageResponseSchema.safeParse({
-      mode: "daemon",
-      confidence: 0.5,
-      complexity: "epic",
-      rationale: "x",
-    });
-    expect(r.success).toBe(false);
   });
 
   it("rejects an empty rationale (min 1 char)", () => {
     expect(
-      TriageResponseSchema.safeParse({
-        mode: "daemon",
-        confidence: 0.5,
-        complexity: "trivial",
-        rationale: "",
-      }).success,
+      TriageResponseSchema.safeParse({ heavy: false, confidence: 0.5, rationale: "" }).success,
     ).toBe(false);
   });
 
   it("rejects a rationale above the 500-char upper bound", () => {
     const rationale = "x".repeat(501);
     expect(
-      TriageResponseSchema.safeParse({
-        mode: "daemon",
-        confidence: 0.5,
-        complexity: "trivial",
-        rationale,
-      }).success,
+      TriageResponseSchema.safeParse({ heavy: false, confidence: 0.5, rationale }).success,
     ).toBe(false);
   });
 
   it("rejects missing required fields", () => {
     expect(TriageResponseSchema.safeParse({}).success).toBe(false);
-    expect(TriageResponseSchema.safeParse({ mode: "daemon" }).success).toBe(false);
-    expect(
-      TriageResponseSchema.safeParse({
-        mode: "daemon",
-        confidence: 0.5,
-        complexity: "trivial",
-      }).success,
-    ).toBe(false);
+    expect(TriageResponseSchema.safeParse({ heavy: true }).success).toBe(false);
+    expect(TriageResponseSchema.safeParse({ heavy: true, confidence: 0.5 }).success).toBe(false);
   });
 
-  it("rejects null input", () => {
+  it("rejects non-object input", () => {
     expect(TriageResponseSchema.safeParse(null).success).toBe(false);
-  });
-
-  it("rejects non-object input (string, number, array)", () => {
-    expect(TriageResponseSchema.safeParse("daemon").success).toBe(false);
+    expect(TriageResponseSchema.safeParse("heavy").success).toBe(false);
     expect(TriageResponseSchema.safeParse(42).success).toBe(false);
     expect(TriageResponseSchema.safeParse([]).success).toBe(false);
   });

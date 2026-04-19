@@ -1,20 +1,26 @@
 /**
- * Triage engine (T034) — single-turn classification of ambiguous events.
+ * Triage engine — single-turn binary classification of ambiguous events.
  *
- * Called by the router only when:
- *   (a) `config.agentJobMode === "auto"`, AND
- *   (b) `classifyStatic(ctx)` returned `{ outcome: "ambiguous" }`.
+ * After the dispatch-to-daemon collapse, triage no longer picks an
+ * execution target (there's only one: the daemon fleet). Instead, it
+ * answers a single question: *is this request heavy enough that the
+ * orchestrator should spawn an ephemeral daemon Pod to absorb it,
+ * rather than letting it wait in the persistent-daemon queue?*
  *
- * Contract (FR-007 — FR-010, SC-002, SC-005):
+ * Contract:
  *   - Wraps one LLM call in a circuit breaker + hard timeout.
- *   - Validates the response against the triage-response.schema.json /
- *     Zod schema. Any deviation → fallback.
- *   - Gates on `config.triageConfidenceThreshold`. Sub-threshold → fallback.
- *   - Persists a `triage_results` row on clean parse+mode-known (advisory:
- *     the row survives sub-threshold gating so ops can observe what the
- *     model thought).
+ *   - Validates the response against the `{heavy, confidence, rationale}`
+ *     zod schema. Any deviation → fallback.
+ *   - Gates on `config.triageConfidenceThreshold`. Sub-threshold → fallback
+ *     (which the scaler treats as "not heavy").
+ *   - Persists a `triage_results` row on clean parse (advisory: survives
+ *     sub-threshold gating so ops can observe what the model thought).
  *   - NEVER throws. All failure paths return `{ outcome: "fallback", reason }`
- *     so the router can deterministically carry on to the default target.
+ *     so the router can deterministically carry on.
+ *
+ * `maxTurns` is deliberately NOT part of the triage output — the LLM
+ * mis-sizes complexity often enough that we prefer a static
+ * `config.defaultMaxTurns` for every job.
  */
 
 import { z } from "zod";
@@ -26,11 +32,10 @@ import { logger } from "../logger";
 import { CircuitBreaker } from "../utils/circuit-breaker";
 import { sanitizeContent } from "../utils/sanitize";
 
-/** Zod schema mirroring contracts/triage-response.schema.json. */
+/** Zod schema — binary heavy classifier. */
 export const TriageResponseSchema = z.object({
-  mode: z.enum(["daemon", "shared-runner", "isolated-job"]),
+  heavy: z.boolean(),
   confidence: z.number().min(0).max(1),
-  complexity: z.enum(["trivial", "moderate", "complex"]),
   rationale: z.string().min(1).max(500),
 });
 export type TriageResponse = z.infer<typeof TriageResponseSchema>;
@@ -59,14 +64,14 @@ export type TriageOutcome =
       /**
        * Populated when triage parsed successfully but was gated by the
        * confidence threshold (`reason === "sub-threshold"`). Callers surface
-       * this so the `default-fallback` path still carries triage telemetry
-       * into logs, tracking comments, and denormalized execution columns.
+       * this so telemetry still carries the model's opinion even when the
+       * scaler ignores it.
        */
       readonly result?: TriageResult;
     };
 
 /**
- * Minimal context that the triage prompt needs. Decoupled from `BotContext`
+ * Minimal context the triage prompt needs. Decoupled from `BotContext`
  * so unit tests can drive the engine without constructing Octokit stubs.
  */
 export interface TriageInput {
@@ -79,16 +84,21 @@ export interface TriageInput {
   readonly triggerBody: string;
 }
 
-const SYSTEM_PROMPT = `You are a dispatch-routing classifier for a GitHub-integration bot. Given an event that a deterministic classifier could not confidently route, you pick one of three execution targets:
+const SYSTEM_PROMPT = `You are a workload-intensity classifier for a GitHub-integration bot. Every request runs on the same daemon fleet; your only job is to decide whether a request is "heavy" enough that the orchestrator should spawn an extra ephemeral worker Pod to absorb it, instead of queuing it behind existing work.
 
-- "daemon": local daemon pool, standard tooling only (no Docker / no privileged commands). Default for most code changes.
-- "shared-runner": a shared long-lived sandbox with broader tooling. Use when the event mentions running tests / builds across multiple services and Docker is NOT required.
-- "isolated-job": ephemeral Kubernetes pod with Docker-in-Docker. Use ONLY when the event requires container tooling (docker build, docker compose, dind, kind, etc.).
+A request is HEAVY when it is likely to:
+- touch many files or require sweeping refactors,
+- run long test suites / builds,
+- require container tooling (docker build, docker compose, kind, etc.),
+- investigate complex multi-service behavior or reproduce non-trivial bugs,
+- otherwise consume substantially more CPU / memory / wall-clock than a typical code comment or small patch.
 
-You must respond with ONLY a JSON object, no prose, matching:
-{"mode":"daemon"|"shared-runner"|"isolated-job","confidence":0.0-1.0,"complexity":"trivial"|"moderate"|"complex","rationale":"one sentence, max 500 chars"}
+A request is NOT HEAVY when it is a quick question, a tiny patch, a doc tweak, a review comment, or any narrow change a competent agent can finish in a handful of turns.
 
-Confidence is your probability that \`mode\` is the right target. Complexity is independent of mode: how many turns a competent agent needs — "trivial" = ≤10, "moderate" = ~30, "complex" = 50+.`;
+Respond with ONLY a JSON object, no prose, matching:
+{"heavy":true|false,"confidence":0.0-1.0,"rationale":"one sentence, max 500 chars"}
+
+Confidence is your probability that \`heavy\` is correct.`;
 
 /**
  * A single shared circuit breaker for the process. Per research.md R7 the
@@ -144,10 +154,9 @@ export function extractJsonObject(raw: string): string | null {
 }
 
 /**
- * Persist a `triage_results` row. Called only on a clean parse+mode-known
- * outcome (confidence gating is a separate concern). Non-fatal: logs and
- * continues on DB write failure so a transient Postgres outage doesn't
- * abort an already-successful triage call.
+ * Persist a `triage_results` row. Called only on a clean parse outcome.
+ * Non-fatal: logs and continues on DB write failure so a transient
+ * Postgres outage doesn't abort an already-successful triage call.
  */
 export async function persistTriageResult(result: TriageResult): Promise<void> {
   const db = getDb();
@@ -155,10 +164,10 @@ export async function persistTriageResult(result: TriageResult): Promise<void> {
   try {
     await db`
       INSERT INTO triage_results (
-        delivery_id, mode, confidence, complexity, rationale,
+        delivery_id, mode, heavy, confidence, rationale,
         cost_usd, latency_ms, provider, model
       ) VALUES (
-        ${result.deliveryId}, ${result.mode}, ${result.confidence}, ${result.complexity},
+        ${result.deliveryId}, 'daemon', ${result.heavy}, ${result.confidence},
         ${result.rationale}, ${result.costUsd}, ${result.latencyMs},
         ${result.provider}, ${result.model}
       )
@@ -188,16 +197,12 @@ async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
       }),
     ]);
   } finally {
-    // Clear the timer once either branch settles. Without this, a fast
-    // success leaves a pending setTimeout on the event loop that fires
-    // into a no-op rejection — cheap but measurable on hot paths.
     if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
   }
 }
 
 /**
- * Primary triage entry point. Called by the router when auto mode + static
- * classifier were ambiguous.
+ * Primary triage entry point. Called by the router for every dispatch.
  *
  * @param input Event context — decoupled from BotContext for testability.
  * @param client Injected LLM client. Production callers pass the module-level
@@ -242,16 +247,11 @@ export async function triageRequest(input: TriageInput, client: LLMClient): Prom
 
   const response = breakerResult.value;
   if (response === undefined) {
-    // Defensive: outcome:"ok" means value is defined. This branch exists to
-    // satisfy exactOptionalPropertyTypes without a non-null assertion.
     return { outcome: "fallback", reason: "llm-error" };
   }
 
   const jsonText = extractJsonObject(response.text);
   if (jsonText === null) {
-    // Run model output through the sanitizer before logging. The prompt
-    // includes user-controlled text; a confused model could echo tokens
-    // or HTML comments that would otherwise land unredacted in log sinks.
     const rawPreview = sanitizeContent(response.text.slice(0, 200));
     logger.warn(
       { deliveryId: input.deliveryId, rawPreview },
@@ -291,8 +291,7 @@ export async function triageRequest(input: TriageInput, client: LLMClient): Prom
   };
 
   // Persist BEFORE the confidence gate so observers always see what the
-  // model returned, even when the router chooses to fall back for low
-  // confidence. This is critical for SC-004 (dashboard aggregates).
+  // model returned, even when the scaler ignores a low-confidence vote.
   await persistTriageResult(result);
 
   if (triage.confidence < config.triageConfidenceThreshold) {
@@ -304,10 +303,6 @@ export async function triageRequest(input: TriageInput, client: LLMClient): Prom
       },
       "triage result below confidence threshold; falling back",
     );
-    // Carry the parsed result through so the router can still populate
-    // `default-fallback` executions with triage_confidence / triage_cost_usd
-    // / triage_complexity and emit full telemetry on the dispatch-decision
-    // log. The persisted `triage_results` row exists independently.
     return { outcome: "fallback", reason: "sub-threshold", result };
   }
 

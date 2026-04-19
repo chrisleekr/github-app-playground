@@ -60,10 +60,11 @@ describe.skipIf(sql === null)("runMigrations", () => {
     const versions: { version: string }[] = await requireDb()`
       SELECT version FROM _migrations ORDER BY version
     `;
-    expect(versions.length).toBe(3);
+    expect(versions.length).toBe(4);
     expect(versions[0]?.version).toBe("001_initial");
     expect(versions[1]?.version).toBe("002_repo_knowledge");
     expect(versions[2]?.version).toBe("003_dispatch_decisions");
+    expect(versions[3]?.version).toBe("004_collapse_dispatch_to_daemon");
   });
 
   it("is idempotent — second run is a no-op", async () => {
@@ -73,7 +74,7 @@ describe.skipIf(sql === null)("runMigrations", () => {
     const versions: { version: string }[] = await requireDb()`
       SELECT version FROM _migrations ORDER BY version
     `;
-    expect(versions.length).toBe(3);
+    expect(versions.length).toBe(4);
   });
 
   it("creates the executions table with expected columns", async () => {
@@ -124,11 +125,8 @@ describe.skipIf(sql === null)("runMigrations", () => {
     expect(byName.has("dispatch_reason")).toBe(true);
     expect(byName.has("triage_confidence")).toBe(true);
     expect(byName.has("triage_cost_usd")).toBe(true);
-    expect(byName.has("triage_complexity")).toBe(true);
-
-    // NOT NULL columns need literal defaults so ADD COLUMN backfills existing rows.
-    expect(byName.get("dispatch_target")?.column_default).toContain("'inline'");
-    expect(byName.get("dispatch_reason")?.column_default).toContain("'static-default'");
+    // After migration 004 the executions row stores no per-row complexity.
+    expect(byName.has("triage_complexity")).toBe(false);
   });
 
   it("creates the triage_results table with the expected schema (003)", async () => {
@@ -144,7 +142,9 @@ describe.skipIf(sql === null)("runMigrations", () => {
     expect(names).toContain("delivery_id");
     expect(names).toContain("mode");
     expect(names).toContain("confidence");
-    expect(names).toContain("complexity");
+    // Post-collapse: complexity column is dropped, replaced by binary `heavy`.
+    expect(names).not.toContain("complexity");
+    expect(names).toContain("heavy");
     expect(names).toContain("rationale");
     expect(names).toContain("cost_usd");
     expect(names).toContain("latency_ms");
