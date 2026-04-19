@@ -22,17 +22,18 @@ Triage wraps the LLM call in a circuit breaker (see `src/orchestrator/triage.ts`
 
 ## Fallback reasons
 
-Five distinct reasons cause triage to fall back to `heavy=false` (i.e. route to `persistent-daemon`):
+Six distinct reasons cause triage to fall back to `heavy=false` (i.e. route to `persistent-daemon`):
 
-| Reason          | Trigger                                                               |
-| --------------- | --------------------------------------------------------------------- |
-| `circuit-open`  | The circuit breaker tripped after consecutive failures.               |
-| `timeout`       | The call exceeded `TRIAGE_TIMEOUT_MS`.                                |
-| `llm-error`     | The provider returned an error.                                       |
-| `parse-error`   | The JSON response could not be validated against the expected schema. |
-| `sub-threshold` | Parsed successfully but `confidence < TRIAGE_CONFIDENCE_THRESHOLD`.   |
+| Reason          | Trigger                                                                 |
+| --------------- | ----------------------------------------------------------------------- |
+| `disabled`      | `TRIAGE_ENABLED=false` — triage short-circuits without calling the LLM. |
+| `circuit-open`  | The circuit breaker tripped after consecutive failures.                 |
+| `timeout`       | The call exceeded `TRIAGE_TIMEOUT_MS`.                                  |
+| `llm-error`     | The provider returned an error.                                         |
+| `parse-error`   | The JSON response could not be validated against the expected schema.   |
+| `sub-threshold` | Parsed successfully but `confidence < TRIAGE_CONFIDENCE_THRESHOLD`.     |
 
-All five appear in Pino logs as `triage_fallback_reason`. Canonical values live in `src/orchestrator/triage.ts`.
+All six appear in Pino logs as `triage_fallback_reason`. Canonical values live in `src/orchestrator/triage.ts`.
 
 ## Cost implications
 

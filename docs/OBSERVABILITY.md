@@ -12,7 +12,7 @@ Structured JSON logs via [pino](https://getpino.io) are the primary signal. Ever
 | `dispatch_target`        | Always `daemon` (singleton — kept as a field for DB/log stability).                                   |
 | `dispatch_reason`        | Why the job landed where it did. See below.                                                           |
 | `isEphemeral`            | Present on daemon-originating log lines. `true` if emitted by an ephemeral daemon, `false` otherwise. |
-| `triage_fallback_reason` | Only present on triage fallbacks — one of the five values in [Triage](TRIAGE.md#fallback-reasons).    |
+| `triage_fallback_reason` | Only present on triage fallbacks — one of the six values in [Triage](TRIAGE.md#fallback-reasons).     |
 | `confidence`             | Triage confidence (0–1), only when the decision came from triage.                                     |
 | `heavy`                  | Triage binary signal (`true`/`false`) — only on triage-success.                                       |
 | `rationale`              | Free-text rationale from the triage LLM. Only on triage-success.                                      |
@@ -26,7 +26,7 @@ Canonical source: `src/shared/dispatch-types.ts`. Four values, all landing on `d
 | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `persistent-daemon`         | Routed to an existing persistent daemon. The default, hot path. Also used on cooldown — when a scale-up was warranted but blocked by the cooldown window. |
 | `ephemeral-daemon-triage`   | Triage returned `heavy=true` and an ephemeral daemon Pod was spawned to claim the job.                                                                    |
-| `ephemeral-daemon-overflow` | Queue length ≥ `EPHEMERAL_DAEMON_SPAWN_QUEUE_THRESHOLD` and an ephemeral daemon Pod was spawned to drain the overflow.                                    |
+| `ephemeral-daemon-overflow` | Queue length ≥ `EPHEMERAL_DAEMON_SPAWN_QUEUE_THRESHOLD` **and** the persistent pool is saturated (zero free slots); a spawn drains the overflow.          |
 | `ephemeral-spawn-failed`    | A spawn was required but the K8s API call failed. The job is rejected with a tracking-comment infra error.                                                |
 
 ## Aggregate reporting
@@ -36,7 +36,7 @@ When `DATABASE_URL` is set, helpers in `src/db/queries/dispatch-stats.ts` expose
 | Helper                           | Returns                                                                                                                                                                                              |
 | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `eventsPerTarget(days)`          | Count of executions grouped by `dispatch_target`. Post-collapse this is always a single `daemon` row — useful only as a liveness counter; query `dispatch_reason` directly for the per-reason split. |
-| `triageRate(days)`               | Share of events that hit triage vs. short-circuited.                                                                                                                                                 |
+| `triageRate(days)`               | Share of events whose `dispatch_reason` is `ephemeral-daemon-triage` (i.e. triage drove an ephemeral spawn) vs. all events.                                                                          |
 | `avgConfidenceAndFallback(days)` | Mean triage confidence plus fallback counts by reason.                                                                                                                                               |
 | `triageSpend(days)`              | Cumulative `cost_usd` for triage-reached executions.                                                                                                                                                 |
 

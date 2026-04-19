@@ -239,6 +239,18 @@ function detectEphemeral(): boolean {
   return raw === "true" || raw === "1" || raw === "yes";
 }
 
+const DEFAULT_MAX_CONCURRENT_JOBS = 3;
+
+// parseInt returns NaN for empty strings or non-numeric input, and
+// `??` only falls back when undefined — so a malformed env var would
+// propagate NaN into the Zod schema (`int().positive()`) and fail
+// `daemon:register`. Guard explicitly on Number.isInteger and >0.
+function parseMaxConcurrentJobs(raw: string | undefined): number {
+  if (raw === undefined) return DEFAULT_MAX_CONCURRENT_JOBS;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_MAX_CONCURRENT_JOBS;
+}
+
 // Auth + repo probes
 
 async function probeAuthContexts(): Promise<string[]> {
@@ -358,10 +370,7 @@ export async function discoverCapabilities(cloneBaseDir: string): Promise<Daemon
     cachedRepos,
     ephemeral,
     maxUptimeMs: ephemeral ? 3_600_000 : null,
-    maxConcurrentJobs: Math.max(
-      1,
-      Number.parseInt(process.env["DAEMON_MAX_CONCURRENT_JOBS"] ?? "3", 10),
-    ),
+    maxConcurrentJobs: parseMaxConcurrentJobs(process.env["DAEMON_MAX_CONCURRENT_JOBS"]),
   };
 
   logger.debug(

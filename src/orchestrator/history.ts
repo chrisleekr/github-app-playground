@@ -59,11 +59,10 @@ export async function createExecution(params: CreateExecutionParams): Promise<st
     throw new Error("createExecution: dispatchReason is required when triage fields are provided");
   }
 
-  // Migration 003 denormalizes dispatch onto `executions` with
-  // `dispatch_target` as the canonical column for new rows; `dispatch_mode`
-  // stays populated for backward compat (the migration note calls for a
-  // future consolidation). Callers pass the resolved DispatchTarget via
-  // `dispatchMode` — we write it to both columns.
+  // Post migration 004 both `dispatch_mode` and `dispatch_target` carry a
+  // CHECK (= 'daemon'). Hardcoding the literal here makes the invariant
+  // unbreakable at the data-layer boundary — a stray caller passing any
+  // other `dispatchMode` value cannot fail the INSERT at runtime.
   let rows: { id: string }[];
   if (hasTriageFields) {
     rows = await db`
@@ -75,7 +74,7 @@ export async function createExecution(params: CreateExecutionParams): Promise<st
       ) VALUES (
         ${params.deliveryId}, ${params.repoOwner}, ${params.repoName},
         ${params.entityNumber}, ${params.entityType}, ${params.eventName},
-        ${params.triggerUsername}, ${params.dispatchMode}, ${params.dispatchMode},
+        ${params.triggerUsername}, 'daemon', 'daemon',
         ${params.dispatchReason ?? "persistent-daemon"},
         ${params.triageConfidence ?? null}, ${params.triageCostUsd ?? null},
         'queued', ${params.contextJson ?? null}
@@ -91,7 +90,7 @@ export async function createExecution(params: CreateExecutionParams): Promise<st
       ) VALUES (
         ${params.deliveryId}, ${params.repoOwner}, ${params.repoName},
         ${params.entityNumber}, ${params.entityType}, ${params.eventName},
-        ${params.triggerUsername}, ${params.dispatchMode}, ${params.dispatchMode}, ${params.dispatchReason},
+        ${params.triggerUsername}, 'daemon', 'daemon', ${params.dispatchReason},
         'queued', ${params.contextJson ?? null}
       )
       RETURNING id
@@ -104,7 +103,7 @@ export async function createExecution(params: CreateExecutionParams): Promise<st
       ) VALUES (
         ${params.deliveryId}, ${params.repoOwner}, ${params.repoName},
         ${params.entityNumber}, ${params.entityType}, ${params.eventName},
-        ${params.triggerUsername}, ${params.dispatchMode}, ${params.dispatchMode}, 'queued',
+        ${params.triggerUsername}, 'daemon', 'daemon', 'queued',
         ${params.contextJson ?? null}
       )
       RETURNING id
