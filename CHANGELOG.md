@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/chrisleekr/github-app-playground/compare/v1.1.1...v1.2.0) (2026-04-19)
+
+
+### Features
+
+* split orchestrator/daemon images, default Opus 4.7, fix PEM parsing ([#32](https://github.com/chrisleekr/github-app-playground/issues/32)) ([70b4b32](https://github.com/chrisleekr/github-app-playground/commit/70b4b328c2e60525c7e59ddbf1396fd3606acb00))
+
 ## [1.1.1](https://github.com/chrisleekr/github-app-playground/compare/v1.1.0...v1.1.1) (2026-04-18)
 
 
