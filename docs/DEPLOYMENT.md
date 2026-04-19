@@ -1,96 +1,187 @@
 # Deployment
 
-This guide covers building and running the bot in production using Docker.
+This guide covers building and running the bot in production. The repository
+ships **two container images** — an orchestrator and a daemon — that are built
+from separate Dockerfiles but share a byte-identical base layer.
 
 ---
 
-## Docker Image
+## Image topology
 
-### Multi-stage build
+| Image          | Dockerfile                | Role                                                                                                      | Needs outbound network                                   |
+| -------------- | ------------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `orchestrator` | `Dockerfile.orchestrator` | Webhook server, WebSocket daemon registry, triage classifier, inline execution path                       | GitHub API, Anthropic/Bedrock, Postgres, Valkey          |
+| `daemon`       | `Dockerfile.daemon`       | Fat worker image with real toolchains (kubectl, helm, terraform, aws, gcloud, docker CLI, go, rust, etc.) | Orchestrator WebSocket (outbound), GitHub API, Anthropic |
 
-The `Dockerfile` uses three stages to produce a lean production image:
+The two images intentionally diverge after a shared base because their cost and
+attack surface are very different: the orchestrator stays slim (no docker CLI,
+no third-party toolchains), while the daemon bakes in the tools Claude agents
+are allowed to shell out to. The shared prefix — stages `base`, `development`,
+`deps` — is enforced byte-identical by
+`scripts/check-dockerfile-base-sync.ts` (runs in CI) between the
+`# --- SHARED-BASE-BEGIN ---` and `# --- SHARED-BASE-END ---` markers.
 
-| Stage         | Base             | Purpose                                                 |
-| ------------- | ---------------- | ------------------------------------------------------- |
-| `base`        | `oven/bun:1.3.8` | Installs Node.js 20 (for Claude Code CLI) and git       |
-| `development` | `base`           | Installs all deps, bundles `src/app.ts` → `dist/app.js` |
-| `deps`        | `base`           | Installs production deps only (`--production`)          |
-| `production`  | `base`           | Copies `dist/`, production `node_modules/`, MCP sources |
+### Shared base stages
 
-MCP stdio servers (`src/mcp/servers/*.ts`) are **not bundled** — they run as source
-files via `bun run` and are copied as-is into the production image alongside
-`src/utils/` (shared utilities) and `tsconfig.json` (required by the Bun runtime).
+Both Dockerfiles start with the same three stages:
 
-### Build arguments
+| Stage         | Base              | Purpose                                                                                                                                            |
+| ------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `base`        | `oven/bun:1.3.12` | Installs Node.js 20 (for Claude Code CLI), npm 11, `curl`, `git`, `@anthropic-ai/claude-code@2.1.114` globally, plus targeted openssl CVE upgrades |
+| `development` | `base`            | `bun install` (all deps) + `bun run build` → bundles `dist/` (app, daemon main, MCP stdio servers)                                                 |
+| `deps`        | `base`            | `bun install --production --ignore-scripts` (runtime deps only; skips husky)                                                                       |
 
-| Argument          | Default       | Purpose                                   |
-| ----------------- | ------------- | ----------------------------------------- |
-| `PACKAGE_VERSION` | `untagged`    | Stored as a Docker label for traceability |
-| `GIT_HASH`        | `unspecified` | Stored as a Docker label for traceability |
+### Orchestrator-specific stages
+
+`Dockerfile.orchestrator` adds one stage on top of `deps`:
+
+| Stage        | Base   | Purpose                                                                             |
+| ------------ | ------ | ----------------------------------------------------------------------------------- |
+| `production` | `base` | Copies `dist/`, production `node_modules/`, and `src/db/migrations/`; runs as `bun` |
+
+### Daemon-specific stages
+
+`Dockerfile.daemon` adds two stages on top of `deps`:
+
+| Stage          | Base           | Purpose                                                                                                                                                                                                        |
+| -------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `daemon-tools` | `base`         | Installs kubectl, helm, terraform, kustomize, k9s, stern, argocd, flux, tflint, yq, aws-cli, gcloud, docker CLI, go, rust, poetry, gh, azure-cli, and bakes `daemon-capabilities.static.json` for fast startup |
+| `production`   | `daemon-tools` | Copies `dist/` and production `node_modules/`; runs as `bun`                                                                                                                                                   |
+
+Tool versions in `daemon-tools` are parameterised by `ARG` (e.g.
+`KUBECTL_VERSION`, `HELM_VERSION`) and bumped together by
+Renovate/Dependabot. The Trivy gate in CI blocks CVE regressions.
+
+---
+
+## Build
 
 ```bash
-# Basic build
-docker build -t chrisleekr/github-app-playground .
+# Orchestrator only
+bun run docker:build:orchestrator   # → chrisleekr/github-app-playground:local-orchestrator
 
-# Build with version metadata (recommended for production)
-docker build \
-  --build-arg PACKAGE_VERSION=$(cat package.json | bun -e "const p=await Bun.stdin.json(); process.stdout.write(p.version)") \
-  --build-arg GIT_HASH=$(git rev-parse --short HEAD) \
-  -t chrisleekr/github-app-playground:$(git rev-parse --short HEAD) \
-  --progress=plain \
-  .
+# Daemon only (slow — installs toolchains)
+bun run docker:build:daemon         # → chrisleekr/github-app-playground:local-daemon
 
-# Shortcut defined in package.json
+# Both (convenience)
 bun run docker:build
 ```
 
-### Run the container
+The scripts expand to `docker build -f <file> -t ... . --progress=plain`
+(see `package.json`). There is no default `Dockerfile` in the repo — always
+pass `-f`.
+
+### Build arguments
+
+Common to both images:
+
+| Argument          | Default       | Purpose                                                     |
+| ----------------- | ------------- | ----------------------------------------------------------- |
+| `PACKAGE_VERSION` | `untagged`    | Stored as Docker label `com.chrisleekr.bot.package-version` |
+| `GIT_HASH`        | `unspecified` | Stored as Docker label `com.chrisleekr.bot.git-hash`        |
+
+Daemon-only (toggle toolchain cost):
+
+| Argument         | Default     | Purpose                                                |
+| ---------------- | ----------- | ------------------------------------------------------ |
+| `TARGETARCH`     | from buildx | Selects `amd64` / `arm64` asset URLs                   |
+| `INSTALL_GCLOUD` | `true`      | Skip the ~500 MB Google Cloud SDK install if `false`   |
+| `INSTALL_LANGS`  | `go rust`   | Space-separated list of language toolchains to bake in |
+
+```bash
+# Example: orchestrator with version metadata
+docker build -f Dockerfile.orchestrator \
+  --build-arg PACKAGE_VERSION=$(bun -e "console.log(require('./package.json').version)") \
+  --build-arg GIT_HASH=$(git rev-parse --short HEAD) \
+  -t chrisleekr/github-app-playground:$(git rev-parse --short HEAD)-orchestrator \
+  .
+```
+
+### Image contents (production)
+
+**Both images copy:**
+
+- `/app/dist/` — bundled app, MCP stdio servers, and (daemon only) `dist/daemon/main.js`. Produced by `bun run build` in the `development` stage.
+- `/app/package.json` — for runtime version lookups.
+- `/app/node_modules/` — runtime-only deps from the `deps` stage.
+- `/app/src/db/migrations/` — SQL files, not bundled (orchestrator only; daemon also copies them because it may run migrations).
+- `ENV CLAUDE_CODE_PATH=/usr/lib/node_modules/@anthropic-ai/claude-code/cli.js` — pinned path to the globally-installed Claude Code CLI, because the Agent SDK otherwise looks for `{cwd}/dist/cli.js`.
+
+**Only the daemon copies:** `/app/daemon-capabilities.static.json` (pre-computed tool discovery manifest consumed by `src/daemon/tool-discovery.ts`).
+
+**Neither image copies:** `src/` sources, `tsconfig.json`, devDependencies,
+or the `scripts/` directory. All MCP servers run from the bundled `dist/mcp/servers/*.js`, not source.
+
+---
+
+## Run
+
+### Orchestrator
 
 ```bash
 docker run \
   --env-file .env \
   -p 3000:3000 \
-  chrisleekr/github-app-playground
+  -p 3002:3002 \
+  chrisleekr/github-app-playground:local-orchestrator
 ```
 
-All environment variables from `docs/SETUP.md` Section 6 apply. Pass them via
-`--env-file` or individual `-e` flags.
+- `3000` — HTTP: webhook listener, `/healthz`, `/readyz`.
+- `3002` — WebSocket: daemon registry (`WS_PORT`, default `3002`, see
+  `src/orchestrator/ws-server.ts`). Only expose this on networks the daemons
+  will connect from.
+
+Shortcut: `bun run docker:run` (also mounts `~/.aws` read-only for local Bedrock testing).
+
+### Daemon
+
+```bash
+docker run \
+  --env-file .env \
+  -e ORCHESTRATOR_URL=ws://orchestrator-host:3002 \
+  -e DAEMON_AUTH_TOKEN=... \
+  -v $HOME/.aws:/home/bun/.aws:ro \
+  chrisleekr/github-app-playground:local-daemon
+```
+
+The daemon does **not** expose any HTTP port and does **not** need GitHub App
+credentials — the orchestrator mints installation tokens and hands them off
+per job. See [DAEMON.md](DAEMON.md) for the full lifecycle and auth contract.
+
+Shortcut: `bun run docker:run:daemon` (connects back to
+`ws://host.docker.internal:3002` for the local-dev `docker:run` orchestrator).
 
 ---
 
-## Health and Readiness Probes
+## Health and readiness probes
 
-The server exposes two HTTP endpoints on the same port as the webhook listener:
+> These endpoints exist on the **orchestrator image only**. The daemon has no
+> HTTP listener; its liveness is tracked in the orchestrator's in-memory daemon
+> registry via the WebSocket heartbeat.
 
-| Endpoint   | Method | Success     | Failure             | Purpose                                           |
-| ---------- | ------ | ----------- | ------------------- | ------------------------------------------------- |
-| `/healthz` | `GET`  | `200 ok`    | —                   | Liveness: process is alive (no external deps)     |
-| `/readyz`  | `GET`  | `200 ready` | `503 shutting down` | Readiness: accept traffic (false during shutdown) |
+| Endpoint   | Method | Success     | Failure             | Purpose                                              |
+| ---------- | ------ | ----------- | ------------------- | ---------------------------------------------------- |
+| `/healthz` | `GET`  | `200 ok`    | —                   | Liveness: process is alive (no external deps)        |
+| `/readyz`  | `GET`  | `200 ready` | `503 shutting down` | Readiness: accept traffic (flips `false` on SIGTERM) |
 
-`/readyz` returns `503` once the server receives `SIGTERM`, signalling the load
-balancer to stop routing new requests while in-flight work completes.
+See `src/app.ts:99-104`. On `SIGTERM`, the server immediately returns `503` on
+`/readyz` so the load balancer stops routing new requests while in-flight work
+drains.
 
-### Docker HEALTHCHECK
+### Docker HEALTHCHECK (orchestrator)
 
-The production `Dockerfile` ships with a built-in `HEALTHCHECK` that calls
-`/healthz` via `curl` every 30 seconds:
+`Dockerfile.orchestrator` ships with:
 
 ```dockerfile
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:3000/healthz || exit 1
 ```
 
-This makes the container self-describing for orchestrators that honour Docker
-healthcheck metadata (Docker Compose, ECS with `HealthCheck` block, Nomad,
-Swarm). Kubernetes ignores the Docker `HEALTHCHECK` and uses the probe
-configuration below instead — both mechanisms work without conflict because
-they target the same `/healthz` endpoint.
+Honoured by Docker Compose, ECS, Nomad, Swarm. Kubernetes ignores Docker
+`HEALTHCHECK` and uses the probe spec below. `curl` is installed in the `base`
+stage specifically for this — do not remove.
 
-The `curl` binary is installed in the Dockerfile base stage specifically for
-this healthcheck. Do not remove it unless you migrate the `HEALTHCHECK` to a
-different probe mechanism.
-
-### Kubernetes example
+### Kubernetes probes (orchestrator)
 
 ```yaml
 livenessProbe:
@@ -108,64 +199,79 @@ readinessProbe:
   periodSeconds: 5
 ```
 
+For the **daemon**, replace HTTP probes with an `exec` probe that checks the
+daemon is still connected to the orchestrator — see
+[KUBERNETES.md](KUBERNETES.md) for a working example.
+
 ---
 
-## Graceful Shutdown
+## Graceful shutdown
 
-The server handles `SIGTERM` and `SIGINT`:
+The orchestrator handles `SIGTERM` and `SIGINT`:
 
-1. Sets `/readyz` to return `503` immediately (load balancer stops routing).
+1. Flips `/readyz` to `503` (load balancer stops routing).
 2. Calls `server.close()` — waits for in-flight HTTP requests to finish.
-3. MCP stdio child processes finish their current tool calls and exit via their `finally` blocks.
-4. Forces exit after **290 seconds** if shutdown has not completed (allows time for
-   in-flight Claude executions which may take several minutes).
+3. MCP stdio child processes exit via their own `finally` blocks.
+4. **Force-exits after 290 seconds** if shutdown has not completed (`src/app.ts:360`).
 
-Set `terminationGracePeriodSeconds: 300` in your Kubernetes `Pod` spec to match
-(the 10-second gap gives Kubernetes time to send `SIGKILL` after the force-exit).
+Set `terminationGracePeriodSeconds: 300` on the Pod so SIGKILL lands 10 seconds
+after the force-exit fires:
 
 ```yaml
-# Kubernetes Deployment spec excerpt
 spec:
   terminationGracePeriodSeconds: 300
-  containers:
-    - name: github-app-playground
-      image: chrisleekr/github-app-playground
-      ports:
-        - containerPort: 3000
 ```
+
+The daemon has its own drain contract driven by `DAEMON_DRAIN_TIMEOUT_MS` — it
+finishes the job it is currently executing, rejects new offers, then
+disconnects. Match `terminationGracePeriodSeconds` to `DAEMON_DRAIN_TIMEOUT_MS`
+on the daemon's Pod spec (see [DAEMON.md](DAEMON.md) and
+[KUBERNETES.md](KUBERNETES.md)).
 
 ---
 
-## Resource Recommendations
+## Resource recommendations
 
-### Memory
+### Orchestrator sizing
 
-Each concurrent Claude Agent SDK execution spawns child processes (MCP stdio servers
+I/O-bound — network calls to GitHub and the LLM provider, WebSocket fan-out,
+SQL writes. Memory is dominated by the number of concurrent inline executions
+(when `AGENT_JOB_MODE=inline`) and by Postgres/Valkey connection pools.
 
-- the Claude Code CLI) and clones a repository to disk.
-  A rough baseline per concurrent request is **512 MB RAM**.
+| `MAX_CONCURRENT_REQUESTS` | Memory limit | CPU      |
+| ------------------------- | ------------ | -------- |
+| 1                         | 1 GB         | 1 vCPU   |
+| 3 (default)               | 2 GB         | 1–2 vCPU |
+| 5                         | 3 GB         | 2 vCPU   |
 
-| `MAX_CONCURRENT_REQUESTS` | Recommended memory limit |
-| ------------------------- | ------------------------ |
-| 1                         | 1 GB                     |
-| 3 (default)               | 2 GB                     |
-| 5                         | 3 GB                     |
+If the orchestrator is dispatching to daemons / shared-runners / isolated-jobs
+(`AGENT_JOB_MODE=daemon` or `auto`), the inline path is rarely exercised and
+1 GB is usually enough.
 
-Reduce `MAX_CONCURRENT_REQUESTS` (or increase memory) if the pod is OOM-killed.
+### Daemon sizing
+
+Dominated by whatever Claude runs inside it — `kubectl`, `terraform plan`,
+`aws cli`, `docker build` through the DinD sidecar. Start with:
+
+| Concurrent jobs     | Memory limit | CPU      |
+| ------------------- | ------------ | -------- |
+| 1                   | 2 GB         | 1–2 vCPU |
+| 3 (typical default) | 4 GB         | 2–4 vCPU |
+
+Set concurrency via `DAEMON_MAX_CONCURRENT_JOBS`. The image itself is ~2 GB
+unpacked — plan for the node.
 
 ### Disk
 
-Each request clones the target repository to `CLONE_BASE_DIR` (default `/tmp/bot-workspaces`).
-Clones use `--depth=50` to limit history. Repositories are deleted immediately after
-the request completes (in the `finally` block).
+Each job clones the target repository to `CLONE_BASE_DIR` (default
+`/tmp/bot-workspaces`) with `git clone --depth=${CLONE_DEPTH}` (default `50`,
+see `src/core/checkout.ts:59`). The clone directory is removed in the
+pipeline's `finally` block.
 
-Peak disk usage = repository size × `MAX_CONCURRENT_REQUESTS`.
-
-For large monorepos or high concurrency, mount a dedicated volume at `CLONE_BASE_DIR`
-or set it to a path on a larger disk.
+Peak disk = `average_repo_size × concurrent_jobs`. For large monorepos, mount
+a dedicated volume:
 
 ```yaml
-# Kubernetes — emptyDir volume for clone workspace
 volumes:
   - name: bot-workspaces
     emptyDir:
@@ -180,22 +286,19 @@ containers:
         mountPath: /workspaces
 ```
 
-### CPU
-
-The bot is I/O-bound (network calls + subprocess spawning). 1–2 vCPU is sufficient
-for `MAX_CONCURRENT_REQUESTS=3`.
-
 ---
 
-## Environment Variables
+## Environment variables
 
-All environment variables are documented in [docs/SETUP.md](./SETUP.md) Section 6.
-The most operationally relevant ones for production:
+The full schema lives in [CONFIGURATION.md](CONFIGURATION.md). Production
+defaults worth double-checking:
 
-| Variable                  | Production recommendation                                     |
-| ------------------------- | ------------------------------------------------------------- |
-| `NODE_ENV`                | `production`                                                  |
-| `LOG_LEVEL`               | `info` (use `debug` only for troubleshooting — very verbose)  |
-| `MAX_CONCURRENT_REQUESTS` | Start at `3`; tune based on memory and API budget             |
-| `CLONE_BASE_DIR`          | Override if default `/tmp` is on a small or shared filesystem |
-| `PORT`                    | `3000` (must match `containerPort` and probe paths)           |
+| Variable                  | Production recommendation                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`                | `production` (the `development` stage bakes this in at build time; keep it set at runtime too)                              |
+| `LOG_LEVEL`               | `info` — `debug` is very verbose and exposes webhook payloads                                                               |
+| `MAX_CONCURRENT_REQUESTS` | Start at `3`; tune against memory limits and LLM budget                                                                     |
+| `CLONE_BASE_DIR`          | Override if `/tmp` is on a small or shared filesystem                                                                       |
+| `PORT`                    | `3000` (must match `containerPort` and probe paths)                                                                         |
+| `WS_PORT`                 | `3002` (orchestrator WebSocket; keep behind cluster network)                                                                |
+| `AGENT_JOB_MODE`          | Pick `inline` / `daemon` / `shared-runner` / `isolated-job` / `auto` — see [ARCHITECTURE.md](ARCHITECTURE.md#dispatch-flow) |

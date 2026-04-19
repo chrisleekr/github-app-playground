@@ -1,0 +1,106 @@
+site_name: GitHub App Playground
+site_description: A GitHub App webhook server powered by the Claude Agent SDK.
+site_url: https://chrisleekr.github.io/github-app-playground/
+repo_url: https://github.com/chrisleekr/github-app-playground
+repo_name: chrisleekr/github-app-playground
+edit_uri: edit/main/docs/
+strict: true
+
+extra_css:
+  - stylesheets/extra.css
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.select
+    - content.code.annotate
+    - content.action.edit
+
+plugins:
+  - search
+  # social/privacy require Pillow + cairosvg and add ~10s to the build, so they
+  # only run when CI=true (set automatically by GitHub Actions). Local builds
+  # via `bun run docs:build` will skip them — that is intentional.
+  - social:
+      enabled: !ENV [CI, false]
+  - privacy:
+      enabled: !ENV [CI, false]
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - footnotes
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+        # Snippet base paths resolve against the working directory at build time,
+        # so always invoke `mkdocs build` / `mkdocs serve` from the repo root.
+        # Running from a subdirectory will fail strict mode on missing snippets
+        # (e.g. docs/CHANGELOG.md includes the root CHANGELOG.md via "--8<-- ").
+
+
+  - pymdownx.snippets:
+      base_path:
+        - .
+        - docs
+      check_paths: true
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+nav:
+  - Home: index.md
+  - Setup: SETUP.md
+  - Architecture: ARCHITECTURE.md
+  - Configuration: CONFIGURATION.md
+  - Operator guides:
+      - Observability: OBSERVABILITY.md
+      - Triage: TRIAGE.md
+      - Daemon mode: DAEMON.md
+      - Kubernetes: KUBERNETES.md
+  - Deployment: DEPLOYMENT.md
+  - Extending: EXTENDING.md
+  - Contributing: CONTRIBUTING.md
+  - Changelog: CHANGELOG.md

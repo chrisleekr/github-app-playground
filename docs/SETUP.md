@@ -110,8 +110,8 @@ https://github.chrislee.local/api/github/webhooks
 - **During local development**, use a tunnelling tool to expose `localhost:3000`:
 
   ```bash
-  # Option A — ngrok (https://ngrok.com)
-  ngrok http 3000
+  # Option A — ngrok (https://ngrok.com), wrapped by the repo script
+  bun run dev:ngrok
   # Paste the generated https://....ngrok.io URL here
 
   # Option B — smee.io (https://smee.io)
@@ -393,8 +393,8 @@ bun run format:fix       # Prettier auto-fix
 GitHub must reach your webhook URL over the internet. During development, use a tunnelling tool such as [ngrok](https://ngrok.com) or [smee.io](https://smee.io):
 
 ```bash
-# Example with ngrok
-ngrok http 3000
+# Example with ngrok (wrapped by the repo script)
+bun run dev:ngrok
 # Copy the forwarding URL and paste it into the GitHub App webhook settings
 ```
 
@@ -418,44 +418,19 @@ All variables are validated at startup by `zod` in `src/config.ts`. The process 
 | `GITHUB_APP_PRIVATE_KEY` | Full contents of the downloaded `.pem` file (including `-----BEGIN/END-----` lines) |
 | `GITHUB_WEBHOOK_SECRET`  | The value you generated with `openssl rand -hex 32` during registration             |
 
-### AI provider selection
+### AI provider, Anthropic, and Bedrock variables
 
-| Variable          | Default         | Allowed values                                            | Description                                                                                                                                                        |
-| ----------------- | --------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `CLAUDE_PROVIDER` | `anthropic`     | `anthropic` \| `bedrock`                                  | Selects which backend Claude runs on                                                                                                                               |
-| `CLAUDE_MODEL`    | _(SDK default)_ | e.g. `claude-opus-4-5` / `us.anthropic.claude-sonnet-4-6` | Override the model. **Required** when `CLAUDE_PROVIDER=bedrock` because Bedrock uses a different model ID format than the Anthropic API. Optional for `anthropic`. |
+These are documented in the canonical env reference — see [Configuration → AI provider](CONFIGURATION.md#ai-provider). For Bedrock, follow [Section 7](#7-amazon-bedrock-configuration) below for the credential commands; the variable schema lives in `CONFIGURATION.md`.
 
-### Anthropic API (required when `CLAUDE_PROVIDER=anthropic`)
+Quick provenance:
 
-| Variable            | Source                                                         |
-| ------------------- | -------------------------------------------------------------- |
-| `ANTHROPIC_API_KEY` | [https://console.anthropic.com](https://console.anthropic.com) |
+- `ANTHROPIC_API_KEY` — generate at [console.anthropic.com](https://console.anthropic.com).
+- `CLAUDE_CODE_OAUTH_TOKEN` — run `claude setup-token` (Max/Pro subscription path; requires `ALLOWED_OWNERS`).
+- `AWS_*` — see Section 7.
 
-### Amazon Bedrock (required when `CLAUDE_PROVIDER=bedrock`)
+### Optional and runtime variables
 
-See [Section 7](#7-amazon-bedrock-configuration) for the full credential setup guide.
-
-| Variable                     | Required | Description                                                                 |
-| ---------------------------- | -------- | --------------------------------------------------------------------------- |
-| `AWS_REGION`                 | Yes      | AWS region with Bedrock access, e.g. `us-east-1`                            |
-| `AWS_PROFILE`                | No       | Local AWS SSO profile (credential method 1 — local dev)                     |
-| `AWS_ACCESS_KEY_ID`          | No       | Explicit IAM access key (credential method 2 — CI/CD)                       |
-| `AWS_SECRET_ACCESS_KEY`      | No       | Paired with `AWS_ACCESS_KEY_ID`                                             |
-| `AWS_SESSION_TOKEN`          | No       | Session token for temporary/assumed-role credentials                        |
-| `AWS_BEARER_TOKEN_BEDROCK`   | No       | OIDC bearer token (credential method 3 — GitHub Actions)                    |
-| `ANTHROPIC_BEDROCK_BASE_URL` | No       | Override Bedrock endpoint, e.g. for VPC endpoints or cross-region inference |
-
-### Optional variables
-
-| Variable                  | Default               | Description                                                                                                                                                   |
-| ------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `CONTEXT7_API_KEY`        | _(none)_              | Higher rate limits for library docs via Context7 MCP server ([context7.com/dashboard](https://context7.com/dashboard)). Without a key the server is disabled. |
-| `CLONE_BASE_DIR`          | `/tmp/bot-workspaces` | Base directory for temporary repo clones.                                                                                                                     |
-| `TRIGGER_PHRASE`          | `@chrisleekr-bot`     | Mention phrase that activates the bot. Change this to match your app name.                                                                                    |
-| `PORT`                    | `3000`                | HTTP server port                                                                                                                                              |
-| `LOG_LEVEL`               | `info`                | Pino log level: `fatal` / `error` / `warn` / `info` / `debug` / `trace`                                                                                       |
-| `NODE_ENV`                | `production`          | Runtime environment: `production` / `development` / `test`                                                                                                    |
-| `MAX_CONCURRENT_REQUESTS` | `3`                   | Maximum simultaneous Claude agent executions. Prevents API budget exhaustion and CPU/memory saturation in the pod.                                            |
+See [Configuration → Runtime](CONFIGURATION.md#runtime) for `PORT`, `LOG_LEVEL`, `NODE_ENV`, `MAX_CONCURRENT_REQUESTS`, `CLONE_BASE_DIR`, `TRIGGER_PHRASE`, `CONTEXT7_API_KEY`, and the rest. The schema in `src/config.ts` is authoritative.
 
 ---
 
