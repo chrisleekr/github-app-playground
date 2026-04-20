@@ -6,7 +6,7 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "monthly"
+      interval: "weekly"
     groups:
       github-actions:
         patterns:
@@ -16,7 +16,7 @@ updates:
   - package-ecosystem: "bun"
     directory: "/"
     schedule:
-      interval: "monthly"
+      interval: "weekly"
     groups:
       dev-dependencies:
         dependency-type: "development"
@@ -24,5 +24,17 @@ updates:
           - "*"
       production-dependencies:
         dependency-type: "production"
+        patterns:
+          - "*"
+
+  # Docker base images (Dockerfile.daemon, Dockerfile.orchestrator)
+  # Dependabot matches any filename containing "dockerfile" (case-insensitive)
+  # via regex /dockerfile|containerfile/i — no custom filename config needed.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      docker:
         patterns:
           - "*"
