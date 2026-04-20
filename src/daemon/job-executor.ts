@@ -1,7 +1,10 @@
 import { rmSync } from "node:fs";
 
+import { Octokit } from "octokit";
+
 import { config } from "../config";
-import { logger } from "../logger";
+import { runPipeline } from "../core/pipeline";
+import { createChildLogger, logger } from "../logger";
 import type { ActiveJob, DaemonCapabilities, SerializableBotContext } from "../shared/daemon-types";
 import {
   createMessageEnvelope,
@@ -166,7 +169,7 @@ function sendDryRunResult(
 
 /**
  * Execute a job received via job:payload.
- * Clones repo, reconstructs BotContext, runs inline pipeline, reports result.
+ * Clones repo, reconstructs BotContext, runs the pipeline, reports result.
  *
  * @param send - Function to send messages back to the orchestrator.
  */
@@ -187,7 +190,7 @@ export async function executeJob(
   jobAbortControllers.set(offerId, abortController);
 
   // Track active job (FM-9)
-  // TODO: agentPid is never populated because runInlinePipeline does not expose
+  // TODO: agentPid is never populated because runPipeline does not expose
   // the Claude Agent SDK subprocess PID. Until the SDK provides a process handle,
   // job cancellation (handleJobCancel) cannot kill the running agent subprocess.
   const job: ActiveJob = {
@@ -206,10 +209,6 @@ export async function executeJob(
   });
 
   try {
-    // Dynamic import to avoid circular deps and keep daemon-side imports clean
-    const { runInlinePipeline } = await import("../core/inline-pipeline");
-    const { createChildLogger } = await import("../logger");
-
     const enrichedCtx = context as SerializableBotContext & {
       headBranch?: string;
       baseBranch?: string;
@@ -217,7 +216,6 @@ export async function executeJob(
     const headBranch = enrichedCtx.headBranch ?? enrichedCtx.defaultBranch;
     const baseBranch = enrichedCtx.baseBranch ?? enrichedCtx.defaultBranch;
 
-    const { Octokit } = await import("octokit");
     const octokit = new Octokit({ auth: installationToken });
 
     const childLog = createChildLogger({
@@ -265,10 +263,10 @@ export async function executeJob(
     // `onWorkDirReady` records the pipeline's workspace on the ActiveJob so
     // handleJobCancel and registerExitCleanup can rm it (and its `.cred.sh`)
     // even if the pipeline does not finish its own cleanup.
-    const result = await runInlinePipeline(fullCtx, {
+    const result = await runPipeline(fullCtx, {
       maxTurns,
       allowedTools,
-      onWorkDirReady: (wd) => {
+      onWorkDirReady: (wd: string) => {
         job.workDir = wd;
       },
     });

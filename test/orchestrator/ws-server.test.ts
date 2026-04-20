@@ -354,6 +354,7 @@ describe("WebSocket message handler (integration via real server)", () => {
             cachedRepos: [],
             ephemeral: false,
             maxUptimeMs: null,
+            maxConcurrentJobs: 4,
           },
         },
       };

@@ -16,7 +16,9 @@ for f in test/**/*.test.ts; do
     ((failed++))
     failures+=("$f")
     echo "FAIL: $f"
-    echo "$output" | grep '(fail)' | head -5
+    # Full output — module load failures don't emit '(fail)' lines, so a
+    # filtered view would hide the root cause.
+    echo "$output"
   fi
 done
 

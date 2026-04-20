@@ -10,59 +10,52 @@ import {
 } from "../../src/shared/dispatch-types";
 
 describe("DispatchTarget", () => {
-  it("exposes exactly the four canonical targets in the documented order", () => {
-    expect(DISPATCH_TARGETS).toEqual(["inline", "daemon", "shared-runner", "isolated-job"]);
+  it("exposes the daemon singleton after the dispatch collapse", () => {
+    expect(DISPATCH_TARGETS).toEqual(["daemon"]);
   });
 
-  it("Zod schema accepts every canonical value", () => {
-    for (const target of DISPATCH_TARGETS) {
-      const result = DispatchTargetSchema.safeParse(target);
-      expect(result.success).toBe(true);
+  it("Zod schema accepts 'daemon'", () => {
+    expect(DispatchTargetSchema.safeParse("daemon").success).toBe(true);
+  });
+
+  it("Zod schema rejects removed legacy targets", () => {
+    for (const bogus of ["inline", "shared-runner", "isolated-job", "auto", "ephemeral-job"]) {
+      expect(DispatchTargetSchema.safeParse(bogus).success).toBe(false);
     }
   });
 
-  it("Zod schema rejects 'auto' — auto is a mode, never a target", () => {
-    const result = DispatchTargetSchema.safeParse("auto");
-    expect(result.success).toBe(false);
-  });
-
-  it("Zod schema rejects legacy 'ephemeral-job' (renamed to 'isolated-job')", () => {
-    const result = DispatchTargetSchema.safeParse("ephemeral-job");
-    expect(result.success).toBe(false);
-  });
-
-  it("Zod schema rejects arbitrary strings and non-strings", () => {
-    for (const bogus of ["", "nope", "INLINE", " shared-runner", 42, null, undefined, {}]) {
-      const result = DispatchTargetSchema.safeParse(bogus);
-      expect(result.success).toBe(false);
+  it("Zod schema rejects non-strings and unknown values", () => {
+    for (const bogus of ["", "DAEMON", " daemon", 42, null, undefined, {}]) {
+      expect(DispatchTargetSchema.safeParse(bogus).success).toBe(false);
     }
   });
 
-  it("isDispatchTarget returns true for every canonical value and false otherwise", () => {
-    for (const target of DISPATCH_TARGETS) {
-      expect(isDispatchTarget(target)).toBe(true);
-    }
-    for (const bogus of ["auto", "ephemeral-job", "", "INLINE", 42, null, undefined, {}, []]) {
+  it("isDispatchTarget accepts 'daemon' and rejects everything else", () => {
+    expect(isDispatchTarget("daemon")).toBe(true);
+    for (const bogus of ["inline", "shared-runner", "isolated-job", "", 42, null, {}, []]) {
       expect(isDispatchTarget(bogus)).toBe(false);
-    }
-  });
-
-  it("isDispatchTarget narrows a string union at the type level", () => {
-    const candidate: unknown = "shared-runner";
-    if (isDispatchTarget(candidate)) {
-      // TS: candidate is now DispatchTarget. This would fail to compile if
-      // the guard did not narrow correctly.
-      const canon: "inline" | "daemon" | "shared-runner" | "isolated-job" = candidate;
-      expect(canon).toBe("shared-runner");
-    } else {
-      throw new Error("guard should have narrowed 'shared-runner' to DispatchTarget");
     }
   });
 });
 
 describe("DispatchReason", () => {
-  it("exposes exactly the eight canonical reasons in the documented order", () => {
+  it("exposes exactly the four canonical reasons in documented order", () => {
     expect(DISPATCH_REASONS).toEqual([
+      "persistent-daemon",
+      "ephemeral-daemon-triage",
+      "ephemeral-daemon-overflow",
+      "ephemeral-spawn-failed",
+    ]);
+  });
+
+  it("Zod schema accepts every canonical value", () => {
+    for (const reason of DISPATCH_REASONS) {
+      expect(DispatchReasonSchema.safeParse(reason).success).toBe(true);
+    }
+  });
+
+  it("Zod schema rejects legacy reasons from the pre-collapse era", () => {
+    for (const bogus of [
       "label",
       "keyword",
       "triage",
@@ -71,38 +64,16 @@ describe("DispatchReason", () => {
       "static-default",
       "capacity-rejected",
       "infra-absent",
-    ]);
-  });
-
-  it("Zod schema accepts every canonical value", () => {
-    for (const reason of DISPATCH_REASONS) {
-      const result = DispatchReasonSchema.safeParse(reason);
-      expect(result.success).toBe(true);
-    }
-  });
-
-  it("Zod schema rejects common near-miss typos", () => {
-    for (const bogus of [
-      "Label",
-      "keywords",
-      "triaged",
-      "fallback",
-      "default_fallback",
-      "triage_error",
-      "capacity_rejected",
-      "capacity-rejection",
-      "infraAbsent",
     ]) {
-      const result = DispatchReasonSchema.safeParse(bogus);
-      expect(result.success).toBe(false);
+      expect(DispatchReasonSchema.safeParse(bogus).success).toBe(false);
     }
   });
 
-  it("isDispatchReason returns true for every canonical value and false otherwise", () => {
+  it("isDispatchReason narrows and rejects non-canonical values", () => {
     for (const reason of DISPATCH_REASONS) {
       expect(isDispatchReason(reason)).toBe(true);
     }
-    for (const bogus of ["auto", "", "Label", 42, null, undefined, {}, ["triage"]]) {
+    for (const bogus of ["label", "", "PERSISTENT-DAEMON", 42, null, undefined, {}]) {
       expect(isDispatchReason(bogus)).toBe(false);
     }
   });

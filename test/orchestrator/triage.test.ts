@@ -1,12 +1,8 @@
 /**
- * Unit tests for the triage engine (T030). Exercises every fallback path:
- *   happy path → parse-error → timeout → sub-threshold → circuit-open
- *   → unknown-mode (schema drift) → disabled-flag short-circuit
- *
- * The LLM client is stubbed via `_createLLMClientForTests`; Postgres writes
- * use the test DB when `DATABASE_URL` is set and become no-ops otherwise.
- * We rely on the test-isolated runner (one Bun process per file) so the
- * module-level circuit breaker is fresh per file.
+ * Unit tests for the post-collapse triage engine. The LLM client is stubbed
+ * via `_createLLMClientForTests`; Postgres writes use the test DB when
+ * `DATABASE_URL` is set and become no-ops otherwise. Per-file test isolation
+ * means the module-level circuit breaker is fresh per run.
  */
 
 import { beforeEach, describe, expect, it } from "bun:test";
@@ -63,10 +59,9 @@ describe("triageRequest — happy path", () => {
       Promise.resolve(
         responseText(
           JSON.stringify({
-            mode: "daemon",
+            heavy: true,
             confidence: 1.0,
-            complexity: "moderate",
-            rationale: "standard code change",
+            rationale: "touches migrations and many services",
           }),
         ),
       ),
@@ -74,10 +69,23 @@ describe("triageRequest — happy path", () => {
     const r = await triageRequest(makeInput(), client);
     expect(r.outcome).toBe("result");
     if (r.outcome === "result") {
-      expect(r.result.mode).toBe("daemon");
-      expect(r.result.complexity).toBe("moderate");
+      expect(r.result.heavy).toBe(true);
+      expect(r.result.confidence).toBe(1);
       expect(r.result.provider).toBe("anthropic");
       expect(r.result.costUsd).toBeGreaterThan(0);
+    }
+  });
+
+  it("accepts heavy=false responses above threshold", async () => {
+    const client = makeStubClient(() =>
+      Promise.resolve(
+        responseText(JSON.stringify({ heavy: false, confidence: 1.0, rationale: "small tweak" })),
+      ),
+    );
+    const r = await triageRequest(makeInput(), client);
+    expect(r.outcome).toBe("result");
+    if (r.outcome === "result") {
+      expect(r.result.heavy).toBe(false);
     }
   });
 
@@ -85,7 +93,7 @@ describe("triageRequest — happy path", () => {
     const client = makeStubClient(() =>
       Promise.resolve(
         responseText(
-          'Sure — here is the classification:\n```json\n{"mode":"daemon","confidence":1,"complexity":"trivial","rationale":"small"}\n```',
+          'Sure — here is the classification:\n```json\n{"heavy":false,"confidence":1,"rationale":"tiny"}\n```',
         ),
       ),
     );
@@ -96,7 +104,7 @@ describe("triageRequest — happy path", () => {
 
 describe("triageRequest — fallback paths", () => {
   it("reason='parse-error' when the body is not JSON at all", async () => {
-    const client = makeStubClient(() => Promise.resolve(responseText("I think daemon.")));
+    const client = makeStubClient(() => Promise.resolve(responseText("I think heavy.")));
     const r = await triageRequest(makeInput(), client);
     expect(r.outcome).toBe("fallback");
     if (r.outcome === "fallback") expect(r.reason).toBe("parse-error");
@@ -104,19 +112,19 @@ describe("triageRequest — fallback paths", () => {
 
   it("reason='parse-error' when JSON is syntactically broken", async () => {
     const client = makeStubClient(() =>
-      Promise.resolve(responseText('{"mode":"daemon",confidence: 0.9}')),
+      Promise.resolve(responseText('{"heavy":true,confidence: 0.9}')),
     );
     const r = await triageRequest(makeInput(), client);
     expect(r.outcome).toBe("fallback");
     if (r.outcome === "fallback") expect(r.reason).toBe("parse-error");
   });
 
-  it("reason='parse-error' on schema drift (unknown mode)", async () => {
+  it("reason='parse-error' on schema drift (legacy mode/complexity shape)", async () => {
     const client = makeStubClient(() =>
       Promise.resolve(
         responseText(
           JSON.stringify({
-            mode: "auto",
+            mode: "daemon",
             confidence: 0.9,
             complexity: "moderate",
             rationale: "x",
@@ -130,10 +138,6 @@ describe("triageRequest — fallback paths", () => {
   });
 
   it("reason='timeout' when the LLM call surfaces the timeout sentinel", async () => {
-    // Proper timeout plumbing via setTimeout would force this test to wait
-    // TRIAGE_TIMEOUT_MS (default 5s), slowing the suite. The engine detects
-    // timeouts by the sentinel message prefix `triage-timeout`, so we stub
-    // an immediate rejection with that message and pin the mapping.
     const client = makeStubClient(() => Promise.reject(new Error("triage-timeout after 5000ms")));
     const r = await triageRequest(makeInput(), client);
     expect(r.outcome).toBe("fallback");
@@ -149,7 +153,6 @@ describe("triageRequest — fallback paths", () => {
 
   it("reason='circuit-open' after 5 consecutive failures", async () => {
     const client = makeStubClient(() => Promise.reject(new Error("boom")));
-    // First 5 calls error; 6th short-circuits.
     for (let i = 0; i < 5; i += 1) {
       await triageRequest(makeInput(), client);
     }
@@ -159,14 +162,12 @@ describe("triageRequest — fallback paths", () => {
   });
 
   it("reason='sub-threshold' when confidence < TRIAGE_CONFIDENCE_THRESHOLD (default 1.0)", async () => {
-    // Default threshold is 1.0 per spec — anything less than 1.0 falls back.
     const client = makeStubClient(() =>
       Promise.resolve(
         responseText(
           JSON.stringify({
-            mode: "daemon",
+            heavy: true,
             confidence: 0.99,
-            complexity: "trivial",
             rationale: "close but not confident",
           }),
         ),
@@ -178,17 +179,12 @@ describe("triageRequest — fallback paths", () => {
   });
 
   it("sub-threshold fallback carries the parsed TriageResult for downstream telemetry", async () => {
-    // Regression: earlier Slice D shape dropped the parsed result on
-    // sub-threshold, which prevented the router from populating
-    // triage_confidence / triage_cost_usd / triage_complexity on the
-    // default-fallback executions row (Copilot PR #20 comment).
     const client = makeStubClient(() =>
       Promise.resolve(
         responseText(
           JSON.stringify({
-            mode: "shared-runner",
+            heavy: true,
             confidence: 0.5,
-            complexity: "moderate",
             rationale: "uncertain",
           }),
         ),
@@ -199,8 +195,7 @@ describe("triageRequest — fallback paths", () => {
     if (r.outcome === "fallback") {
       expect(r.reason).toBe("sub-threshold");
       expect(r.result).toBeDefined();
-      expect(r.result?.mode).toBe("shared-runner");
-      expect(r.result?.complexity).toBe("moderate");
+      expect(r.result?.heavy).toBe(true);
       expect(r.result?.confidence).toBe(0.5);
     }
   });
@@ -266,7 +261,6 @@ describe("buildTriagePrompt", () => {
 
   it("clips very long trigger bodies to 2000 chars", () => {
     const p = buildTriagePrompt(makeInput({ triggerBody: "x".repeat(3_000) }));
-    // Prompt should contain at most 2000 x's (plus the framing lines).
     const xCount = (p.match(/x/g) ?? []).length;
     expect(xCount).toBe(2_000);
   });

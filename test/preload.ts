@@ -23,9 +23,16 @@ process.env["CLAUDE_PROVIDER"] = "anthropic";
 delete process.env["ALLOWED_OWNERS"];
 delete process.env["CLAUDE_CODE_OAUTH_TOKEN"];
 
-// Force inline mode for tests — most tests assume inline pipeline execution.
-// Individual tests that need non-inline behavior override config.agentJobMode directly.
-process.env["AGENT_JOB_MODE"] = "inline";
+// DAEMON_AUTH_TOKEN is required post-dispatch-collapse (validated in
+// validateDataLayerConfig). Individual tests that need to exercise missing
+// auth flip this back to undefined within a save/restore block.
+process.env["DAEMON_AUTH_TOKEN"] = "test-daemon-token";
+
+// A developer's .env may set TRIGGER_PHRASE to a local-dev variant
+// (e.g. @chrisleekr-bot-dev) which would leak into tests that hardcode
+// the production phrase. Pin to the default so test assertions stay
+// deterministic across machines.
+process.env["TRIGGER_PHRASE"] = "@chrisleekr-bot";
 
 // Helper: set env var to a fallback when absent or empty.
 // ?? (nullish coalescing) only replaces null/undefined, not "". A local .env
@@ -48,3 +55,8 @@ setIfEmpty("GITHUB_WEBHOOK_SECRET", "test-webhook-secret");
 // ANTHROPIC_API_KEY: Required because CLAUDE_PROVIDER is forced to "anthropic" above,
 // and superRefine enforces the key for that provider.
 setIfEmpty("ANTHROPIC_API_KEY", "test-anthropic-key");
+// Post-dispatch-collapse, validateDataLayerConfig requires DATABASE_URL and
+// VALKEY_URL in server mode (ORCHESTRATOR_URL unset). Without these, config
+// load aborts before any test can run in CI, where no .env is present.
+setIfEmpty("DATABASE_URL", "postgres://test:test@localhost:5432/test");
+setIfEmpty("VALKEY_URL", "redis://localhost:6379");

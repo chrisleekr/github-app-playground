@@ -238,6 +238,7 @@ describe("daemonMessageSchema", () => {
     cachedRepos: [],
     ephemeral: false,
     maxUptimeMs: null,
+    maxConcurrentJobs: 4,
   };
 
   it("parses a valid daemon:register message", () => {

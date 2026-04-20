@@ -226,11 +226,29 @@ async function probeContainerDaemonRunning(name: "docker" | "podman"): Promise<b
 }
 
 // Ephemeral detection
+//
+// Returns true only when the daemon was spawned as an auto-scaling ephemeral
+// Pod via the orchestrator's `spawnEphemeralDaemon`. Persistent daemons deployed
+// via Helm / Deployment must leave `DAEMON_EPHEMERAL` unset so they are not
+// excluded from `getPersistentPoolFreeSlots` and do not self-terminate on idle.
+// Container-env probes (`/.dockerenv`, `KUBERNETES_SERVICE_HOST`) are not a
+// substitute: both persistent and ephemeral daemons run in containers.
 
 function detectEphemeral(): boolean {
-  if (existsSync("/.dockerenv")) return true;
-  if (process.env["KUBERNETES_SERVICE_HOST"] !== undefined) return true;
-  return false;
+  const raw = process.env["DAEMON_EPHEMERAL"]?.trim().toLowerCase();
+  return raw === "true" || raw === "1" || raw === "yes";
+}
+
+const DEFAULT_MAX_CONCURRENT_JOBS = 3;
+
+// parseInt returns NaN for empty strings or non-numeric input, and
+// `??` only falls back when undefined — so a malformed env var would
+// propagate NaN into the Zod schema (`int().positive()`) and fail
+// `daemon:register`. Guard explicitly on Number.isInteger and >0.
+function parseMaxConcurrentJobs(raw: string | undefined): number {
+  if (raw === undefined) return DEFAULT_MAX_CONCURRENT_JOBS;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_MAX_CONCURRENT_JOBS;
 }
 
 // Auth + repo probes
@@ -352,6 +370,7 @@ export async function discoverCapabilities(cloneBaseDir: string): Promise<Daemon
     cachedRepos,
     ephemeral,
     maxUptimeMs: ephemeral ? 3_600_000 : null,
+    maxConcurrentJobs: parseMaxConcurrentJobs(process.env["DAEMON_MAX_CONCURRENT_JOBS"]),
   };
 
   logger.debug(

@@ -277,35 +277,6 @@ export function resolveAllowedTools(
     tools.push("mcp__context7__resolve-library-id", "mcp__context7__query-docs");
   }
 
-  // Isolated-job execution branch (T021, FR-011): when this code runs INSIDE
-  // an in-cluster Job pod, grant container tooling that's NOT granted to
-  // inline / daemon / shared-runner. Detection is via process.env (set by
-  // the K8s Job manifest) rather than a server-side config flag, because the
-  // pod's runtime is the only place this matters — the orchestrator never
-  // calls resolveAllowedTools with isolated-job intent.
-  //
-  // Either signal is sufficient: AGENT_JOB_MODE is the explicit declaration
-  // from the spawner; AGENT_CONTEXT_B64 is the data envelope. Real pods set
-  // both; the OR makes the function robust to either being missing in tests.
-  const inIsolatedJobPod =
-    process.env["AGENT_JOB_MODE"] === "isolated-job" ||
-    (process.env["AGENT_CONTEXT_B64"]?.length ?? 0) > 0;
-  if (inIsolatedJobPod) {
-    tools.push(
-      "Bash(docker:*)",
-      "Bash(docker-compose:*)",
-      "Bash(npm:*)",
-      "Bash(npx:*)",
-      "Bash(bun:*)",
-      "Bash(bunx:*)",
-      "Bash(make:*)",
-      "Bash(sh:*)",
-      "Bash(bash:*)",
-      "Bash(cp:*)",
-      "Bash(mv:*)",
-    );
-  }
-
   // Daemon capabilities-based tool injection — dynamically allow all functional tools
   if (daemonCapabilities !== undefined) {
     for (const tool of [

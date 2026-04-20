@@ -90,26 +90,25 @@ export async function eventsPerTarget(
 }
 
 /**
- * 5.2 — Triage invocation rate per day, last `days` days.
+ * 5.2 — Triage-driven ephemeral spawn rate per day, last `days` days.
  *
- * `dispatch_reason IN ('triage', 'default-fallback', 'triage-error-fallback')`
- * is the canonical "triage ran" predicate — it matches every reason the
- * auto-mode cascade can emit after invoking the classifier, including
- * the fallback branches.
+ * Post dispatch-collapse, triage runs on every request, so the useful
+ * aggregate is no longer "did triage run?" but rather "did triage drive
+ * a scale-up?" — `dispatch_reason = 'ephemeral-daemon-triage'`.
  */
 export async function triageRate(days = 30, sql: SQL = requireDb()): Promise<TriageRateRow[]> {
   const rows: TriageRateRow[] = await sql`
     SELECT
       DATE(created_at)::text AS day,
       COUNT(*) FILTER (
-        WHERE dispatch_reason IN ('triage', 'default-fallback', 'triage-error-fallback')
+        WHERE dispatch_reason = 'ephemeral-daemon-triage'
       )::int AS triaged,
       COUNT(*)::int AS total,
       COALESCE(
         ROUND(
           100.0
             * COUNT(*) FILTER (
-                WHERE dispatch_reason IN ('triage', 'default-fallback', 'triage-error-fallback')
+                WHERE dispatch_reason = 'ephemeral-daemon-triage'
               )
             / NULLIF(COUNT(*), 0),
           2

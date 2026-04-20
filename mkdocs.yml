@@ -99,7 +99,6 @@ nav:
       - Observability: OBSERVABILITY.md
       - Triage: TRIAGE.md
       - Daemon mode: DAEMON.md
-      - Kubernetes: KUBERNETES.md
   - Deployment: DEPLOYMENT.md
   - Extending: EXTENDING.md
   - Contributing: CONTRIBUTING.md

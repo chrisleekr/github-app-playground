@@ -35,6 +35,30 @@ export async function enqueueJob(job: QueuedJob): Promise<void> {
 }
 
 /**
+ * Return the current queue depth. Used by the ephemeral-daemon scaler
+ * to detect persistent-pool backpressure. Non-blocking; returns 0 on
+ * any Valkey read error so a transient blip falls through to
+ * persistent-daemon routing instead of trapping a job.
+ */
+export async function getQueueLength(): Promise<number> {
+  try {
+    // `requireValkeyClient()` itself throws when the client isn't ready, so
+    // acquire inside the try block — otherwise the "return 0 on any read
+    // error" contract silently loses to the client acquisition throw.
+    const valkey = requireValkeyClient();
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Valkey LLEN returns number
+    const len: number = await valkey.send("LLEN", [QUEUE_KEY]);
+    return typeof len === "number" && Number.isFinite(len) ? len : 0;
+  } catch (err) {
+    logger.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      "Failed to read queue length — treating as 0",
+    );
+    return 0;
+  }
+}
+
+/**
  * Non-blocking dequeue for use in webhook handlers.
  * Uses RPOP — returns immediately with null if the queue is empty.
  */
