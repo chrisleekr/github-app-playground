@@ -90,11 +90,12 @@ The scheduled research workflow in `.github/workflows/research.yml` also uses `C
 
 ## CI/CD Pipeline
 
-Four workflow files form the pipeline; each owns one responsibility.
+Five workflow files form the pipeline; each owns one responsibility.
 
 | Workflow                             | Trigger                                                   | Owns                                                                                                               |
 | ------------------------------------ | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `.github/workflows/ci.yml`           | `pull_request` + `push: main` + `workflow_call`           | Quality gates only: typecheck, lint, format, audit:ci, gitleaks, test, build                                       |
+| `.github/workflows/ci.yml`           | `pull_request` + `push: main` + `workflow_call`           | Quality gates only: typecheck, lint, format, audit:ci, test, build                                                 |
+| `.github/workflows/secrets-scan.yml` | `push: branches-ignore: [gh-pages]` + `workflow_dispatch` | Standalone gitleaks secret scan — decoupled from ci.yml so every push (incl. chore/docs/ci/test branches) is gated |
 | `.github/workflows/dev-release.yml`  | `push: branches-ignore: [main, v*]` + `workflow_dispatch` | Calls `ci.yml` → semantic-release dev (pre-release tag) → calls `docker-build.yml`                                 |
 | `.github/workflows/release.yml`      | `workflow_dispatch` only (manual)                         | Calls `ci.yml` → semantic-release prod → calls `docker-build.yml`                                                  |
 | `.github/workflows/docker-build.yml` | `workflow_call` + `workflow_dispatch`                     | Reusable image builder: matrix split-and-merge (amd64 on `ubuntu-24.04` + arm64 on `ubuntu-24.04-arm`), Trivy scan |

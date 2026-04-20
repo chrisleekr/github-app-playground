@@ -107,18 +107,20 @@ These checks are enforced by Husky on every commit:
 
 - **pre-commit** runs, in order:
   1. `gitleaks protect --verbose --staged --config .gitleaks.toml` scans
-     staged files for secrets (API keys, tokens, private keys). Requires the
-     `gitleaks` binary — install via `brew install gitleaks` on macOS, `apt
-install gitleaks` on Debian/Ubuntu, or
-     `go install github.com/gitleaks/gitleaks/v8@latest`. If gitleaks is not
-     installed the hook prints a warning and continues (rather than silently
-     skipping); install it before committing sensitive changes.
+     staged files for secrets (API keys, tokens, private keys). The
+     `gitleaks` binary is **required** — install via `brew install gitleaks`
+     on macOS, `sudo apt install gitleaks` on Debian/Ubuntu, or
+     `go install github.com/gitleaks/gitleaks/v8@latest`. The hook fails
+     closed: if the binary is missing, the commit is blocked with install
+     guidance.
   2. `lint-staged` runs Prettier + ESLint on staged `.ts`/`.js` files and
      Prettier on staged `.json`/`.md`/`.yml` files.
 - **commit-msg**: `commitlint` validates the commit message format.
 
 Allowlist false positives in `.gitleaks.toml` rather than bypassing the hook
-with `--no-verify`.
+with `--no-verify`. CI also runs gitleaks on every push via
+`.github/workflows/secrets-scan.yml`, independently of the main CI pipeline,
+so a bypassed local hook still fails the build.
 
 ---
 
