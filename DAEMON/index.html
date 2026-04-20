@@ -16,7 +16,7 @@
         <link rel="prev" href="../TRIAGE/">
       
       
-        <link rel="next" href="../KUBERNETES/">
+        <link rel="next" href="../DEPLOYMENT/">
       
       
         
@@ -93,7 +93,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#daemon-mode" class="md-skip">
+        <a href="#daemon" class="md-skip">
           Skip to content
         </a>
       
@@ -746,6 +746,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#persistent-vs-ephemeral" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Persistent vs Ephemeral
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#when-to-use-it" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -789,38 +800,93 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#kubernetes-deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kubernetes deployment
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Kubernetes deployment">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#persistent-daemon-deployment-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Persistent daemon Deployment (example)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ephemeral-daemon-rbac-orchestrator-side" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ephemeral daemon RBAC (orchestrator side)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#daemon-secrets-secret" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        daemon-secrets Secret
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ephemeral-pod-security-posture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ephemeral Pod security posture
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#key-constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key constraints
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation references
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
       
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../KUBERNETES/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Kubernetes
-  
-
-    
-  </span>
-  
-  
-
-      </a>
     </li>
   
 
@@ -968,6 +1034,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#persistent-vs-ephemeral" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Persistent vs Ephemeral
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#when-to-use-it" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1011,6 +1088,89 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#kubernetes-deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kubernetes deployment
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Kubernetes deployment">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#persistent-daemon-deployment-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Persistent daemon Deployment (example)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ephemeral-daemon-rbac-orchestrator-side" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ephemeral daemon RBAC (orchestrator side)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#daemon-secrets-secret" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        daemon-secrets Secret
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ephemeral-pod-security-posture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ephemeral Pod security posture
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#key-constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key constraints
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation references
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1036,19 +1196,49 @@
   
 
 
-<h1 id="daemon-mode">Daemon Mode<a class="headerlink" href="#daemon-mode" title="Permanent link">&para;</a></h1>
-<p>A daemon is a standalone worker process that connects to the orchestrator over WebSocket, accepts one job offer at a time, and runs it through the inline pipeline. It's not a pool — each daemon is a single connection.</p>
+<h1 id="daemon">Daemon<a class="headerlink" href="#daemon" title="Permanent link">&para;</a></h1>
+<p>A daemon is a standalone worker process that connects to the orchestrator over WebSocket, accepts job offers, and runs each job through <code>src/core/pipeline.ts</code>. The webhook server never runs the pipeline in-process — every execution happens on a daemon.</p>
+<h2 id="persistent-vs-ephemeral">Persistent vs Ephemeral<a class="headerlink" href="#persistent-vs-ephemeral" title="Permanent link">&para;</a></h2>
+<p>There are two daemon types. Always qualify which one you mean — plain "daemon" is ambiguous. The union of both types connected at a given moment is the <strong>daemon fleet</strong>.</p>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>How it starts</th>
+<th>Lifetime</th>
+<th><code>DAEMON_EPHEMERAL</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Persistent daemon</strong></td>
+<td>Deployed out-of-band (Helm, kubectl, <code>docker run</code>, systemd, etc.)</td>
+<td>Long-lived — stays connected until SIGTERM or eviction.</td>
+<td>unset or <code>false</code></td>
+</tr>
+<tr>
+<td><strong>Ephemeral daemon</strong></td>
+<td>Spawned on demand by the orchestrator as a bare Pod via the K8s API.</td>
+<td>Exits after <code>EPHEMERAL_DAEMON_IDLE_TIMEOUT_MS</code> (default 120s) of no active job.</td>
+<td><code>true</code></td>
+</tr>
+</tbody>
+</table>
+<p>Only persistent daemons count towards the "persistent pool free slots" the orchestrator uses to decide whether an overflow spawn is warranted. Ephemeral daemons exist specifically to drain the current surge and then disappear.</p>
 <h2 id="when-to-use-it">When to use it<a class="headerlink" href="#when-to-use-it" title="Permanent link">&para;</a></h2>
-<p>Daemon mode fits when you want horizontal scaling without the overhead of Kubernetes Jobs. Typical deployments run one orchestrator pod plus N daemon pods on the same cluster (or different clusters, if the WebSocket is reachable). The webhook server stays cheap — all CPU-heavy work lives on daemons.</p>
-<p>Reach for <a href="../KUBERNETES/">isolated-job</a> instead when you need per-request isolation (untrusted repos, DinD, enforced wall-clock ceilings).</p>
+<ul>
+<li>Persistent daemons handle the default, hot path. Run one (or more) in your cluster as a baseline so the common case does not pay a Pod-spawn latency.</li>
+<li>Ephemeral daemons kick in when triage flags a job as heavy, or when the job queue piles up — see <code>ephemeral-daemon-triage</code> and <code>ephemeral-daemon-overflow</code> in <a href="../OBSERVABILITY/">Observability</a>. They let you scale to zero on idle without losing bursty capacity.</li>
+</ul>
 <h2 id="how-it-runs">How it runs<a class="headerlink" href="#how-it-runs" title="Permanent link">&para;</a></h2>
 <p>Setting <code>ORCHESTRATOR_URL</code> to a <code>ws://</code> or <code>wss://</code> address flips the process into daemon mode. In that mode:</p>
 <ul>
 <li>GitHub App credentials are not required. The daemon does not bind a webhook listener.</li>
-<li>The daemon advertises capabilities (platform, free memory/disk relative to <code>DAEMON_MEMORY_FLOOR_MB</code> / <code>DAEMON_DISK_FLOOR_MB</code>) on every heartbeat.</li>
-<li>The orchestrator sends an offer when a job comes in. The daemon accepts or declines; accepted work runs through the same inline pipeline the server uses.</li>
+<li>The daemon advertises capabilities (platform, free memory/disk relative to <code>DAEMON_MEMORY_FLOOR_MB</code> / <code>DAEMON_DISK_FLOOR_MB</code>) on every heartbeat. It also advertises <code>isEphemeral</code> and <code>maxConcurrentJobs</code> on <code>daemon:register</code> so the orchestrator can compute persistent-pool free slots correctly.</li>
+<li>The orchestrator sends an offer when a job comes in. The daemon accepts or declines; accepted work runs through the shared pipeline (<code>src/core/pipeline.ts</code>).</li>
 <li>On SIGTERM, the daemon refuses new offers and drains in-flight work up to <code>DAEMON_DRAIN_TIMEOUT_MS</code> before exiting.</li>
 <li>On spot/preemption signals (AWS Spot interruption, GCP preemption), the daemon begins draining early so the orchestrator can reroute pending offers.</li>
+<li>When <code>DAEMON_EPHEMERAL=true</code>, the daemon additionally exits after <code>EPHEMERAL_DAEMON_IDLE_TIMEOUT_MS</code> with no active job — persistent daemons never idle-exit.</li>
 </ul>
 <h2 id="operational-knobs">Operational knobs<a class="headerlink" href="#operational-knobs" title="Permanent link">&para;</a></h2>
 <table>
@@ -1069,6 +1259,16 @@
 <td><code>DAEMON_AUTH_TOKEN</code></td>
 <td>—</td>
 <td>Shared secret with the orchestrator.</td>
+</tr>
+<tr>
+<td><code>DAEMON_EPHEMERAL</code></td>
+<td><code>false</code></td>
+<td><code>true</code> on ephemeral daemon Pods (injected by the spawner). Enables idle-exit.</td>
+</tr>
+<tr>
+<td><code>EPHEMERAL_DAEMON_IDLE_TIMEOUT_MS</code></td>
+<td><code>120000</code></td>
+<td>Ephemeral daemons exit after this idle window.</td>
 </tr>
 <tr>
 <td><code>HEARTBEAT_INTERVAL_MS</code></td>
@@ -1104,7 +1304,85 @@
 </table>
 <p>See <a href="../CONFIGURATION/#orchestrator-and-daemon">Configuration</a> for the rest.</p>
 <h2 id="concurrency">Concurrency<a class="headerlink" href="#concurrency" title="Permanent link">&para;</a></h2>
-<p>A single daemon process handles one job at a time. Scale horizontally by running multiple daemon pods — the orchestrator picks an eligible daemon per offer based on capabilities and floors.</p>
+<p>A daemon process handles up to <code>maxConcurrentJobs</code> jobs at a time (advertised on register). Scale horizontally by running multiple persistent daemon pods, and let the orchestrator add ephemeral daemons for bursts.</p>
+<hr />
+<h2 id="kubernetes-deployment">Kubernetes deployment<a class="headerlink" href="#kubernetes-deployment" title="Permanent link">&para;</a></h2>
+<h3 id="persistent-daemon-deployment-example">Persistent daemon Deployment (example)<a class="headerlink" href="#persistent-daemon-deployment-example" title="Permanent link">&para;</a></h3>
+<p>Run persistent daemons as a regular Deployment, scaled to N replicas. They connect outbound to the orchestrator and need no inbound ports.</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">apps/v1</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Deployment</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">github-app-playground-daemon</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">default</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="nt">spec</span><span class="p">:</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">replicas</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">  </span><span class="nt">selector</span><span class="p">:</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="nt">matchLabels</span><span class="p">:</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">      </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">github-app-playground-daemon</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">  </span><span class="nt">template</span><span class="p">:</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">      </span><span class="nt">labels</span><span class="p">:</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">        </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">github-app-playground-daemon</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">    </span><span class="nt">spec</span><span class="p">:</span>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">      </span><span class="nt">terminationGracePeriodSeconds</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">300</span>
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">      </span><span class="nt">containers</span><span class="p">:</span>
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">daemon</span>
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">          </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">chrisleekr/github-app-playground:latest-daemon</span>
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="w">          </span><span class="nt">envFrom</span><span class="p">:</span>
+</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">secretRef</span><span class="p">:</span>
+</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">                </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">daemon-secrets</span>
+</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="w">          </span><span class="nt">env</span><span class="p">:</span>
+</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ORCHESTRATOR_URL</span>
+</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a><span class="w">              </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;wss://orchestrator.example.internal:3002&quot;</span>
+</span><span id="__span-0-26"><a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">CLONE_BASE_DIR</span>
+</span><span id="__span-0-27"><a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="w">              </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;/workspaces&quot;</span>
+</span><span id="__span-0-28"><a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a><span class="w">          </span><span class="nt">volumeMounts</span><span class="p">:</span>
+</span><span id="__span-0-29"><a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bot-workspaces</span>
+</span><span id="__span-0-30"><a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a><span class="w">              </span><span class="nt">mountPath</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/workspaces</span>
+</span><span id="__span-0-31"><a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a><span class="w">      </span><span class="nt">volumes</span><span class="p">:</span>
+</span><span id="__span-0-32"><a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bot-workspaces</span>
+</span><span id="__span-0-33"><a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a><span class="w">          </span><span class="nt">emptyDir</span><span class="p">:</span>
+</span><span id="__span-0-34"><a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a><span class="w">            </span><span class="nt">sizeLimit</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5Gi</span>
+</span></code></pre></div>
+<p><code>terminationGracePeriodSeconds</code> should match or exceed <code>DAEMON_DRAIN_TIMEOUT_MS</code> so SIGTERM has time to drain in-flight work before SIGKILL.</p>
+<h3 id="ephemeral-daemon-rbac-orchestrator-side">Ephemeral daemon RBAC (orchestrator side)<a class="headerlink" href="#ephemeral-daemon-rbac-orchestrator-side" title="Permanent link">&para;</a></h3>
+<p>The orchestrator's ServiceAccount needs permission to spawn bare Pods in <code>EPHEMERAL_DAEMON_NAMESPACE</code>:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rbac.authorization.k8s.io/v1</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Role</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">github-app-playground-ephemeral-spawner</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">default</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="nt">rules</span><span class="p">:</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">apiGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;&quot;</span><span class="p p-Indicator">]</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="nt">resources</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;pods&quot;</span><span class="p p-Indicator">]</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">    </span><span class="nt">verbs</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;create&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;get&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;delete&quot;</span><span class="p p-Indicator">]</span>
+</span></code></pre></div>
+<p>Bind it to the orchestrator pod's ServiceAccount via a <code>RoleBinding</code>. Without these verbs, every scale-up attempt yields <code>dispatch_reason=ephemeral-spawn-failed</code> and the affected job is rejected with a tracking-comment infra error.</p>
+<h3 id="daemon-secrets-secret"><code>daemon-secrets</code> Secret<a class="headerlink" href="#daemon-secrets-secret" title="Permanent link">&para;</a></h3>
+<p>Spawned ephemeral Pods get their configuration via <code>envFrom: secretRef: daemon-secrets</code>. Create this Secret once in <code>EPHEMERAL_DAEMON_NAMESPACE</code> with at minimum:</p>
+<ul>
+<li><code>DAEMON_AUTH_TOKEN</code> — daemon ⇄ orchestrator WebSocket handshake. <strong>Only source</strong>: the Secret. The spawner does not inline this into the Pod spec so it cannot leak via <code>kubectl get pod -o yaml</code> or the Pod audit log.</li>
+<li><code>ANTHROPIC_API_KEY</code> or <code>CLAUDE_CODE_OAUTH_TOKEN</code> (and <code>ALLOWED_OWNERS</code>) or Bedrock <code>AWS_*</code> vars — AI provider credentials.</li>
+<li><code>VALKEY_URL</code>, <code>DATABASE_URL</code> — data layer.</li>
+</ul>
+<p><code>ORCHESTRATOR_URL</code> is provided by the spawner inline (derived from the orchestrator's own <code>ORCHESTRATOR_PUBLIC_URL</code>), so it does not need to live in the Secret.</p>
+<p>GitHub App credentials are NOT needed on daemons — the orchestrator mints installation tokens and passes them per-job.</p>
+<h3 id="ephemeral-pod-security-posture">Ephemeral Pod security posture<a class="headerlink" href="#ephemeral-pod-security-posture" title="Permanent link">&para;</a></h3>
+<p>The spawner hardens every ephemeral Pod as follows (see <code>src/k8s/ephemeral-daemon-spawner.ts</code>):</p>
+<ul>
+<li><code>automountServiceAccountToken: false</code> — the daemon never calls the K8s API itself, so no ServiceAccount token is mounted. An agent subprocess running untrusted repo code cannot use it.</li>
+<li><code>securityContext: { runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, seccompProfile: RuntimeDefault }</code> at Pod scope.</li>
+<li>Container-scope: <code>allowPrivilegeEscalation: false</code>, <code>capabilities.drop: [ALL]</code>.</li>
+<li><code>restartPolicy: Never</code> and <code>activeDeadlineSeconds: 3600</code> provide a hard K8s-enforced ceiling if the idle-exit loop wedges.</li>
+</ul>
+<h3 id="key-constraints">Key constraints<a class="headerlink" href="#key-constraints" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>AGENT_TIMEOUT_MS</code> must stay below the GitHub installation-token TTL (3600s) so the daemon cannot outlive its credentials.</li>
+<li><code>EPHEMERAL_DAEMON_IDLE_TIMEOUT_MS</code> should be longer than typical heartbeat cadence so a short lull between back-to-back jobs does not cause the daemon to exit.</li>
+<li>Match <code>terminationGracePeriodSeconds</code> on the persistent daemon Deployment to <code>DAEMON_DRAIN_TIMEOUT_MS</code>.</li>
+</ul>
+<h2 id="implementation-references">Implementation references<a class="headerlink" href="#implementation-references" title="Permanent link">&para;</a></h2>
+<p><code>src/daemon/main.ts</code>, <code>src/orchestrator/ws-server.ts</code>, <code>src/orchestrator/ephemeral-daemon-scaler.ts</code>, <code>src/k8s/ephemeral-daemon-spawner.ts</code>, <code>src/core/pipeline.ts</code>, <code>src/core/tracking-comment.ts</code>.</p>
 
 
 
@@ -1157,13 +1435,13 @@
         
         
           
-          <a href="../KUBERNETES/" class="md-footer__link md-footer__link--next" aria-label="Next: Kubernetes">
+          <a href="../DEPLOYMENT/" class="md-footer__link md-footer__link--next" aria-label="Next: Deployment">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Kubernetes
+                Deployment
               </div>
             </div>
             <div class="md-footer__button md-icon">

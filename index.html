@@ -771,34 +771,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="KUBERNETES/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Kubernetes
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -992,11 +964,11 @@
 
 
 <h1 id="github-app-playground">GitHub App Playground<a class="headerlink" href="#github-app-playground" title="Permanent link">&para;</a></h1>
-<p>A GitHub App that responds to <code>@chrisleekr-bot</code> mentions on pull requests and issues, powered by the Claude Agent SDK. It routes each incoming webhook through a dispatch cascade (inline, daemon, shared-runner, or isolated Kubernetes Job) so a single deployment can serve both trivial chores and long-running refactors.</p>
+<p>A GitHub App that responds to <code>@chrisleekr-bot</code> mentions on pull requests and issues, powered by the Claude Agent SDK. Every request is handed off to the daemon fleet over WebSocket; when triage flags the job as heavy or the queue backs up, the orchestrator spawns an ephemeral daemon Pod on Kubernetes so the same image scales on demand.</p>
 <h2 id="start-here">Start here<a class="headerlink" href="#start-here" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong><a href="SETUP/">Setup</a></strong> — GitHub App creation, local tunnel, environment variables.</li>
-<li><strong><a href="ARCHITECTURE/">Architecture</a></strong> — end-to-end request flow and dispatch cascade, from webhook to tracking comment.</li>
+<li><strong><a href="ARCHITECTURE/">Architecture</a></strong> — end-to-end request flow, from webhook through the daemon fleet to the tracking comment.</li>
 <li><strong><a href="DEPLOYMENT/">Deployment</a></strong> — Docker build, health probes, resource sizing.</li>
 <li><strong><a href="EXTENDING/">Extending</a></strong> — add new webhook handlers and MCP servers.</li>
 </ul>
@@ -1004,9 +976,8 @@
 <ul>
 <li><a href="CONFIGURATION/">Configuration</a> — every environment variable the app reads.</li>
 <li><a href="OBSERVABILITY/">Observability</a> — log fields, dispatch reasons, alerts.</li>
-<li><a href="TRIAGE/">Triage</a> — auto-mode classifier behaviour and tuning.</li>
-<li><a href="DAEMON/">Daemon mode</a> — standalone worker process.</li>
-<li><a href="KUBERNETES/">Kubernetes</a> — isolated-job mode with RBAC and deployment skeleton.</li>
+<li><a href="TRIAGE/">Triage</a> — binary heavy-job classifier behaviour and tuning.</li>
+<li><a href="DAEMON/">Daemon mode</a> — persistent vs ephemeral daemons and the WebSocket protocol.</li>
 </ul>
 <p>This site tracks the <code>main</code> branch. See the repository <code>CHANGELOG.md</code> for release history.</p>
 

@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://chrisleekr.github.io/github-app-playground/DEPLOYMENT/">
       
       
-        <link rel="prev" href="../KUBERNETES/">
+        <link rel="prev" href="../DAEMON/">
       
       
         <link rel="next" href="../EXTENDING/">
@@ -702,34 +702,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../KUBERNETES/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Kubernetes
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -1039,6 +1011,45 @@
       
     </span>
   </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ephemeral-daemon-k8s-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ephemeral-daemon K8s requirements
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Ephemeral-daemon K8s requirements">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#orchestrator-rbac" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Orchestrator RBAC
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#daemon-secrets-secret" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        daemon-secrets Secret
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1396,6 +1407,45 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#ephemeral-daemon-k8s-requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ephemeral-daemon K8s requirements
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Ephemeral-daemon K8s requirements">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#orchestrator-rbac" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Orchestrator RBAC
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#daemon-secrets-secret" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        daemon-secrets Secret
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1440,8 +1490,8 @@ from separate Dockerfiles but share a byte-identical base layer.</p>
 <tr>
 <td><code>orchestrator</code></td>
 <td><code>Dockerfile.orchestrator</code></td>
-<td>Webhook server, WebSocket daemon registry, triage classifier, inline execution path</td>
-<td>GitHub API, Anthropic/Bedrock, Postgres, Valkey</td>
+<td>Webhook server, WebSocket daemon registry, triage classifier, ephemeral daemon spawner</td>
+<td>GitHub API, Anthropic/Bedrock, Postgres, Valkey, K8s API</td>
 </tr>
 <tr>
 <td><code>daemon</code></td>
@@ -1704,7 +1754,7 @@ stage specifically for this — do not remove.</p>
 </span></code></pre></div>
 <p>For the <strong>daemon</strong>, replace HTTP probes with an <code>exec</code> probe that checks the
 daemon is still connected to the orchestrator — see
-<a href="../KUBERNETES/">KUBERNETES.md</a> for a working example.</p>
+<a href="../DAEMON/">DAEMON.md</a> for a working example.</p>
 <hr />
 <h2 id="graceful-shutdown">Graceful shutdown<a class="headerlink" href="#graceful-shutdown" title="Permanent link">&para;</a></h2>
 <p>The orchestrator handles <code>SIGTERM</code> and <code>SIGINT</code>:</p>
@@ -1722,14 +1772,12 @@ after the force-exit fires:</p>
 <p>The daemon has its own drain contract driven by <code>DAEMON_DRAIN_TIMEOUT_MS</code> — it
 finishes the job it is currently executing, rejects new offers, then
 disconnects. Match <code>terminationGracePeriodSeconds</code> to <code>DAEMON_DRAIN_TIMEOUT_MS</code>
-on the daemon's Pod spec (see <a href="../DAEMON/">DAEMON.md</a> and
-<a href="../KUBERNETES/">KUBERNETES.md</a>).</p>
+on the daemon's Pod spec (see <a href="../DAEMON/">DAEMON.md</a>).</p>
 <hr />
 <h2 id="resource-recommendations">Resource recommendations<a class="headerlink" href="#resource-recommendations" title="Permanent link">&para;</a></h2>
 <h3 id="orchestrator-sizing">Orchestrator sizing<a class="headerlink" href="#orchestrator-sizing" title="Permanent link">&para;</a></h3>
 <p>I/O-bound — network calls to GitHub and the LLM provider, WebSocket fan-out,
-SQL writes. Memory is dominated by the number of concurrent inline executions
-(when <code>AGENT_JOB_MODE=inline</code>) and by Postgres/Valkey connection pools.</p>
+SQL writes, occasional K8s API calls to spawn ephemeral daemons. The orchestrator never runs the pipeline itself, so 1 GB is typically enough.</p>
 <table>
 <thead>
 <tr>
@@ -1756,12 +1804,9 @@ SQL writes. Memory is dominated by the number of concurrent inline executions
 </tr>
 </tbody>
 </table>
-<p>If the orchestrator is dispatching to daemons / shared-runners / isolated-jobs
-(<code>AGENT_JOB_MODE=daemon</code> or <code>auto</code>), the inline path is rarely exercised and
-1 GB is usually enough.</p>
 <h3 id="daemon-sizing">Daemon sizing<a class="headerlink" href="#daemon-sizing" title="Permanent link">&para;</a></h3>
 <p>Dominated by whatever Claude runs inside it — <code>kubectl</code>, <code>terraform plan</code>,
-<code>aws cli</code>, <code>docker build</code> through the DinD sidecar. Start with:</p>
+<code>aws cli</code>, <code>docker build</code>. Start with:</p>
 <table>
 <thead>
 <tr>
@@ -1784,7 +1829,8 @@ SQL writes. Memory is dominated by the number of concurrent inline executions
 </tbody>
 </table>
 <p>Set concurrency via <code>DAEMON_MAX_CONCURRENT_JOBS</code>. The image itself is ~2 GB
-unpacked — plan for the node.</p>
+unpacked — plan for the node. The same sizing applies to ephemeral daemon
+Pods — the spawner uses the same image.</p>
 <h3 id="disk">Disk<a class="headerlink" href="#disk" title="Permanent link">&para;</a></h3>
 <p>Each job clones the target repository to <code>CLONE_BASE_DIR</code> (default
 <code>/tmp/bot-workspaces</code>) with <code>git clone --depth=${CLONE_DEPTH}</code> (default <code>50</code>,
@@ -1841,12 +1887,45 @@ defaults worth double-checking:</p>
 <td><code>WS_PORT</code></td>
 <td><code>3002</code> (orchestrator WebSocket; keep behind cluster network)</td>
 </tr>
-<tr>
-<td><code>AGENT_JOB_MODE</code></td>
-<td>Pick <code>inline</code> / <code>daemon</code> / <code>shared-runner</code> / <code>isolated-job</code> / <code>auto</code> — see <a href="../ARCHITECTURE/#dispatch-flow">ARCHITECTURE.md</a></td>
-</tr>
 </tbody>
 </table>
+<hr />
+<h2 id="ephemeral-daemon-k8s-requirements">Ephemeral-daemon K8s requirements<a class="headerlink" href="#ephemeral-daemon-k8s-requirements" title="Permanent link">&para;</a></h2>
+<p>If you want the orchestrator to spawn ephemeral daemon Pods on demand, two
+cluster-side prerequisites must be in place in <code>EPHEMERAL_DAEMON_NAMESPACE</code>:</p>
+<h3 id="orchestrator-rbac">Orchestrator RBAC<a class="headerlink" href="#orchestrator-rbac" title="Permanent link">&para;</a></h3>
+<p>The orchestrator's ServiceAccount needs <code>create</code>, <code>get</code>, and <code>delete</code> on
+<code>pods</code> in <code>EPHEMERAL_DAEMON_NAMESPACE</code>:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rbac.authorization.k8s.io/v1</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Role</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">github-app-playground-ephemeral-spawner</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">  </span><span class="c1"># Role lives in the namespace where ephemeral daemon Pods will be created.</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${EPHEMERAL_DAEMON_NAMESPACE}</span>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="nt">rules</span><span class="p">:</span>
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">apiGroups</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;&quot;</span><span class="p p-Indicator">]</span>
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="w">    </span><span class="nt">resources</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;pods&quot;</span><span class="p p-Indicator">]</span>
+</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="w">    </span><span class="nt">verbs</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">&quot;create&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;get&quot;</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">&quot;delete&quot;</span><span class="p p-Indicator">]</span>
+</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="nn">---</span>
+</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rbac.authorization.k8s.io/v1</span>
+</span><span id="__span-8-13"><a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">RoleBinding</span>
+</span><span id="__span-8-14"><a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-8-15"><a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">github-app-playground-ephemeral-spawner</span>
+</span><span id="__span-8-16"><a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a><span class="w">  </span><span class="c1"># Must match the Role namespace above.</span>
+</span><span id="__span-8-17"><a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${EPHEMERAL_DAEMON_NAMESPACE}</span>
+</span><span id="__span-8-18"><a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a><span class="nt">subjects</span><span class="p">:</span>
+</span><span id="__span-8-19"><a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ServiceAccount</span>
+</span><span id="__span-8-20"><a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">github-app-playground</span>
+</span><span id="__span-8-21"><a id="__codelineno-8-21" name="__codelineno-8-21" href="#__codelineno-8-21"></a><span class="w">    </span><span class="c1"># Namespace where the orchestrator ServiceAccount actually lives.</span>
+</span><span id="__span-8-22"><a id="__codelineno-8-22" name="__codelineno-8-22" href="#__codelineno-8-22"></a><span class="w">    </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${ORCHESTRATOR_NAMESPACE}</span>
+</span><span id="__span-8-23"><a id="__codelineno-8-23" name="__codelineno-8-23" href="#__codelineno-8-23"></a><span class="nt">roleRef</span><span class="p">:</span>
+</span><span id="__span-8-24"><a id="__codelineno-8-24" name="__codelineno-8-24" href="#__codelineno-8-24"></a><span class="w">  </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Role</span>
+</span><span id="__span-8-25"><a id="__codelineno-8-25" name="__codelineno-8-25" href="#__codelineno-8-25"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">github-app-playground-ephemeral-spawner</span>
+</span><span id="__span-8-26"><a id="__codelineno-8-26" name="__codelineno-8-26" href="#__codelineno-8-26"></a><span class="w">  </span><span class="nt">apiGroup</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rbac.authorization.k8s.io</span>
+</span></code></pre></div>
+<p>Without these verbs, every scale-up attempt yields <code>dispatch_reason=ephemeral-spawn-failed</code> and the job is rejected with a tracking-comment infra error.</p>
+<h3 id="daemon-secrets-secret"><code>daemon-secrets</code> Secret<a class="headerlink" href="#daemon-secrets-secret" title="Permanent link">&para;</a></h3>
+<p>Spawned ephemeral daemon Pods receive their configuration via <code>envFrom: secretRef: daemon-secrets</code>. Create this Secret once in <code>EPHEMERAL_DAEMON_NAMESPACE</code> with only the daemon runtime values it needs — <code>DAEMON_AUTH_TOKEN</code>, Claude provider keys, and the daemon-side data-layer URLs (<code>DATABASE_URL</code>, <code>VALKEY_URL</code>). Do <strong>not</strong> copy GitHub App private-key material into this Secret: the orchestrator mints installation tokens and hands them to the daemon per job, so expanding the blast radius to every ephemeral Pod is unnecessary. See <a href="../DAEMON/">DAEMON.md</a> for the full key list.</p>
 
 
 
@@ -1882,7 +1961,7 @@ defaults worth double-checking:</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../KUBERNETES/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Kubernetes">
+          <a href="../DAEMON/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Daemon mode">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1892,7 +1971,7 @@ defaults worth double-checking:</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Kubernetes
+                Daemon mode
               </div>
             </div>
           </a>

@@ -809,34 +809,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../KUBERNETES/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Kubernetes
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -1059,7 +1031,7 @@
 
 
 <h1 id="observability">Observability<a class="headerlink" href="#observability" title="Permanent link">&para;</a></h1>
-<p>Structured JSON logs via <a href="https://getpino.io">pino</a> are the primary signal. Every dispatch decision and every pipeline step carries a <code>deliveryId</code> so you can reconstruct a request end-to-end from a single log query. When <code>DATABASE_URL</code> is configured, the same information is also persisted to the <code>executions</code>, <code>triage_results</code>, and <code>dispatch_decisions</code> tables for aggregate reporting.</p>
+<p>Structured JSON logs via <a href="https://getpino.io">pino</a> are the primary signal. Every dispatch decision and every pipeline step carries a <code>deliveryId</code> so you can reconstruct a request end-to-end from a single log query. When <code>DATABASE_URL</code> is configured, the same information is also persisted to the <code>executions</code> and <code>triage_results</code> tables for aggregate reporting.</p>
 <h2 id="log-fields">Log fields<a class="headerlink" href="#log-fields" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1083,11 +1055,15 @@
 </tr>
 <tr>
 <td><code>dispatch_target</code></td>
-<td>One of <code>inline</code>, <code>daemon</code>, <code>shared-runner</code>, <code>isolated-job</code>.</td>
+<td>Always <code>daemon</code> (singleton — kept as a field for DB/log stability).</td>
 </tr>
 <tr>
 <td><code>dispatch_reason</code></td>
-<td>Why the router chose the target. See below.</td>
+<td>Why the job landed where it did. See below.</td>
+</tr>
+<tr>
+<td><code>isEphemeral</code></td>
+<td>Present on daemon-originating log lines. <code>true</code> if emitted by an ephemeral daemon, <code>false</code> otherwise.</td>
 </tr>
 <tr>
 <td><code>triage_fallback_reason</code></td>
@@ -1098,16 +1074,12 @@
 <td>Triage confidence (0–1), only when the decision came from triage.</td>
 </tr>
 <tr>
-<td><code>complexity</code></td>
-<td><code>trivial</code>, <code>moderate</code>, or <code>complex</code> — only on triage-success.</td>
+<td><code>heavy</code></td>
+<td>Triage binary signal (<code>true</code>/<code>false</code>) — only on triage-success.</td>
 </tr>
 <tr>
 <td><code>rationale</code></td>
 <td>Free-text rationale from the triage LLM. Only on triage-success.</td>
-</tr>
-<tr>
-<td><code>mode</code></td>
-<td>The <code>AGENT_JOB_MODE</code> in effect at decision time.</td>
 </tr>
 <tr>
 <td><code>cost_usd</code></td>
@@ -1116,7 +1088,7 @@
 </tbody>
 </table>
 <h2 id="dispatch-reasons">Dispatch reasons<a class="headerlink" href="#dispatch-reasons" title="Permanent link">&para;</a></h2>
-<p>Canonical source: <code>src/shared/dispatch-types.ts</code>.</p>
+<p>Canonical source: <code>src/shared/dispatch-types.ts</code>. Four values, all landing on <code>dispatch_target=daemon</code>.</p>
 <table>
 <thead>
 <tr>
@@ -1126,41 +1098,25 @@
 </thead>
 <tbody>
 <tr>
-<td><code>label</code></td>
-<td>An explicit <code>bot:*</code> label forced the target.</td>
+<td><code>persistent-daemon</code></td>
+<td>Routed to an existing persistent daemon. The default, hot path. Also used on cooldown — when a scale-up was warranted but blocked by the cooldown window.</td>
 </tr>
 <tr>
-<td><code>keyword</code></td>
-<td>A deterministic keyword in the mention body matched.</td>
+<td><code>ephemeral-daemon-triage</code></td>
+<td>Triage returned <code>heavy=true</code> and an ephemeral daemon Pod was spawned to claim the job.</td>
 </tr>
 <tr>
-<td><code>triage</code></td>
-<td>Auto-mode Haiku call returned a confident classification.</td>
+<td><code>ephemeral-daemon-overflow</code></td>
+<td>Queue length ≥ <code>EPHEMERAL_DAEMON_SPAWN_QUEUE_THRESHOLD</code> <strong>and</strong> the persistent pool is saturated (zero free slots); a spawn drains the overflow.</td>
 </tr>
 <tr>
-<td><code>default-fallback</code></td>
-<td>Triage parsed but <code>confidence &lt; TRIAGE_CONFIDENCE_THRESHOLD</code>.</td>
-</tr>
-<tr>
-<td><code>triage-error-fallback</code></td>
-<td>Triage timed out, errored, or the circuit breaker was open.</td>
-</tr>
-<tr>
-<td><code>static-default</code></td>
-<td>Static cascade was ambiguous in a non-auto mode.</td>
-</tr>
-<tr>
-<td><code>capacity-rejected</code></td>
-<td>Isolated-job queue was full; request refused.</td>
-</tr>
-<tr>
-<td><code>infra-absent</code></td>
-<td>Isolated-job dispatch could not run because Kubernetes auth/config was missing (see <code>src/k8s/job-spawner.ts</code>).</td>
+<td><code>ephemeral-spawn-failed</code></td>
+<td>A spawn was required but the K8s API call failed. The job is rejected with a tracking-comment infra error.</td>
 </tr>
 </tbody>
 </table>
 <h2 id="aggregate-reporting">Aggregate reporting<a class="headerlink" href="#aggregate-reporting" title="Permanent link">&para;</a></h2>
-<p>When <code>DATABASE_URL</code> is set, four helpers in <code>src/db/queries/dispatch-stats.ts</code> expose the most operator-relevant aggregates. Call them from an internal admin endpoint, a scheduled job, or <code>bun repl</code>:</p>
+<p>When <code>DATABASE_URL</code> is set, helpers in <code>src/db/queries/dispatch-stats.ts</code> expose the most operator-relevant aggregates. Call them from an internal admin endpoint, a scheduled job, or <code>bun repl</code>:</p>
 <table>
 <thead>
 <tr>
@@ -1171,11 +1127,11 @@
 <tbody>
 <tr>
 <td><code>eventsPerTarget(days)</code></td>
-<td>Count of executions per <code>dispatch_target</code>.</td>
+<td>Count of executions grouped by <code>dispatch_target</code>. Post-collapse this is always a single <code>daemon</code> row — useful only as a liveness counter; query <code>dispatch_reason</code> directly for the per-reason split.</td>
 </tr>
 <tr>
 <td><code>triageRate(days)</code></td>
-<td>Share of events that hit triage vs. short-circuited.</td>
+<td>Share of events whose <code>dispatch_reason</code> is <code>ephemeral-daemon-triage</code> (i.e. triage drove an ephemeral spawn) vs. all events.</td>
 </tr>
 <tr>
 <td><code>avgConfidenceAndFallback(days)</code></td>
@@ -1189,9 +1145,8 @@
 </table>
 <h2 id="alerts-worth-having">Alerts worth having<a class="headerlink" href="#alerts-worth-having" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Triage error rate</strong>. <code>triage-error-fallback</code> + <code>parse-error</code> + <code>llm-error</code> + <code>timeout</code> above a sustained threshold (e.g. 10% over 15 minutes) signals provider trouble or a regression.</li>
-<li><strong>Queue depth</strong>. Pending isolated-job queue length consistently above zero — either raise <code>MAX_CONCURRENT_ISOLATED_JOBS</code> or investigate stuck Jobs.</li>
-<li><strong>Capacity rejections</strong>. Any <code>dispatch_reason=capacity-rejected</code> means users are seeing "queue full" errors. Raise <code>PENDING_ISOLATED_JOB_QUEUE_MAX</code> or add isolated-job capacity.</li>
+<li><strong>Triage error rate</strong>. <code>parse-error</code> + <code>llm-error</code> + <code>timeout</code> + <code>circuit-open</code> above a sustained threshold (e.g. 10% over 15 minutes) signals provider trouble or a regression.</li>
+<li><strong>Ephemeral spawn failures</strong>. Any <code>dispatch_reason=ephemeral-spawn-failed</code> points at RBAC, quota, or control-plane issues. The affected request fails with a tracking-comment infra error.</li>
 <li><strong>Heartbeat drift</strong>. Daemons missing heartbeats past <code>HEARTBEAT_TIMEOUT_MS</code> get evicted — sustained eviction points at network or resource-floor issues.</li>
 <li><strong>OOM / crash loops</strong>. Standard infra alerts. The durable idempotency check means a restart won't replay a processed event, but a crash loop still blocks new ones.</li>
 </ul>
@@ -1210,7 +1165,7 @@
 </tr>
 <tr>
 <td><code>/readyz</code></td>
-<td>Readiness. Returns 200 once config is validated and — in non-inline modes — the data layer is reachable.</td>
+<td>Readiness. Returns 200 once config is validated and the data layer is reachable.</td>
 </tr>
 </tbody>
 </table>

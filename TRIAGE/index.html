@@ -751,6 +751,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#circuit-breaker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Circuit breaker
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#fallback-reasons" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -807,34 +818,6 @@
     
   
     Daemon mode
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../KUBERNETES/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Kubernetes
   
 
     
@@ -1023,6 +1006,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#circuit-breaker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Circuit breaker
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#fallback-reasons" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1081,19 +1075,21 @@
 
 
 <h1 id="ai-triage">AI Triage<a class="headerlink" href="#ai-triage" title="Permanent link">&para;</a></h1>
-<p>Triage runs <strong>only</strong> in auto mode (<code>AGENT_JOB_MODE=auto</code>) and <strong>only</strong> after the deterministic label/keyword classifier returns "ambiguous". Every other path — explicit label, keyword match, non-auto mode — returns a target without an LLM call.</p>
+<p>Triage is a binary <code>heavy</code> classifier. It runs on every event (subject to the kill-switch and circuit breaker) and answers one question: should this job prefer an ephemeral daemon?</p>
 <h2 id="when-it-runs">When it runs<a class="headerlink" href="#when-it-runs" title="Permanent link">&para;</a></h2>
 <ol>
 <li>The event hits the router.</li>
-<li>The static cascade looks at labels, then at keywords in the mention body.</li>
-<li>If both are inconclusive <strong>and</strong> <code>AGENT_JOB_MODE=auto</code>, a single-turn Haiku call classifies the request. Otherwise the router returns <code>DEFAULT_DISPATCH_TARGET</code> directly.</li>
+<li>The orchestrator calls a single-turn Haiku classifier.</li>
+<li>On success, the returned <code>heavy</code> boolean feeds into the <a href="../ARCHITECTURE/#scale-up-model">scale-up rule</a>: <code>heavy=true</code> is one of the two triggers that can cause the orchestrator to spawn an ephemeral daemon Pod. <code>heavy=false</code> routes the job to <code>persistent-daemon</code>.</li>
 </ol>
 <h2 id="what-the-call-returns">What the call returns<a class="headerlink" href="#what-the-call-returns" title="Permanent link">&para;</a></h2>
-<p>A small JSON object: <code>{ mode, confidence, complexity, rationale }</code>. The <code>mode</code> is one of the four <a href="../ARCHITECTURE/#targets">dispatch targets</a>. <code>complexity</code> is <code>trivial</code>, <code>moderate</code>, or <code>complex</code> and maps to <code>TRIAGE_MAXTURNS_TRIVIAL</code>, <code>TRIAGE_MAXTURNS_MODERATE</code>, or <code>TRIAGE_MAXTURNS_COMPLEX</code> respectively.</p>
+<p>A small JSON object: <code>{ heavy: boolean, confidence: number, rationale: string }</code>. There is no <code>complexity</code> field and no <code>maxTurns</code> mapping — <code>maxTurns</code> always comes from <code>config.defaultMaxTurns</code> regardless of the triage outcome.</p>
 <h2 id="confidence-threshold">Confidence threshold<a class="headerlink" href="#confidence-threshold" title="Permanent link">&para;</a></h2>
-<p>Above or equal to <code>TRIAGE_CONFIDENCE_THRESHOLD</code>, the returned <code>mode</code> is accepted — logged as <code>dispatch_reason=triage</code>. Below it, the router falls back to <code>DEFAULT_DISPATCH_TARGET</code> and records <code>dispatch_reason=default-fallback</code>. The day-one default is <code>1.0</code> so only perfectly confident results are accepted.</p>
+<p>At or above <code>TRIAGE_CONFIDENCE_THRESHOLD</code>, <code>heavy</code> is accepted as-is. Below it, the router treats the signal as <code>heavy=false</code> — the job routes to <code>persistent-daemon</code> and the log line carries <code>triage_fallback_reason=sub-threshold</code>. The day-one default is <code>1.0</code> so only perfectly confident results are accepted.</p>
+<h2 id="circuit-breaker">Circuit breaker<a class="headerlink" href="#circuit-breaker" title="Permanent link">&para;</a></h2>
+<p>Triage wraps the LLM call in a circuit breaker (see <code>src/orchestrator/triage.ts</code>). Consecutive failures trip the breaker; while it is open, the triage function short-circuits to <code>heavy=false</code> and emits <code>triage_fallback_reason=circuit-open</code>. The breaker re-closes after a cooldown.</p>
 <h2 id="fallback-reasons">Fallback reasons<a class="headerlink" href="#fallback-reasons" title="Permanent link">&para;</a></h2>
-<p>Six distinct reasons cause triage to fall back to <code>DEFAULT_DISPATCH_TARGET</code>:</p>
+<p>Six distinct reasons cause triage to fall back to <code>heavy=false</code> (i.e. route to <code>persistent-daemon</code>):</p>
 <table>
 <thead>
 <tr>
@@ -1104,7 +1100,7 @@
 <tbody>
 <tr>
 <td><code>disabled</code></td>
-<td><code>TRIAGE_ENABLED=false</code>. Kill-switch.</td>
+<td><code>TRIAGE_ENABLED=false</code> — triage short-circuits without calling the LLM.</td>
 </tr>
 <tr>
 <td><code>circuit-open</code></td>
@@ -1128,13 +1124,13 @@
 </tr>
 </tbody>
 </table>
-<p>All six appear in Pino logs as <code>triage_fallback_reason</code> on the same event that carries <code>dispatch_reason=default-fallback</code> or <code>triage-error-fallback</code>. Canonical values live in <code>src/orchestrator/triage.ts</code>.</p>
+<p>All six appear in Pino logs as <code>triage_fallback_reason</code>. Canonical values live in <code>src/orchestrator/triage.ts</code>.</p>
 <h2 id="cost-implications">Cost implications<a class="headerlink" href="#cost-implications" title="Permanent link">&para;</a></h2>
-<p>Every auto-mode request whose static cascade is ambiguous incurs one Haiku call. For a busy install, that's the dominant marginal cost. Mitigations:</p>
+<p>Every event attempts triage; when <code>TRIAGE_ENABLED=false</code> or the breaker is open the call short-circuits <em>before</em> hitting Haiku, so those paths are free. When the call proceeds, one Haiku invocation is the dominant marginal cost on a busy install. Mitigations:</p>
 <ul>
-<li>Raise <code>TRIAGE_CONFIDENCE_THRESHOLD</code> (default <code>1.0</code>) to force more fallbacks — cheaper but shifts the decision onto <code>DEFAULT_DISPATCH_TARGET</code>.</li>
-<li>Flip <code>TRIAGE_ENABLED=false</code> during a provider incident to suppress spend without redeploying.</li>
-<li>Keep <code>TRIAGE_MAX_TOKENS</code> low (the response schema is ~60 tokens).</li>
+<li><code>TRIAGE_CONFIDENCE_THRESHOLD</code> defaults to <code>1.0</code> (strictest) — <em>lower</em> it toward <code>0.8</code>–<code>0.9</code> to accept more heavy verdicts; <em>raising</em> it above <code>1.0</code> is not supported and would gate out every response. The compute cost is unchanged either way (the Haiku call still happens); the knob only controls whether the result routes an ephemeral spawn.</li>
+<li>Flip <code>TRIAGE_ENABLED=false</code> during a provider incident to suppress spend without redeploying. While disabled, every event is treated as <code>heavy=false</code>.</li>
+<li>Keep <code>TRIAGE_MAX_TOKENS</code> low (the response schema is ~40 tokens).</li>
 </ul>
 <h2 id="tuning-knobs">Tuning knobs<a class="headerlink" href="#tuning-knobs" title="Permanent link">&para;</a></h2>
 <table>
@@ -1172,18 +1168,13 @@
 <td>Raise if provider latency is consistently above 5s.</td>
 </tr>
 <tr>
-<td><code>TRIAGE_MAXTURNS_*</code></td>
-<td><code>10 / 30 / 50</code></td>
-<td>Tune per-complexity agent budgets independently.</td>
-</tr>
-<tr>
 <td><code>DEFAULT_MAXTURNS</code></td>
 <td><code>30</code></td>
-<td>Fallback budget when triage is not consulted.</td>
+<td>Agent turn cap for every execution.</td>
 </tr>
 </tbody>
 </table>
-<p>Full variable descriptions live in <a href="../CONFIGURATION/#triage-auto-mode">Configuration</a>.</p>
+<p>Full variable descriptions live in <a href="../CONFIGURATION/#triage">Configuration</a>.</p>
 
 
 

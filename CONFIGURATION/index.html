@@ -650,21 +650,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#isolated-job-target-kubernetes" class="md-nav__link">
+  <a href="#ephemeral-daemons-kubernetes-scale-up" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Isolated-job target (Kubernetes)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#shared-runner-target" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Shared-runner target
+        Ephemeral daemons (Kubernetes scale-up)
       
     </span>
   </a>
@@ -694,10 +683,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#triage-auto-mode" class="md-nav__link">
+  <a href="#triage" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Triage (auto mode)
+        Triage
       
     </span>
   </a>
@@ -846,34 +835,6 @@
     
   
     Daemon mode
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../KUBERNETES/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Kubernetes
   
 
     
@@ -1073,21 +1034,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#isolated-job-target-kubernetes" class="md-nav__link">
+  <a href="#ephemeral-daemons-kubernetes-scale-up" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Isolated-job target (Kubernetes)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#shared-runner-target" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Shared-runner target
+        Ephemeral daemons (Kubernetes scale-up)
       
     </span>
   </a>
@@ -1117,10 +1067,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#triage-auto-mode" class="md-nav__link">
+  <a href="#triage" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Triage (auto mode)
+        Triage
       
     </span>
   </a>
@@ -1351,6 +1301,9 @@
 </tbody>
 </table>
 <h2 id="dispatch">Dispatch<a class="headerlink" href="#dispatch" title="Permanent link">&para;</a></h2>
+<p>Dispatch collapsed to a single target (<code>daemon</code>). The router decides only <strong>which reason</strong> a job lands there and whether to spawn an ephemeral daemon — see <a href="../ARCHITECTURE/#dispatch-flow">Architecture → Dispatch Flow</a>.</p>
+<h2 id="ephemeral-daemons-kubernetes-scale-up">Ephemeral daemons (Kubernetes scale-up)<a class="headerlink" href="#ephemeral-daemons-kubernetes-scale-up" title="Permanent link">&para;</a></h2>
+<p>Used when the orchestrator needs to add daemon capacity on demand. Spawned Pods run the same daemon image with <code>DAEMON_EPHEMERAL=true</code> and exit after idle.</p>
 <table>
 <thead>
 <tr>
@@ -1361,62 +1314,29 @@
 </thead>
 <tbody>
 <tr>
-<td><code>AGENT_JOB_MODE</code></td>
-<td><code>inline</code></td>
-<td>Platform-wide mode: <code>inline</code>, <code>daemon</code>, <code>shared-runner</code>, <code>isolated-job</code>, or <code>auto</code>. Any value other than <code>inline</code> requires <code>VALKEY_URL</code>, <code>DATABASE_URL</code>, and <code>DAEMON_AUTH_TOKEN</code>.</td>
+<td><code>DAEMON_EPHEMERAL</code></td>
+<td><code>false</code></td>
+<td>Set to <code>true</code> on ephemeral daemon Pods (injected by the spawner). Controls idle-exit behaviour on the daemon.</td>
 </tr>
 <tr>
-<td><code>DEFAULT_DISPATCH_TARGET</code></td>
-<td><code>shared-runner</code></td>
-<td>Fallback target when triage is sub-threshold or errors. Cannot be <code>inline</code> when mode is <code>auto</code>.</td>
-</tr>
-</tbody>
-</table>
-<h2 id="isolated-job-target-kubernetes">Isolated-job target (Kubernetes)<a class="headerlink" href="#isolated-job-target-kubernetes" title="Permanent link">&para;</a></h2>
-<p>Applies when <code>AGENT_JOB_MODE=isolated-job</code>, <code>auto</code>, or when a label forces <code>isolated-job</code>.</p>
-<table>
-<thead>
-<tr>
-<th>Variable</th>
-<th>Default</th>
-<th>Notes</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>JOB_NAMESPACE</code></td>
-<td><code>github-app</code></td>
-<td>Namespace for spawned Jobs. ServiceAccount needs <code>create/get/list/delete</code> on <code>jobs</code> and <code>pods</code> here.</td>
+<td><code>EPHEMERAL_DAEMON_IDLE_TIMEOUT_MS</code></td>
+<td><code>120000</code></td>
+<td>Ephemeral daemon exits after this much idle time (no active job).</td>
 </tr>
 <tr>
-<td><code>JOB_IMAGE</code></td>
-<td><code>github-app-playground:local</code></td>
-<td>Container image for the Job pod.</td>
+<td><code>EPHEMERAL_DAEMON_SPAWN_COOLDOWN_MS</code></td>
+<td><code>30000</code></td>
+<td>Minimum time between ephemeral spawns (orchestrator side). During cooldown, heavy/overflow signals fall back to <code>persistent-daemon</code>.</td>
 </tr>
 <tr>
-<td><code>JOB_TTL_SECONDS</code></td>
-<td><code>300</code></td>
-<td><code>ttlSecondsAfterFinished</code>. Too low and <code>kubectl logs</code> fails before logs can be retrieved.</td>
-</tr>
-<tr>
-<td><code>JOB_ACTIVE_DEADLINE_SECONDS</code></td>
-<td><code>1800</code> (schema max <code>3500</code>)</td>
-<td>Hard K8s-side wall-clock ceiling. Cap of <code>3500</code> leaves 100s under GitHub's 3600s token TTL.</td>
-</tr>
-<tr>
-<td><code>JOB_WATCH_POLL_INTERVAL_MS</code></td>
-<td><code>5000</code></td>
-<td>How often the watcher polls Job status.</td>
-</tr>
-<tr>
-<td><code>MAX_CONCURRENT_ISOLATED_JOBS</code></td>
+<td><code>EPHEMERAL_DAEMON_SPAWN_QUEUE_THRESHOLD</code></td>
 <td><code>3</code></td>
-<td>In-flight capacity gate.</td>
+<td>Queue length that triggers an <code>ephemeral-daemon-overflow</code> spawn.</td>
 </tr>
 <tr>
-<td><code>PENDING_ISOLATED_JOB_QUEUE_MAX</code></td>
-<td><code>20</code></td>
-<td>Bounded overflow queue. When full, requests are rejected with <code>dispatch_reason=capacity-rejected</code>.</td>
+<td><code>EPHEMERAL_DAEMON_NAMESPACE</code></td>
+<td><code>default</code></td>
+<td>Kubernetes namespace for spawned ephemeral Pods. The orchestrator ServiceAccount needs <code>create/get/delete</code> on <code>pods</code> here.</td>
 </tr>
 <tr>
 <td><code>KUBECONFIG</code></td>
@@ -1425,32 +1345,9 @@
 </tr>
 </tbody>
 </table>
-<h2 id="shared-runner-target">Shared-runner target<a class="headerlink" href="#shared-runner-target" title="Permanent link">&para;</a></h2>
-<p>Applies when <code>AGENT_JOB_MODE=shared-runner</code>, <code>auto</code>, or when a label forces <code>shared-runner</code>.</p>
-<table>
-<thead>
-<tr>
-<th>Variable</th>
-<th>Default</th>
-<th>Notes</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>INTERNAL_RUNNER_URL</code></td>
-<td>—</td>
-<td>Internal HTTP endpoint for the shared-runner pool.</td>
-</tr>
-<tr>
-<td><code>INTERNAL_RUNNER_TOKEN</code></td>
-<td>—</td>
-<td>Sent on the <code>X-Internal-Token</code> header. Paired with the remote service's auth middleware.</td>
-</tr>
-</tbody>
-</table>
-<p><code>SHARED_RUNNER_TOKEN</code> is accepted by the schema but not read by any code path — do not rely on it.</p>
+<p>The orchestrator also expects a pre-existing <code>daemon-secrets</code> K8s Secret in <code>EPHEMERAL_DAEMON_NAMESPACE</code>, mounted into the spawned Pod via <code>envFrom: secretRef: daemon-secrets</code>. See <a href="../DAEMON/">DAEMON.md</a> and <a href="../DEPLOYMENT/">DEPLOYMENT.md</a> for the full Pod spec and RBAC.</p>
 <h2 id="data-layer">Data layer<a class="headerlink" href="#data-layer" title="Permanent link">&para;</a></h2>
-<p>Required when <code>AGENT_JOB_MODE !== "inline"</code>.</p>
+<p>Required whenever the orchestrator role is active (i.e. the webhook server process, which always runs the orchestrator).</p>
 <table>
 <thead>
 <tr>
@@ -1463,12 +1360,12 @@
 <tr>
 <td><code>VALKEY_URL</code></td>
 <td>—</td>
-<td>Backs the isolated-job pending queue, in-flight set, and daemon job queue.</td>
+<td>Backs the daemon job queue, in-flight set, and the ephemeral-spawn cooldown.</td>
 </tr>
 <tr>
 <td><code>DATABASE_URL</code></td>
 <td>—</td>
-<td>Postgres connection for <code>executions</code>, <code>triage_results</code>, <code>dispatch_decisions</code>. Unset disables durable idempotency and observability.</td>
+<td>Postgres connection for <code>executions</code> and <code>triage_results</code>. Unset disables durable observability and telemetry aggregates. Durable idempotency itself comes from GitHub tracking comments and works without Postgres.</td>
 </tr>
 </tbody>
 </table>
@@ -1495,7 +1392,7 @@
 <tr>
 <td><code>DAEMON_AUTH_TOKEN</code></td>
 <td>—</td>
-<td>Shared secret for the daemon ⇄ orchestrator handshake. Required outside inline mode.</td>
+<td>Shared secret for the daemon ⇄ orchestrator handshake. Required on both orchestrator and daemon processes.</td>
 </tr>
 <tr>
 <td><code>HEARTBEAT_INTERVAL_MS</code></td>
@@ -1549,8 +1446,7 @@
 </tr>
 </tbody>
 </table>
-<p><code>DAEMON_EPHEMERAL</code> and <code>JOB_MAX_COST_USD</code> are validated but not consumed by any code path today — setting them has no runtime effect.</p>
-<h2 id="triage-auto-mode">Triage (auto mode)<a class="headerlink" href="#triage-auto-mode" title="Permanent link">&para;</a></h2>
+<h2 id="triage">Triage<a class="headerlink" href="#triage" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
@@ -1563,7 +1459,7 @@
 <tr>
 <td><code>TRIAGE_ENABLED</code></td>
 <td><code>true</code></td>
-<td>Kill-switch. When <code>false</code>, every <code>auto</code>-mode ambiguous request falls back to <code>DEFAULT_DISPATCH_TARGET</code> with <code>dispatch_reason=triage-error-fallback</code>.</td>
+<td>Kill-switch. When <code>false</code>, triage returns <code>heavy=false</code> and the job routes to <code>persistent-daemon</code>.</td>
 </tr>
 <tr>
 <td><code>TRIAGE_MODEL</code></td>
@@ -1573,7 +1469,7 @@
 <tr>
 <td><code>TRIAGE_CONFIDENCE_THRESHOLD</code></td>
 <td><code>1.0</code></td>
-<td>Below this, triage falls back to the default target. Day-1 default is strict.</td>
+<td>Below this, triage is treated as sub-threshold and the job routes to <code>persistent-daemon</code>.</td>
 </tr>
 <tr>
 <td><code>TRIAGE_MAX_TOKENS</code></td>
@@ -1586,66 +1482,36 @@
 <td>Per-call wall clock. Beyond this, the circuit-breaker counter increments.</td>
 </tr>
 <tr>
-<td><code>TRIAGE_MAXTURNS_TRIVIAL</code></td>
-<td><code>10</code></td>
-<td>Applied on triage-success when complexity is <code>trivial</code>.</td>
-</tr>
-<tr>
-<td><code>TRIAGE_MAXTURNS_MODERATE</code></td>
-<td><code>30</code></td>
-<td>Applied on triage-success when complexity is <code>moderate</code>.</td>
-</tr>
-<tr>
-<td><code>TRIAGE_MAXTURNS_COMPLEX</code></td>
-<td><code>50</code></td>
-<td>Applied on triage-success when complexity is <code>complex</code>.</td>
-</tr>
-<tr>
 <td><code>DEFAULT_MAXTURNS</code></td>
 <td><code>30</code></td>
-<td>Applied on every non-triage-success branch.</td>
+<td>Agent turn cap. Applied on every execution — triage no longer influences <code>maxTurns</code>.</td>
 </tr>
 </tbody>
 </table>
-<p>See <a href="../TRIAGE/">Triage</a> for the full cascade and the six fallback reasons that appear in logs.</p>
+<p>See <a href="../TRIAGE/">Triage</a> for the binary <code>heavy</code> signal, circuit breaker, and the six fallback reasons that appear in logs.</p>
 <h2 id="mode-matrix-whats-required-when">Mode matrix — what's required when<a class="headerlink" href="#mode-matrix-whats-required-when" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
-<th>Mode</th>
-<th>Also required</th>
+<th>Role</th>
+<th>Required</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>inline</code></td>
-<td>Just the GitHub App credentials and one AI provider credential.</td>
+<td>Orchestrator (webhook server)</td>
+<td>GitHub App credentials, one AI provider credential, <code>VALKEY_URL</code>, <code>DATABASE_URL</code>, <code>DAEMON_AUTH_TOKEN</code>.</td>
 </tr>
 <tr>
-<td><code>daemon</code>, <code>shared-runner</code>, <code>isolated-job</code>, <code>auto</code></td>
-<td><code>VALKEY_URL</code>, <code>DATABASE_URL</code>, <code>DAEMON_AUTH_TOKEN</code>.</td>
-</tr>
-<tr>
-<td><code>shared-runner</code> or <code>auto</code></td>
-<td><code>INTERNAL_RUNNER_URL</code>, <code>INTERNAL_RUNNER_TOKEN</code>.</td>
-</tr>
-<tr>
-<td><code>isolated-job</code> or <code>auto</code></td>
-<td><code>JOB_IMAGE</code>, plus a ServiceAccount with Job/Pod RBAC in <code>JOB_NAMESPACE</code>.</td>
-</tr>
-<tr>
-<td><code>auto</code></td>
-<td><code>DEFAULT_DISPATCH_TARGET</code> cannot be <code>inline</code>.</td>
+<td>Ephemeral-daemon scale-up</td>
+<td>K8s API access + RBAC on <code>pods</code> in <code>EPHEMERAL_DAEMON_NAMESPACE</code>, <code>daemon-secrets</code> Secret.</td>
 </tr>
 <tr>
 <td>Daemon process (<code>ORCHESTRATOR_URL</code> set)</td>
-<td><code>DAEMON_AUTH_TOKEN</code>. GitHub App credentials are NOT required.</td>
+<td><code>DAEMON_AUTH_TOKEN</code> and one AI provider credential (<code>ANTHROPIC_API_KEY</code> / <code>CLAUDE_CODE_OAUTH_TOKEN</code> / Bedrock env). GitHub App credentials and data-layer URLs are NOT required.</td>
 </tr>
 </tbody>
 </table>
-<blockquote>
-<p><strong><code>auto</code> mode caveat.</strong> The router may dispatch to <strong>any</strong> of the four targets, so configure credentials for every target the cascade can reach — not just the <code>DEFAULT_DISPATCH_TARGET</code>. Missing infrastructure is detected at dispatch time, not at startup, and surfaces as <code>dispatch_reason=infra-absent</code> in logs (the request then falls through to the configured default).</p>
-</blockquote>
 
 
 
