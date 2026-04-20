@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/chrisleekr/github-app-playground/compare/v1.2.0...v1.2.1) (2026-04-20)
+
+
+### Bug Fixes
+
+* **ci:** resolve gitleaks false positives and add dedicated secrets-scan workflow ([#36](https://github.com/chrisleekr/github-app-playground/issues/36)) ([a27df4b](https://github.com/chrisleekr/github-app-playground/commit/a27df4bb58524d732b86cbfb43d13a94a53cf19f))
+
 # [1.2.0](https://github.com/chrisleekr/github-app-playground/compare/v1.1.1...v1.2.0) (2026-04-19)
 
 
