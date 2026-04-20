@@ -35,7 +35,10 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v6
         with:
-          # Full history so gitleaks can scan all commits via `git log -p`.
+          # Full history kept for parity with dev-release/release workflows
+          # and to give semantic-release accurate diff context when this
+          # workflow is invoked via workflow_call. Secret scanning lives
+          # in .github/workflows/secrets-scan.yml now.
           fetch-depth: 0
 
       - name: Setup Bun
@@ -71,15 +74,6 @@ jobs:
         # exits 1 on ANY advisory regardless of --audit-level, so the
         # wrapper restores severity-based gating + an inline GHSA allowlist.
         run: bun run audit:ci
-
-      - name: Scan git history for secrets
-        uses: gitleaks/gitleaks-action@v2.3.9
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_CONFIG: .gitleaks.toml
-          # gitleaks-action@v2.3.9 bundles 8.24.3 which has [[allowlists]]
-          # bugs that misfire on docs/SETUP.md. 8.30.1 has the fix.
-          GITLEAKS_VERSION: "8.30.1"
 
       - name: Test
         run: bun run test

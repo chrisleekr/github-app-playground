@@ -60,3 +60,16 @@ regexes = [
 description = "docs/SETUP.md private-key format documentation"
 paths = ['''^docs/SETUP\.md$''']
 targetRules = ["private-key"]
+
+# MkDocs build output on the gh-pages branch mirrors docs/SETUP.md's PEM
+# placeholder blocks (e.g. <YOUR_BASE64_ENCODED_KEY_CONTENT_HERE>). The
+# `private-key` rule matches the -----BEGIN/END----- envelope even with
+# placeholder content. Scope narrowly: only the two paths MkDocs produces,
+# only the `private-key` rule — any other rule hit in gh-pages still fires.
+[[allowlists]]
+description = "MkDocs gh-pages output — placeholder PEM blocks from docs/SETUP.md"
+paths = [
+  '''^SETUP/index\.html$''',
+  '''^search/search_index\.json$''',
+]
+targetRules = ["private-key"]

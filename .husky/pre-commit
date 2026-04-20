@@ -1,11 +1,16 @@
 # Secret scanning: block commits containing API keys, tokens, private keys, etc.
-# Requires `gitleaks` binary (https://github.com/gitleaks/gitleaks).
-# Install: brew install gitleaks | apt install gitleaks | go install github.com/gitleaks/gitleaks/v8@latest
+# gitleaks is a required quality gate — install once and keep it on PATH.
+# Install: brew install gitleaks | sudo apt install gitleaks | go install github.com/gitleaks/gitleaks/v8@latest
 # Allowlist false positives in .gitleaks.toml rather than bypassing with --no-verify.
-if command -v gitleaks >/dev/null 2>&1; then
-  gitleaks protect --verbose --staged --config .gitleaks.toml || exit 1
-else
-  echo "⚠️  gitleaks not installed — skipping secret scan (install: https://github.com/gitleaks/gitleaks#installing)"
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "❌  gitleaks binary not found on PATH."
+  echo "   This repo requires gitleaks for pre-commit secret scanning."
+  echo "   Install:  brew install gitleaks   (macOS)"
+  echo "             sudo apt install gitleaks   (Debian/Ubuntu)"
+  echo "             go install github.com/gitleaks/gitleaks/v8@latest"
+  echo "   Docs:     https://github.com/gitleaks/gitleaks#installing"
+  exit 1
 fi
+gitleaks protect --verbose --staged --config .gitleaks.toml || exit 1
 
 bunx lint-staged
