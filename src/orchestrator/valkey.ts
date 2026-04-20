@@ -13,7 +13,13 @@ import { logger } from "../logger";
 
 let client: RedisClient | null = null;
 let valkeyConnected = false;
+let valkeyShuttingDown = false;
 let connectStartedAt: number | null = null;
+// Resolvers waiting for the next onconnect to fire. Drained in onconnect.
+// Keeps connectValkey()'s readiness signal tied to the actual flag flip,
+// not to client.connect()'s promise — Bun does not document ordering between
+// connect() resolving and onconnect firing.
+const pendingConnectResolvers: (() => void)[] = [];
 
 /**
  * Get or create the Valkey client singleton.
@@ -31,12 +37,22 @@ export function getValkeyClient(): RedisClient | null {
     valkeyConnected = true;
     const elapsedMs = connectStartedAt === null ? null : Date.now() - connectStartedAt;
     logger.info({ elapsedMs }, "Valkey connected");
+    // Drain any connectValkey() awaiters now that the flag is true.
+    while (pendingConnectResolvers.length > 0) {
+      const resolve = pendingConnectResolvers.shift();
+      resolve?.();
+    }
   };
 
   client.onclose = (): void => {
     const wasConnected = valkeyConnected;
+    const intentional = valkeyShuttingDown;
     valkeyConnected = false;
-    logger.warn({ wasConnected }, "Valkey connection closed");
+    if (intentional) {
+      logger.info({ wasConnected }, "Valkey connection closed (intentional shutdown)");
+    } else {
+      logger.warn({ wasConnected }, "Valkey connection closed");
+    }
   };
 
   return client;
@@ -59,12 +75,14 @@ function redactValkeyUrl(url: string): string {
 /**
  * Block until the Valkey client is connected (FM-7 startup race fix).
  *
- * Bun's RedisClient connects asynchronously: the `onconnect` callback fires on a
- * later tick. Without awaiting, `isReady` flips true before `valkeyConnected`,
- * so /readyz returns 503 until onconnect fires. This races against K8s probes.
+ * Awaits the `onconnect` callback specifically — NOT `client.connect()`'s
+ * promise — because Bun does not document that the callback fires before the
+ * promise resolves. Since `valkeyConnected` is only flipped inside `onconnect`,
+ * tying our readiness signal to the callback guarantees `isValkeyHealthy()`
+ * returns true the instant `connectValkey()` resolves.
  *
- * Wraps `client.connect()` with a timeout so an unreachable Valkey causes the
- * pod to crash-loop (visible failure) rather than silently sit not-ready.
+ * Times out so an unreachable Valkey crash-loops the pod (visible failure)
+ * instead of silently sitting not-ready.
  */
 export async function connectValkey(timeoutMs = 15_000): Promise<void> {
   const c = getValkeyClient();
@@ -81,16 +99,32 @@ export async function connectValkey(timeoutMs = 15_000): Promise<void> {
   logger.info({ timeoutMs }, "Awaiting Valkey connection");
 
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      reject(new Error(`Valkey connect timed out after ${String(timeoutMs)}ms`));
-    }, timeoutMs);
-  });
+  let resolverRef: (() => void) | undefined;
 
   try {
-    await Promise.race([c.connect(), timeout]);
+    await new Promise<void>((resolve, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error(`Valkey connect timed out after ${String(timeoutMs)}ms`));
+      }, timeoutMs);
+
+      resolverRef = (): void => {
+        resolve();
+      };
+      pendingConnectResolvers.push(resolverRef);
+
+      // Kick the connection (idempotent if already connecting). We discard the
+      // promise's resolution and rely on onconnect to flip the flag, but we
+      // forward connection errors so we don't wait for the timeout on hard fail.
+      c.connect().catch((err: unknown) => {
+        reject(err instanceof Error ? err : new Error(String(err)));
+      });
+    });
     logger.info({ elapsedMs: Date.now() - startedAt }, "Valkey connect awaited");
   } catch (err) {
+    if (resolverRef !== undefined) {
+      const idx = pendingConnectResolvers.indexOf(resolverRef);
+      if (idx >= 0) pendingConnectResolvers.splice(idx, 1);
+    }
     logger.error(
       { err, elapsedMs: Date.now() - startedAt },
       "Valkey connect failed during startup",
@@ -128,8 +162,16 @@ export function closeValkey(): void {
   const current = client;
   if (current !== null) {
     client = null;
-    valkeyConnected = false;
-    current.close();
+    // Mark intentional so onclose can distinguish shutdown from real disconnect.
+    // Don't pre-clear valkeyConnected — let onclose do it so wasConnected
+    // reflects the true pre-shutdown state in logs.
+    valkeyShuttingDown = true;
+    try {
+      current.close();
+    } finally {
+      valkeyShuttingDown = false;
+      valkeyConnected = false;
+    }
     logger.info("Valkey client closed");
   }
 }

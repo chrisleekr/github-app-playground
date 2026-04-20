@@ -355,10 +355,16 @@ describe("connectValkey", () => {
     const client = valkey.getValkeyClient();
     if (client === null) throw new Error("expected client");
     // Stub Bun.RedisClient.connect so we don't depend on a real Valkey.
-    client.connect = (): Promise<void> => Promise.resolve();
+    // Critical: fire onconnect — connectValkey awaits the callback, not the promise.
+    client.connect = (): Promise<void> => {
+      client.onconnect?.();
+      return Promise.resolve();
+    };
 
     await valkey.connectValkey(1000);
 
+    // The whole point of connectValkey: when it resolves, isValkeyHealthy must be true.
+    expect(valkey.isValkeyHealthy()).toBe(true);
     expect(mockLoggerInfo).toHaveBeenCalledWith(
       expect.objectContaining({ elapsedMs: expect.any(Number) }),
       "Valkey connect awaited",
@@ -411,6 +417,7 @@ describe("connectValkey", () => {
     expect(createdCall).toBeDefined();
     const meta = createdCall?.[0] as { valkeyUrl: string };
     expect(meta.valkeyUrl).not.toContain("secret");
+    expect(meta.valkeyUrl).not.toContain("user");
     expect(meta.valkeyUrl).toContain("***");
   });
 });
