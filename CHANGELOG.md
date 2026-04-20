@@ -1,3 +1,10 @@
+## [1.2.2](https://github.com/chrisleekr/github-app-playground/compare/v1.2.1...v1.2.2) (2026-04-20)
+
+
+### Bug Fixes
+
+* **orchestrator:** await Valkey connect before flipping isReady ([#37](https://github.com/chrisleekr/github-app-playground/issues/37)) ([372af9d](https://github.com/chrisleekr/github-app-playground/commit/372af9dd272e1a7a1e8890f4738c77d05dace76f))
+
 ## [1.2.1](https://github.com/chrisleekr/github-app-playground/compare/v1.2.0...v1.2.1) (2026-04-20)
 
 
