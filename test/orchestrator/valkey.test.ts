@@ -173,7 +173,10 @@ describe("getValkeyClient", () => {
 
     client.onconnect();
     expect(valkey.isValkeyHealthy()).toBe(true);
-    expect(mockLoggerInfo).toHaveBeenCalledWith("Valkey connected");
+    expect(mockLoggerInfo).toHaveBeenCalledWith(
+      expect.objectContaining({ elapsedMs: expect.any(Number) }),
+      "Valkey connected",
+    );
   });
 
   it("sets up onclose callback that updates health state", () => {
@@ -189,7 +192,10 @@ describe("getValkeyClient", () => {
 
     client.onclose();
     expect(valkey.isValkeyHealthy()).toBe(false);
-    expect(mockLoggerWarn).toHaveBeenCalledWith("Valkey connection closed");
+    expect(mockLoggerWarn).toHaveBeenCalledWith(
+      expect.objectContaining({ wasConnected: true }),
+      "Valkey connection closed",
+    );
   });
 });
 
@@ -330,5 +336,81 @@ describe("closeValkey", () => {
 
     valkey.closeValkey();
     expect(valkey.isValkeyHealthy()).toBe(false);
+  });
+});
+
+describe("connectValkey", () => {
+  it("returns immediately when valkeyUrl is not configured", async () => {
+    if (!isRealModule) return;
+
+    mockConfig.valkeyUrl = undefined;
+    await valkey.connectValkey(1000);
+    expect(mockLoggerInfo).toHaveBeenCalledWith("Valkey not configured, skipping connect");
+  });
+
+  it("resolves once client.connect() resolves and logs duration", async () => {
+    if (!isRealModule) return;
+
+    mockConfig.valkeyUrl = "redis://127.0.0.1:59999";
+    const client = valkey.getValkeyClient();
+    if (client === null) throw new Error("expected client");
+    // Stub Bun.RedisClient.connect so we don't depend on a real Valkey.
+    client.connect = (): Promise<void> => Promise.resolve();
+
+    await valkey.connectValkey(1000);
+
+    expect(mockLoggerInfo).toHaveBeenCalledWith(
+      expect.objectContaining({ elapsedMs: expect.any(Number) }),
+      "Valkey connect awaited",
+    );
+  });
+
+  it("rejects when connect exceeds timeoutMs", async () => {
+    if (!isRealModule) return;
+
+    mockConfig.valkeyUrl = "redis://127.0.0.1:59999";
+    const client = valkey.getValkeyClient();
+    if (client === null) throw new Error("expected client");
+    client.connect = (): Promise<void> => new Promise(() => {}); // never resolves
+
+    let caught: unknown;
+    try {
+      await valkey.connectValkey(20);
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toMatch(/timed out after 20ms/);
+  });
+
+  it("skips connect work when already connected", async () => {
+    if (!isRealModule) return;
+
+    mockConfig.valkeyUrl = "redis://127.0.0.1:59999";
+    const c = valkey.getValkeyClient();
+    if (c?.onconnect === undefined) throw new Error("expected client+cb");
+    c.onconnect();
+    mockLoggerInfo.mockClear();
+
+    await valkey.connectValkey(1000);
+
+    // Should not log "Awaiting Valkey connection" — fast-path returns early.
+    const awaitingLogs = mockLoggerInfo.mock.calls.filter(
+      (call) => call[1] === "Awaiting Valkey connection",
+    );
+    expect(awaitingLogs.length).toBe(0);
+  });
+
+  it("redacts credentials in the client-created log", () => {
+    if (!isRealModule) return;
+
+    mockConfig.valkeyUrl = "redis://user:secret@127.0.0.1:59999";
+    valkey.getValkeyClient();
+
+    const createdCall = mockLoggerInfo.mock.calls.find((c) => c[1] === "Valkey client created");
+    expect(createdCall).toBeDefined();
+    const meta = createdCall?.[0] as { valkeyUrl: string };
+    expect(meta.valkeyUrl).not.toContain("secret");
+    expect(meta.valkeyUrl).toContain("***");
   });
 });

@@ -18,7 +18,7 @@ import { closeDb, getDb } from "./db";
 import { runMigrations } from "./db/migrate";
 import { logger } from "./logger";
 import { recoverStaleExecutions } from "./orchestrator/history";
-import { closeValkey, getValkeyClient, isValkeyHealthy } from "./orchestrator/valkey";
+import { closeValkey, connectValkey, isValkeyHealthy } from "./orchestrator/valkey";
 import { startWebSocketServer, stopWebSocketServer } from "./orchestrator/ws-server";
 import type { BotContext } from "./types";
 import { handleIssueComment } from "./webhook/events/issue-comment";
@@ -103,7 +103,13 @@ const server = http.createServer((req, res) => {
   if (req.url === "/readyz") {
     // Readiness: should we receive traffic?
     // Server mode always needs Valkey (FM-7); daemon mode skips this file entirely.
-    const ready = isReady && isValkeyHealthy();
+    const valkeyHealthy = isValkeyHealthy();
+    const ready = isReady && valkeyHealthy;
+    if (!ready) {
+      // Debug-level so K8s probes don't swamp logs at info; flip LOG_LEVEL=debug
+      // to see exactly which flag is false during startup races.
+      logger.debug({ isReady, valkeyHealthy }, "/readyz returning 503");
+    }
     res
       .writeHead(ready ? 200 : 503, { "Content-Type": "text/plain" })
       .end(ready ? "ready" : "not ready");
@@ -298,12 +304,16 @@ async function runStartupChecks(): Promise<void> {
     await recoverStaleExecutions(db);
   }
 
-  getValkeyClient();
+  // Block until Valkey is actually connected (FM-7). Without this, isReady
+  // flips true synchronously while RedisClient.onconnect fires on a later
+  // tick, producing 503s on /readyz until then. See src/orchestrator/valkey.ts.
+  await connectValkey();
+
   startWebSocketServer();
   logger.info({ wsPort: config.wsPort }, "Orchestrator WebSocket server started");
 
   isReady = true;
-  logger.info("Startup checks passed, server is ready");
+  logger.info({ valkeyHealthy: isValkeyHealthy() }, "Startup checks passed, server is ready");
 }
 
 void runStartupChecks().catch((err: unknown) => {
