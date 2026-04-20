@@ -118,9 +118,9 @@ These checks are enforced by Husky on every commit:
 - **commit-msg**: `commitlint` validates the commit message format.
 
 Allowlist false positives in `.gitleaks.toml` rather than bypassing the hook
-with `--no-verify`. CI also runs gitleaks on every push via
-`.github/workflows/secrets-scan.yml`, independently of the main CI pipeline,
-so a bypassed local hook still fails the build.
+with `--no-verify`. CI also runs gitleaks on every push to branches except
+`gh-pages` via `.github/workflows/secrets-scan.yml`, independently of the
+main CI pipeline, so a bypassed local hook still fails the build.
 
 ---
 
