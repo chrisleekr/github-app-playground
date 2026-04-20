@@ -73,6 +73,7 @@
     "oninitialized",
     "pgdata",
     "PKCE",
+    "readyz",
     "resumability",
     "sarif",
     "Streamable",
