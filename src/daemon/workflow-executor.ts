@@ -3,7 +3,7 @@ import { Octokit } from "octokit";
 import { logger } from "../logger";
 import type { SerializableBotContext } from "../shared/daemon-types";
 import { createMessageEnvelope, type JobPayloadMessage } from "../shared/ws-messages";
-import { type CompletionResult,onStepComplete } from "../workflows/orchestrator";
+import { type CompletionResult, onStepComplete } from "../workflows/orchestrator";
 import { getByName, type WorkflowRunContext } from "../workflows/registry";
 import { markFailed, markRunning, markSucceeded, mergeState } from "../workflows/runs-store";
 import { setState } from "../workflows/tracking-mirror";
