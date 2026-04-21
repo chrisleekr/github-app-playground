@@ -288,6 +288,12 @@ const configSchema = z
     // failure and the circuit breaker's consecutive-failure counter increments.
     triageTimeoutMs: z.coerce.number().int().positive().default(5_000),
 
+    // Minimum model confidence to accept an intent-classifier verdict. Below
+    // this threshold the dispatcher treats the comment as ambiguous and posts
+    // a clarification request instead of dispatching (FR-009). 0.75 matches
+    // the SC-005 target accuracy band.
+    intentConfidenceThreshold: z.coerce.number().min(0).max(1).default(0.75),
+
     // --- 11. Agent maxTurns ---
 
     // Every dispatched job uses this turn budget. Triage no longer sizes the
@@ -567,6 +573,7 @@ function loadConfig(): Config {
     triageConfidenceThreshold: process.env["TRIAGE_CONFIDENCE_THRESHOLD"],
     triageMaxTokens: process.env["TRIAGE_MAX_TOKENS"],
     triageTimeoutMs: process.env["TRIAGE_TIMEOUT_MS"],
+    intentConfidenceThreshold: process.env["INTENT_CONFIDENCE_THRESHOLD"],
 
     // Group 11 — Agent maxTurns
     defaultMaxTurns: process.env["DEFAULT_MAXTURNS"],
