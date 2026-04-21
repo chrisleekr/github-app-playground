@@ -119,6 +119,7 @@ The `docs/` tree is published as a MkDocs Material site at <https://chrisleekr.g
 - `src/webhook/` routing or idempotency behaviour → `docs/ARCHITECTURE.md`
 - `src/k8s/ephemeral-daemon-spawner.ts` Pod-spec changes → `docs/DAEMON.md` (ephemeral section) + `docs/DEPLOYMENT.md` (RBAC)
 - `src/daemon/` lifecycle → `docs/DAEMON.md`
+- `src/workflows/` registry, dispatcher, handlers, or orchestrator → `docs/BOT-WORKFLOWS.md`
 - New MCP server in `src/mcp/` → `docs/EXTENDING.md`
 - New Pino log field or metric → `docs/OBSERVABILITY.md`
 

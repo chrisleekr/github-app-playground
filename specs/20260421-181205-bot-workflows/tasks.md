@@ -134,10 +134,10 @@ Single-project layout (per `plan.md#Structure Decision`). Source in `src/`, test
 
 ### Implementation for US4
 
-- [ ] T041 [P] [US4] Author `docs/BOT-WORKFLOWS.md`: one section per workflow (name, label, accepted context, inputs, outputs, stop conditions, example trigger), plus a "how to add a new workflow" section linking to `src/workflows/registry.ts`. Include a single Mermaid diagram of the label-and-comment dispatch flow plus the composite hand-off, following the repo's Mermaid style rules (WCAG AA hex pairs, `:::className` inline, single flowchart, no parens in labels).
-- [ ] T042 [P] [US4] Add `docs/BOT-WORKFLOWS.md` to `mkdocs.yml` top-level navigation.
-- [ ] T043 [US4] Extend the doc-sync rule in `CLAUDE.md` §Documentation so any PR that touches `src/workflows/**` MUST also update `docs/BOT-WORKFLOWS.md`. Mirror the existing rule format in the file.
-- [ ] T044 [US4] Validate Mermaid diagrams render on `bun run docs:build` with `--strict`. If any block fails, fix or remove (Principle VIII: invalid Mermaid is a doc defect).
+- [x] T041 [P] [US4] Author `docs/BOT-WORKFLOWS.md`: one section per workflow (name, label, accepted context, inputs, outputs, stop conditions, example trigger), plus a "how to add a new workflow" section linking to `src/workflows/registry.ts`. Include a single Mermaid diagram of the label-and-comment dispatch flow plus the composite hand-off, following the repo's Mermaid style rules (WCAG AA hex pairs, `:::className` inline, single flowchart, no parens in labels).
+- [x] T042 [P] [US4] Add `docs/BOT-WORKFLOWS.md` to `mkdocs.yml` top-level navigation.
+- [x] T043 [US4] Extend the doc-sync rule in `CLAUDE.md` §Documentation so any PR that touches `src/workflows/**` MUST also update `docs/BOT-WORKFLOWS.md`. Mirror the existing rule format in the file.
+- [x] T044 [US4] Validate Mermaid diagrams render on `bun run docs:build` with `--strict`. If any block fails, fix or remove (Principle VIII: invalid Mermaid is a doc defect).
 
 **Checkpoint**: US4 complete when `bun run docs:build --strict` passes and the new page is reachable from the site nav.
 
