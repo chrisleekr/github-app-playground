@@ -51,6 +51,20 @@ const repoMemoryEntrySchema = z.object({
   pinned: z.boolean(),
 });
 
+/**
+ * Workflow run reference piggybacking on the existing job payload. Presence
+ * of this field signals the daemon to route the job through
+ * `src/daemon/workflow-executor.ts` instead of the legacy pipeline. Kept as
+ * a pure literal z.enum here to avoid importing the registry module from the
+ * shared schema layer (registry import pulls handler transitive deps).
+ */
+const workflowRunRefSchema = z.object({
+  runId: z.string().min(1),
+  workflowName: z.enum(["triage", "plan", "implement", "review", "ship"]),
+  parentRunId: z.string().min(1).optional(),
+  parentStepIndex: z.number().int().nonnegative().optional(),
+});
+
 const jobPayloadSchema = z.object({
   type: z.literal("job:payload"),
   ...messageEnvelopeBase,
@@ -61,6 +75,7 @@ const jobPayloadSchema = z.object({
     allowedTools: z.array(z.string()),
     envVars: z.record(z.string(), z.string()).optional(),
     memory: z.array(repoMemoryEntrySchema).optional(),
+    workflowRun: workflowRunRefSchema.optional(),
   }),
 });
 

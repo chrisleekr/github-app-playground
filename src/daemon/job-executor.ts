@@ -12,6 +12,7 @@ import {
   type JobOfferMessage,
   type JobPayloadMessage,
 } from "../shared/ws-messages";
+import { executeWorkflowRun } from "./workflow-executor";
 
 // Active job tracking (FM-9)
 
@@ -182,6 +183,14 @@ export async function executeJob(
   const context = payload.payload.context as unknown as SerializableBotContext;
 
   if (!validateJobContext(context, offerId, send)) return;
+
+  // Workflow-run jobs route through a registry-driven executor instead of
+  // the legacy single-shot pipeline. Everything downstream of this branch
+  // assumes a traditional BotContext pipeline run.
+  if (payload.payload.workflowRun !== undefined) {
+    await executeWorkflowRun(payload, send);
+    return;
+  }
 
   const { installationToken, maxTurns, allowedTools, envVars, memory } = payload.payload;
 

@@ -1,6 +1,7 @@
 import { config } from "../config";
 import { logger } from "../logger";
 import type { DaemonCapabilities, PendingOffer } from "../shared/daemon-types";
+import type { WorkflowRunRef } from "../shared/workflow-types";
 import { createMessageEnvelope } from "../shared/ws-messages";
 import { getConnections, getDaemonInfo, isDaemonDraining } from "./connection-handler";
 import { getActiveDaemons, getDaemonActiveJobs } from "./daemon-registry";
@@ -186,6 +187,7 @@ export async function dispatchJob(job: QueuedJob): Promise<boolean> {
     triggerUsername: job.triggerUsername,
     labels: job.labels,
     triggerBodyPreview: job.triggerBodyPreview,
+    ...(job.workflowRun !== undefined ? { workflowRun: job.workflowRun } : {}),
   });
 
   logger.info({ deliveryId: job.deliveryId, daemonId, offerId }, "Job offered to daemon");
@@ -224,6 +226,7 @@ async function handleOfferTimeout(offerId: string): Promise<void> {
     triggerBodyPreview: offer.triggerBodyPreview,
     enqueuedAt: Date.now(),
     retryCount: offer.retryCount,
+    ...(offer.workflowRun !== undefined ? { workflowRun: offer.workflowRun } : {}),
   };
 
   const requeued = await requeueJob(job);
@@ -249,6 +252,8 @@ export interface JobAcceptParams {
   allowedTools: string[];
   envVars: Record<string, string>;
   memory: { id: string; category: string; content: string; pinned: boolean }[];
+  /** Present for workflow-run jobs — forwarded verbatim into `job:payload`. */
+  workflowRun?: WorkflowRunRef;
 }
 
 export function handleJobAccept({
@@ -261,6 +266,7 @@ export function handleJobAccept({
   allowedTools,
   envVars,
   memory,
+  workflowRun,
 }: JobAcceptParams): void {
   // Note: the pending offer is already removed by handleAccept in connection-handler.ts
   // before this function is called (C2 fix — prevents timeout/accept race).
@@ -283,6 +289,7 @@ export function handleJobAccept({
         allowedTools,
         ...(Object.keys(envVars).length > 0 ? { envVars } : {}),
         ...(memory.length > 0 ? { memory } : {}),
+        ...(workflowRun !== undefined ? { workflowRun } : {}),
       },
     }),
   );
@@ -325,6 +332,7 @@ export async function handleJobReject(offerId: string, reason: string): Promise<
     triggerBodyPreview: offer.triggerBodyPreview,
     enqueuedAt: Date.now(),
     retryCount: offer.retryCount,
+    ...(offer.workflowRun !== undefined ? { workflowRun: offer.workflowRun } : {}),
   };
 
   const requeued = await requeueJob(job);

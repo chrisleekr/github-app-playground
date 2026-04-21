@@ -1,0 +1,172 @@
+/**
+ * Unit tests for dispatchByLabel — registry-driven label → workflow lookup
+ * and the seven-step protocol from `specs/20260421-181205-bot-workflows/
+ * contracts/webhook-dispatch.md` §Label trigger.
+ *
+ * Downstream surfaces (runs-store, job-queue, label-mutex, tracking-mirror)
+ * are mocked — the dispatcher is a pure orchestrator over the registry.
+ */
+
+import { beforeEach, describe, expect, it, mock } from "bun:test";
+import type { Octokit } from "octokit";
+import type pino from "pino";
+
+// ─── Mocked downstream surfaces ──────────────────────────────────────────
+
+const mockEnqueueJob = mock(() => Promise.resolve());
+void mock.module("../../src/orchestrator/job-queue", () => ({
+  enqueueJob: mockEnqueueJob,
+}));
+
+const mockEnforceSingleBotLabel = mock(() =>
+  Promise.resolve({ kept: "bot:plan", removed: [] as string[] }),
+);
+void mock.module("../../src/workflows/label-mutex", () => ({
+  enforceSingleBotLabel: mockEnforceSingleBotLabel,
+}));
+
+const mockInsertQueued = mock(() =>
+  Promise.resolve({ id: "00000000-0000-0000-0000-000000000001" }),
+);
+const mockFindLatestForTarget = mock(() => Promise.resolve(null as unknown));
+void mock.module("../../src/workflows/runs-store", () => ({
+  insertQueued: mockInsertQueued,
+  findLatestForTarget: mockFindLatestForTarget,
+}));
+
+const mockPostRefusalComment = mock(() => Promise.resolve());
+void mock.module("../../src/workflows/tracking-mirror", () => ({
+  postRefusalComment: mockPostRefusalComment,
+}));
+
+// Import dispatcher AFTER mocks.
+const { dispatchByLabel } = await import("../../src/workflows/dispatcher");
+
+// ─── Test fixtures ───────────────────────────────────────────────────────
+
+function silentLog(): pino.Logger {
+  const log = {
+    info: mock(() => {}),
+    warn: mock(() => {}),
+    error: mock(() => {}),
+    debug: mock(() => {}),
+    child: mock(function (this: unknown) {
+      return this;
+    }),
+  } as unknown as pino.Logger;
+  return log;
+}
+
+const fakeOctokit = {} as unknown as Octokit;
+
+function baseParams(overrides: {
+  label: string;
+  targetType: "issue" | "pr";
+}): Parameters<typeof dispatchByLabel>[0] {
+  return {
+    octokit: fakeOctokit,
+    logger: silentLog(),
+    label: overrides.label,
+    target: {
+      type: overrides.targetType,
+      owner: "acme",
+      repo: "repo",
+      number: 42,
+    },
+    senderLogin: "alice",
+    deliveryId: "delivery-abc",
+  };
+}
+
+// ─── Tests ────────────────────────────────────────────────────────────────
+
+describe("dispatchByLabel", () => {
+  beforeEach(() => {
+    mockEnqueueJob.mockClear();
+    mockEnforceSingleBotLabel.mockClear();
+    mockInsertQueued.mockClear();
+    mockFindLatestForTarget.mockClear();
+    mockPostRefusalComment.mockClear();
+  });
+
+  it("returns ignored for unknown labels without touching any downstream surface", async () => {
+    const result = await dispatchByLabel(
+      baseParams({ label: "needs-triage", targetType: "issue" }),
+    );
+
+    expect(result.status).toBe("ignored");
+    if (result.status === "ignored") {
+      expect(result.reason).toContain("needs-triage");
+    }
+    expect(mockEnforceSingleBotLabel).not.toHaveBeenCalled();
+    expect(mockInsertQueued).not.toHaveBeenCalled();
+    expect(mockEnqueueJob).not.toHaveBeenCalled();
+    expect(mockPostRefusalComment).not.toHaveBeenCalled();
+  });
+
+  it("dispatches a known label whose context matches (bot:triage on issue)", async () => {
+    const result = await dispatchByLabel(baseParams({ label: "bot:triage", targetType: "issue" }));
+
+    expect(result.status).toBe("dispatched");
+    if (result.status === "dispatched") {
+      expect(result.workflowName).toBe("triage");
+      expect(result.runId).toBe("00000000-0000-0000-0000-000000000001");
+    }
+    expect(mockEnforceSingleBotLabel).toHaveBeenCalledTimes(1);
+    expect(mockInsertQueued).toHaveBeenCalledTimes(1);
+    expect(mockEnqueueJob).toHaveBeenCalledTimes(1);
+
+    // workflowRun must be threaded into the queued job for daemon routing.
+    const enqueueCall = mockEnqueueJob.mock.calls[0] as unknown as [
+      { workflowRun?: { runId: string; workflowName: string } },
+    ];
+    const queued = enqueueCall[0];
+    expect(queued.workflowRun?.runId).toBe("00000000-0000-0000-0000-000000000001");
+    expect(queued.workflowRun?.workflowName).toBe("triage");
+  });
+
+  it("refuses a known label whose context mismatches (bot:review on issue)", async () => {
+    const result = await dispatchByLabel(baseParams({ label: "bot:review", targetType: "issue" }));
+
+    expect(result.status).toBe("refused");
+    if (result.status === "refused") {
+      expect(result.workflowName).toBe("review");
+      expect(result.reason).toContain("pr");
+    }
+    expect(mockPostRefusalComment).toHaveBeenCalledTimes(1);
+    expect(mockInsertQueued).not.toHaveBeenCalled();
+    expect(mockEnqueueJob).not.toHaveBeenCalled();
+  });
+
+  it("refuses when requiresPrior is unsatisfied (bot:plan without a successful triage)", async () => {
+    mockFindLatestForTarget.mockResolvedValueOnce(null);
+
+    const result = await dispatchByLabel(baseParams({ label: "bot:plan", targetType: "issue" }));
+
+    expect(result.status).toBe("refused");
+    if (result.status === "refused") {
+      expect(result.workflowName).toBe("plan");
+      expect(result.reason).toContain("triage");
+    }
+    expect(mockFindLatestForTarget).toHaveBeenCalledTimes(1);
+    expect(mockPostRefusalComment).toHaveBeenCalledTimes(1);
+    expect(mockInsertQueued).not.toHaveBeenCalled();
+    expect(mockEnqueueJob).not.toHaveBeenCalled();
+  });
+
+  it("refuses on insertQueued collision (in-flight run already exists)", async () => {
+    mockInsertQueued.mockRejectedValueOnce(
+      new Error("duplicate key value violates unique constraint"),
+    );
+
+    const result = await dispatchByLabel(baseParams({ label: "bot:triage", targetType: "issue" }));
+
+    expect(result.status).toBe("refused");
+    if (result.status === "refused") {
+      expect(result.workflowName).toBe("triage");
+      expect(result.reason).toContain("in-flight");
+    }
+    expect(mockPostRefusalComment).toHaveBeenCalledTimes(1);
+    expect(mockEnqueueJob).not.toHaveBeenCalled();
+  });
+});

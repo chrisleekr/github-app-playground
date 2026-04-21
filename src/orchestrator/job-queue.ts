@@ -1,5 +1,6 @@
 import { config } from "../config";
 import { logger } from "../logger";
+import type { WorkflowRunRef } from "../shared/workflow-types";
 import { requireValkeyClient } from "./valkey";
 
 /**
@@ -20,6 +21,9 @@ export interface QueuedJob {
   triggerBodyPreview: string;
   enqueuedAt: number;
   retryCount: number;
+  /** Present for workflow-run jobs. Daemon branches on this field's presence
+   * to route through the workflow handler path instead of the legacy pipeline. */
+  workflowRun?: WorkflowRunRef;
 }
 
 const QUEUE_KEY = "queue:jobs";

@@ -34,6 +34,7 @@ describe.skipIf(sql === null)("runMigrations", () => {
   beforeAll(async () => {
     await requireDb().unsafe(`
       DROP TABLE IF EXISTS _migrations CASCADE;
+      DROP TABLE IF EXISTS workflow_runs CASCADE;
       DROP TABLE IF EXISTS repo_memory CASCADE;
       DROP TABLE IF EXISTS triage_results CASCADE;
       DROP TABLE IF EXISTS executions CASCADE;
@@ -44,6 +45,7 @@ describe.skipIf(sql === null)("runMigrations", () => {
   afterAll(async () => {
     await requireDb().unsafe(`
       DROP TABLE IF EXISTS _migrations CASCADE;
+      DROP TABLE IF EXISTS workflow_runs CASCADE;
       DROP TABLE IF EXISTS repo_memory CASCADE;
       DROP TABLE IF EXISTS triage_results CASCADE;
       DROP TABLE IF EXISTS executions CASCADE;
@@ -60,11 +62,12 @@ describe.skipIf(sql === null)("runMigrations", () => {
     const versions: { version: string }[] = await requireDb()`
       SELECT version FROM _migrations ORDER BY version
     `;
-    expect(versions.length).toBe(4);
+    expect(versions.length).toBe(5);
     expect(versions[0]?.version).toBe("001_initial");
     expect(versions[1]?.version).toBe("002_repo_knowledge");
     expect(versions[2]?.version).toBe("003_dispatch_decisions");
     expect(versions[3]?.version).toBe("004_collapse_dispatch_to_daemon");
+    expect(versions[4]?.version).toBe("005_workflow_runs");
   });
 
   it("is idempotent — second run is a no-op", async () => {
@@ -74,7 +77,7 @@ describe.skipIf(sql === null)("runMigrations", () => {
     const versions: { version: string }[] = await requireDb()`
       SELECT version FROM _migrations ORDER BY version
     `;
-    expect(versions.length).toBe(4);
+    expect(versions.length).toBe(5);
   });
 
   it("creates the executions table with expected columns", async () => {
@@ -158,5 +161,47 @@ describe.skipIf(sql === null)("runMigrations", () => {
     expect(notNull).toContain("mode");
     expect(notNull).toContain("confidence");
     expect(notNull).toContain("rationale");
+  });
+
+  it("creates the workflow_runs table with the expected schema (005)", async () => {
+    const columns: { column_name: string; is_nullable: string }[] = await requireDb()`
+      SELECT column_name, is_nullable
+      FROM information_schema.columns
+      WHERE table_name = 'workflow_runs'
+      ORDER BY ordinal_position
+    `;
+    const names = columns.map((c) => c.column_name);
+
+    expect(names).toContain("id");
+    expect(names).toContain("workflow_name");
+    expect(names).toContain("target_type");
+    expect(names).toContain("target_owner");
+    expect(names).toContain("target_repo");
+    expect(names).toContain("target_number");
+    expect(names).toContain("parent_run_id");
+    expect(names).toContain("parent_step_index");
+    expect(names).toContain("status");
+    expect(names).toContain("state");
+    expect(names).toContain("tracking_comment_id");
+    expect(names).toContain("delivery_id");
+    expect(names).toContain("created_at");
+    expect(names).toContain("updated_at");
+
+    const notNull = columns.filter((c) => c.is_nullable === "NO").map((c) => c.column_name);
+    expect(notNull).toContain("workflow_name");
+    expect(notNull).toContain("target_type");
+    expect(notNull).toContain("target_owner");
+    expect(notNull).toContain("target_repo");
+    expect(notNull).toContain("target_number");
+    expect(notNull).toContain("status");
+    expect(notNull).toContain("state");
+
+    const indexes: { indexname: string }[] = await requireDb()`
+      SELECT indexname FROM pg_indexes WHERE tablename = 'workflow_runs'
+    `;
+    const idxNames = indexes.map((i) => i.indexname);
+    expect(idxNames).toContain("idx_workflow_runs_inflight");
+    expect(idxNames).toContain("idx_workflow_runs_target");
+    expect(idxNames).toContain("idx_workflow_runs_parent");
   });
 });
