@@ -20,6 +20,13 @@ export type WorkflowContext = z.infer<typeof WorkflowContextSchema>;
  * When omitted, the executor falls back to a generic "<workflow> <status>"
  * line. Handlers that already wrote a rich message via `ctx.setState` during
  * execution should repeat it here so the final replace-write preserves it.
+ *
+ * `handed-off` is the composite-workflow variant: the handler inserted and
+ * enqueued a child run and wants the parent row to stay `running` until the
+ * last child completes (FR-006, handoff-protocol.md §Parent status). The
+ * executor merges `state` into the parent's row but does NOT transition the
+ * parent's `status` — the orchestrator's cascade does that on the final
+ * child's completion.
  */
 export const HandlerResultSchema = z.discriminatedUnion("status", [
   z.object({
@@ -32,6 +39,12 @@ export const HandlerResultSchema = z.discriminatedUnion("status", [
     reason: z.string().min(1),
     state: z.unknown().optional(),
     humanMessage: z.string().min(1).optional(),
+  }),
+  z.object({
+    status: z.literal("handed-off"),
+    state: z.unknown().optional(),
+    humanMessage: z.string().min(1).optional(),
+    childRunId: z.string().min(1),
   }),
 ]);
 export type HandlerResult = z.infer<typeof HandlerResultSchema>;

@@ -3,8 +3,9 @@ import { Octokit } from "octokit";
 import { logger } from "../logger";
 import type { SerializableBotContext } from "../shared/daemon-types";
 import { createMessageEnvelope, type JobPayloadMessage } from "../shared/ws-messages";
+import { type CompletionResult,onStepComplete } from "../workflows/orchestrator";
 import { getByName, type WorkflowRunContext } from "../workflows/registry";
-import { markFailed, markRunning, markSucceeded } from "../workflows/runs-store";
+import { markFailed, markRunning, markSucceeded, mergeState } from "../workflows/runs-store";
 import { setState } from "../workflows/tracking-mirror";
 
 /**
@@ -82,6 +83,49 @@ export async function executeWorkflowRun(
 
     const result = await entry.handler(runCtx);
 
+    if (result.status === "handed-off") {
+      // Composite parent: merge state, emit tracking comment, but leave
+      // `status = running`. The orchestrator cascade will flip this row's
+      // status once the final descendant completes. No `onStepComplete`
+      // call here — this run has no terminal result to propagate yet.
+      const handOffState =
+        typeof result.state === "object" && result.state !== null
+          ? (result.state as Record<string, unknown>)
+          : {};
+      await mergeState(workflowRun.runId, handOffState);
+      await setState(
+        { octokit, logger: log },
+        {
+          runId: workflowRun.runId,
+          patch: {},
+          humanMessage:
+            result.humanMessage ?? `${entry.name} handed off to child ${result.childRunId}`,
+        },
+      );
+
+      log.info(
+        {
+          durationMs: Date.now() - startedAt,
+          outcome: "handed-off",
+          childRunId: result.childRunId,
+        },
+        "Workflow run handed off to child",
+      );
+
+      send({
+        type: "job:result",
+        ...createMessageEnvelope(offerId),
+        payload: {
+          success: true,
+          deliveryId: context.deliveryId,
+          durationMs: Date.now() - startedAt,
+        },
+      });
+      return;
+    }
+
+    let completion: CompletionResult;
+
     if (result.status === "succeeded") {
       const state =
         typeof result.state === "object" && result.state !== null
@@ -102,6 +146,8 @@ export async function executeWorkflowRun(
         "Workflow run completed",
       );
 
+      completion = { status: "succeeded" };
+
       send({
         type: "job:result",
         ...createMessageEnvelope(offerId),
@@ -111,39 +157,49 @@ export async function executeWorkflowRun(
           durationMs: Date.now() - startedAt,
         },
       });
-      return;
+    } else {
+      // Handler returned `failed`.
+      const failState =
+        typeof result.state === "object" && result.state !== null
+          ? (result.state as Record<string, unknown>)
+          : {};
+      await markFailed(workflowRun.runId, result.reason, failState);
+      await setState(
+        { octokit, logger: log },
+        {
+          runId: workflowRun.runId,
+          patch: {},
+          humanMessage: result.humanMessage ?? `${entry.name} failed: ${result.reason}`,
+        },
+      );
+
+      log.warn(
+        { durationMs: Date.now() - startedAt, outcome: "failed", reason: result.reason },
+        "Workflow run reported failure",
+      );
+
+      completion = { status: "failed", reason: result.reason };
+
+      send({
+        type: "job:result",
+        ...createMessageEnvelope(offerId),
+        payload: {
+          success: false,
+          deliveryId: context.deliveryId,
+          durationMs: Date.now() - startedAt,
+          errorMessage: result.reason,
+        },
+      });
     }
 
-    // Handler returned `failed`.
-    const failState =
-      typeof result.state === "object" && result.state !== null
-        ? (result.state as Record<string, unknown>)
-        : {};
-    await markFailed(workflowRun.runId, result.reason, failState);
-    await setState(
-      { octokit, logger: log },
-      {
-        runId: workflowRun.runId,
-        patch: {},
-        humanMessage: result.humanMessage ?? `${entry.name} failed: ${result.reason}`,
-      },
-    );
-
-    log.warn(
-      { durationMs: Date.now() - startedAt, outcome: "failed", reason: result.reason },
-      "Workflow run reported failure",
-    );
-
-    send({
-      type: "job:result",
-      ...createMessageEnvelope(offerId),
-      payload: {
-        success: false,
-        deliveryId: context.deliveryId,
-        durationMs: Date.now() - startedAt,
-        errorMessage: result.reason,
-      },
-    });
+    // T030: propagate the terminal result up the composite chain. Wrapped
+    // so a cascade error never masks the original handler outcome — the
+    // daemon has already ack'd the job above.
+    try {
+      await onStepComplete({ octokit, logger: log }, workflowRun.runId, completion);
+    } catch (cascadeErr) {
+      log.error({ err: cascadeErr }, "onStepComplete cascade failed");
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const reason = `uncaught: ${message}`;
@@ -169,6 +225,15 @@ export async function executeWorkflowRun(
       { err, durationMs: Date.now() - startedAt, outcome: "uncaught" },
       "Workflow handler threw",
     );
+
+    try {
+      await onStepComplete({ octokit, logger: log }, workflowRun.runId, {
+        status: "failed",
+        reason,
+      });
+    } catch (cascadeErr) {
+      log.error({ err: cascadeErr }, "onStepComplete cascade failed after uncaught");
+    }
 
     send({
       type: "job:result",
