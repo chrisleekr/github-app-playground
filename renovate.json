@@ -1,0 +1,63 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":semanticCommits"],
+  "timezone": "Australia/Melbourne",
+  "schedule": ["before 4am on Monday"],
+  "labels": ["dependencies", "renovate"],
+  "prHourlyLimit": 2,
+  "prConcurrentLimit": 5,
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/(^|/)Dockerfile(\\..+)?$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?:\\s+packageName=(?<packageName>\\S+))?\\s+ARG \\S*_VERSION=(?<currentValue>\\S+)"
+      ]
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Group GitHub Actions workflow updates into one PR.",
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions"
+    },
+    {
+      "description": "Group npm/bun production dependencies into one PR.",
+      "matchManagers": ["npm", "bun"],
+      "matchDepTypes": ["dependencies"],
+      "groupName": "production dependencies"
+    },
+    {
+      "description": "Group npm/bun dev dependencies into one PR.",
+      "matchManagers": ["npm", "bun"],
+      "matchDepTypes": ["devDependencies"],
+      "groupName": "dev dependencies"
+    },
+    {
+      "description": "Group Dockerfile FROM base image updates into one PR.",
+      "matchManagers": ["dockerfile"],
+      "groupName": "docker base images"
+    },
+    {
+      "description": "Group Dockerfile ARG tool version bumps from the custom regex manager.",
+      "matchManagers": ["custom.regex"],
+      "groupName": "dockerfile tool versions"
+    },
+    {
+      "description": "Auto-merge non-major bumps across all managers once CI is green. Major bumps open a PR for review.",
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "automerge": true,
+      "platformAutomerge": true
+    },
+    {
+      "description": "Strip 'v' prefix: hashicorp/terraform GitHub tags are vX.Y.Z but ARG value is unprefixed.",
+      "matchDepNames": ["hashicorp/terraform"],
+      "extractVersion": "^v(?<version>.+)$"
+    },
+    {
+      "description": "Strip 'kustomize/' prefix: kubernetes-sigs/kustomize is a monorepo with per-product tags.",
+      "matchDepNames": ["kubernetes-sigs/kustomize"],
+      "extractVersion": "^kustomize/(?<version>.+)$"
+    }
+  ]
+}

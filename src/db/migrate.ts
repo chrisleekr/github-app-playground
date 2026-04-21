@@ -31,6 +31,9 @@ export async function runMigrations(sql: SQL): Promise<void> {
   } catch (err) {
     throw new Error(
       `Cannot connect to database: ${err instanceof Error ? err.message : String(err)}`,
+      {
+        cause: err,
+      },
     );
   }
 
