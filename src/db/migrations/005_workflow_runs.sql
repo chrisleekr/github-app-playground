@@ -9,8 +9,6 @@
 -- triage pipeline and the workflow pipeline live side by side. A future
 -- consolidation is out of scope.
 
-BEGIN;
-
 CREATE TABLE workflow_runs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
@@ -61,5 +59,3 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER trg_workflow_runs_bump_updated_at
     BEFORE UPDATE ON workflow_runs
     FOR EACH ROW EXECUTE FUNCTION workflow_runs_bump_updated_at();
-
-COMMIT;

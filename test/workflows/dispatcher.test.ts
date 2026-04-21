@@ -11,6 +11,8 @@ import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { Octokit } from "octokit";
 import type pino from "pino";
 
+import { expectToReject } from "../utils/assertions";
+
 // ─── Mocked downstream surfaces ──────────────────────────────────────────
 
 const mockEnqueueJob = mock(() => Promise.resolve());
@@ -29,9 +31,13 @@ const mockInsertQueued = mock(() =>
   Promise.resolve({ id: "00000000-0000-0000-0000-000000000001" }),
 );
 const mockFindLatestForTarget = mock(() => Promise.resolve(null as unknown));
+const mockFindLatestSucceededForTarget = mock(() => Promise.resolve(null as unknown));
+const mockMarkFailed = mock(() => Promise.resolve());
 void mock.module("../../src/workflows/runs-store", () => ({
   insertQueued: mockInsertQueued,
   findLatestForTarget: mockFindLatestForTarget,
+  findLatestSucceededForTarget: mockFindLatestSucceededForTarget,
+  markFailed: mockMarkFailed,
 }));
 
 const mockPostRefusalComment = mock(() => Promise.resolve());
@@ -86,6 +92,8 @@ describe("dispatchByLabel", () => {
     mockEnforceSingleBotLabel.mockClear();
     mockInsertQueued.mockClear();
     mockFindLatestForTarget.mockClear();
+    mockFindLatestSucceededForTarget.mockClear();
+    mockMarkFailed.mockClear();
     mockPostRefusalComment.mockClear();
   });
 
@@ -139,7 +147,7 @@ describe("dispatchByLabel", () => {
   });
 
   it("refuses when requiresPrior is unsatisfied (bot:plan without a successful triage)", async () => {
-    mockFindLatestForTarget.mockResolvedValueOnce(null);
+    mockFindLatestSucceededForTarget.mockResolvedValueOnce(null);
 
     const result = await dispatchByLabel(baseParams({ label: "bot:plan", targetType: "issue" }));
 
@@ -148,16 +156,22 @@ describe("dispatchByLabel", () => {
       expect(result.workflowName).toBe("plan");
       expect(result.reason).toContain("triage");
     }
-    expect(mockFindLatestForTarget).toHaveBeenCalledTimes(1);
+    expect(mockFindLatestSucceededForTarget).toHaveBeenCalledTimes(1);
     expect(mockPostRefusalComment).toHaveBeenCalledTimes(1);
     expect(mockInsertQueued).not.toHaveBeenCalled();
     expect(mockEnqueueJob).not.toHaveBeenCalled();
+    expect(mockEnforceSingleBotLabel).not.toHaveBeenCalled();
   });
 
   it("refuses on insertQueued collision (in-flight run already exists)", async () => {
-    mockInsertQueued.mockRejectedValueOnce(
+    const collisionErr = Object.assign(
       new Error("duplicate key value violates unique constraint"),
+      {
+        code: "23505",
+        constraint: "idx_workflow_runs_inflight",
+      },
     );
+    mockInsertQueued.mockRejectedValueOnce(collisionErr);
 
     const result = await dispatchByLabel(baseParams({ label: "bot:triage", targetType: "issue" }));
 
@@ -168,5 +182,29 @@ describe("dispatchByLabel", () => {
     }
     expect(mockPostRefusalComment).toHaveBeenCalledTimes(1);
     expect(mockEnqueueJob).not.toHaveBeenCalled();
+  });
+
+  it("rethrows non-collision insertQueued errors without refusing", async () => {
+    mockInsertQueued.mockRejectedValueOnce(new Error("connection reset"));
+
+    await expectToReject(
+      dispatchByLabel(baseParams({ label: "bot:triage", targetType: "issue" })),
+      "connection reset",
+    );
+
+    expect(mockPostRefusalComment).not.toHaveBeenCalled();
+    expect(mockEnqueueJob).not.toHaveBeenCalled();
+  });
+
+  it("clears in-flight guard via markFailed when enqueue fails after insert", async () => {
+    mockEnqueueJob.mockRejectedValueOnce(new Error("valkey unreachable"));
+
+    await expectToReject(
+      dispatchByLabel(baseParams({ label: "bot:triage", targetType: "issue" })),
+      "valkey unreachable",
+    );
+
+    expect(mockMarkFailed).toHaveBeenCalledTimes(1);
+    expect(mockPostRefusalComment).not.toHaveBeenCalled();
   });
 });

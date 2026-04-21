@@ -2,7 +2,12 @@ import type { Octokit } from "octokit";
 import type pino from "pino";
 
 import type { WorkflowName } from "./registry";
-import { findById, mergeState, setTrackingCommentId, type WorkflowRunRow } from "./runs-store";
+import {
+  findById,
+  mergeState,
+  tryReserveTrackingCommentId,
+  type WorkflowRunRow,
+} from "./runs-store";
 
 /**
  * FR-026: the tracking comment is a projection of `workflow_runs.state`, not
@@ -65,12 +70,51 @@ export async function setState(
       issue_number: row.target_number,
       body,
     });
-    await setTrackingCommentId(runId, created.data.id);
-    logger.info(
-      { runId, commentId: created.data.id, workflowName: row.workflow_name },
-      "Created tracking comment",
+    const reservation = await tryReserveTrackingCommentId(runId, created.data.id);
+    if (reservation.won) {
+      logger.info(
+        { runId, commentId: created.data.id, workflowName: row.workflow_name },
+        "Created tracking comment",
+      );
+      return { ...row, tracking_comment_id: created.data.id };
+    }
+
+    // Lost the race: another concurrent setState already reserved a comment.
+    // Delete the duplicate we just created so a single canonical comment
+    // remains. A delete failure is not fatal — the DB still points at the
+    // winning comment, and the duplicate is cosmetic.
+    logger.warn(
+      {
+        runId,
+        losingCommentId: created.data.id,
+        winningCommentId: reservation.trackingCommentId,
+        workflowName: row.workflow_name,
+      },
+      "Lost tracking-comment reservation race; deleting duplicate comment",
     );
-    return { ...row, tracking_comment_id: created.data.id };
+    try {
+      await octokit.rest.issues.deleteComment({
+        owner: row.target_owner,
+        repo: row.target_repo,
+        comment_id: created.data.id,
+      });
+    } catch (deleteErr) {
+      logger.warn(
+        {
+          runId,
+          losingCommentId: created.data.id,
+          err: deleteErr instanceof Error ? deleteErr.message : String(deleteErr),
+        },
+        "Failed to delete duplicate tracking comment",
+      );
+    }
+    await octokit.rest.issues.updateComment({
+      owner: row.target_owner,
+      repo: row.target_repo,
+      comment_id: reservation.trackingCommentId,
+      body,
+    });
+    return { ...row, tracking_comment_id: reservation.trackingCommentId };
   }
 
   await octokit.rest.issues.updateComment({

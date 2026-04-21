@@ -19,8 +19,8 @@ If either precondition fails, the event is silently ignored (same behaviour as e
 
 1. **Resolve registry entry.** Look up the applied label in `workflows.registry`. If no entry matches the label, the event is outside scope — log and ignore.
 2. **Context validation.** If the entry's `context` does not include the event's target type (`issue` vs `pr`), post a short refusal comment and return HTTP 200. Do not dispatch.
-3. **Enforce label mutex (FR-014).** Remove every other `bot:*` label currently on the item. Log each removal with reason `bot-label-mutex`.
-4. **Prior-output check (FR-004 for `implement`, etc.).** If the entry has `requiresPrior`, query `workflow_runs` for a `succeeded` row matching `(workflow_name=prior, target=item)`. If missing, post a refusal comment and return. No dispatch.
+3. **Prior-output check (FR-004 for `implement`, etc.).** If the entry has `requiresPrior`, query `workflow_runs` for a `succeeded` row matching `(workflow_name=prior, target=item)`. If missing, post a refusal comment and return. No dispatch. Running this before the mutex step ensures a refusal does not strip unrelated `bot:*` labels from the item.
+4. **Enforce label mutex (FR-014).** Remove every other `bot:*` label currently on the item. Log each removal with reason `bot-label-mutex`.
 5. **Idempotency guard (FR-011).** Attempt to `INSERT INTO workflow_runs (workflow_name, target_*, status='queued', delivery_id)` . If the partial unique index rejects the insert, an in-flight run already exists — log and return 200 without enqueueing.
 6. **Enqueue.** Publish a job to the existing Valkey queue with payload `{ workflowRunId, workflowName, target, parentRunId?: null, parentStepIndex?: null, deliveryId }`.
 7. **Return 200.** Webhook handler is done. Execution proceeds asynchronously in the daemon (FR-027).

@@ -58,7 +58,7 @@ The bot enforces this itself. If issue #42 has `bot:plan` and you apply `bot:shi
 - **Human-readable state**: read the bot's tracking comment on the issue/PR.
 - **Authoritative state**: query `SELECT * FROM workflow_runs WHERE target_owner=... AND target_repo=... AND target_number=... ORDER BY created_at DESC`.
 
-The comment is updated in the same unit of work as the DB write, so they should never diverge for long.
+The DB row is authoritative; the tracking comment is a best-effort projection of the row. If a comment update fails (GitHub 5xx, rate limit, permission drift), the handler logs the error and continues — the DB state remains correct. Brief divergences can occur while retries drain.
 
 ## 6. Stop bounds for `review`
 

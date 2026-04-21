@@ -6,7 +6,7 @@ import { enqueueJob } from "../orchestrator/job-queue";
 import { classify, type ClassifyResult } from "./intent-classifier";
 import { enforceSingleBotLabel } from "./label-mutex";
 import { getByLabel, getByName, type WorkflowName } from "./registry";
-import { findLatestForTarget, insertQueued } from "./runs-store";
+import { findLatestSucceededForTarget, insertQueued, markFailed } from "./runs-store";
 import { postRefusalComment } from "./tracking-mirror";
 
 export interface DispatchTarget {
@@ -37,8 +37,10 @@ export type DispatchOutcome =
 /**
  * Label-triggered workflow dispatch. Implements the seven-step protocol in
  * `specs/20260421-181205-bot-workflows/contracts/webhook-dispatch.md` §Label
- * trigger: registry lookup → context check → label mutex → prior-output
- * requirement → idempotency insert → job enqueue → return.
+ * trigger: registry lookup → context check → prior-output requirement →
+ * label mutex → idempotency insert → job enqueue → return. Prior-output is
+ * checked before the mutex so a refusal does not strip unrelated `bot:*`
+ * labels from the target.
  *
  * ALLOWED_OWNERS enforcement is intentionally out of scope here — the
  * webhook event handler drops those events before calling the dispatcher
@@ -63,6 +65,15 @@ export async function dispatchByLabel(params: DispatchByLabelParams): Promise<Di
     return { status: "refused", workflowName: entry.name, reason };
   }
 
+  if (entry.requiresPrior !== null) {
+    const prior = await findLatestSucceededForTarget(entry.requiresPrior, target);
+    if (prior === null) {
+      const reason = `requires a successful '${entry.requiresPrior}' run before '${entry.name}'`;
+      await postRefusalComment({ octokit, logger }, target, entry.name, reason);
+      return { status: "refused", workflowName: entry.name, reason };
+    }
+  }
+
   await enforceSingleBotLabel({
     octokit,
     owner: target.owner,
@@ -72,22 +83,33 @@ export async function dispatchByLabel(params: DispatchByLabelParams): Promise<Di
     logger,
   });
 
-  if (entry.requiresPrior !== null) {
-    const prior = await findLatestForTarget(entry.requiresPrior, target);
-    if (prior?.status !== "succeeded") {
-      const reason = `requires a successful '${entry.requiresPrior}' run before '${entry.name}'`;
-      await postRefusalComment({ octokit, logger }, target, entry.name, reason);
-      return { status: "refused", workflowName: entry.name, reason };
-    }
-  }
-
+  let runRow;
   try {
-    const runRow = await insertQueued({
+    runRow = await insertQueued({
       workflowName: entry.name,
       target,
       deliveryId,
     });
+  } catch (err) {
+    if (isInflightCollision(err)) {
+      logger.info(
+        {
+          workflowName: entry.name,
+          target,
+          deliveryId,
+          err: err instanceof Error ? err.message : String(err),
+          reason: "workflow-dispatch-inflight",
+        },
+        "Workflow dispatch refused — in-flight run already exists",
+      );
+      const reason = "an in-flight run already exists for this workflow and target";
+      await postRefusalComment({ octokit, logger }, target, entry.name, reason);
+      return { status: "refused", workflowName: entry.name, reason };
+    }
+    throw err;
+  }
 
+  try {
     await enqueueJob({
       deliveryId,
       repoOwner: target.owner,
@@ -102,36 +124,37 @@ export async function dispatchByLabel(params: DispatchByLabelParams): Promise<Di
       retryCount: 0,
       workflowRun: { runId: runRow.id, workflowName: entry.name },
     });
-
-    logger.info(
+  } catch (err) {
+    // Enqueue failed after the DB row was inserted. Flip the row to `failed`
+    // so the partial unique index no longer blocks subsequent dispatches.
+    logger.error(
       {
         runId: runRow.id,
         workflowName: entry.name,
         target,
         deliveryId,
-        senderLogin,
-        reason: "workflow-dispatch",
-      },
-      "Workflow run dispatched",
-    );
-
-    return { status: "dispatched", runId: runRow.id, workflowName: entry.name };
-  } catch (err) {
-    // Partial unique index collision — an in-flight run already exists.
-    logger.info(
-      {
-        workflowName: entry.name,
-        target,
-        deliveryId,
         err: err instanceof Error ? err.message : String(err),
-        reason: "workflow-dispatch-inflight",
+        reason: "workflow-dispatch-enqueue-failed",
       },
-      "Workflow dispatch refused — in-flight run already exists",
+      "Workflow dispatch failed during enqueue; clearing in-flight guard",
     );
-    const reason = "an in-flight run already exists for this workflow and target";
-    await postRefusalComment({ octokit, logger }, target, entry.name, reason);
-    return { status: "refused", workflowName: entry.name, reason };
+    await markFailed(runRow.id, "enqueue failed", {});
+    throw err;
   }
+
+  logger.info(
+    {
+      runId: runRow.id,
+      workflowName: entry.name,
+      target,
+      deliveryId,
+      senderLogin,
+      reason: "workflow-dispatch",
+    },
+    "Workflow run dispatched",
+  );
+
+  return { status: "dispatched", runId: runRow.id, workflowName: entry.name };
 }
 
 export interface DispatchByIntentParams {
@@ -201,6 +224,15 @@ export async function dispatchByIntent(params: DispatchByIntentParams): Promise<
     return { status: "refused", workflowName: entry.name, reason };
   }
 
+  if (entry.requiresPrior !== null) {
+    const prior = await findLatestSucceededForTarget(entry.requiresPrior, target);
+    if (prior === null) {
+      const reason = `requires a successful '${entry.requiresPrior}' run before '${entry.name}'`;
+      await postRefusalComment({ octokit, logger }, target, entry.name, reason);
+      return { status: "refused", workflowName: entry.name, reason };
+    }
+  }
+
   await enforceSingleBotLabel({
     octokit,
     owner: target.owner,
@@ -210,18 +242,29 @@ export async function dispatchByIntent(params: DispatchByIntentParams): Promise<
     logger,
   });
 
-  if (entry.requiresPrior !== null) {
-    const prior = await findLatestForTarget(entry.requiresPrior, target);
-    if (prior?.status !== "succeeded") {
-      const reason = `requires a successful '${entry.requiresPrior}' run before '${entry.name}'`;
+  let runRow;
+  try {
+    runRow = await insertQueued({ workflowName: entry.name, target, deliveryId });
+  } catch (err) {
+    if (isInflightCollision(err)) {
+      logger.info(
+        {
+          workflowName: entry.name,
+          target,
+          deliveryId,
+          err: err instanceof Error ? err.message : String(err),
+          reason: "workflow-dispatch-inflight",
+        },
+        "Workflow dispatch (intent) refused — in-flight run already exists",
+      );
+      const reason = "an in-flight run already exists for this workflow and target";
       await postRefusalComment({ octokit, logger }, target, entry.name, reason);
       return { status: "refused", workflowName: entry.name, reason };
     }
+    throw err;
   }
 
   try {
-    const runRow = await insertQueued({ workflowName: entry.name, target, deliveryId });
-
     await enqueueJob({
       deliveryId,
       repoOwner: target.owner,
@@ -236,36 +279,53 @@ export async function dispatchByIntent(params: DispatchByIntentParams): Promise<
       retryCount: 0,
       workflowRun: { runId: runRow.id, workflowName: entry.name },
     });
-
-    logger.info(
+  } catch (err) {
+    logger.error(
       {
         runId: runRow.id,
         workflowName: entry.name,
         target,
         deliveryId,
-        senderLogin,
-        reason: "workflow-dispatch-by-intent",
-        intentConfidence: verdict.confidence,
-      },
-      "Workflow run dispatched via intent",
-    );
-
-    return { status: "dispatched", runId: runRow.id, workflowName: entry.name };
-  } catch (err) {
-    logger.info(
-      {
-        workflowName: entry.name,
-        target,
-        deliveryId,
         err: err instanceof Error ? err.message : String(err),
-        reason: "workflow-dispatch-inflight",
+        reason: "workflow-dispatch-enqueue-failed",
       },
-      "Workflow dispatch (intent) refused — in-flight run already exists",
+      "Workflow dispatch (intent) failed during enqueue; clearing in-flight guard",
     );
-    const reason = "an in-flight run already exists for this workflow and target";
-    await postRefusalComment({ octokit, logger }, target, entry.name, reason);
-    return { status: "refused", workflowName: entry.name, reason };
+    await markFailed(runRow.id, "enqueue failed", {});
+    throw err;
   }
+
+  logger.info(
+    {
+      runId: runRow.id,
+      workflowName: entry.name,
+      target,
+      deliveryId,
+      senderLogin,
+      reason: "workflow-dispatch-by-intent",
+      intentConfidence: verdict.confidence,
+    },
+    "Workflow run dispatched via intent",
+  );
+
+  return { status: "dispatched", runId: runRow.id, workflowName: entry.name };
+}
+
+/**
+ * Detect the Postgres unique-violation on `idx_workflow_runs_inflight` that
+ * FR-011 relies on to reject a second in-flight row for the same (workflow,
+ * target). Anything else — transport errors, check violations, permission
+ * errors — must not be silently converted to "in-flight already exists".
+ */
+function isInflightCollision(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) {
+    return false;
+  }
+  const record = err as { code?: unknown; constraint?: unknown };
+  if (record.code !== "23505") {
+    return false;
+  }
+  return record.constraint === "idx_workflow_runs_inflight";
 }
 
 async function postClarifyComment(

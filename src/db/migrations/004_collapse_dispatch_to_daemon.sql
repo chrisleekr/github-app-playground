@@ -12,7 +12,6 @@
 -- `infra-absent`) map to `ephemeral-spawn-failed` — they were the prior
 -- equivalents of a spawn refusal — so rejection telemetry survives.
 
-BEGIN;
 
 ALTER TABLE executions DROP CONSTRAINT IF EXISTS executions_dispatch_target_check;
 ALTER TABLE executions DROP CONSTRAINT IF EXISTS executions_dispatch_reason_check;
@@ -77,5 +76,3 @@ ALTER TABLE executions
   );
 ALTER TABLE triage_results
   ADD CONSTRAINT triage_results_mode_check CHECK (mode = 'daemon');
-
-COMMIT;

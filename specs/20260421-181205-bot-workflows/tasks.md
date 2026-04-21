@@ -11,7 +11,7 @@
 
 - **[P]**: Parallelisable — touches a different file than in-flight tasks and has no unmet dependency.
 - **[Story]**: US1 / US2 / US3 / US4 from spec.md.
-- Paths below are absolute from repo root `/Users/chrislee/srv/github/github-app-playground/`.
+- Paths below are relative to the repository root.
 
 ## Path Conventions
 
@@ -64,7 +64,7 @@ Single-project layout (per `plan.md#Structure Decision`). Source in `src/`, test
 
 - [x] T015 [P] [US1] Implement `src/webhook/events/issues.ts` handling `issues.labeled` and `issues.unlabeled`. On `labeled`, apply the dispatch protocol from `contracts/webhook-dispatch.md` §Label trigger steps 1–7. On `unlabeled`, log and return. Register the handler from `src/app.ts` alongside existing webhook registrations.
 - [x] T016 [US1] Extend `src/webhook/events/pull-request.ts` to handle `pull_request.labeled` via the same dispatch protocol (kept here to avoid a new events file for PR events). Ensure existing PR event handling is preserved.
-- [x] T017 [P] [US1] Implement `src/workflows/dispatcher.ts` exporting `dispatchByLabel({ octokit, label, target, senderLogin, deliveryId })` and `dispatchByIntent(...)` (the intent path stays empty until US3). Dispatcher performs: lookup registry → context check → `label-mutex.enforceSingleBotLabel` → `requiresPrior` check against `runs-store.findLatestForTarget` → `runs-store.insertQueued` → publish job. All refusal branches post one refusal comment via `tracking-mirror`.
+- [x] T017 [P] [US1] Implement `src/workflows/dispatcher.ts` exporting `dispatchByLabel({ octokit, label, target, senderLogin, deliveryId })` and `dispatchByIntent(...)` (the intent path stays empty until US3). Dispatcher performs: lookup registry → context check → `requiresPrior` check against `runs-store.findLatestForTarget` → `label-mutex.enforceSingleBotLabel` → `runs-store.insertQueued` → publish job. (The prior-output check runs first so a refusal does not strip unrelated `bot:*` labels from the target.) All refusal branches post one refusal comment via `tracking-mirror`.
 - [x] T018 [US1] Wire the existing Valkey job-queue publisher in `src/orchestrator/job-queue.ts` to accept a new job type `workflow-run` with payload `{ workflowRunId, workflowName, target, parentRunId?, parentStepIndex?, deliveryId }`. Reuse the existing queue and channel; no new infra.
 - [x] T019 [US1] In `src/daemon/main.ts`, add a job-type router: on claim, if `jobType === 'workflow-run'`, resolve the registry entry by `workflowName`, build a `WorkflowRunContext` (includes child logger, Octokit installation client, `setState` bound to this run id via `tracking-mirror`), call `runs-store.markRunning(runId)`, invoke the handler, translate the `HandlerResult` into `runs-store.markSucceeded` / `markFailed` plus a final `tracking-mirror.setState`. Catch uncaught throws → `markFailed({ reason: 'uncaught: <message>' })`. _(Implemented in `src/daemon/workflow-executor.ts` — job-executor branches on `payload.workflowRun` and delegates.)_
 - [x] T020 [US1] Implement `src/workflows/handlers/triage.ts`: build prompt from issue body, call `src/ai/llm-client.ts` single-turn classifier (reuse the adaptor pattern already used by `src/orchestrator/triage.ts`), parse JSON → `{ verdict, recommendedNext }`, call `ctx.setState({ verdict, recommendedNext }, humanReadableMessage)`, return `{ status: 'succeeded', state: { verdict, recommendedNext } }`. _(MVP: keyword-heuristic classifier. LLM-client swap deferred to follow-up; handler surface + state shape already correct for the swap.)_

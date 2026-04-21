@@ -20,7 +20,7 @@ All Technical Context fields resolved — no NEEDS CLARIFICATION markers remain.
 
 ## 2. `workflow_runs` schema: one row per run, JSON state
 
-**Decision**: One table, columns `id UUID PK`, `workflow_name TEXT NOT NULL`, `target_type TEXT CHECK IN ('issue','pr')`, `target_owner TEXT`, `target_repo TEXT`, `target_number INT`, `parent_run_id UUID NULL REFERENCES workflow_runs(id)`, `parent_step_index INT NULL`, `status TEXT CHECK IN ('queued','running','succeeded','failed')`, `state JSONB NOT NULL DEFAULT '{}'::jsonb`, `tracking_comment_id BIGINT NULL`, `created_at TIMESTAMPTZ`, `updated_at TIMESTAMPTZ`. Unique index on `(workflow_name, target_owner, target_repo, target_number, status)` **partial** `WHERE status IN ('queued','running')` to enforce FR-011 idempotency at the database layer.
+**Decision**: One table, columns `id UUID PK`, `workflow_name TEXT NOT NULL`, `target_type TEXT CHECK IN ('issue','pr')`, `target_owner TEXT`, `target_repo TEXT`, `target_number INT`, `parent_run_id UUID NULL REFERENCES workflow_runs(id)`, `parent_step_index INT NULL`, `status TEXT CHECK IN ('queued','running','succeeded','failed')`, `state JSONB NOT NULL DEFAULT '{}'::jsonb`, `tracking_comment_id BIGINT NULL`, `created_at TIMESTAMPTZ`, `updated_at TIMESTAMPTZ`. Unique index on `(workflow_name, target_owner, target_repo, target_number)` **partial** `WHERE status IN ('queued','running')` to enforce FR-011 idempotency at the database layer. (The `status` column gates the partial predicate, not the uniqueness key — including it in the key would allow two in-flight rows with different statuses, which is exactly what we must prevent.)
 
 **Rationale**:
 

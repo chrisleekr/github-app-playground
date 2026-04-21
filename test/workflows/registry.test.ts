@@ -9,6 +9,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import type { z } from "zod";
 
 import {
   registry,
@@ -19,7 +20,9 @@ import {
 
 const stubHandler: WorkflowHandler = () => Promise.resolve({ status: "failed", reason: "stub" });
 
-function makeEntry(overrides: Partial<Parameters<typeof RegistrySchema.parse>[0][number]>) {
+type RegistryEntryInput = z.input<typeof RegistrySchema>[number];
+
+function makeEntry(overrides: Partial<RegistryEntryInput>): RegistryEntryInput {
   return {
     name: "triage" as const,
     label: "bot:triage",
@@ -58,7 +61,7 @@ describe("RegistrySchema invariants", () => {
   it("rejects duplicate workflow names", () => {
     const bad = [
       makeEntry({ name: "triage", label: "bot:triage" }),
-      makeEntry({ name: "triage", label: "bot:triage2" }),
+      makeEntry({ name: "triage", label: "bot:triagetwo" }),
     ];
     expect(() => RegistrySchema.parse(bad)).toThrow(/workflow names must be unique/);
   });

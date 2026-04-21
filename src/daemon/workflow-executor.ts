@@ -93,15 +93,22 @@ export async function executeWorkflowRun(
           ? (result.state as Record<string, unknown>)
           : {};
       await mergeState(workflowRun.runId, handOffState);
-      await setState(
-        { octokit, logger: log },
-        {
-          runId: workflowRun.runId,
-          patch: {},
-          humanMessage:
-            result.humanMessage ?? `${entry.name} handed off to child ${result.childRunId}`,
-        },
-      );
+      try {
+        await setState(
+          { octokit, logger: log },
+          {
+            runId: workflowRun.runId,
+            patch: {},
+            humanMessage:
+              result.humanMessage ?? `${entry.name} handed off to child ${result.childRunId}`,
+          },
+        );
+      } catch (mirrorErr) {
+        log.warn(
+          { err: mirrorErr instanceof Error ? mirrorErr.message : String(mirrorErr) },
+          "Tracking-mirror update failed after hand-off; DB state is authoritative",
+        );
+      }
 
       log.info(
         {
@@ -132,14 +139,21 @@ export async function executeWorkflowRun(
           ? (result.state as Record<string, unknown>)
           : {};
       await markSucceeded(workflowRun.runId, state);
-      await setState(
-        { octokit, logger: log },
-        {
-          runId: workflowRun.runId,
-          patch: {},
-          humanMessage: result.humanMessage ?? `${entry.name} succeeded`,
-        },
-      );
+      try {
+        await setState(
+          { octokit, logger: log },
+          {
+            runId: workflowRun.runId,
+            patch: {},
+            humanMessage: result.humanMessage ?? `${entry.name} succeeded`,
+          },
+        );
+      } catch (mirrorErr) {
+        log.warn(
+          { err: mirrorErr instanceof Error ? mirrorErr.message : String(mirrorErr) },
+          "Tracking-mirror update failed after markSucceeded; DB state is authoritative",
+        );
+      }
 
       log.info(
         { durationMs: Date.now() - startedAt, outcome: "succeeded" },
@@ -164,14 +178,21 @@ export async function executeWorkflowRun(
           ? (result.state as Record<string, unknown>)
           : {};
       await markFailed(workflowRun.runId, result.reason, failState);
-      await setState(
-        { octokit, logger: log },
-        {
-          runId: workflowRun.runId,
-          patch: {},
-          humanMessage: result.humanMessage ?? `${entry.name} failed: ${result.reason}`,
-        },
-      );
+      try {
+        await setState(
+          { octokit, logger: log },
+          {
+            runId: workflowRun.runId,
+            patch: {},
+            humanMessage: result.humanMessage ?? `${entry.name} failed: ${result.reason}`,
+          },
+        );
+      } catch (mirrorErr) {
+        log.warn(
+          { err: mirrorErr instanceof Error ? mirrorErr.message : String(mirrorErr) },
+          "Tracking-mirror update failed after markFailed; DB state is authoritative",
+        );
+      }
 
       log.warn(
         { durationMs: Date.now() - startedAt, outcome: "failed", reason: result.reason },

@@ -81,7 +81,7 @@ One table, mutable row per run, added by migration `src/db/migrations/005_workfl
 
 ### State transitions
 
-```
+```text
    (new)
      │
      ▼
@@ -111,7 +111,11 @@ One table, mutable row per run, added by migration `src/db/migrations/005_workfl
   "parent_run_id": null,
   "parent_step_index": null,
   "status": "succeeded",
-  "state": { "verdict": "valid", "recommendedNext": "plan" },
+  "state": {
+    "verdict": "bug",
+    "recommendedNext": "plan",
+    "rationale": "stack trace suggests a null deref"
+  },
   "tracking_comment_id": 9876543210
 }
 ```

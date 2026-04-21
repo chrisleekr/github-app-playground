@@ -171,6 +171,39 @@ export async function setTrackingCommentId(
   `;
 }
 
+/**
+ * Compare-and-set variant of {@link setTrackingCommentId}. Only writes the
+ * row when `tracking_comment_id IS NULL`, so two racing creators cannot both
+ * stamp their own comment ids. Returns the winning comment id — our `commentId`
+ * if we won, or the pre-existing value if another worker got there first.
+ */
+export async function tryReserveTrackingCommentId(
+  runId: string,
+  commentId: number,
+  sql: SQL = requireDb(),
+): Promise<{ won: boolean; trackingCommentId: number }> {
+  const rows: { tracking_comment_id: number }[] = await sql`
+    UPDATE workflow_runs
+       SET tracking_comment_id = ${commentId}
+     WHERE id = ${runId}
+       AND tracking_comment_id IS NULL
+    RETURNING tracking_comment_id
+  `;
+  if (rows[0] !== undefined) {
+    return { won: true, trackingCommentId: rows[0].tracking_comment_id };
+  }
+  const existing: { tracking_comment_id: number | null }[] = await sql`
+    SELECT tracking_comment_id FROM workflow_runs WHERE id = ${runId}
+  `;
+  const existingId = existing[0]?.tracking_comment_id ?? null;
+  if (existingId === null) {
+    throw new Error(
+      `tryReserveTrackingCommentId: run ${runId} has no tracking_comment_id and CAS did not update`,
+    );
+  }
+  return { won: false, trackingCommentId: existingId };
+}
+
 export async function findById(
   runId: string,
   sql: SQL = requireDb(),
@@ -219,6 +252,30 @@ export async function findLatestForTarget(
        AND target_owner = ${target.owner}
        AND target_repo = ${target.repo}
        AND target_number = ${target.number}
+     ORDER BY created_at DESC
+     LIMIT 1
+  `;
+  const row = rows[0];
+  return row === undefined ? null : normalizeRow(row);
+}
+
+/**
+ * Return the most-recent `succeeded` row for (workflow, target). Used by the
+ * prior-output check (FR-004) — a later `failed` row must not block a dispatch
+ * that has a valid prior success earlier in history.
+ */
+export async function findLatestSucceededForTarget(
+  workflowName: WorkflowName,
+  target: { owner: string; repo: string; number: number },
+  sql: SQL = requireDb(),
+): Promise<WorkflowRunRow | null> {
+  const rows: WorkflowRunRow[] = await sql`
+    SELECT * FROM workflow_runs
+     WHERE workflow_name = ${workflowName}
+       AND target_owner = ${target.owner}
+       AND target_repo = ${target.repo}
+       AND target_number = ${target.number}
+       AND status = 'succeeded'
      ORDER BY created_at DESC
      LIMIT 1
   `;
