@@ -16,7 +16,7 @@
         <link rel="prev" href="../ARCHITECTURE/">
       
       
-        <link rel="next" href="../OBSERVABILITY/">
+        <link rel="next" href="../BOT-WORKFLOWS/">
       
       
         
@@ -311,6 +311,25 @@
     
   
   Configuration
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../BOT-WORKFLOWS/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Bot workflows
 
       </a>
     </li>
@@ -718,6 +737,33 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="../BOT-WORKFLOWS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bot workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
     
     
     
@@ -732,10 +778,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
         
           
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
             
   
   
@@ -753,8 +799,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1486,6 +1532,11 @@
 <td><code>30</code></td>
 <td>Agent turn cap. Applied on every execution — triage no longer influences <code>maxTurns</code>.</td>
 </tr>
+<tr>
+<td><code>INTENT_CONFIDENCE_THRESHOLD</code></td>
+<td><code>0.75</code></td>
+<td>Range <code>[0, 1]</code>. Below this, a <code>@chrisleekr-bot</code> comment is treated as ambiguous and the dispatcher posts a clarification request instead of dispatching a workflow. See <a href="../BOT-WORKFLOWS/#comment-trigger">bot workflows</a>.</td>
+</tr>
 </tbody>
 </table>
 <p>See <a href="../TRIAGE/">Triage</a> for the binary <code>heavy</code> signal, circuit breaker, and the six fallback reasons that appear in logs.</p>
@@ -1564,13 +1615,13 @@
         
         
           
-          <a href="../OBSERVABILITY/" class="md-footer__link md-footer__link--next" aria-label="Next: Observability">
+          <a href="../BOT-WORKFLOWS/" class="md-footer__link md-footer__link--next" aria-label="Next: Bot workflows">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Observability
+                Bot workflows
               </div>
             </div>
             <div class="md-footer__button md-icon">

@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://chrisleekr.github.io/github-app-playground/OBSERVABILITY/">
       
       
-        <link rel="prev" href="../CONFIGURATION/">
+        <link rel="prev" href="../BOT-WORKFLOWS/">
       
       
         <link rel="next" href="../TRIAGE/">
@@ -319,6 +319,25 @@
   
   
   
+  
+    <li class="md-tabs__item">
+      <a href="../BOT-WORKFLOWS/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Bot workflows
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
     
   
   
@@ -570,6 +589,33 @@
       
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../BOT-WORKFLOWS/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bot workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
     
   
   
@@ -591,10 +637,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
         
           
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
             
   
   
@@ -612,8 +658,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_5">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1085,6 +1131,26 @@
 <td><code>cost_usd</code></td>
 <td>Agent-reported total cost from the SDK. Present on completed executions.</td>
 </tr>
+<tr>
+<td><code>workflowRunId</code></td>
+<td>UUID of the <code>workflow_runs</code> row — stable per bot workflow run. See <a href="../BOT-WORKFLOWS/">Bot Workflows</a>.</td>
+</tr>
+<tr>
+<td><code>workflowName</code></td>
+<td>Workflow name (<code>triage</code>, <code>plan</code>, <code>implement</code>, <code>review</code>, <code>ship</code>). Emitted by dispatcher and handlers.</td>
+</tr>
+<tr>
+<td><code>ship_duration_ms</code></td>
+<td>Composite <code>ship</code> wall-clock duration measured from parent enqueue to terminal status.</td>
+</tr>
+<tr>
+<td><code>intentWorkflow</code></td>
+<td>Intent-classifier verdict for comment triggers (includes <code>clarify</code>/<code>unsupported</code>).</td>
+</tr>
+<tr>
+<td><code>intentConfidence</code></td>
+<td>Intent-classifier confidence (0–1). Dispatcher compares to <code>INTENT_CONFIDENCE_THRESHOLD</code>.</td>
+</tr>
 </tbody>
 </table>
 <h2 id="dispatch-reasons">Dispatch reasons<a class="headerlink" href="#dispatch-reasons" title="Permanent link">&para;</a></h2>
@@ -1204,7 +1270,7 @@
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../CONFIGURATION/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Configuration">
+          <a href="../BOT-WORKFLOWS/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Bot workflows">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1214,7 +1280,7 @@
                 Previous
               </span>
               <div class="md-ellipsis">
-                Configuration
+                Bot workflows
               </div>
             </div>
           </a>

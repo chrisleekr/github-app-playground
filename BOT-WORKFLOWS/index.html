@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://chrisleekr.github.io/github-app-playground/TRIAGE/">
+        <link rel="canonical" href="https://chrisleekr.github.io/github-app-playground/BOT-WORKFLOWS/">
       
       
-        <link rel="prev" href="../OBSERVABILITY/">
+        <link rel="prev" href="../CONFIGURATION/">
       
       
-        <link rel="next" href="../DAEMON/">
+        <link rel="next" href="../OBSERVABILITY/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Triage - GitHub App Playground</title>
+        <title>Bot workflows - GitHub App Playground</title>
       
     
     
@@ -63,17 +63,17 @@
     
   
 <meta property="og:type" content="website" />
-<meta property="og:title" content="Triage - GitHub App Playground" />
+<meta property="og:title" content="Bot workflows - GitHub App Playground" />
 <meta property="og:description" content="A GitHub App webhook server powered by the Claude Agent SDK." />
-<meta property="og:image" content="https://chrisleekr.github.io/github-app-playground/assets/images/social/TRIAGE.png" />
+<meta property="og:image" content="https://chrisleekr.github.io/github-app-playground/assets/images/social/BOT-WORKFLOWS.png" />
 <meta property="og:image:type" content="image/png" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
-<meta property="og:url" content="https://chrisleekr.github.io/github-app-playground/TRIAGE/" />
+<meta property="og:url" content="https://chrisleekr.github.io/github-app-playground/BOT-WORKFLOWS/" />
 <meta property="twitter:card" content="summary_large_image" />
-<meta property="twitter:title" content="Triage - GitHub App Playground" />
+<meta property="twitter:title" content="Bot workflows - GitHub App Playground" />
 <meta property="twitter:description" content="A GitHub App webhook server powered by the Claude Agent SDK." />
-<meta property="twitter:image" content="https://chrisleekr.github.io/github-app-playground/assets/images/social/TRIAGE.png" />
+<meta property="twitter:image" content="https://chrisleekr.github.io/github-app-playground/assets/images/social/BOT-WORKFLOWS.png" />
 </head>
   
   
@@ -93,7 +93,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#ai-triage" class="md-skip">
+        <a href="#bot-workflows" class="md-skip">
           Skip to content
         </a>
       
@@ -127,7 +127,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Triage
+              Bot workflows
             
           </span>
         </div>
@@ -319,9 +319,11 @@
   
   
   
+    
   
-    <li class="md-tabs__item">
-      <a href="../BOT-WORKFLOWS/" class="md-tabs__link">
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
         
   
   
@@ -338,12 +340,10 @@
   
   
   
-    
-  
   
     
     
-      <li class="md-tabs__item md-tabs__item--active">
+      <li class="md-tabs__item">
         <a href="../OBSERVABILITY/" class="md-tabs__link">
           
   
@@ -589,10 +589,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../BOT-WORKFLOWS/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bot workflows
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -608,6 +635,131 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#dispatch-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dispatch flow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#workflows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Workflows
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Workflows">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#triage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        triage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plan
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#implement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        implement
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        review
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ship-composite" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ship (composite)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#comment-intent-classifier" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Comment intent classifier
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#extending-adding-a-new-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Extending: adding a new workflow
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -616,31 +768,26 @@
       
   
   
-    
   
   
-  
     
     
     
     
-      
-        
-        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
             
   
   
@@ -658,7 +805,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
             
@@ -701,37 +848,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Triage
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../TRIAGE/" class="md-nav__link">
         
   
   
@@ -747,103 +867,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#when-it-runs" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        When it runs
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#what-the-call-returns" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        What the call returns
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#confidence-threshold" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Confidence threshold
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#circuit-breaker" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Circuit breaker
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#fallback-reasons" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Fallback reasons
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#cost-implications" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Cost implications
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#tuning-knobs" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Tuning knobs
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1019,10 +1042,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#when-it-runs" class="md-nav__link">
+  <a href="#dispatch-flow" class="md-nav__link">
     <span class="md-ellipsis">
       
-        When it runs
+        Dispatch flow
       
     </span>
   </a>
@@ -1030,10 +1053,82 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-the-call-returns" class="md-nav__link">
+  <a href="#workflows" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What the call returns
+        Workflows
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Workflows">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#triage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        triage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        plan
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#implement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        implement
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        review
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ship-composite" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ship (composite)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#comment-intent-classifier" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Comment intent classifier
       
     </span>
   </a>
@@ -1041,54 +1136,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#confidence-threshold" class="md-nav__link">
+  <a href="#extending-adding-a-new-workflow" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Confidence threshold
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#circuit-breaker" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Circuit breaker
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#fallback-reasons" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Fallback reasons
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#cost-implications" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Cost implications
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#tuning-knobs" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Tuning knobs
+        Extending: adding a new workflow
       
     </span>
   </a>
@@ -1112,7 +1163,7 @@
 
 
   
-    <a href="https://github.com/chrisleekr/github-app-playground/edit/main/docs/TRIAGE.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/chrisleekr/github-app-playground/edit/main/docs/BOT-WORKFLOWS.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -1120,107 +1171,123 @@
   
 
 
-<h1 id="ai-triage">AI Triage<a class="headerlink" href="#ai-triage" title="Permanent link">&para;</a></h1>
-<p>Triage is a binary <code>heavy</code> classifier. It runs on every event (subject to the kill-switch and circuit breaker) and answers one question: should this job prefer an ephemeral daemon?</p>
-<h2 id="when-it-runs">When it runs<a class="headerlink" href="#when-it-runs" title="Permanent link">&para;</a></h2>
-<ol>
-<li>The event hits the router.</li>
-<li>The orchestrator calls a single-turn Haiku classifier.</li>
-<li>On success, the returned <code>heavy</code> boolean feeds into the <a href="../ARCHITECTURE/#scale-up-model">scale-up rule</a>: <code>heavy=true</code> is one of the two triggers that can cause the orchestrator to spawn an ephemeral daemon Pod. <code>heavy=false</code> routes the job to <code>persistent-daemon</code>.</li>
-</ol>
-<h2 id="what-the-call-returns">What the call returns<a class="headerlink" href="#what-the-call-returns" title="Permanent link">&para;</a></h2>
-<p>A small JSON object: <code>{ heavy: boolean, confidence: number, rationale: string }</code>. There is no <code>complexity</code> field and no <code>maxTurns</code> mapping — <code>maxTurns</code> always comes from <code>config.defaultMaxTurns</code> regardless of the triage outcome.</p>
-<h2 id="confidence-threshold">Confidence threshold<a class="headerlink" href="#confidence-threshold" title="Permanent link">&para;</a></h2>
-<p>At or above <code>TRIAGE_CONFIDENCE_THRESHOLD</code>, <code>heavy</code> is accepted as-is. Below it, the router treats the signal as <code>heavy=false</code> — the job routes to <code>persistent-daemon</code> and the log line carries <code>triage_fallback_reason=sub-threshold</code>. The day-one default is <code>1.0</code> so only perfectly confident results are accepted.</p>
-<h2 id="circuit-breaker">Circuit breaker<a class="headerlink" href="#circuit-breaker" title="Permanent link">&para;</a></h2>
-<p>Triage wraps the LLM call in a circuit breaker (see <code>src/orchestrator/triage.ts</code>). Consecutive failures trip the breaker; while it is open, the triage function short-circuits to <code>heavy=false</code> and emits <code>triage_fallback_reason=circuit-open</code>. The breaker re-closes after a cooldown.</p>
-<h2 id="fallback-reasons">Fallback reasons<a class="headerlink" href="#fallback-reasons" title="Permanent link">&para;</a></h2>
-<p>Six distinct reasons cause triage to fall back to <code>heavy=false</code> (i.e. route to <code>persistent-daemon</code>):</p>
-<table>
-<thead>
-<tr>
-<th>Reason</th>
-<th>Trigger</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>disabled</code></td>
-<td><code>TRIAGE_ENABLED=false</code> — triage short-circuits without calling the LLM.</td>
-</tr>
-<tr>
-<td><code>circuit-open</code></td>
-<td>The circuit breaker tripped after consecutive failures.</td>
-</tr>
-<tr>
-<td><code>timeout</code></td>
-<td>The call exceeded <code>TRIAGE_TIMEOUT_MS</code>.</td>
-</tr>
-<tr>
-<td><code>llm-error</code></td>
-<td>The provider returned an error.</td>
-</tr>
-<tr>
-<td><code>parse-error</code></td>
-<td>The JSON response could not be validated against the expected schema.</td>
-</tr>
-<tr>
-<td><code>sub-threshold</code></td>
-<td>Parsed successfully but <code>confidence &lt; TRIAGE_CONFIDENCE_THRESHOLD</code>.</td>
-</tr>
-</tbody>
-</table>
-<p>All six appear in Pino logs as <code>triage_fallback_reason</code>. Canonical values live in <code>src/orchestrator/triage.ts</code>.</p>
-<h2 id="cost-implications">Cost implications<a class="headerlink" href="#cost-implications" title="Permanent link">&para;</a></h2>
-<p>Every event attempts triage; when <code>TRIAGE_ENABLED=false</code> or the breaker is open the call short-circuits <em>before</em> hitting Haiku, so those paths are free. When the call proceeds, one Haiku invocation is the dominant marginal cost on a busy install. Mitigations:</p>
+<h1 id="bot-workflows">Bot Workflows<a class="headerlink" href="#bot-workflows" title="Permanent link">&para;</a></h1>
+<p>The bot ships with a small, registry-driven set of workflows. Each workflow is triggered by applying a <code>bot:*</code> label or by posting a comment that mentions <code>@chrisleekr-bot</code> — both paths resolve to the same <code>workflow_runs</code> row via <code>src/workflows/dispatcher.ts</code>.</p>
+<p>This page is the canonical reference for each workflow, the dispatch flow, and how to add a new one. Keep it in sync with the registry (see <a href="#extending-adding-a-new-workflow">Extending</a>).</p>
+<h2 id="dispatch-flow">Dispatch flow<a class="headerlink" href="#dispatch-flow" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>flowchart TD
+    classDef label fill:#1e3a8a,color:#ffffff,stroke:#1e3a8a
+    classDef comment fill:#0f766e,color:#ffffff,stroke:#0f766e
+    classDef shared fill:#4b5563,color:#ffffff,stroke:#4b5563
+    classDef run fill:#6d28d9,color:#ffffff,stroke:#6d28d9
+    classDef terminal fill:#065f46,color:#ffffff,stroke:#065f46
+
+    LabelEvt["issues.labeled or pull_request.labeled"]:::label
+    CommentEvt["issue_comment or review_comment with @chrisleekr-bot"]:::comment
+    LabelRoute["dispatchByLabel&lt;br/&gt;registry.getByLabel"]:::label
+    IntentRoute["dispatchByIntent&lt;br/&gt;intent-classifier.classify"]:::comment
+
+    Checks["context check → label mutex →&lt;br/&gt;requiresPrior check → idempotent insert"]:::shared
+    Enqueue["enqueueJob → workflow_runs row"]:::run
+    Daemon["daemon executeWorkflowRun&lt;br/&gt;runs handler in registry.getByName"]:::run
+    Cascade["orchestrator.onStepComplete&lt;br/&gt;success → next child or parent terminal&lt;br/&gt;failed → parent flipped failed"]:::terminal
+
+    LabelEvt --&gt; LabelRoute
+    CommentEvt --&gt; IntentRoute
+    LabelRoute --&gt; Checks
+    IntentRoute --&gt; Checks
+    Checks --&gt; Enqueue
+    Enqueue --&gt; Daemon
+    Daemon --&gt; Cascade
+    Cascade -. composite only .-&gt; Enqueue</code></pre>
+<p>Composite workflows like <code>ship</code> insert a child row per step. When the child completes, <code>orchestrator.onStepComplete</code> locks the parent row, advances <code>state.currentStepIndex</code>, and either enqueues the next step or flips the parent terminal. See <code>specs/20260421-181205-bot-workflows/contracts/handoff-protocol.md</code> for the transaction invariants.</p>
+<h2 id="workflows">Workflows<a class="headerlink" href="#workflows" title="Permanent link">&para;</a></h2>
+<h3 id="triage">triage<a class="headerlink" href="#triage" title="Permanent link">&para;</a></h3>
 <ul>
-<li><code>TRIAGE_CONFIDENCE_THRESHOLD</code> defaults to <code>1.0</code> (strictest) — <em>lower</em> it toward <code>0.8</code>–<code>0.9</code> to accept more heavy verdicts; <em>raising</em> it above <code>1.0</code> is not supported and would gate out every response. The compute cost is unchanged either way (the Haiku call still happens); the knob only controls whether the result routes an ephemeral spawn.</li>
-<li>Flip <code>TRIAGE_ENABLED=false</code> during a provider incident to suppress spend without redeploying. While disabled, every event is treated as <code>heavy=false</code>.</li>
-<li>Keep <code>TRIAGE_MAX_TOKENS</code> low (the response schema is ~40 tokens).</li>
+<li><strong>Label</strong>: <code>bot:triage</code></li>
+<li><strong>Accepted context</strong>: <code>issue</code></li>
+<li><strong>Inputs</strong>: issue title + body</li>
+<li><strong>Outputs</strong>: <code>state.recommendedNext</code> ∈ {<code>plan</code>, <code>unsupported</code>, <code>clarify</code>}</li>
+<li><strong>Stop conditions</strong>: classifier returns terminal verdict; no retry in handler</li>
+<li><strong>Example trigger</strong>: add label <code>bot:triage</code>, or comment "<code>@chrisleekr-bot triage this</code>"</li>
 </ul>
-<h2 id="tuning-knobs">Tuning knobs<a class="headerlink" href="#tuning-knobs" title="Permanent link">&para;</a></h2>
-<table>
-<thead>
-<tr>
-<th>Variable</th>
-<th>Default</th>
-<th>When to change</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>TRIAGE_ENABLED</code></td>
-<td><code>true</code></td>
-<td>Incident kill-switch.</td>
-</tr>
-<tr>
-<td><code>TRIAGE_MODEL</code></td>
-<td><code>haiku-3-5</code></td>
-<td>Experiment with newer Haiku aliases for latency.</td>
-</tr>
-<tr>
-<td><code>TRIAGE_CONFIDENCE_THRESHOLD</code></td>
-<td><code>1.0</code></td>
-<td>Relax to <code>0.8</code>–<code>0.9</code> once you're confident the classifier is calibrated.</td>
-</tr>
-<tr>
-<td><code>TRIAGE_MAX_TOKENS</code></td>
-<td><code>256</code></td>
-<td>Only raise if the rationale is being truncated.</td>
-</tr>
-<tr>
-<td><code>TRIAGE_TIMEOUT_MS</code></td>
-<td><code>5000</code></td>
-<td>Raise if provider latency is consistently above 5s.</td>
-</tr>
-<tr>
-<td><code>DEFAULT_MAXTURNS</code></td>
-<td><code>30</code></td>
-<td>Agent turn cap for every execution.</td>
-</tr>
-</tbody>
-</table>
-<p>Full variable descriptions live in <a href="../CONFIGURATION/#triage">Configuration</a>.</p>
+<h3 id="plan">plan<a class="headerlink" href="#plan" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Label</strong>: <code>bot:plan</code></li>
+<li><strong>Accepted context</strong>: <code>issue</code></li>
+<li><strong>Requires prior</strong>: a successful <code>triage</code> run on the same issue</li>
+<li><strong>Inputs</strong>: issue body + triage state</li>
+<li><strong>Outputs</strong>: <code>state.plan</code> — a <code>PLAN.md</code> markdown string checked in by a multi-turn agent session over a clone of the repo</li>
+<li><strong>Stop conditions</strong>: agent writes <code>PLAN.md</code>; pipeline reports success or failure</li>
+<li><strong>Example trigger</strong>: <code>@chrisleekr-bot plan this out</code></li>
+</ul>
+<h3 id="implement">implement<a class="headerlink" href="#implement" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Label</strong>: <code>bot:implement</code></li>
+<li><strong>Accepted context</strong>: <code>issue</code></li>
+<li><strong>Requires prior</strong>: a successful <code>plan</code> run</li>
+<li><strong>Inputs</strong>: issue body + saved plan</li>
+<li><strong>Outputs</strong>: <code>state.pr_number</code>, <code>state.pr_url</code>, <code>state.branch</code></li>
+<li><strong>Stop conditions</strong>: pipeline pushes a branch and opens a PR, OR pipeline fails; the handler does NOT poll CI or reviewer state — that is <code>review</code>'s job.</li>
+<li><strong>Example trigger</strong>: <code>@chrisleekr-bot implement this</code></li>
+</ul>
+<h3 id="review">review<a class="headerlink" href="#review" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Label</strong>: <code>bot:review</code></li>
+<li><strong>Accepted context</strong>: <code>pr</code></li>
+<li><strong>Inputs</strong>: PR title, failing check names, unresolved review comments</li>
+<li><strong>Outputs</strong>: <code>state.failing_checks</code>, <code>state.unresolved_comments</code></li>
+<li><strong>Stop conditions</strong> (from <code>src/workflows/handlers/review.ts</code>):</li>
+<li><code>FIX_ATTEMPTS_CAP = 3</code> — max consecutive CI-fix attempts per PR</li>
+<li><code>POLL_WAIT_SECS_CAP = 900</code> — 15-minute reviewer-patience window</li>
+<li>The handler NEVER calls <code>octokit.rest.pulls.merge</code> (FR-017) — merging is a human action.</li>
+<li><strong>Example trigger</strong>: add label <code>bot:review</code> on the PR, or comment "<code>@chrisleekr-bot review this PR</code>"</li>
+</ul>
+<h3 id="ship-composite">ship (composite)<a class="headerlink" href="#ship-composite" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Label</strong>: <code>bot:ship</code></li>
+<li><strong>Accepted context</strong>: <code>issue</code></li>
+<li><strong>Steps</strong>: <code>triage → plan → implement → review</code></li>
+<li><strong>Outputs</strong>: rolled-up <code>state.stepRuns</code> plus terminal status on the parent row</li>
+<li><strong>Resume semantics</strong> (<code>src/workflows/handlers/ship.ts</code>):</li>
+<li><code>bot:ship</code> is re-applicable on a target whose prior parent row is <strong>terminal</strong> (the partial unique index only blocks in-flight parents).</li>
+<li>Per-step staleness rules:<ul>
+<li><code>triage</code> — fresh iff succeeded AND <code>state.recommendedNext === 'plan'</code></li>
+<li><code>plan</code> — fresh iff succeeded AND created after the last triage success</li>
+<li><code>implement</code> — fresh iff succeeded AND the recorded PR is still open</li>
+<li><code>review</code> — always stale</li>
+</ul>
+</li>
+<li>The first stale step becomes <code>startIndex</code>; prior-step run ids are carried forward in <code>state.stepRuns</code>.</li>
+<li><strong>Example trigger</strong>: add label <code>bot:ship</code>, or comment "<code>@chrisleekr-bot ship this</code>"</li>
+</ul>
+<h2 id="comment-intent-classifier">Comment intent classifier<a class="headerlink" href="#comment-intent-classifier" title="Permanent link">&para;</a></h2>
+<p>Comments that mention <code>@chrisleekr-bot</code> are routed through <code>src/workflows/intent-classifier.ts</code>, which returns <code>{ workflow, confidence, rationale }</code> using a single-turn Haiku call. Rules:</p>
+<ul>
+<li><code>confidence &lt; INTENT_CONFIDENCE_THRESHOLD</code> (default <code>0.75</code>) → the dispatcher posts a short clarification reply (FR-009) instead of dispatching.</li>
+<li><code>workflow === "unsupported"</code> → refusal reply (FR-010).</li>
+<li><code>workflow ∈ registry</code> → same dispatch as the label path.</li>
+</ul>
+<p>The classifier treats the comment body as untrusted input: it wraps the body in an opaque <code>&lt;user-comment&gt;</code> delimiter, strips prompt-like control tokens, and rejects any model output that doesn't validate against a closed-enum Zod schema (T037a).</p>
+<p>Override the threshold per environment:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>INTENT_CONFIDENCE_THRESHOLD=0.60   # looser — more dispatches, more clarifications skipped
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>INTENT_CONFIDENCE_THRESHOLD=0.90   # stricter — only very confident asks dispatch
+</span></code></pre></div>
+<h2 id="extending-adding-a-new-workflow">Extending: adding a new workflow<a class="headerlink" href="#extending-adding-a-new-workflow" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>Add a handler</strong>. Create <code>src/workflows/handlers/&lt;name&gt;.ts</code> exporting <code>handler: WorkflowHandler</code> — the handler takes a <code>WorkflowRunContext</code> and returns a <code>HandlerResult</code> (<code>succeeded</code> | <code>failed</code> | <code>handed-off</code>).</li>
+<li><strong>Register it</strong>. Append one <code>RegistryEntry</code> to <code>rawRegistry</code> in <code>src/workflows/registry.ts</code> — name, label (<code>bot:&lt;name&gt;</code>), accepted context, optional <code>requiresPrior</code>, optional <code>steps</code> for composite workflows, and the handler reference. The Zod schema validates at module load, so a mistyped entry fails the process at boot (FR-023/024).</li>
+<li><strong>Document it</strong>. Add a section here matching the template used for the five built-ins above — label, accepted context, inputs, outputs, stop conditions, example trigger. The doc-sync rule in <code>CLAUDE.md</code> makes this mandatory for any PR touching <code>src/workflows/</code>.</li>
+<li><strong>Test it</strong>. Add at least one unit test under <code>test/workflows/handlers/&lt;name&gt;.test.ts</code> covering the happy path plus one failure mode. Integration via <code>test/workflows/dispatcher.test.ts</code> is automatic — if the registry entry is valid, dispatch works.</li>
+<li><strong>Update the classifier prompt</strong>. If the new workflow should be reachable via comments, extend the system prompt in <code>src/workflows/intent-classifier.ts</code> (the enum is driven by the registry, but the prompt narrative needs to mention the new workflow).</li>
+</ol>
+<p>See the source of truth:</p>
+<ul>
+<li>Registry: <code>src/workflows/registry.ts</code></li>
+<li>Dispatcher: <code>src/workflows/dispatcher.ts</code></li>
+<li>Orchestrator (composite cascade): <code>src/workflows/orchestrator.ts</code></li>
+<li>Hand-off protocol: <code>specs/20260421-181205-bot-workflows/contracts/handoff-protocol.md</code></li>
+</ul>
 
 
 
@@ -1256,7 +1323,7 @@
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../OBSERVABILITY/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Observability">
+          <a href="../CONFIGURATION/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Configuration">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1266,20 +1333,20 @@
                 Previous
               </span>
               <div class="md-ellipsis">
-                Observability
+                Configuration
               </div>
             </div>
           </a>
         
         
           
-          <a href="../DAEMON/" class="md-footer__link md-footer__link--next" aria-label="Next: Daemon mode">
+          <a href="../OBSERVABILITY/" class="md-footer__link md-footer__link--next" aria-label="Next: Observability">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Daemon mode
+                Observability
               </div>
             </div>
             <div class="md-footer__button md-icon">
