@@ -182,7 +182,7 @@ export async function tryReserveTrackingCommentId(
   commentId: number,
   sql: SQL = requireDb(),
 ): Promise<{ won: boolean; trackingCommentId: number }> {
-  const rows: { tracking_comment_id: number }[] = await sql`
+  const rows: { tracking_comment_id: number | string }[] = await sql`
     UPDATE workflow_runs
        SET tracking_comment_id = ${commentId}
      WHERE id = ${runId}
@@ -190,18 +190,27 @@ export async function tryReserveTrackingCommentId(
     RETURNING tracking_comment_id
   `;
   if (rows[0] !== undefined) {
-    return { won: true, trackingCommentId: rows[0].tracking_comment_id };
+    return { won: true, trackingCommentId: coerceCommentId(rows[0].tracking_comment_id) };
   }
-  const existing: { tracking_comment_id: number | null }[] = await sql`
+  const existing: { tracking_comment_id: number | string | null }[] = await sql`
     SELECT tracking_comment_id FROM workflow_runs WHERE id = ${runId}
   `;
-  const existingId = existing[0]?.tracking_comment_id ?? null;
-  if (existingId === null) {
+  const rawExisting = existing[0]?.tracking_comment_id ?? null;
+  if (rawExisting === null) {
     throw new Error(
       `tryReserveTrackingCommentId: run ${runId} has no tracking_comment_id and CAS did not update`,
     );
   }
-  return { won: false, trackingCommentId: existingId };
+  return { won: false, trackingCommentId: coerceCommentId(rawExisting) };
+}
+
+/**
+ * Bun's Postgres driver returns BIGINT as a string to avoid precision loss.
+ * GitHub comment ids fit inside JS's safe integer range, so we coerce to
+ * `number` here. Mirrors the treatment in `normalizeRow`.
+ */
+function coerceCommentId(raw: number | string): number {
+  return typeof raw === "string" ? Number(raw) : raw;
 }
 
 export async function findById(

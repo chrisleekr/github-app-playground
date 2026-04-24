@@ -263,4 +263,59 @@ describe.skipIf(sql === null)("runs-store", () => {
     expect(children.map((c) => c.parent_step_index)).toEqual([0, 1]);
     expect(children.map((c) => c.workflow_name)).toEqual(["triage", "plan"]);
   });
+
+  it("tryReserveTrackingCommentId: first caller wins the CAS; second caller observes the prior value", async () => {
+    const { insertQueued, tryReserveTrackingCommentId } =
+      await import("../../src/workflows/runs-store");
+    const row = await insertQueued(
+      { workflowName: "triage", target: { ...target, number: 115 } },
+      requireSql(),
+    );
+
+    const first = await tryReserveTrackingCommentId(row.id, 11111, requireSql());
+    expect(first).toEqual({ won: true, trackingCommentId: 11111 });
+
+    // Second caller lost the race; observes the winning id.
+    const second = await tryReserveTrackingCommentId(row.id, 22222, requireSql());
+    expect(second).toEqual({ won: false, trackingCommentId: 11111 });
+  });
+
+  it("findLatestSucceededForTarget returns the most recent succeeded row, ignoring later failed rows", async () => {
+    const { insertQueued, markSucceeded, markFailed, findLatestSucceededForTarget } =
+      await import("../../src/workflows/runs-store");
+    const t = { owner: "acme", repo: "repo", number: 116 };
+
+    // First run: succeeded.
+    const first = await insertQueued(
+      { workflowName: "triage", target: { ...target, number: 116 } },
+      requireSql(),
+    );
+    await markSucceeded(first.id, { verdict: "valid" }, requireSql());
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // Second run: failed (must not shadow the earlier success).
+    const second = await insertQueued(
+      { workflowName: "triage", target: { ...target, number: 116 } },
+      requireSql(),
+    );
+    await markFailed(second.id, "intermittent network error", {}, requireSql());
+
+    const latestSucceeded = await findLatestSucceededForTarget("triage", t, requireSql());
+    expect(latestSucceeded?.id).toBe(first.id);
+  });
+
+  it("findLatestSucceededForTarget returns null when no succeeded row exists", async () => {
+    const { insertQueued, markFailed, findLatestSucceededForTarget } =
+      await import("../../src/workflows/runs-store");
+    const t = { owner: "acme", repo: "repo", number: 117 };
+
+    const row = await insertQueued(
+      { workflowName: "review", target: { type: "pr", ...t } },
+      requireSql(),
+    );
+    await markFailed(row.id, "no CI yet", {}, requireSql());
+
+    const latest = await findLatestSucceededForTarget("review", t, requireSql());
+    expect(latest).toBeNull();
+  });
 });
