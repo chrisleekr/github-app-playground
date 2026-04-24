@@ -5,7 +5,7 @@ import type pino from "pino";
 import { requireDb } from "../db";
 import { enqueueJob } from "../orchestrator/job-queue";
 import { getByName, type WorkflowName } from "./registry";
-import { type WorkflowRunRow } from "./runs-store";
+import { markFailed, type WorkflowRunRow } from "./runs-store";
 import { setState } from "./tracking-mirror";
 
 /**
@@ -163,29 +163,67 @@ export async function onStepComplete(
 
   if (postCommit.enqueue !== null) {
     const job = postCommit.enqueue;
-    await enqueueJob({
-      deliveryId: job.deliveryId ?? job.runId,
-      repoOwner: job.target.owner,
-      repoName: job.target.repo,
-      entityNumber: job.target.number,
-      isPR: job.target.type === "pr",
-      eventName: job.target.type === "pr" ? "pull_request" : "issues",
-      triggerUsername: "chrisleekr-bot[bot]",
-      labels: [],
-      triggerBodyPreview: "",
-      enqueuedAt: Date.now(),
-      retryCount: 0,
-      workflowRun: {
-        runId: job.runId,
-        workflowName: job.workflowName,
-        parentRunId: job.parentRunId,
-        parentStepIndex: job.parentStepIndex,
-      },
-    });
-    logger.info(
-      { nextRunId: job.runId, nextWorkflow: job.workflowName, parentId: job.parentRunId },
-      "orchestrator enqueued next step",
-    );
+    try {
+      await enqueueJob({
+        deliveryId: job.deliveryId ?? job.runId,
+        repoOwner: job.target.owner,
+        repoName: job.target.repo,
+        entityNumber: job.target.number,
+        isPR: job.target.type === "pr",
+        eventName: job.target.type === "pr" ? "pull_request" : "issues",
+        triggerUsername: "chrisleekr-bot[bot]",
+        labels: [],
+        triggerBodyPreview: "",
+        enqueuedAt: Date.now(),
+        retryCount: 0,
+        workflowRun: {
+          runId: job.runId,
+          workflowName: job.workflowName,
+          parentRunId: job.parentRunId,
+          parentStepIndex: job.parentStepIndex,
+        },
+      });
+      logger.info(
+        { nextRunId: job.runId, nextWorkflow: job.workflowName, parentId: job.parentRunId },
+        "orchestrator enqueued next step",
+      );
+    } catch (err) {
+      // Compensation: the transaction committed a `queued` child row and
+      // mutated the parent's `state`, but Valkey was unreachable (or the
+      // publish rejected the payload). Without this branch the child would
+      // sit `queued` forever, and the partial unique index would block any
+      // retry for the same (workflow, target). Mark both rows `failed`
+      // BEFORE returning so the index releases and the operator gets a
+      // breadcrumb on the tracking comment.
+      const reason = `enqueue failed: ${err instanceof Error ? err.message : String(err)}`;
+      logger.error(
+        { err, nextRunId: job.runId, parentId: job.parentRunId },
+        "orchestrator post-commit enqueue failed — compensating by marking child and parent failed",
+      );
+      await markFailed(job.runId, reason).catch((markErr: unknown) => {
+        logger.error(
+          { err: markErr, nextRunId: job.runId },
+          "compensation: failed to mark child row as failed",
+        );
+      });
+      await markFailed(job.parentRunId, reason, {
+        failedAtStepIndex: job.parentStepIndex,
+      }).catch((markErr: unknown) => {
+        logger.error(
+          { err: markErr, parentId: job.parentRunId },
+          "compensation: failed to mark parent row as failed",
+        );
+      });
+      // Surface via the parent's tracking comment so the operator sees
+      // the failure without needing to tail logs.
+      postCommit = {
+        ...postCommit,
+        parentTerminal: {
+          status: "failed",
+          humanMessage: `ship halted at step ${String(job.parentStepIndex)} (${job.workflowName}): enqueue failed — see daemon logs for retry.`,
+        },
+      };
+    }
   }
 
   if (postCommit.parentTerminal !== null && postCommit.parentRunId !== null) {

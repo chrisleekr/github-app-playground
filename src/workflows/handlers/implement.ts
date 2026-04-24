@@ -1,7 +1,7 @@
 import { runPipeline } from "../../core/pipeline";
 import type { BotContext } from "../../types";
 import type { WorkflowHandler } from "../registry";
-import { findLatestForTarget } from "../runs-store";
+import { findLatestSucceededForTarget } from "../runs-store";
 
 /**
  * `implement` handler (T022) — reuses `src/core/pipeline.ts` end-to-end.
@@ -24,12 +24,15 @@ export const handler: WorkflowHandler = async (ctx) => {
       return { status: "failed", reason: "implement requires issue target" };
     }
 
-    const planRow = await findLatestForTarget("plan", {
+    // Consults succeeded rows only — matches the dispatcher's
+    // `requiresPrior: 'plan'` gate (which calls `findLatestSucceededForTarget`).
+    // A later failed `plan` re-run must not shadow an earlier valid plan.
+    const planRow = await findLatestSucceededForTarget("plan", {
       owner: target.owner,
       repo: target.repo,
       number: target.number,
     });
-    if (planRow?.status !== "succeeded") {
+    if (planRow === null) {
       return { status: "failed", reason: "no succeeded plan row found for target" };
     }
     const planMarkdown = typeof planRow.state["plan"] === "string" ? planRow.state["plan"] : "";
@@ -125,9 +128,19 @@ interface OpenedPr {
 }
 
 /**
- * Locate the PR the agent opened during this pipeline run. We list recently
- * updated open PRs and pick the most recent one created at or after `since`.
- * Scoped to this repo to keep the query cheap.
+ * GitHub App installation tokens author commits under this login. All PRs
+ * opened by the implement agent go out as this user, so we can use it as a
+ * cheap filter against the "list recent PRs" endpoint to avoid picking up
+ * an unrelated PR that a human opened during the pipeline run.
+ */
+const BOT_USER_LOGIN = "chrisleekr-bot[bot]";
+
+/**
+ * Locate the PR the agent opened during this pipeline run. Scoped to PRs
+ * authored by the bot account so a concurrent human PR on the same repo
+ * cannot be mistakenly attributed to this run. `per_page` is bumped to 30
+ * so a burst of unrelated PRs inside the time window doesn't push ours
+ * past the page boundary.
  */
 async function findRecentOpenedPr(
   octokit: Parameters<WorkflowHandler>[0]["octokit"],
@@ -141,9 +154,10 @@ async function findRecentOpenedPr(
     state: "open",
     sort: "created",
     direction: "desc",
-    per_page: 10,
+    per_page: 30,
   });
   for (const pr of prs) {
+    if (pr.user?.login !== BOT_USER_LOGIN) continue;
     const created = new Date(pr.created_at).getTime();
     if (created >= since.getTime() - 5_000) {
       return { number: pr.number, url: pr.html_url, branch: pr.head.ref };

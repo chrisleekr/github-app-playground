@@ -95,14 +95,15 @@ Required whenever the orchestrator role is active (i.e. the webhook server proce
 
 ## Triage
 
-| Variable                      | Default     | Notes                                                                                              |
-| ----------------------------- | ----------- | -------------------------------------------------------------------------------------------------- |
-| `TRIAGE_ENABLED`              | `true`      | Kill-switch. When `false`, triage returns `heavy=false` and the job routes to `persistent-daemon`. |
-| `TRIAGE_MODEL`                | `haiku-3-5` | Alias resolved at runtime. Affects triage cost and latency only.                                   |
-| `TRIAGE_CONFIDENCE_THRESHOLD` | `1.0`       | Below this, triage is treated as sub-threshold and the job routes to `persistent-daemon`.          |
-| `TRIAGE_MAX_TOKENS`           | `256`       | Cap on the JSON response. Values above ~100 are wasted budget.                                     |
-| `TRIAGE_TIMEOUT_MS`           | `5000`      | Per-call wall clock. Beyond this, the circuit-breaker counter increments.                          |
-| `DEFAULT_MAXTURNS`            | `30`        | Agent turn cap. Applied on every execution — triage no longer influences `maxTurns`.               |
+| Variable                      | Default     | Notes                                                                                                                                                                                                                      |
+| ----------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TRIAGE_ENABLED`              | `true`      | Kill-switch. When `false`, triage returns `heavy=false` and the job routes to `persistent-daemon`.                                                                                                                         |
+| `TRIAGE_MODEL`                | `haiku-3-5` | Alias resolved at runtime. Affects triage cost and latency only.                                                                                                                                                           |
+| `TRIAGE_CONFIDENCE_THRESHOLD` | `1.0`       | Below this, triage is treated as sub-threshold and the job routes to `persistent-daemon`.                                                                                                                                  |
+| `TRIAGE_MAX_TOKENS`           | `256`       | Cap on the JSON response. Values above ~100 are wasted budget.                                                                                                                                                             |
+| `TRIAGE_TIMEOUT_MS`           | `5000`      | Per-call wall clock. Beyond this, the circuit-breaker counter increments.                                                                                                                                                  |
+| `DEFAULT_MAXTURNS`            | `30`        | Agent turn cap. Applied on every execution — triage no longer influences `maxTurns`.                                                                                                                                       |
+| `INTENT_CONFIDENCE_THRESHOLD` | `0.75`      | Range `[0, 1]`. Below this, a `@chrisleekr-bot` comment is treated as ambiguous and the dispatcher posts a clarification request instead of dispatching a workflow. See [bot workflows](BOT-WORKFLOWS.md#comment-trigger). |
 
 See [Triage](TRIAGE.md) for the binary `heavy` signal, circuit breaker, and the six fallback reasons that appear in logs.
 

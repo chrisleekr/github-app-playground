@@ -52,12 +52,16 @@ export const handler: WorkflowHandler = async (ctx) => {
       };
     }
 
-    const checks = await octokit.rest.checks.listForRef({
+    // Paginate — `checks.listForRef` defaults to per_page=30. On busy PRs
+    // with large CI matrices, a non-paginated call silently under-reports
+    // failing checks and the review prompt gets a stale picture.
+    const allCheckRuns = await octokit.paginate(octokit.rest.checks.listForRef, {
       owner: target.owner,
       repo: target.repo,
       ref: pr.head.sha,
+      per_page: 100,
     });
-    const failingChecks = checks.data.check_runs
+    const failingChecks = allCheckRuns
       .filter(
         (c) =>
           c.status === "completed" &&
@@ -67,12 +71,18 @@ export const handler: WorkflowHandler = async (ctx) => {
       )
       .map((c) => c.name);
 
+    // Count top-level review comments — GitHub's REST API does not expose
+    // thread-level resolution state (only the GraphQL `PullRequestReviewThread`
+    // surface does), so this is a conservative upper bound. The agent prompt
+    // uses it as "how many inline threads the reviewer has opened"; resolved
+    // threads are over-counted but never under-counted. Rename — `unresolved`
+    // would be a lie.
     const { data: reviewComments } = await octokit.rest.pulls.listReviewComments({
       owner: target.owner,
       repo: target.repo,
       pull_number: target.number,
     });
-    const unresolvedComments = reviewComments.filter((c) => c.in_reply_to_id === undefined);
+    const topLevelComments = reviewComments.filter((c) => c.in_reply_to_id === undefined);
 
     const triggerBody = buildReviewPrompt({
       prNumber: target.number,
@@ -80,7 +90,7 @@ export const handler: WorkflowHandler = async (ctx) => {
       headBranch: pr.head.ref,
       baseBranch: pr.base.ref,
       failingChecks,
-      unresolvedCount: unresolvedComments.length,
+      unresolvedCount: topLevelComments.length,
     });
 
     const botCtx: BotContext = {
@@ -94,7 +104,7 @@ export const handler: WorkflowHandler = async (ctx) => {
       triggerBody,
       commentId: 0,
       deliveryId: deliveryId ?? runId,
-      defaultBranch: pr.base.ref,
+      defaultBranch: pr.base.repo.default_branch,
       headBranch: pr.head.ref,
       baseBranch: pr.base.ref,
       labels: [],
@@ -111,21 +121,21 @@ export const handler: WorkflowHandler = async (ctx) => {
     const state = {
       pr_number: target.number,
       failing_checks: failingChecks,
-      unresolved_comments: unresolvedComments.length,
+      top_level_comments: topLevelComments.length,
       costUsd: result.costUsd ?? 0,
       turns: result.numTurns ?? 0,
     };
 
     const humanMessage =
-      failingChecks.length === 0 && unresolvedComments.length === 0
-        ? `review passed — no failing checks, no unresolved review comments.`
-        : `review iteration complete — ${String(failingChecks.length)} failing checks, ${String(unresolvedComments.length)} unresolved comments.`;
+      failingChecks.length === 0 && topLevelComments.length === 0
+        ? `review passed — no failing checks, no open review comments.`
+        : `review iteration complete — ${String(failingChecks.length)} failing checks, ${String(topLevelComments.length)} open review comments.`;
 
     await ctx.setState(state, humanMessage);
     log.info(
       {
         failingChecks: failingChecks.length,
-        unresolvedComments: unresolvedComments.length,
+        topLevelComments: topLevelComments.length,
         costUsd: result.costUsd,
       },
       "review handler succeeded",

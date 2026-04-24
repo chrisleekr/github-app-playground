@@ -126,7 +126,15 @@ export async function setState(
   return row;
 }
 
-/** Dispatcher refusal helper — posts a one-off comment, no DB row needed. */
+/**
+ * Dispatcher refusal helper — posts a one-off comment, no DB row needed.
+ *
+ * Best-effort: `createComment` failures are logged as warnings and swallowed,
+ * mirroring the compensating-delete pattern above. The refusal comment is
+ * purely cosmetic — the DB is already authoritative — so a transient GitHub
+ * API blip must not bubble up into `dispatchByLabel` / `dispatchByIntent` and
+ * surface as a webhook 500.
+ */
 export async function postRefusalComment(
   deps: TrackingMirrorDeps,
   target: { owner: string; repo: string; number: number },
@@ -134,11 +142,18 @@ export async function postRefusalComment(
   reason: string,
 ): Promise<void> {
   const body = `**bot workflow \`${workflowName}\`** refused: ${reason}`;
-  await deps.octokit.rest.issues.createComment({
-    owner: target.owner,
-    repo: target.repo,
-    issue_number: target.number,
-    body,
-  });
-  deps.logger.info({ target, workflowName, reason }, "Posted workflow refusal comment");
+  try {
+    await deps.octokit.rest.issues.createComment({
+      owner: target.owner,
+      repo: target.repo,
+      issue_number: target.number,
+      body,
+    });
+    deps.logger.info({ target, workflowName, reason }, "Posted workflow refusal comment");
+  } catch (err) {
+    deps.logger.warn(
+      { target, workflowName, reason, err: err instanceof Error ? err.message : String(err) },
+      "Failed to post workflow refusal comment — refusal remains authoritative in the DB",
+    );
+  }
 }
