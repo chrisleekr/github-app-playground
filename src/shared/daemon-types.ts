@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { BotContext } from "../types";
+import type { WorkflowRunRef } from "./workflow-types";
 
 // Zod schemas (validated at boundary, types inferred below)
 
@@ -130,6 +131,9 @@ export interface PendingOffer {
   triggerUsername: string;
   labels: string[];
   triggerBodyPreview: string;
+  /** Present when the offered job is a workflow run. Forwarded into the
+   * `job:payload` so the daemon can route to the workflow executor. */
+  workflowRun?: WorkflowRunRef;
 }
 
 export interface HeartbeatState {

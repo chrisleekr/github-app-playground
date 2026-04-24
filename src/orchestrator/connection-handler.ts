@@ -532,6 +532,7 @@ async function handleAccept(
       ),
       envVars,
       memory,
+      ...(offer.workflowRun !== undefined ? { workflowRun: offer.workflowRun } : {}),
     });
   } catch (err) {
     logger.error({ err, offerId, daemonId }, "Failed to mint installation token for job");

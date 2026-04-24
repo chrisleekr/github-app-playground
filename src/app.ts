@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { createNodeMiddleware } from "@octokit/webhooks";
 import type {
   IssueCommentEvent,
+  IssuesEvent,
   PullRequestEvent,
   PullRequestReviewCommentEvent,
   PullRequestReviewEvent,
@@ -22,6 +23,7 @@ import { closeValkey, connectValkey, isValkeyHealthy } from "./orchestrator/valk
 import { startWebSocketServer, stopWebSocketServer } from "./orchestrator/ws-server";
 import type { BotContext } from "./types";
 import { handleIssueComment } from "./webhook/events/issue-comment";
+import { handleIssues } from "./webhook/events/issues";
 import { handlePullRequest } from "./webhook/events/pull-request";
 import { handleReview } from "./webhook/events/review";
 import { handleReviewComment } from "./webhook/events/review-comment";
@@ -57,8 +59,12 @@ app.webhooks.on("issue_comment.created", ({ octokit, payload, id }) => {
   handleIssueComment(octokit, payload as unknown as IssueCommentEvent, id);
 });
 
-app.webhooks.on("pull_request.opened", ({ octokit, payload, id }) => {
+app.webhooks.on(["pull_request.opened", "pull_request.labeled"], ({ octokit, payload, id }) => {
   handlePullRequest(octokit, payload as unknown as PullRequestEvent, id);
+});
+
+app.webhooks.on(["issues.labeled", "issues.unlabeled"], ({ octokit, payload, id }) => {
+  handleIssues(octokit, payload as unknown as IssuesEvent, id);
 });
 
 app.webhooks.on("pull_request_review.submitted", ({ octokit, payload, id }) => {

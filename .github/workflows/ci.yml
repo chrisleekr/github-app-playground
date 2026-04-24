@@ -69,6 +69,13 @@ jobs:
       - name: Dockerfile base-sync guard
         run: bun run check:dockerfile-base-sync
 
+      - name: Docs-sync guard (bot workflows, FR-019)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bun run check:docs-sync
+
       - name: Dependency audit
         # Wraps `bun audit --json` to gate on severity. `bun audit` itself
         # exits 1 on ANY advisory regardless of --audit-level, so the

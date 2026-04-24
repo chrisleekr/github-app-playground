@@ -5,7 +5,7 @@
   "schedule": ["before 4am on Monday"],
   "labels": ["dependencies", "renovate"],
   "prHourlyLimit": 2,
-  "prConcurrentLimit": 5,
+  "prConcurrentLimit": 2,
   "customManagers": [
     {
       "customType": "regex",
@@ -58,6 +58,18 @@
       "description": "Strip 'kustomize/' prefix: kubernetes-sigs/kustomize is a monorepo with per-product tags.",
       "matchDepNames": ["kubernetes-sigs/kustomize"],
       "extractVersion": "^kustomize/(?<version>.+)$"
+    },
+    {
+      "description": "Wait 7 days before raising minor/patch/digest PRs to catch bad releases before automerge.",
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "minimumReleaseAge": "7 days",
+      "internalChecksFilter": "strict"
+    },
+    {
+      "description": "Wait 14 days before raising major update PRs for manual review stability.",
+      "matchUpdateTypes": ["major"],
+      "minimumReleaseAge": "14 days",
+      "internalChecksFilter": "strict"
     }
   ]
 }

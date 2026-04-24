@@ -71,6 +71,7 @@
     "docker:scan:daemon": "trivy image --severity CRITICAL,HIGH --ignore-unfixed --ignorefile .trivyignore.yaml --exit-code 0 --platform linux/$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') chrisleekr/github-app-playground:local-daemon",
     "docker:scan": "bun run docker:scan:orchestrator && bun run docker:scan:daemon",
     "check:dockerfile-base-sync": "bun run scripts/check-dockerfile-base-sync.ts",
+    "check:docs-sync": "bun run scripts/check-docs-sync.ts",
     "prepare": "husky"
   },
   "license": "MIT",

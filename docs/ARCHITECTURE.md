@@ -104,6 +104,7 @@ Every dispatch decision writes a `dispatch_reason` log field and, when `DATABASE
 
 ## Further reading
 
+- [Bot Workflows](BOT-WORKFLOWS.md) — registry-driven `bot:*` label + `@chrisleekr-bot` comment dispatch, the composite ship cascade, and how to add a new workflow. Source of truth: `src/workflows/registry.ts`.
 - [Configuration](CONFIGURATION.md) — every environment variable the app reads.
 - [Daemon](DAEMON.md) — persistent vs ephemeral daemon lifecycle and K8s deployment.
 - [Deployment](DEPLOYMENT.md) — Docker build args, health probes, resource sizing.

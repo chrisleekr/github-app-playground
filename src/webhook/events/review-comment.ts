@@ -1,38 +1,56 @@
 import type { PullRequestReviewCommentEvent } from "@octokit/webhooks-types";
 import type { Octokit } from "octokit";
 
-import { parseReviewCommentEvent } from "../../core/context";
 import { containsTrigger } from "../../core/trigger";
 import { logger } from "../../logger";
-import { processRequest } from "../router";
+import { dispatchByIntent } from "../../workflows/dispatcher";
+import { isOwnerAllowed } from "../authorize";
 
 /**
  * Handler for pull_request_review_comment.created events.
- * Checks for trigger phrase, then dispatches async processing.
+ *
+ * Trigger detection → owner allowlist → `dispatchByIntent` (T039). Review
+ * comments always target a PR.
  */
 export function handleReviewComment(
   octokit: Octokit,
   payload: PullRequestReviewCommentEvent,
   deliveryId: string,
 ): void {
-  // Only process new review comments
   if (payload.action !== "created") return;
-
-  // Skip bot comments
   if (payload.comment.user.type === "Bot") return;
-
-  // Check for trigger phrase
   if (!containsTrigger(payload.comment.body)) return;
 
-  logger.info(
-    { deliveryId, owner: payload.repository.owner.login, repo: payload.repository.name },
-    "Trigger detected in review_comment",
-  );
+  const senderLogin = payload.comment.user.login;
+  const log = logger.child({
+    deliveryId,
+    owner: payload.repository.owner.login,
+    repo: payload.repository.name,
+    prNumber: payload.pull_request.number,
+    senderLogin,
+  });
 
-  const ctx = parseReviewCommentEvent(payload, octokit, deliveryId);
+  log.info("Trigger detected in review_comment — routing via intent classifier");
 
-  // Fire-and-forget
-  processRequest(ctx).catch((err: unknown) => {
-    ctx.log.error({ err }, "Async processing failed for review_comment");
+  const auth = isOwnerAllowed(payload.repository.owner.login, log);
+  if (!auth.allowed) {
+    log.info({ reason: auth.reason }, "review_comment dropped — owner not allowlisted");
+    return;
+  }
+
+  void dispatchByIntent({
+    octokit,
+    logger: log,
+    commentBody: payload.comment.body,
+    target: {
+      type: "pr",
+      owner: payload.repository.owner.login,
+      repo: payload.repository.name,
+      number: payload.pull_request.number,
+    },
+    senderLogin,
+    deliveryId,
+  }).catch((err: unknown) => {
+    log.error({ err }, "dispatchByIntent threw for review_comment");
   });
 }

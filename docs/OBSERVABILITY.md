@@ -17,6 +17,11 @@ Structured JSON logs via [pino](https://getpino.io) are the primary signal. Ever
 | `heavy`                  | Triage binary signal (`true`/`false`) — only on triage-success.                                       |
 | `rationale`              | Free-text rationale from the triage LLM. Only on triage-success.                                      |
 | `cost_usd`               | Agent-reported total cost from the SDK. Present on completed executions.                              |
+| `workflowRunId`          | UUID of the `workflow_runs` row — stable per bot workflow run. See [Bot Workflows](BOT-WORKFLOWS.md). |
+| `workflowName`           | Workflow name (`triage`, `plan`, `implement`, `review`, `ship`). Emitted by dispatcher and handlers.  |
+| `ship_duration_ms`       | Composite `ship` wall-clock duration measured from parent enqueue to terminal status.                 |
+| `intentWorkflow`         | Intent-classifier verdict for comment triggers (includes `clarify`/`unsupported`).                    |
+| `intentConfidence`       | Intent-classifier confidence (0–1). Dispatcher compares to `INTENT_CONFIDENCE_THRESHOLD`.             |
 
 ## Dispatch reasons
 
