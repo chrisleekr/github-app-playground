@@ -117,6 +117,15 @@ export interface RunPipelineOverrides {
    * tracking comment without duplicating the pipeline machinery.
    */
   captureFiles?: string[];
+  /**
+   * Pre-existing tracking comment id (typically created by a workflow
+   * handler via `setState` before invoking the pipeline). When set, the
+   * pipeline does NOT call `createTrackingComment`/`finalizeTrackingComment`
+   * — the orchestrator's tracking-mirror owns the comment lifecycle, and
+   * the pipeline only wires the id into the prompt + MCP server so the
+   * agent can post mid-run progress via `update_claude_comment`.
+   */
+  trackingCommentId?: number;
 }
 
 /**
@@ -158,9 +167,20 @@ export async function runPipeline(
   overrides: RunPipelineOverrides = {},
 ): Promise<ExecutionResult> {
   let trackingCommentId: number | undefined;
+  // When the caller (workflow handler) seeded the tracking comment, the
+  // pipeline must NOT finalize it — the handler's terminal `setState` writes
+  // the final body via tracking-mirror, and a pipeline finalize would
+  // overwrite it with the legacy "completed" template.
+  const callerOwnsTrackingComment = overrides.trackingCommentId !== undefined;
 
   try {
-    if (ctx.skipTrackingComments === true) {
+    if (callerOwnsTrackingComment) {
+      trackingCommentId = overrides.trackingCommentId;
+      ctx.log.info(
+        { trackingCommentId },
+        "Using caller-supplied tracking comment (workflow handler owns lifecycle)",
+      );
+    } else if (ctx.skipTrackingComments === true) {
       ctx.log.info("Skipping tracking comment (skipTrackingComments)");
     } else {
       trackingCommentId = await retryWithBackoff(() => createTrackingComment(ctx), {
@@ -222,10 +242,11 @@ export async function runPipeline(
         mcpServers,
         workDir,
         allowedTools,
+        installationToken,
         ...(overrides.maxTurns !== undefined ? { maxTurns: overrides.maxTurns } : {}),
       });
 
-      if (resolvedTrackingCommentId !== undefined) {
+      if (resolvedTrackingCommentId !== undefined && !callerOwnsTrackingComment) {
         try {
           const finalOpts = buildFinalOpts(result);
           await retryWithBackoff(
@@ -279,7 +300,7 @@ export async function runPipeline(
     const err = error instanceof Error ? error : new Error(String(error));
     ctx.log.error({ err }, "Request processing failed");
 
-    if (trackingCommentId !== undefined) {
+    if (trackingCommentId !== undefined && !callerOwnsTrackingComment) {
       const commentId = trackingCommentId;
       try {
         await retryWithBackoff(

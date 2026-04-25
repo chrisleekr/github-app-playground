@@ -49,6 +49,10 @@ void mock.module("../../src/workflows/runs-store", () => ({
   findLatestForTarget: mockFindLatestForTarget,
   findLatestSucceededForTarget: mockFindLatestSucceededForTarget,
   markFailed: mockMarkFailed,
+  // findById is imported by review/resolve handlers (transitively reachable
+  // when registry resolves them). Provide a stub so module loading succeeds —
+  // tests in this file don't exercise that code path.
+  findById: mock(async () => Promise.resolve(null)),
 }));
 
 const mockPostRefusalComment = mock(() => Promise.resolve());

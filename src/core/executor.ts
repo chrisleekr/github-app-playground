@@ -26,12 +26,21 @@ function isResultMessage(msg: unknown): msg is SDKResultMessage {
  * The Claude CLI subprocess picks between them via its own documented auth
  * precedence chain (API key at position 3 beats OAuth token at position 5).
  * See https://code.claude.com/docs/en/authentication#authentication-precedence
+ *
+ * When `installationToken` is supplied, it is exported as both `GH_TOKEN` and
+ * `GITHUB_TOKEN` so the agent's shell `gh`/`git` calls authenticate as the
+ * GitHub App installation. MCP servers receive the same token via their own
+ * env mapping in `src/mcp/registry.ts`.
  */
-function buildProviderEnv(): Record<string, string | undefined> {
+function buildProviderEnv(installationToken?: string): Record<string, string | undefined> {
+  const tokenEnv: Record<string, string> =
+    installationToken !== undefined && installationToken !== ""
+      ? { GH_TOKEN: installationToken, GITHUB_TOKEN: installationToken }
+      : {};
   if (config.provider === "bedrock") {
-    return { ...process.env, CLAUDE_CODE_USE_BEDROCK: "1" };
+    return { ...process.env, ...tokenEnv, CLAUDE_CODE_USE_BEDROCK: "1" };
   }
-  return { ...process.env };
+  return { ...process.env, ...tokenEnv };
 }
 
 /**
@@ -51,6 +60,7 @@ export interface ExecuteAgentParams {
   workDir: string;
   allowedTools: string[];
   maxTurns?: number;
+  installationToken?: string;
 }
 
 export async function executeAgent({
@@ -60,6 +70,7 @@ export async function executeAgent({
   workDir,
   allowedTools,
   maxTurns,
+  installationToken,
 }: ExecuteAgentParams): Promise<ExecutionResult> {
   const { log } = ctx;
 
@@ -89,7 +100,7 @@ export async function executeAgent({
     allowedTools,
     mcpServers,
     systemPrompt: { type: "preset", preset: "claude_code" },
-    env: buildProviderEnv(),
+    env: buildProviderEnv(installationToken),
   };
   const resolvedMaxTurns = maxTurns ?? config.agentMaxTurns;
   if (resolvedMaxTurns !== undefined) {

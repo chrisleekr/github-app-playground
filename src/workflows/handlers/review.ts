@@ -1,6 +1,7 @@
 import { runPipeline } from "../../core/pipeline";
 import type { BotContext } from "../../types";
 import type { WorkflowHandler } from "../registry";
+import { findById } from "../runs-store";
 import { type BranchStaleness, formatRefreshDirective, getBranchStaleness } from "./branch-refresh";
 
 /**
@@ -53,6 +54,26 @@ export const handler: WorkflowHandler = async (ctx) => {
 
     const staleness = await getBranchStaleness(octokit, target.owner, target.repo, target.number);
 
+    // Seed the tracking comment up front so the agent has a comment id to
+    // post mid-run progress against. The orchestrator's setState creates
+    // the comment on first call and reserves its id in the workflow row;
+    // we read that id back and hand it to the pipeline.
+    await ctx.setState(
+      {
+        pr_number: target.number,
+        head_sha: pr.head.sha,
+        changed_files: pr.changed_files,
+        additions: pr.additions,
+        deletions: pr.deletions,
+      },
+      `🔍 **Code review starting** — ${String(pr.changed_files)} files, +${String(pr.additions)}/-${String(pr.deletions)}. Cloning repo and reading changed files…`,
+    );
+    const seededRow = await findById(runId);
+    const trackingCommentId = seededRow?.tracking_comment_id ?? undefined;
+    if (trackingCommentId === undefined || trackingCommentId === null) {
+      log.warn({ runId }, "review handler: tracking comment id not found after seed setState");
+    }
+
     const triggerBody = buildReviewPrompt({
       prNumber: target.number,
       prTitle: pr.title,
@@ -80,12 +101,16 @@ export const handler: WorkflowHandler = async (ctx) => {
       headBranch: pr.head.ref,
       baseBranch: pr.base.ref,
       labels: [],
-      skipTrackingComments: true,
       octokit,
       log,
     };
 
-    const result = await runPipeline(botCtx, { captureFiles: ["REVIEW.md"] });
+    const result = await runPipeline(botCtx, {
+      captureFiles: ["REVIEW.md"],
+      ...(trackingCommentId !== undefined && trackingCommentId !== null
+        ? { trackingCommentId }
+        : {}),
+    });
     if (!result.success) {
       return { status: "failed", reason: "review pipeline execution failed" };
     }
@@ -162,19 +187,32 @@ function buildReviewPrompt(input: {
     `## Your task`,
     `Review this PR as a senior engineer would. The cloned repo is your working tree (\`pwd\`). The base branch is \`origin/${input.baseBranch}\`. Both branches are checked out; the working tree is on \`${input.headBranch}\`.`,
     ``,
+    `## Tools you MUST use`,
+    `- \`mcp__github_inline_comment__create_inline_comment\` — post each finding as an inline comment on the specific file/line. One call per finding. Do NOT batch findings into a single tracking-comment blob.`,
+    `- \`mcp__github_comment__update_claude_comment\` — keep the tracking comment refreshed with your current step. Call it at every checkpoint marked **[update tracking comment]** below so the user can see live progress.`,
+    `- \`Read\`, \`Grep\`, \`Glob\`, \`Bash\` — for inspecting code, running tests, running typecheck.`,
+    ``,
+    `**Do NOT** call \`gh api .../reviews -X POST\` to post a multi-comment review. The MCP inline-comment tool handles authentication and posting; the shell \`gh\` path is reserved for read-only queries.`,
+    ``,
     `Do the following IN ORDER:`,
     ``,
-    `0. **Refresh the branch first if needed** (see "Branch state" above). Reviewing stale code is worse than not reviewing — your findings would be against an old base. After rebase + push, the head SHA changes; re-fetch any cached diff metadata before continuing.`,
+    `0. **[update tracking comment]** Post: "🔍 Reviewing — refreshing branch (if needed) and surveying diff."`,
     ``,
-    `1. **Survey the diff.** \`git diff origin/${input.baseBranch}...HEAD\` to see every change. Note files, scope, and any obvious red flags.`,
+    `1. **Refresh the branch first if needed** (see "Branch state" above). Reviewing stale code is worse than not reviewing — your findings would be against an old base. After rebase + push, the head SHA changes; re-fetch any cached diff metadata before continuing.`,
     ``,
-    `2. **Read changed files in full.** Do NOT review from hunks alone — open every changed file with \`Read\` and understand the surrounding code. The diff shows what changed; the file shows whether the change is correct in context.`,
+    `2. **Survey the diff.** \`git diff origin/${input.baseBranch}...HEAD\` to see every change. Note files, scope, and any obvious red flags.`,
     ``,
-    `3. **Cross-reference.** For each changed function/type/symbol, search the rest of the repo for callers, tests, and related code. \`Grep\` and \`Glob\` are your tools. A change that compiles can still be wrong because it broke a contract a caller relied on.`,
+    `3. **[update tracking comment]** Post: "🔍 Reviewing — reading N changed files in full and cross-referencing." (replace N with the file count)`,
     ``,
-    `4. **Validate uncertainty.** When you're not sure if a change is correct, run the relevant tests (\`bun test path/to/test\`), the typechecker (\`bun run typecheck\`), or the linter (\`bun run lint\`). Don't guess — run the code.`,
+    `4. **Read changed files in full.** Do NOT review from hunks alone — open every changed file with \`Read\` and understand the surrounding code. The diff shows what changed; the file shows whether the change is correct in context.`,
     ``,
-    `5. **Look for these classes of issue specifically:**`,
+    `5. **Cross-reference.** For each changed function/type/symbol, search the rest of the repo for callers, tests, and related code. \`Grep\` and \`Glob\` are your tools. A change that compiles can still be wrong because it broke a contract a caller relied on.`,
+    ``,
+    `6. **[update tracking comment]** Post: "🔍 Reviewing — running validation (typecheck/lint/tests as needed)."`,
+    ``,
+    `7. **Validate uncertainty.** When you're not sure if a change is correct, run the relevant tests (\`bun test path/to/test\`), the typechecker (\`bun run typecheck\`), or the linter (\`bun run lint\`). Don't guess — run the code.`,
+    ``,
+    `8. **Look for these classes of issue specifically:**`,
     `   - **Correctness bugs** — off-by-one, null/undefined paths, wrong return types, broken invariants`,
     `   - **Security issues** — injection, unsanitized inputs, missing auth checks, secrets in logs`,
     `   - **Concurrency** — race conditions, missing locks, double-decrements, unhandled promise rejections`,
@@ -184,29 +222,35 @@ function buildReviewPrompt(input: {
     `   - **Performance** — N+1 queries, accidentally O(n²), unbounded growth`,
     `   - **Readability/maintainability** — only flag if it would genuinely confuse a future reader`,
     ``,
-    `6. **Post findings as a single GitHub Review.** Resolve OWNER/REPO from \`gh repo view --json nameWithOwner -q .nameWithOwner\`, then call \`gh api repos/OWNER/REPO/pulls/${String(input.prNumber)}/reviews -X POST\` with a JSON body containing:`,
-    `   - \`event\`: \`"COMMENT"\` (NEVER \`"APPROVE"\` or \`"REQUEST_CHANGES"\` — those are human prerogatives, FR-017)`,
-    `   - \`body\`: a top-level summary explaining WHAT you reviewed and WHY (run gh api to discover commit_id from the PR head SHA).`,
-    `   - \`comments\`: an array of inline findings, each with \`path\`, \`line\` (or \`start_line\`+\`line\` for multi-line), \`side: "RIGHT"\`, and \`body\`.`,
+    `9. **[update tracking comment]** Post: "🔍 Reviewing — posting K inline findings." (replace K with the finding count, or "no findings" if none)`,
     ``,
-    `   Each finding's body MUST start with a severity tag and MUST include reasoning the author can act on:`,
-    `   - \`[blocker]\` — must fix before merge (broken correctness, security)`,
-    `   - \`[major]\` — should fix before merge (likely bug, missing test)`,
-    `   - \`[minor]\` — nice to fix (readability, small inefficiency)`,
-    `   - \`[nit]\` — taste, optional`,
+    `10. **Post each finding as an inline comment.** For every issue, call \`mcp__github_inline_comment__create_inline_comment\` with:`,
+    `    - \`path\`: the file path relative to repo root`,
+    `    - \`line\`: the line number on the **right side** of the diff (the new code)`,
+    `    - \`body\`: starts with a severity tag, then the issue and recommended fix`,
     ``,
-    `   Example finding body: \`[major] This loop never decrements \\\`activeCount\\\` on the early-return path at line 142, so the gauge will drift positive over time. Suggest moving the decrement into a \\\`finally\\\` block.\``,
+    `    Severity tags (in body, exactly as written):`,
+    `    - \`[blocker]\` — must fix before merge (broken correctness, security)`,
+    `    - \`[major]\` — should fix before merge (likely bug, missing test)`,
+    `    - \`[minor]\` — nice to fix (readability, small inefficiency)`,
+    `    - \`[nit]\` — taste, optional`,
     ``,
-    `7. **No-findings case.** If you genuinely find nothing to flag, you MUST still post a Review with \`event: "COMMENT"\` and a body that lists EXACTLY what you checked (files, classes of issue, tests run) and why you concluded no issues. A silent "looks good" is unacceptable — show your work.`,
+    `    Example body: \`[major] This loop never decrements \\\`activeCount\\\` on the early-return path at line 142, so the gauge will drift positive over time. Suggest moving the decrement into a \\\`finally\\\` block.\``,
     ``,
-    `8. **NEVER push commits, NEVER call \`gh pr merge\`, NEVER call \`gh pr review --approve\`.** This handler is read-only against the PR. Code changes belong to \`implement\` and \`resolve\`; merging belongs to humans.`,
+    `    One MCP call per finding. If a finding spans multiple lines, post it on the most relevant single line and reference the range in the body.`,
     ``,
-    `9. **Before finishing**, write \`REVIEW.md\` at the repo root summarizing this review:`,
-    `   ## Summary — one paragraph: scope of the review and overall verdict.`,
-    `   ## What was checked — files read in full, cross-references performed, tests/lint/typecheck runs.`,
-    `   ## Findings — by severity. For each: file:line, issue, recommended fix.`,
-    `   ## Reasoning — non-trivial conclusions you reached and why (especially the "no issue here" calls in changed files that COULD have looked sketchy).`,
-    `   This becomes the tracking-comment body — be specific, cite files and lines.`,
+    `11. **No-findings case.** If you genuinely find nothing to flag, do NOT post any inline comments. Instead make the REVIEW.md (step 13) explicit about WHAT you checked and WHY you concluded no issues. A silent "looks good" is unacceptable — show your work in REVIEW.md.`,
+    ``,
+    `12. **Push policy.** The ONLY acceptable push from this handler is \`git push --force-with-lease\` after a clean rebase onto base in step 1 — same diff, fresh head SHA, no new edits. **NEVER create commits with code changes** (no \`git commit\` of edits — code changes belong to \`implement\` and \`resolve\`). **NEVER call \`gh pr merge\`.** **NEVER call \`gh pr review --approve\` / \`--request-changes\`** — those verdicts belong to humans (FR-017).`,
+    ``,
+    `13. **Write \`REVIEW.md\` at the repo root** summarizing this review:`,
+    `    ## Summary — one paragraph: scope of the review and overall verdict.`,
+    `    ## What was checked — files read in full, cross-references performed, tests/lint/typecheck runs.`,
+    `    ## Findings — by severity. For each: file:line, issue, recommended fix. Mirrors the inline comments you posted (or "no findings — see Reasoning").`,
+    `    ## Reasoning — non-trivial conclusions you reached and why (especially the "no issue here" calls in changed files that COULD have looked sketchy).`,
+    `    This becomes the final tracking-comment body — be specific, cite files and lines.`,
+    ``,
+    `14. **[update tracking comment]** Final: paste the full REVIEW.md contents (or a link/summary if it exceeds GitHub's comment size limit).`,
     ``,
     `Remember: you are a senior engineer. Your goal is to find real bugs, not perform thoroughness theatre. False positives erode trust as much as missed bugs.`,
   ].join("\n");

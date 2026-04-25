@@ -29,6 +29,18 @@ void mock.module("../../../src/core/pipeline", () => ({
   runPipeline: mock(async () => Promise.resolve(pipelineResult)),
 }));
 
+// Stub the runs-store DB read — the handler reads back the seeded
+// tracking_comment_id after the first setState call. Tests don't run
+// against a real DB, so return a row with a deterministic id.
+void mock.module("../../../src/workflows/runs-store", () => ({
+  findById: mock(async () =>
+    Promise.resolve({
+      id: "run-1",
+      tracking_comment_id: 12345,
+    }),
+  ),
+}));
+
 const { handler: reviewHandler } = await import("../../../src/workflows/handlers/review");
 
 function silentLog(): pino.Logger {
@@ -169,12 +181,16 @@ describe("review handler", () => {
       expect(branch["commits_behind_base"]).toBe(0);
       expect(branch["is_fork"]).toBe(false);
     }
-    expect(ctx.setStateMock).toHaveBeenCalledTimes(1);
-    const setStateArgs = ctx.setStateMock.mock.calls[0] as [unknown, string];
-    expect(setStateArgs[1]).toContain("Code review complete");
-    expect(setStateArgs[1]).toContain("5 files");
-    expect(setStateArgs[1]).toContain("+100/-20");
-    expect(setStateArgs[1]).toContain("Reviewed 3 files");
+    // Two setState calls: (1) seed before pipeline, (2) finalize after.
+    expect(ctx.setStateMock).toHaveBeenCalledTimes(2);
+    const seedArgs = ctx.setStateMock.mock.calls[0] as [unknown, string];
+    expect(seedArgs[1]).toContain("Code review starting");
+    expect(seedArgs[1]).toContain("5 files");
+    const finalArgs = ctx.setStateMock.mock.calls[1] as [unknown, string];
+    expect(finalArgs[1]).toContain("Code review complete");
+    expect(finalArgs[1]).toContain("5 files");
+    expect(finalArgs[1]).toContain("+100/-20");
+    expect(finalArgs[1]).toContain("Reviewed 3 files");
   });
 
   it("records commits_behind_base when the branch is stale", async () => {
@@ -210,8 +226,9 @@ describe("review handler", () => {
     const ctx = buildCtx();
     const result = await reviewHandler(ctx);
     expect(result.status).toBe("succeeded");
-    const setStateArgs = ctx.setStateMock.mock.calls[0] as [unknown, string];
-    expect(setStateArgs[1]).toContain("no REVIEW.md report");
+    // calls[0] is the seed; the placeholder appears in the finalize call.
+    const finalArgs = ctx.setStateMock.mock.calls[1] as [unknown, string];
+    expect(finalArgs[1]).toContain("no REVIEW.md report");
   });
 
   it("fails when the pipeline reports failure", async () => {
