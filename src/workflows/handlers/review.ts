@@ -1,35 +1,34 @@
 import { runPipeline } from "../../core/pipeline";
 import type { BotContext } from "../../types";
 import type { WorkflowHandler } from "../registry";
+import { type BranchStaleness, formatRefreshDirective, getBranchStaleness } from "./branch-refresh";
 
 /**
- * `review` handler (T023) — runs a review pass on an open pull request.
+ * `review` handler — proactive senior-developer code review on an open PR.
  *
- * Stop bounds (ported verbatim from the `pr-auto` skill, per FR-005(c)):
- *   - `FIX_ATTEMPTS_CAP = 3` — max consecutive CI-fix attempts per PR before
- *     handing off to a human. Tracked across runs in `state.fix_attempts`.
- *   - `POLL_WAIT_SECS_CAP = 900` — 15-minute reviewer-patience window after
- *     which the bot stops waiting for a slow reviewer. Advisory here (the
- *     handler itself is not a polling loop — each re-application of
- *     `bot:review` does one iteration; ship-composite orchestration handles
- *     multi-iteration waits).
+ * Distinct from `resolve`:
+ *   - `resolve` reacts to existing reviewer feedback + failing CI.
+ *   - `review` reads the diff against base, walks the full files in the
+ *     cloned repo, and posts inline findings via
+ *     `octokit.rest.pulls.createReview` (event: `COMMENT`).
  *
- * Comment-validity taxonomy (also from `pr-auto` review-comments skill):
- *   - **Valid**          — reviewer is right; fix required.
- *   - **Partially Valid**— reviewer is partially right; fix scoped portion.
- *   - **Invalid**        — reviewer is wrong; reply with evidence, no code change.
- *   - **Needs Clarification** — ambiguous; reply asking a specific question.
+ * The agent is instructed to operate as a senior engineer: read changed
+ * files in their entirety (not just hunks), cross-reference with the rest
+ * of the codebase, run tests when uncertain, and only post findings it
+ * can defend with evidence. Each finding is severity-tagged
+ * (`[blocker]` / `[major]` / `[minor]` / `[nit]`) so the PR author can
+ * triage at a glance.
  *
- * The classification itself is delegated to the multi-turn agent via the
- * prompt — the handler does not call the LLM directly. This keeps the
- * heuristic in one place (the prompt) and lets the agent use repo context.
+ * No-findings case: the handler still posts a top-level review body
+ * documenting WHAT was checked and WHY no issues were flagged — silence
+ * looks indistinguishable from "didn't actually look," and reviewers earn
+ * trust by showing their work.
  *
- * Non-negotiable: this handler MUST NEVER call `octokit.rest.pulls.merge`
- * (FR-017). Merging stays a human action.
+ * Cost note: full-context review (clone + per-file Read + diff) is more
+ * expensive than diff-only. This is intentional — accuracy beats cost,
+ * per FR-005(c) (review must be senior-grade) and explicit project
+ * direction (2026-04-25).
  */
-
-export const FIX_ATTEMPTS_CAP = 3;
-export const POLL_WAIT_SECS_CAP = 900;
 
 export const handler: WorkflowHandler = async (ctx) => {
   const { octokit, target, logger: log, deliveryId, runId } = ctx;
@@ -52,45 +51,18 @@ export const handler: WorkflowHandler = async (ctx) => {
       };
     }
 
-    // Paginate — `checks.listForRef` defaults to per_page=30. On busy PRs
-    // with large CI matrices, a non-paginated call silently under-reports
-    // failing checks and the review prompt gets a stale picture.
-    const allCheckRuns = await octokit.paginate(octokit.rest.checks.listForRef, {
-      owner: target.owner,
-      repo: target.repo,
-      ref: pr.head.sha,
-      per_page: 100,
-    });
-    const failingChecks = allCheckRuns
-      .filter(
-        (c) =>
-          c.status === "completed" &&
-          c.conclusion !== "success" &&
-          c.conclusion !== "neutral" &&
-          c.conclusion !== "skipped",
-      )
-      .map((c) => c.name);
-
-    // Count top-level review comments — GitHub's REST API does not expose
-    // thread-level resolution state (only the GraphQL `PullRequestReviewThread`
-    // surface does), so this is a conservative upper bound. The agent prompt
-    // uses it as "how many inline threads the reviewer has opened"; resolved
-    // threads are over-counted but never under-counted. Rename — `unresolved`
-    // would be a lie.
-    const { data: reviewComments } = await octokit.rest.pulls.listReviewComments({
-      owner: target.owner,
-      repo: target.repo,
-      pull_number: target.number,
-    });
-    const topLevelComments = reviewComments.filter((c) => c.in_reply_to_id === undefined);
+    const staleness = await getBranchStaleness(octokit, target.owner, target.repo, target.number);
 
     const triggerBody = buildReviewPrompt({
       prNumber: target.number,
       prTitle: pr.title,
+      prBody: pr.body ?? "",
       headBranch: pr.head.ref,
       baseBranch: pr.base.ref,
-      failingChecks,
-      unresolvedCount: topLevelComments.length,
+      changedFiles: pr.changed_files,
+      additions: pr.additions,
+      deletions: pr.deletions,
+      staleness,
     });
 
     const botCtx: BotContext = {
@@ -122,8 +94,15 @@ export const handler: WorkflowHandler = async (ctx) => {
 
     const state = {
       pr_number: target.number,
-      failing_checks: failingChecks,
-      top_level_comments: topLevelComments.length,
+      head_sha: pr.head.sha,
+      changed_files: pr.changed_files,
+      additions: pr.additions,
+      deletions: pr.deletions,
+      branch_state: {
+        commits_behind_base: staleness.commitsBehindBase,
+        commits_ahead_of_base: staleness.commitsAheadOfBase,
+        is_fork: staleness.isFork,
+      },
       report,
       costUsd: result.costUsd ?? 0,
       turns: result.numTurns ?? 0,
@@ -136,10 +115,7 @@ export const handler: WorkflowHandler = async (ctx) => {
       meta.push(`duration: ${String(Math.round(result.durationMs / 1000))}s`);
     const metaLine = meta.length > 0 ? `\n\n_${meta.join(" · ")}_` : "";
 
-    const headline =
-      failingChecks.length === 0 && topLevelComments.length === 0
-        ? `🔎 **Review passed** — no failing checks, no open review comments.`
-        : `🔎 **Review iteration complete** — ${String(failingChecks.length)} failing checks, ${String(topLevelComments.length)} open review comments.`;
+    const headline = `🔍 **Code review complete** — ${String(pr.changed_files)} files, +${String(pr.additions)}/-${String(pr.deletions)}.`;
     const reportSection =
       report.length > 0 ? `\n\n${report}` : `\n\n_(no REVIEW.md report — agent did not write one)_`;
     const humanMessage = `${headline}${reportSection}${metaLine}`;
@@ -147,8 +123,9 @@ export const handler: WorkflowHandler = async (ctx) => {
     await ctx.setState(state, humanMessage);
     log.info(
       {
-        failingChecks: failingChecks.length,
-        topLevelComments: topLevelComments.length,
+        changedFiles: pr.changed_files,
+        additions: pr.additions,
+        deletions: pr.deletions,
         costUsd: result.costUsd,
       },
       "review handler succeeded",
@@ -164,34 +141,73 @@ export const handler: WorkflowHandler = async (ctx) => {
 function buildReviewPrompt(input: {
   prNumber: number;
   prTitle: string;
+  prBody: string;
   headBranch: string;
   baseBranch: string;
-  failingChecks: readonly string[];
-  unresolvedCount: number;
+  changedFiles: number;
+  additions: number;
+  deletions: number;
+  staleness: BranchStaleness;
 }): string {
   return [
-    `You are a PR review agent for pull request #${String(input.prNumber)}: ${input.prTitle}`,
+    `You are a senior software engineer performing a code review on pull request #${String(input.prNumber)}: ${input.prTitle}`,
     `Head: ${input.headBranch} → Base: ${input.baseBranch}`,
+    `Diff size: ${String(input.changedFiles)} files, +${String(input.additions)}/-${String(input.deletions)} lines.`,
     ``,
-    `CI status:`,
-    input.failingChecks.length === 0
-      ? `  - all checks passing`
-      : `  - failing checks: ${input.failingChecks.join(", ")}`,
-    `Unresolved reviewer comments: ${String(input.unresolvedCount)}`,
+    `## PR description`,
+    input.prBody.trim().length > 0 ? input.prBody : "_(empty)_",
     ``,
-    `Do the following in order:`,
-    `1. If failing checks exist, fetch their logs (gh run view --log-failed) and classify the failure. If it's a test / lint / type / build failure with a clear root cause, attempt one fix — diagnose, edit, commit, push. Do NOT retry more than once per run (FIX_ATTEMPTS_CAP=3 is tracked across runs).`,
-    `2. For every unresolved review comment, classify into one of: Valid | Partially Valid | Invalid | Needs Clarification. For Valid/Partially Valid: fix the code, commit, push, and reply to the comment with the commit SHA and a one-sentence explanation. For Invalid: reply with evidence-backed explanation, no code changes. For Needs Clarification: reply asking the specific question needed to proceed.`,
-    `3. If all checks pass AND all comments resolved AND reviewDecision is APPROVED, post a one-line "review complete — ready to merge" comment.`,
-    `4. NEVER call \`gh pr merge\` or \`octokit.pulls.merge\`. Merging is a human action (FR-017).`,
-    `5. NEVER push to the base branch ${input.baseBranch}.`,
-    `6. Before finishing, write \`REVIEW.md\` at the repo root summarizing this review iteration.`,
-    `   Required sections:`,
-    `   ## Summary — one paragraph: what state the PR is in now and what's left.`,
-    `   ## CI status — list each failing check and what you did about it.`,
-    `   ## Review comments — for each comment: classification, action taken, commit/reply link.`,
-    `   ## Commits pushed — sha · subject.`,
-    `   ## Outstanding — what still blocks merge (if anything).`,
-    `   This becomes the tracking comment body — be specific, cite files and links.`,
+    formatRefreshDirective(input.staleness),
+    ``,
+    `## Your task`,
+    `Review this PR as a senior engineer would. The cloned repo is your working tree (\`pwd\`). The base branch is \`origin/${input.baseBranch}\`. Both branches are checked out; the working tree is on \`${input.headBranch}\`.`,
+    ``,
+    `Do the following IN ORDER:`,
+    ``,
+    `0. **Refresh the branch first if needed** (see "Branch state" above). Reviewing stale code is worse than not reviewing — your findings would be against an old base. After rebase + push, the head SHA changes; re-fetch any cached diff metadata before continuing.`,
+    ``,
+    `1. **Survey the diff.** \`git diff origin/${input.baseBranch}...HEAD\` to see every change. Note files, scope, and any obvious red flags.`,
+    ``,
+    `2. **Read changed files in full.** Do NOT review from hunks alone — open every changed file with \`Read\` and understand the surrounding code. The diff shows what changed; the file shows whether the change is correct in context.`,
+    ``,
+    `3. **Cross-reference.** For each changed function/type/symbol, search the rest of the repo for callers, tests, and related code. \`Grep\` and \`Glob\` are your tools. A change that compiles can still be wrong because it broke a contract a caller relied on.`,
+    ``,
+    `4. **Validate uncertainty.** When you're not sure if a change is correct, run the relevant tests (\`bun test path/to/test\`), the typechecker (\`bun run typecheck\`), or the linter (\`bun run lint\`). Don't guess — run the code.`,
+    ``,
+    `5. **Look for these classes of issue specifically:**`,
+    `   - **Correctness bugs** — off-by-one, null/undefined paths, wrong return types, broken invariants`,
+    `   - **Security issues** — injection, unsanitized inputs, missing auth checks, secrets in logs`,
+    `   - **Concurrency** — race conditions, missing locks, double-decrements, unhandled promise rejections`,
+    `   - **Error handling** — silent failures, swallowed exceptions, fallbacks that mask bugs`,
+    `   - **API contracts** — breaking changes to public surfaces without migration, schema drift`,
+    `   - **Test coverage gaps** — new logic without tests, edge cases the new tests miss`,
+    `   - **Performance** — N+1 queries, accidentally O(n²), unbounded growth`,
+    `   - **Readability/maintainability** — only flag if it would genuinely confuse a future reader`,
+    ``,
+    `6. **Post findings as a single GitHub Review.** Resolve OWNER/REPO from \`gh repo view --json nameWithOwner -q .nameWithOwner\`, then call \`gh api repos/OWNER/REPO/pulls/${String(input.prNumber)}/reviews -X POST\` with a JSON body containing:`,
+    `   - \`event\`: \`"COMMENT"\` (NEVER \`"APPROVE"\` or \`"REQUEST_CHANGES"\` — those are human prerogatives, FR-017)`,
+    `   - \`body\`: a top-level summary explaining WHAT you reviewed and WHY (run gh api to discover commit_id from the PR head SHA).`,
+    `   - \`comments\`: an array of inline findings, each with \`path\`, \`line\` (or \`start_line\`+\`line\` for multi-line), \`side: "RIGHT"\`, and \`body\`.`,
+    ``,
+    `   Each finding's body MUST start with a severity tag and MUST include reasoning the author can act on:`,
+    `   - \`[blocker]\` — must fix before merge (broken correctness, security)`,
+    `   - \`[major]\` — should fix before merge (likely bug, missing test)`,
+    `   - \`[minor]\` — nice to fix (readability, small inefficiency)`,
+    `   - \`[nit]\` — taste, optional`,
+    ``,
+    `   Example finding body: \`[major] This loop never decrements \\\`activeCount\\\` on the early-return path at line 142, so the gauge will drift positive over time. Suggest moving the decrement into a \\\`finally\\\` block.\``,
+    ``,
+    `7. **No-findings case.** If you genuinely find nothing to flag, you MUST still post a Review with \`event: "COMMENT"\` and a body that lists EXACTLY what you checked (files, classes of issue, tests run) and why you concluded no issues. A silent "looks good" is unacceptable — show your work.`,
+    ``,
+    `8. **NEVER push commits, NEVER call \`gh pr merge\`, NEVER call \`gh pr review --approve\`.** This handler is read-only against the PR. Code changes belong to \`implement\` and \`resolve\`; merging belongs to humans.`,
+    ``,
+    `9. **Before finishing**, write \`REVIEW.md\` at the repo root summarizing this review:`,
+    `   ## Summary — one paragraph: scope of the review and overall verdict.`,
+    `   ## What was checked — files read in full, cross-references performed, tests/lint/typecheck runs.`,
+    `   ## Findings — by severity. For each: file:line, issue, recommended fix.`,
+    `   ## Reasoning — non-trivial conclusions you reached and why (especially the "no issue here" calls in changed files that COULD have looked sketchy).`,
+    `   This becomes the tracking-comment body — be specific, cite files and lines.`,
+    ``,
+    `Remember: you are a senior engineer. Your goal is to find real bugs, not perform thoroughness theatre. False positives erode trust as much as missed bugs.`,
   ].join("\n");
 }

@@ -28,7 +28,7 @@ describe("resolveModelId", () => {
   });
 
   it("MODEL_MAP is a frozen-shape snapshot (no accidental growth in tests)", () => {
-    expect(Object.keys(MODEL_MAP).sort()).toEqual(["haiku-3-5"]);
+    expect(Object.keys(MODEL_MAP).sort()).toEqual(["haiku-3-5", "haiku-4-5"]);
   });
 });
 
@@ -197,7 +197,7 @@ describe("estimateHaikuCostUsd", () => {
     expect(estimateHaikuCostUsd({ inputTokens: 0, outputTokens: 0 })).toBe(0);
   });
 
-  it("matches the published Haiku 3.5 rate sheet", () => {
+  it("matches the published Haiku 3.5 rate sheet (default when modelId omitted)", () => {
     // 1M input tokens = $0.80; 1M output tokens = $4.00 → total $4.80
     expect(estimateHaikuCostUsd({ inputTokens: 1_000_000, outputTokens: 1_000_000 })).toBeCloseTo(
       4.8,
@@ -205,7 +205,44 @@ describe("estimateHaikuCostUsd", () => {
     );
   });
 
-  it("scales linearly for a realistic single-turn triage call", () => {
+  it("matches the published Haiku 3.5 rate sheet when modelId is the 3.5 ID", () => {
+    expect(
+      estimateHaikuCostUsd(
+        { inputTokens: 1_000_000, outputTokens: 1_000_000 },
+        "claude-3-5-haiku-20241022",
+      ),
+    ).toBeCloseTo(4.8, 6);
+  });
+
+  it("matches the published Haiku 4.5 rate sheet ($1 input / $5 output per 1M)", () => {
+    // 1M input = $1.00; 1M output = $5.00 → total $6.00
+    expect(
+      estimateHaikuCostUsd(
+        { inputTokens: 1_000_000, outputTokens: 1_000_000 },
+        "claude-haiku-4-5-20251001",
+      ),
+    ).toBeCloseTo(6.0, 6);
+  });
+
+  it("uses Bedrock-flavoured Haiku 4.5 ID just like the Anthropic ID", () => {
+    expect(
+      estimateHaikuCostUsd(
+        { inputTokens: 1_000_000, outputTokens: 1_000_000 },
+        "anthropic.claude-haiku-4-5-20251001-v1:0",
+      ),
+    ).toBeCloseTo(6.0, 6);
+  });
+
+  it("falls back to Haiku 3.5 rates for an unknown modelId (under-count, never over-count)", () => {
+    expect(
+      estimateHaikuCostUsd(
+        { inputTokens: 1_000_000, outputTokens: 1_000_000 },
+        "claude-3-7-sonnet-snapshot-99999999",
+      ),
+    ).toBeCloseTo(4.8, 6);
+  });
+
+  it("scales linearly for a realistic single-turn triage call (Haiku 3.5)", () => {
     // Typical triage: ~500 input tokens (prompt + context), ~100 output tokens (JSON response)
     const cost = estimateHaikuCostUsd({ inputTokens: 500, outputTokens: 100 });
     // 500 * 0.8/1e6 + 100 * 4/1e6 = 0.0004 + 0.0004 = 0.0008
