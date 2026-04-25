@@ -20,7 +20,19 @@
  */
 const channel = process.env.SEMREL_CHANNEL || "prod";
 const isDev = channel === "dev";
-const sha7 = process.env.GITHUB_SHA?.slice(0, 7) || "local";
+
+// Lodash template evaluated per-branch by semantic-release. `name` is the
+// matched branch name (e.g. "fix/test-run-bugs"); we strip non-semver chars
+// so the resulting prerelease identifier is valid SemVer-9.
+//
+// Why not `dev-${GITHUB_SHA}` (the prior scheme): that string is JS-evaluated
+// once at config load, so every glob entry below ends up with the *same*
+// prerelease value. semantic-release then expands the globs against all
+// remote branches and rejects the config with EPRERELEASEBRANCHES because
+// "Each pre-release branch ... must have a unique prerelease property".
+// Per-commit uniqueness is still handled by semantic-release's prerelease
+// counter (e.g. 0.4.0-fix-test-run-bugs.1 → .2 → .3).
+const PRERELEASE_TEMPLATE = "${name.replace(/[^a-zA-Z0-9-]/g, '-')}";
 
 const releaseRules = [
   { type: "feat", release: "minor" },
@@ -41,11 +53,11 @@ const releaseRules = [
 const branches = isDev
   ? [
       "main",
-      { name: "feat/*", prerelease: `dev-${sha7}`, channel: "dev" },
-      { name: "fix/*", prerelease: `dev-${sha7}`, channel: "dev" },
-      { name: "refactor/*", prerelease: `dev-${sha7}`, channel: "dev" },
-      { name: "perf/*", prerelease: `dev-${sha7}`, channel: "dev" },
-      { name: "revert/*", prerelease: `dev-${sha7}`, channel: "dev" },
+      { name: "feat/*", prerelease: PRERELEASE_TEMPLATE, channel: "dev" },
+      { name: "fix/*", prerelease: PRERELEASE_TEMPLATE, channel: "dev" },
+      { name: "refactor/*", prerelease: PRERELEASE_TEMPLATE, channel: "dev" },
+      { name: "perf/*", prerelease: PRERELEASE_TEMPLATE, channel: "dev" },
+      { name: "revert/*", prerelease: PRERELEASE_TEMPLATE, channel: "dev" },
     ]
   : ["main"];
 
