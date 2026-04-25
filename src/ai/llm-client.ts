@@ -31,6 +31,10 @@ export const MODEL_MAP: Readonly<Record<string, Readonly<Record<Provider, string
     anthropic: "claude-3-5-haiku-20241022",
     bedrock: "anthropic.claude-3-5-haiku-20241022-v1:0",
   },
+  "haiku-4-5": {
+    anthropic: "claude-haiku-4-5-20251001",
+    bedrock: "anthropic.claude-haiku-4-5-20251001-v1:0",
+  },
 };
 
 /**
