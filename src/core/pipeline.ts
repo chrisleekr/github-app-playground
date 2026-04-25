@@ -63,7 +63,6 @@ async function readCapturedFiles(
   const captured: Record<string, string> = {};
   for (const name of basenames) {
     try {
-       
       const content = await readFile(join(workDir, name), "utf-8");
       if (content.trim().length > 0) captured[name] = content;
     } catch {
