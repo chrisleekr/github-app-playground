@@ -134,7 +134,7 @@ describe.skipIf(sql === null)("runs-store", () => {
     const { insertQueued, markFailed, findById } = await import("../../src/workflows/runs-store");
     const row = await insertQueued(
       {
-        workflowName: "review",
+        workflowName: "resolve",
         target: { type: "pr", owner: "acme", repo: "repo", number: 103 },
         ownerKind: "orchestrator",
         ownerId: "test-orchestrator",
@@ -389,7 +389,7 @@ describe.skipIf(sql === null)("runs-store", () => {
 
     const row = await insertQueued(
       {
-        workflowName: "review",
+        workflowName: "resolve",
         target: { type: "pr", ...t },
         ownerKind: "orchestrator",
         ownerId: "test-orchestrator",
@@ -398,7 +398,7 @@ describe.skipIf(sql === null)("runs-store", () => {
     );
     await markFailed(row.id, "no CI yet", {}, requireSql());
 
-    const latest = await findLatestSucceededForTarget("review", t, requireSql());
+    const latest = await findLatestSucceededForTarget("resolve", t, requireSql());
     expect(latest).toBeNull();
   });
 });

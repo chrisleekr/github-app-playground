@@ -2,7 +2,7 @@
  * Integration tests for the composite `ship` handler (T027, T028).
  *
  * The handler's core job is deciding `startIndex` — which step of
- * `triage → plan → implement → review` to enqueue first when a `bot:ship`
+ * `triage → plan → implement → review → resolve` to enqueue first when a `bot:ship`
  * parent is launched. This is driven by the staleness rules in
  * `contracts/handoff-protocol.md` §Skip-if-output-exists.
  *
@@ -11,7 +11,9 @@
  *          ids through `state.stepRuns`.
  *   T028 — Open-PR shortcut (FR-020): prior successful `implement` run
  *          whose recorded PR is still open → skip straight to step 3
- *          (`review`).
+ *          (`review`). The downstream `resolve` step (index 4) is
+ *          enqueued by the orchestrator after `review` completes,
+ *          covered separately in orchestrator.test.ts.
  *
  * Downstream writes (`enqueueJob`, `tracking-mirror`) are mocked; the
  * staleness check and the `stepRuns` bookkeeping are exercised against a

@@ -11,7 +11,7 @@ import { findLatestForTarget, type WorkflowRunRow } from "../runs-store";
 
 /**
  * `ship` composite handler (T031) — the entry point for the end-to-end
- * triage → plan → implement → review pipeline.
+ * triage → plan → implement → review → resolve pipeline.
  *
  * Resume semantics (T033 / FR-013 / FR-020):
  *   - `bot:ship` is re-applicable on a target that has a prior **terminal**
@@ -24,7 +24,8 @@ import { findLatestForTarget, type WorkflowRunRow } from "../runs-store";
  *       triage    — fresh iff succeeded row exists AND `state.recommendedNext==='plan'`
  *       plan      — fresh iff succeeded row exists AND created AFTER the last triage success
  *       implement — fresh iff succeeded row exists AND recorded PR is still open
- *       review    — always stale
+ *       review    — always stale (bot self-reviews on every ship iteration)
+ *       resolve   — always stale
  *   - The first stale step becomes `startIndex`. Prior-step run ids are
  *     carried forward in `state.stepRuns` so the tracking comment can link
  *     them.
@@ -57,7 +58,7 @@ export const handler: WorkflowHandler = async (ctx) => {
       // the orchestrator flips the parent immediately. We do that by
       // inserting a synthetic completion path: cascade to succeeded.
       // Simplest path: fall through to insert a child for the last step
-      // anyway — but review is always stale, so this branch is unreachable
+      // anyway — but resolve is always stale, so this branch is unreachable
       // in practice. Defensive failure.
       return { status: "failed", reason: "ship: computed startIndex out of range" };
     }
@@ -175,8 +176,8 @@ async function computeStartIndex(params: ComputeStartIndexParams): Promise<{
     }
   }
 
-  // All steps fresh — should be unreachable because `review` is always
-  // stale. Return the last index so caller defensively inserts a review
+  // All steps fresh — should be unreachable because `resolve` is always
+  // stale. Return the last index so caller defensively inserts a resolve
   // child.
   return { startIndex: steps.length - 1, priorRunIds: priorRunIds.slice(0, -1) };
 }
@@ -196,7 +197,7 @@ async function isFresh(params: IsFreshParams): Promise<boolean> {
 
   if (latest?.status !== "succeeded") return false;
 
-  if (step === "review") return false;
+  if (step === "review" || step === "resolve") return false;
 
   if (step === "triage") {
     return latest.state["recommendedNext"] === "plan";

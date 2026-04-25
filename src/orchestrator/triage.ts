@@ -293,7 +293,7 @@ export async function triageRequest(input: TriageInput, client: LLMClient): Prom
   const triage = schemaResult.data;
   const result: TriageResult = {
     ...triage,
-    costUsd: estimateHaikuCostUsd(response.usage),
+    costUsd: estimateHaikuCostUsd(response.usage, response.model),
     latencyMs: breakerResult.latencyMs,
     provider: client.provider,
     model: response.model,

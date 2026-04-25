@@ -371,7 +371,7 @@ async function postClarifyComment(
       body: [
         `**@chrisleekr-bot** — I'm not sure which workflow you'd like me to run (confidence \`${verdict.confidence.toFixed(2)}\`).`,
         ``,
-        `Reply with one of the \`bot:*\` labels (e.g. \`bot:triage\`, \`bot:plan\`, \`bot:implement\`, \`bot:review\`, \`bot:ship\`) or rephrase so the ask is explicit.`,
+        `Reply with one of the \`bot:*\` labels (e.g. \`bot:triage\`, \`bot:plan\`, \`bot:implement\`, \`bot:review\`, \`bot:resolve\`, \`bot:ship\`) or rephrase so the ask is explicit.`,
         ``,
         `_Rationale_: ${verdict.rationale}`,
       ].join("\n"),

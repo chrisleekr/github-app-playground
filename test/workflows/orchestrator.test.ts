@@ -3,7 +3,7 @@
  *
  * Covers the `contracts/handoff-protocol.md` per-step cascade:
  *   - Success chain: parent + child 0 succeed → child 1 enqueued → … → on
- *     child-3 (review) success, parent flips to `succeeded` with the full
+ *     child-4 (resolve) success, parent flips to `succeeded` with the full
  *     `state.stepRuns` ordering.
  *   - Failure cascade: child-2 (implement) fails → parent flips to `failed`
  *     with `state.failedAtStepIndex=2` → no child 3 is enqueued.
@@ -204,25 +204,44 @@ describe.skipIf(sql === null)("orchestrator.onStepComplete", () => {
     expect(call2?.workflowRun.parentStepIndex).toBe(3);
     const child3RunId = call2?.workflowRun.runId ?? "";
 
-    // ── child 3 (review) succeeds → parent flips to succeeded ────────────
-    await markSucceeded(child3RunId, { approved: true }, requireSql());
+    // ── child 3 (review) succeeds → child 4 (resolve) enqueued ───────────
+    await markSucceeded(child3RunId, { findings: 0 }, requireSql());
     await onStepComplete({ octokit: {} as never, logger: silentLogger() }, child3RunId, {
       status: "succeeded",
     });
 
     parentRow = await findById(parent.id, requireSql());
-    expect(parentRow?.status).toBe("succeeded");
     expect(parentRow?.state["currentStepIndex"]).toBe(4);
+
+    const call3 = mockEnqueueJob.mock.calls[3]?.[0] as
+      | { workflowRun: { workflowName: string; parentStepIndex: number; runId: string } }
+      | undefined;
+    expect(call3?.workflowRun.workflowName).toBe("resolve");
+    expect(call3?.workflowRun.parentStepIndex).toBe(4);
+    const child4RunId = call3?.workflowRun.runId ?? "";
+
+    // ── child 4 (resolve) succeeds → parent flips to succeeded ────────────
+    await markSucceeded(child4RunId, { approved: true }, requireSql());
+    await onStepComplete({ octokit: {} as never, logger: silentLogger() }, child4RunId, {
+      status: "succeeded",
+    });
+
+    parentRow = await findById(parent.id, requireSql());
+    expect(parentRow?.status).toBe("succeeded");
+    expect(parentRow?.state["currentStepIndex"]).toBe(5);
     expect(parentRow?.state["stepRuns"]).toEqual([
       child0.id,
       child1RunId,
       child2RunId,
       child3RunId,
+      child4RunId,
     ]);
 
     // Final call is a terminal tracking emit, not an enqueue — enqueue
-    // count is still 3 (one per non-terminal transition).
-    expect(mockEnqueueJob).toHaveBeenCalledTimes(3);
+    // count is still 4 (one per non-terminal transition: triage → plan →
+    // implement → review → resolve). Triage was inserted before this
+    // sequence as child-0 directly, not via enqueue.
+    expect(mockEnqueueJob).toHaveBeenCalledTimes(4);
     expect(mockSetState).toHaveBeenCalled();
   });
 

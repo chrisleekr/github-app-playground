@@ -106,6 +106,11 @@ beforeEach(() => {
     summary: "Reproduced — cache TTL is 0 in src/foo.ts:42.",
     recommendedNext: "plan",
     evidence: [{ file: "src/foo.ts", line: 42, note: "cache TTL hard-coded to 0" }],
+    reproduction: {
+      attempted: true,
+      reproduced: true,
+      details: "Ran `bun test test/cache.test.ts`; cache.get returned undefined immediately.",
+    },
   });
 });
 
@@ -126,13 +131,63 @@ describe("triage handler (SDK-driven)", () => {
         recommendedNext: string;
         confidence: number;
         evidence: unknown[];
+        reproduction: { attempted: boolean; reproduced: boolean | null; details: string };
       };
       expect(state.valid).toBe(true);
       expect(state.recommendedNext).toBe("plan");
       expect(state.confidence).toBe(0.92);
       expect(state.evidence).toHaveLength(1);
+      expect(state.reproduction.attempted).toBe(true);
+      expect(state.reproduction.reproduced).toBe(true);
+      expect(state.reproduction.details).toContain("bun test");
       expect(result.humanMessage).toContain("Valid");
       expect(result.humanMessage).toContain("src/foo.ts:42");
+    }
+  });
+
+  it("accepts a non-bug verdict where reproduction was skipped", async () => {
+    triageVerdict = JSON.stringify({
+      valid: true,
+      confidence: 0.85,
+      summary: "Feature request — adds caching to /search endpoint.",
+      recommendedNext: "plan",
+      evidence: [],
+      reproduction: {
+        attempted: false,
+        reproduced: null,
+        details: "Not a bug claim — feature request, reproduction skipped.",
+      },
+    });
+    const ctx = buildCtx();
+
+    const result = await triageHandler(ctx);
+
+    expect(result.status).toBe("succeeded");
+    if (result.status === "succeeded") {
+      const state = result.state as {
+        reproduction: { attempted: boolean; reproduced: boolean | null };
+      };
+      expect(state.reproduction.attempted).toBe(false);
+      expect(state.reproduction.reproduced).toBeNull();
+    }
+  });
+
+  it("rejects a verdict that omits the reproduction field", async () => {
+    triageVerdict = JSON.stringify({
+      valid: true,
+      confidence: 0.9,
+      summary: "Looks fine.",
+      recommendedNext: "plan",
+      evidence: [],
+      // no reproduction — schema must reject
+    });
+    const ctx = buildCtx();
+
+    const result = await triageHandler(ctx);
+
+    expect(result.status).toBe("failed");
+    if (result.status === "failed") {
+      expect(result.reason).toContain("TRIAGE_VERDICT.json failed validation");
     }
   });
 
@@ -143,6 +198,11 @@ describe("triage handler (SDK-driven)", () => {
       summary: "Already fixed in commit abc123.",
       recommendedNext: "stop",
       evidence: [],
+      reproduction: {
+        attempted: true,
+        reproduced: false,
+        details: "Ran `bun test test/cache.test.ts`; all 4 tests pass — bug already fixed.",
+      },
     });
     const ctx = buildCtx();
 
