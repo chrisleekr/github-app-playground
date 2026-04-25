@@ -241,7 +241,7 @@ function buildReviewPrompt(input: {
     ``,
     `11. **No-findings case.** If you genuinely find nothing to flag, do NOT post any inline comments. Instead make the REVIEW.md (step 13) explicit about WHAT you checked and WHY you concluded no issues. A silent "looks good" is unacceptable — show your work in REVIEW.md.`,
     ``,
-    `12. **NEVER push commits, NEVER call \`gh pr merge\`, NEVER call \`gh pr review --approve\` / \`--request-changes\`.** This handler is read-only against the PR. Code changes belong to \`implement\` and \`resolve\`; approve/request-changes verdicts belong to humans (FR-017).`,
+    `12. **Push policy.** The ONLY acceptable push from this handler is \`git push --force-with-lease\` after a clean rebase onto base in step 1 — same diff, fresh head SHA, no new edits. **NEVER create commits with code changes** (no \`git commit\` of edits — code changes belong to \`implement\` and \`resolve\`). **NEVER call \`gh pr merge\`.** **NEVER call \`gh pr review --approve\` / \`--request-changes\`** — those verdicts belong to humans (FR-017).`,
     ``,
     `13. **Write \`REVIEW.md\` at the repo root** summarizing this review:`,
     `    ## Summary — one paragraph: scope of the review and overall verdict.`,
