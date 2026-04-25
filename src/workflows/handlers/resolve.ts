@@ -1,7 +1,7 @@
 import { runPipeline } from "../../core/pipeline";
 import type { BotContext } from "../../types";
 import type { WorkflowHandler } from "../registry";
-import { type BranchStaleness,formatRefreshDirective, getBranchStaleness } from "./branch-refresh";
+import { type BranchStaleness, formatRefreshDirective, getBranchStaleness } from "./branch-refresh";
 
 /**
  * `resolve` handler — runs a resolution pass on an open pull request:
