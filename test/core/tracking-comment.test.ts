@@ -12,37 +12,9 @@ import {
   updateTrackingComment,
 } from "../../src/core/tracking-comment";
 import { DISPATCH_REASONS } from "../../src/shared/dispatch-types";
-import type { BotContext } from "../../src/types";
+import { makeBotContext } from "../factories";
 
-/** Minimal silent logger */
-const silentLog = {
-  info: mock(() => {}),
-  warn: mock(() => {}),
-  error: mock(() => {}),
-  debug: mock(() => {}),
-  child: mock(function () {
-    return this;
-  }),
-} as never;
-
-function makeCtx(overrides?: Partial<BotContext>): BotContext {
-  return {
-    owner: "myorg",
-    repo: "myrepo",
-    entityNumber: 42,
-    isPR: false,
-    eventName: "issue_comment" as const,
-    triggerUsername: "tester",
-    triggerTimestamp: "2025-01-01T00:00:00Z",
-    triggerBody: "@chrisleekr-bot help",
-    commentId: 1,
-    deliveryId: "del-abc-123",
-    defaultBranch: "main",
-    octokit: {} as Octokit,
-    log: silentLog,
-    ...overrides,
-  };
-}
+const DELIVERY_ID = "del-abc-123";
 
 // ─── deliveryMarker ───────────────────────────────────────────────────────────
 
@@ -56,7 +28,7 @@ describe("deliveryMarker", () => {
 
 describe("isAlreadyProcessed", () => {
   it("returns true when the delivery marker is found in comments", async () => {
-    const ctx = makeCtx();
+    const ctx = makeBotContext({ deliveryId: DELIVERY_ID });
     ctx.octokit = {
       rest: {
         issues: {
@@ -77,7 +49,7 @@ describe("isAlreadyProcessed", () => {
   });
 
   it("calls listComments with direction:desc and per_page:100", async () => {
-    const ctx = makeCtx();
+    const ctx = makeBotContext({ deliveryId: DELIVERY_ID });
     const listComments = mock(() => Promise.resolve({ data: [] }));
     ctx.octokit = { rest: { issues: { listComments } } } as unknown as Octokit;
 
@@ -91,7 +63,7 @@ describe("isAlreadyProcessed", () => {
   });
 
   it("returns false when no comment contains the delivery marker", async () => {
-    const ctx = makeCtx();
+    const ctx = makeBotContext({ deliveryId: DELIVERY_ID });
     ctx.octokit = {
       rest: {
         issues: {
@@ -112,7 +84,7 @@ describe("isAlreadyProcessed", () => {
   });
 
   it("returns false when comment list is empty", async () => {
-    const ctx = makeCtx();
+    const ctx = makeBotContext({ deliveryId: DELIVERY_ID });
     ctx.octokit = {
       rest: { issues: { listComments: mock(() => Promise.resolve({ data: [] })) } },
     } as unknown as Octokit;
@@ -121,7 +93,7 @@ describe("isAlreadyProcessed", () => {
   });
 
   it("returns false for a comment with undefined body", async () => {
-    const ctx = makeCtx();
+    const ctx = makeBotContext({ deliveryId: DELIVERY_ID });
     ctx.octokit = {
       rest: {
         issues: { listComments: mock(() => Promise.resolve({ data: [{ body: undefined }] })) },
@@ -136,7 +108,7 @@ describe("isAlreadyProcessed", () => {
 
 describe("createTrackingComment", () => {
   it("creates a comment containing the delivery marker and returns the comment ID", async () => {
-    const ctx = makeCtx();
+    const ctx = makeBotContext({ deliveryId: DELIVERY_ID });
     let capturedBody = "";
     ctx.octokit = {
       rest: {
@@ -161,7 +133,7 @@ describe("createTrackingComment", () => {
 
 describe("updateTrackingComment", () => {
   it("calls updateComment with the provided body", async () => {
-    const ctx = makeCtx();
+    const ctx = makeBotContext({ deliveryId: DELIVERY_ID });
     let capturedArgs: Record<string, unknown> = {};
     ctx.octokit = {
       rest: {
@@ -187,11 +159,11 @@ describe("updateTrackingComment", () => {
 
 describe("finalizeTrackingComment", () => {
   let capturedUpdateBody = "";
-  let ctx: BotContext;
+  let ctx = makeBotContext({ deliveryId: DELIVERY_ID });
 
   beforeEach(() => {
     capturedUpdateBody = "";
-    ctx = makeCtx();
+    ctx = makeBotContext({ deliveryId: DELIVERY_ID });
     ctx.octokit = {
       rest: {
         issues: {

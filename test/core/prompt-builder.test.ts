@@ -14,74 +14,35 @@ import {
   resolveAllowedTools,
 } from "../../src/core/prompt-builder";
 import type { DaemonCapabilities } from "../../src/shared/daemon-types";
-import type { BotContext, FetchedData } from "../../src/types";
+import type { FetchedData } from "../../src/types";
+import { makeBotContext, makeFetchedData } from "../factories";
 
-// ─── Factories ──────────────────────────────────────────────────────────────
-
-function makeCtx(overrides?: Partial<BotContext>): BotContext {
-  const silentLog = {
-    info: () => undefined,
-    warn: () => undefined,
-    error: () => undefined,
-    debug: () => undefined,
-    child(): BotContext["log"] {
-      return this as unknown as BotContext["log"];
-    },
-  } as unknown as BotContext["log"];
-
-  return {
-    owner: "myorg",
-    repo: "myrepo",
-    entityNumber: 42,
-    isPR: false,
-    eventName: "issue_comment" as const,
-    triggerUsername: "tester",
-    triggerTimestamp: "2025-01-01T00:00:00Z",
-    triggerBody: "@chrisleekr-bot please help",
-    commentId: 1,
-    deliveryId: "test-delivery",
-    defaultBranch: "main",
-    octokit: {} as BotContext["octokit"],
-    log: silentLog,
-    ...overrides,
-  };
-}
-
-function makeIssueData(overrides?: Partial<FetchedData>): FetchedData {
-  return {
+const makeIssueData = (overrides?: Partial<FetchedData>): FetchedData =>
+  makeFetchedData({
     title: "Bug report",
     body: "Something is broken",
-    state: "OPEN",
     author: "reporter",
-    comments: [],
-    reviewComments: [],
-    changedFiles: [],
     ...overrides,
-  };
-}
+  });
 
-function makePrData(overrides?: Partial<FetchedData>): FetchedData {
-  return {
+const makePrData = (overrides?: Partial<FetchedData>): FetchedData =>
+  makeFetchedData({
     title: "Add feature X",
     body: "PR body",
-    state: "OPEN",
     author: "dev",
-    comments: [],
-    reviewComments: [],
     changedFiles: [{ filename: "src/a.ts", status: "modified", additions: 5, deletions: 2 }],
     headBranch: "feat/x",
     baseBranch: "main",
     headSha: "abc123",
     diff: "",
     ...overrides,
-  };
-}
+  });
 
 // ─── buildPrompt ────────────────────────────────────────────────────────────
 
 describe("buildPrompt", () => {
   it("generates issue prompt with correct metadata tags", () => {
-    const ctx = makeCtx({ isPR: false, entityNumber: 7 });
+    const ctx = makeBotContext({ isPR: false, entityNumber: 7 });
     const data = makeIssueData({ title: "Bug" });
     const result = buildPrompt(ctx, data, 999);
 
@@ -95,7 +56,7 @@ describe("buildPrompt", () => {
   });
 
   it("generates PR prompt with pr_number and PR-specific instructions", () => {
-    const ctx = makeCtx({ isPR: true, entityNumber: 11 });
+    const ctx = makeBotContext({ isPR: true, entityNumber: 11 });
     const data = makePrData();
     const result = buildPrompt(ctx, data, 555);
 
@@ -107,7 +68,7 @@ describe("buildPrompt", () => {
   });
 
   it("includes diff instructions for PR with baseBranch", () => {
-    const ctx = makeCtx({ isPR: true });
+    const ctx = makeBotContext({ isPR: true });
     const data = makePrData({ baseBranch: "develop" });
     const result = buildPrompt(ctx, data, 1);
 
@@ -116,7 +77,7 @@ describe("buildPrompt", () => {
   });
 
   it("omits diff instructions when baseBranch is undefined", () => {
-    const ctx = makeCtx({ isPR: true });
+    const ctx = makeBotContext({ isPR: true });
     const data = makePrData({ baseBranch: undefined });
     const result = buildPrompt(ctx, data, 1);
 
@@ -125,14 +86,14 @@ describe("buildPrompt", () => {
   });
 
   it("includes commit instructions with Co-authored-by trailer for PRs", () => {
-    const ctx = makeCtx({ isPR: true, triggerUsername: "alice" });
+    const ctx = makeBotContext({ isPR: true, triggerUsername: "alice" });
     const result = buildPrompt(ctx, makePrData(), 1);
 
     expect(result).toContain("Co-authored-by: alice <alice@users.noreply.github.com>");
   });
 
   it("omits PR-specific commit instructions for issues", () => {
-    const ctx = makeCtx({ isPR: false });
+    const ctx = makeBotContext({ isPR: false });
     const result = buildPrompt(ctx, makeIssueData(), 1);
 
     // The PR-specific section header should NOT appear for issues
@@ -143,7 +104,7 @@ describe("buildPrompt", () => {
   });
 
   it("uses REVIEW_COMMENT event type for pull_request_review_comment events", () => {
-    const ctx = makeCtx({
+    const ctx = makeBotContext({
       isPR: true,
       eventName: "pull_request_review_comment",
     });
@@ -155,7 +116,7 @@ describe("buildPrompt", () => {
 
   it("sanitizes trigger body to prevent prompt injection", () => {
     const maliciousToken = `ghp_${"A".repeat(36)}`;
-    const ctx = makeCtx({ triggerBody: `@chrisleekr-bot help ${maliciousToken}` });
+    const ctx = makeBotContext({ triggerBody: `@chrisleekr-bot help ${maliciousToken}` });
     const result = buildPrompt(ctx, makeIssueData(), 1);
 
     expect(result).not.toContain(maliciousToken);
@@ -163,7 +124,7 @@ describe("buildPrompt", () => {
   });
 
   it("includes trigger_username metadata", () => {
-    const ctx = makeCtx({ triggerUsername: "bob" });
+    const ctx = makeBotContext({ triggerUsername: "bob" });
     const result = buildPrompt(ctx, makeIssueData(), 1);
 
     expect(result).toContain("<trigger_username>bob</trigger_username>");
@@ -174,7 +135,7 @@ describe("buildPrompt", () => {
 
 describe("resolveAllowedTools", () => {
   it("includes core file system tools", () => {
-    const tools = resolveAllowedTools(makeCtx());
+    const tools = resolveAllowedTools(makeBotContext());
 
     expect(tools).toContain("Edit");
     expect(tools).toContain("Read");
@@ -184,13 +145,13 @@ describe("resolveAllowedTools", () => {
   });
 
   it("includes tracking comment MCP tool", () => {
-    const tools = resolveAllowedTools(makeCtx());
+    const tools = resolveAllowedTools(makeBotContext());
 
     expect(tools).toContain("mcp__github_comment__update_claude_comment");
   });
 
   it("includes git Bash commands", () => {
-    const tools = resolveAllowedTools(makeCtx());
+    const tools = resolveAllowedTools(makeBotContext());
 
     expect(tools).toContain("Bash(git add:*)");
     expect(tools).toContain("Bash(git commit:*)");
@@ -202,13 +163,13 @@ describe("resolveAllowedTools", () => {
   });
 
   it("adds inline comment tool for PRs", () => {
-    const tools = resolveAllowedTools(makeCtx({ isPR: true }));
+    const tools = resolveAllowedTools(makeBotContext({ isPR: true }));
 
     expect(tools).toContain("mcp__github_inline_comment__create_inline_comment");
   });
 
   it("omits inline comment tool for issues", () => {
-    const tools = resolveAllowedTools(makeCtx({ isPR: false }));
+    const tools = resolveAllowedTools(makeBotContext({ isPR: false }));
 
     expect(tools).not.toContain("mcp__github_inline_comment__create_inline_comment");
   });
@@ -223,7 +184,7 @@ describe("resolveAllowedTools", () => {
     (config as any).context7ApiKey = "ctx7-test-key";
 
     try {
-      const tools = resolveAllowedTools(makeCtx());
+      const tools = resolveAllowedTools(makeBotContext());
       expect(tools).toContain("mcp__context7__resolve-library-id");
       expect(tools).toContain("mcp__context7__query-docs");
     } finally {
@@ -239,7 +200,7 @@ describe("resolveAllowedTools", () => {
     (config as any).context7ApiKey = undefined;
 
     try {
-      const tools = resolveAllowedTools(makeCtx());
+      const tools = resolveAllowedTools(makeBotContext());
       expect(tools).not.toContain("mcp__context7__resolve-library-id");
       expect(tools).not.toContain("mcp__context7__query-docs");
     } finally {
@@ -255,7 +216,7 @@ describe("resolveAllowedTools", () => {
     (config as any).context7ApiKey = "";
 
     try {
-      const tools = resolveAllowedTools(makeCtx());
+      const tools = resolveAllowedTools(makeBotContext());
       expect(tools).not.toContain("mcp__context7__resolve-library-id");
       expect(tools).not.toContain("mcp__context7__query-docs");
     } finally {
@@ -291,7 +252,7 @@ describe("resolveAllowedTools", () => {
       maxUptimeMs: null,
     };
 
-    const tools = resolveAllowedTools(makeCtx(), caps);
+    const tools = resolveAllowedTools(makeBotContext(), caps);
 
     // Functional CLI tools and package managers get Bash(name:*) entries
     expect(tools).toContain("Bash(bun:*)");
@@ -330,7 +291,7 @@ describe("resolveAllowedTools", () => {
       maxUptimeMs: null,
     };
 
-    const tools = resolveAllowedTools(makeCtx(), caps);
+    const tools = resolveAllowedTools(makeBotContext(), caps);
 
     expect(tools).not.toContain("Bash(docker:*)");
     // Daemon MCP tools are still included when daemon capabilities are present
@@ -338,7 +299,7 @@ describe("resolveAllowedTools", () => {
   });
 
   it("excludes daemon tools when daemonCapabilities is undefined", () => {
-    const tools = resolveAllowedTools(makeCtx(), undefined);
+    const tools = resolveAllowedTools(makeBotContext(), undefined);
 
     expect(tools).not.toContain("mcp__daemon_capabilities__query_daemon_capabilities");
     expect(tools).not.toContain("mcp__repo_memory__save_repo_memory");
@@ -349,7 +310,7 @@ describe("resolveAllowedTools", () => {
 
 describe("buildPrompt — repo_memory", () => {
   it("includes repo_memory section when repoMemory is non-empty", () => {
-    const ctx = makeCtx({
+    const ctx = makeBotContext({
       repoMemory: [
         { id: "m1", category: "architecture", content: "Uses Bun runtime", pinned: false },
         { id: "m2", category: "convention", content: "No default exports", pinned: true },
@@ -365,7 +326,7 @@ describe("buildPrompt — repo_memory", () => {
   });
 
   it("omits repo_memory section when repoMemory is undefined", () => {
-    const ctx = makeCtx({ repoMemory: undefined });
+    const ctx = makeBotContext({ repoMemory: undefined });
     const result = buildPrompt(ctx, makeIssueData(), 1);
 
     // The string "<repo_memory>" appears in instructions text ("Check <repo_memory>..."),
@@ -374,7 +335,7 @@ describe("buildPrompt — repo_memory", () => {
   });
 
   it("omits repo_memory section when repoMemory is an empty array", () => {
-    const ctx = makeCtx({ repoMemory: [] });
+    const ctx = makeBotContext({ repoMemory: [] });
     const result = buildPrompt(ctx, makeIssueData(), 1);
 
     expect(result).not.toContain("The following learnings have been accumulated");
@@ -385,7 +346,7 @@ describe("buildPrompt — repo_memory", () => {
 
 describe("buildPrompt — trackingCommentId", () => {
   it("omits claude_comment_id and comment_tool_info when trackingCommentId is undefined", () => {
-    const ctx = makeCtx();
+    const ctx = makeBotContext();
     const result = buildPrompt(ctx, makeIssueData(), undefined);
 
     expect(result).not.toContain("<claude_comment_id>");
@@ -394,7 +355,7 @@ describe("buildPrompt — trackingCommentId", () => {
   });
 
   it("includes claude_comment_id and comment_tool_info when trackingCommentId is provided", () => {
-    const ctx = makeCtx();
+    const ctx = makeBotContext();
     const result = buildPrompt(ctx, makeIssueData(), 123);
 
     expect(result).toContain("<claude_comment_id>123</claude_comment_id>");
