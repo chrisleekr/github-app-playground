@@ -1,6 +1,7 @@
 import { runPipeline } from "../../core/pipeline";
 import type { BotContext } from "../../types";
 import type { WorkflowHandler } from "../registry";
+import { findById } from "../runs-store";
 import { type BranchStaleness, formatRefreshDirective, getBranchStaleness } from "./branch-refresh";
 
 /**
@@ -96,6 +97,22 @@ export const handler: WorkflowHandler = async (ctx) => {
 
     const staleness = await getBranchStaleness(octokit, target.owner, target.repo, target.number);
 
+    // Seed the tracking comment up front so the agent can post mid-run
+    // progress against it. See review.ts for the same pattern + rationale.
+    await ctx.setState(
+      {
+        pr_number: target.number,
+        failing_checks: failingChecks,
+        top_level_comments: topLevelComments.length,
+      },
+      `🔎 **Resolve starting** — ${String(failingChecks.length)} failing checks, ${String(topLevelComments.length)} open comment threads. Refreshing branch and classifying feedback…`,
+    );
+    const seededRow = await findById(runId);
+    const trackingCommentId = seededRow?.tracking_comment_id ?? undefined;
+    if (trackingCommentId === undefined || trackingCommentId === null) {
+      log.warn({ runId }, "resolve handler: tracking comment id not found after seed setState");
+    }
+
     const triggerBody = buildResolvePrompt({
       prNumber: target.number,
       prTitle: pr.title,
@@ -121,12 +138,16 @@ export const handler: WorkflowHandler = async (ctx) => {
       headBranch: pr.head.ref,
       baseBranch: pr.base.ref,
       labels: [],
-      skipTrackingComments: true,
       octokit,
       log,
     };
 
-    const result = await runPipeline(botCtx, { captureFiles: ["RESOLVE.md"] });
+    const result = await runPipeline(botCtx, {
+      captureFiles: ["RESOLVE.md"],
+      ...(trackingCommentId !== undefined && trackingCommentId !== null
+        ? { trackingCommentId }
+        : {}),
+    });
     if (!result.success) {
       return { status: "failed", reason: "resolve pipeline execution failed" };
     }
@@ -202,20 +223,29 @@ function buildResolvePrompt(input: {
     ``,
     formatRefreshDirective(input.staleness),
     ``,
+    `## Tools you MUST use`,
+    `- \`mcp__github_comment__update_claude_comment\` — refresh the tracking comment at every checkpoint marked **[update tracking comment]** so the user sees live progress.`,
+    `- \`Bash\` (\`gh\`, \`git\`) — \`gh\` and \`git\` are pre-authenticated as the GitHub App installation in this environment, so \`gh pr view\`, \`gh run view --log-failed\`, \`gh api .../pulls/comments/<id>/replies\`, \`git commit\`, \`git push\` all work without further setup.`,
+    `- \`Read\`, \`Edit\`, \`Grep\`, \`Glob\` — for code edits and exploration.`,
+    ``,
     `Do the following in order:`,
-    `0. **Refresh the branch first if needed** (see "Branch state" above). A senior engineer rebases before triaging anything; resolving feedback against a stale branch is wasted work.`,
-    `1. If failing checks exist, fetch their logs (gh run view --log-failed) and classify the failure. If it's a test / lint / type / build failure with a clear root cause, attempt one fix — diagnose, edit, commit, push. Do NOT retry more than once per run (FIX_ATTEMPTS_CAP=3 is the per-iteration cap; cross-run enforcement is not yet wired).`,
-    `2. For each open comment thread, classify into one of: Valid | Partially Valid | Invalid | Needs Clarification. The count above is an upper bound — some threads may already be resolved, in which case skip them. For Valid/Partially Valid: fix the code, commit, push, and reply to the comment with the commit SHA and a one-sentence explanation. For Invalid: reply with evidence-backed explanation, no code changes. For Needs Clarification: reply asking the specific question needed to proceed.`,
-    `3. If all checks pass AND all comments resolved AND reviewDecision is APPROVED, post a one-line "review complete — ready to merge" comment.`,
-    `4. NEVER call \`gh pr merge\` or \`octokit.pulls.merge\`. Merging is a human action (FR-017).`,
-    `5. NEVER push to the base branch ${input.baseBranch}.`,
-    `6. Before finishing, write \`RESOLVE.md\` at the repo root summarizing this resolve iteration.`,
+    `0. **[update tracking comment]** Post: "🔎 Resolve — refreshing branch (if needed)."`,
+    `1. **Refresh the branch first if needed** (see "Branch state" above). A senior engineer rebases before triaging anything; resolving feedback against a stale branch is wasted work.`,
+    `2. **[update tracking comment]** Post: "🔎 Resolve — diagnosing N failing checks." (replace N; skip this step if N=0)`,
+    `3. If failing checks exist, fetch their logs (\`gh run view --log-failed\`) and classify the failure. If it's a test / lint / type / build failure with a clear root cause, attempt one fix — diagnose, edit, commit, push. Do NOT retry more than once per run (FIX_ATTEMPTS_CAP=3 is the per-iteration cap; cross-run enforcement is not yet wired).`,
+    `4. **[update tracking comment]** Post: "🔎 Resolve — classifying K open comment threads." (replace K; skip if K=0)`,
+    `5. For each open comment thread, classify into one of: Valid | Partially Valid | Invalid | Needs Clarification. The count above is an upper bound — some threads may already be resolved, in which case skip them. For Valid/Partially Valid: fix the code, commit, push, and reply to the comment via \`gh api repos/OWNER/REPO/pulls/${String(input.prNumber)}/comments/<comment_id>/replies -X POST -f body="..."\` with the commit SHA and a one-sentence explanation. For Invalid: reply with evidence-backed explanation, no code changes. For Needs Clarification: reply asking the specific question needed to proceed.`,
+    `6. If all checks pass AND all comments resolved AND reviewDecision is APPROVED, post a one-line "review complete — ready to merge" comment via \`update_claude_comment\`.`,
+    `7. NEVER call \`gh pr merge\` or \`octokit.pulls.merge\`. Merging is a human action (FR-017).`,
+    `8. NEVER push to the base branch ${input.baseBranch}.`,
+    `9. **Before finishing**, write \`RESOLVE.md\` at the repo root summarizing this resolve iteration.`,
     `   Required sections:`,
     `   ## Summary — one paragraph: what state the PR is in now and what's left.`,
     `   ## CI status — list each failing check and what you did about it.`,
     `   ## Review comments — for each comment: classification, action taken, commit/reply link.`,
     `   ## Commits pushed — sha · subject.`,
     `   ## Outstanding — what still blocks merge (if anything).`,
-    `   This becomes the tracking comment body — be specific, cite files and links.`,
+    `   This becomes the final tracking comment body — be specific, cite files and links.`,
+    `10. **[update tracking comment]** Final: paste the full RESOLVE.md contents.`,
   ].join("\n");
 }
