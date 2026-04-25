@@ -84,7 +84,6 @@ const {
   registerDaemon,
   deregisterDaemon,
   refreshDaemonTtl,
-  reapStaleDaemons,
   getActiveDaemons,
   getDaemonActiveJobs,
   incrementDaemonActiveJobs,
@@ -414,32 +413,5 @@ describe("decrementDaemonActiveJobs", () => {
     await decrementDaemonActiveJobs("d-zero");
 
     expect(mockLoggerWarn).not.toHaveBeenCalled();
-  });
-});
-
-describe("reapStaleDaemons", () => {
-  it("returns 0 when db is not available", async () => {
-    dbEnabled = false;
-    const reaped = await reapStaleDaemons(300_000);
-
-    expect(reaped).toBe(0);
-    expect(mockDbFn).not.toHaveBeenCalled();
-  });
-
-  it("returns the number of updated rows", async () => {
-    mockDbResult = [{ id: "daemon-stale-1" }, { id: "daemon-stale-2" }];
-
-    const reaped = await reapStaleDaemons(300_000);
-
-    expect(reaped).toBe(2);
-    expect(mockDbFn).toHaveBeenCalled();
-  });
-
-  it("returns 0 when no stale rows are found", async () => {
-    mockDbResult = [];
-
-    const reaped = await reapStaleDaemons(300_000);
-
-    expect(reaped).toBe(0);
   });
 });
