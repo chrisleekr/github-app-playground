@@ -1,3 +1,16 @@
+# [1.3.0](https://github.com/chrisleekr/github-app-playground/compare/v1.2.2...v1.3.0) (2026-04-25)
+
+
+### Bug Fixes
+
+* **review:** forward installation token, post inline findings, and stream progress ([#57](https://github.com/chrisleekr/github-app-playground/issues/57)) ([7ee4861](https://github.com/chrisleekr/github-app-playground/commit/7ee486117ed5dec000413c99b632df783fba4e55))
+* **workflows:** make end-to-end runs survive without mid-run caps or stale state ([#55](https://github.com/chrisleekr/github-app-playground/issues/55)) ([35ee605](https://github.com/chrisleekr/github-app-playground/commit/35ee605f3f4cc447fe3f6bec4f9d4ae711f150b4))
+
+
+### Features
+
+* **workflows:** add label-dispatched bot workflow foundation ([#49](https://github.com/chrisleekr/github-app-playground/issues/49)) ([1b18779](https://github.com/chrisleekr/github-app-playground/commit/1b187792c5e1a8f78ae08e820e2281a11414a161))
+
 ## [1.2.2](https://github.com/chrisleekr/github-app-playground/compare/v1.2.1...v1.2.2) (2026-04-20)
 
 
