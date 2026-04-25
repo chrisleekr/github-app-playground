@@ -1,6 +1,7 @@
 import { runPipeline } from "../../core/pipeline";
 import type { BotContext } from "../../types";
 import type { WorkflowHandler } from "../registry";
+import { type BranchStaleness,formatRefreshDirective, getBranchStaleness } from "./branch-refresh";
 
 /**
  * `review` handler — proactive senior-developer code review on an open PR.
@@ -50,6 +51,8 @@ export const handler: WorkflowHandler = async (ctx) => {
       };
     }
 
+    const staleness = await getBranchStaleness(octokit, target.owner, target.repo, target.number);
+
     const triggerBody = buildReviewPrompt({
       prNumber: target.number,
       prTitle: pr.title,
@@ -59,6 +62,7 @@ export const handler: WorkflowHandler = async (ctx) => {
       changedFiles: pr.changed_files,
       additions: pr.additions,
       deletions: pr.deletions,
+      staleness,
     });
 
     const botCtx: BotContext = {
@@ -94,6 +98,11 @@ export const handler: WorkflowHandler = async (ctx) => {
       changed_files: pr.changed_files,
       additions: pr.additions,
       deletions: pr.deletions,
+      branch_state: {
+        commits_behind_base: staleness.commitsBehindBase,
+        commits_ahead_of_base: staleness.commitsAheadOfBase,
+        is_fork: staleness.isFork,
+      },
       report,
       costUsd: result.costUsd ?? 0,
       turns: result.numTurns ?? 0,
@@ -138,6 +147,7 @@ function buildReviewPrompt(input: {
   changedFiles: number;
   additions: number;
   deletions: number;
+  staleness: BranchStaleness;
 }): string {
   return [
     `You are a senior software engineer performing a code review on pull request #${String(input.prNumber)}: ${input.prTitle}`,
@@ -147,10 +157,14 @@ function buildReviewPrompt(input: {
     `## PR description`,
     input.prBody.trim().length > 0 ? input.prBody : "_(empty)_",
     ``,
+    formatRefreshDirective(input.staleness),
+    ``,
     `## Your task`,
     `Review this PR as a senior engineer would. The cloned repo is your working tree (\`pwd\`). The base branch is \`origin/${input.baseBranch}\`. Both branches are checked out; the working tree is on \`${input.headBranch}\`.`,
     ``,
     `Do the following IN ORDER:`,
+    ``,
+    `0. **Refresh the branch first if needed** (see "Branch state" above). Reviewing stale code is worse than not reviewing — your findings would be against an old base. After rebase + push, the head SHA changes; re-fetch any cached diff metadata before continuing.`,
     ``,
     `1. **Survey the diff.** \`git diff origin/${input.baseBranch}...HEAD\` to see every change. Note files, scope, and any obvious red flags.`,
     ``,

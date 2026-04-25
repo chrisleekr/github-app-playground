@@ -1,6 +1,7 @@
 import { runPipeline } from "../../core/pipeline";
 import type { BotContext } from "../../types";
 import type { WorkflowHandler } from "../registry";
+import { type BranchStaleness,formatRefreshDirective, getBranchStaleness } from "./branch-refresh";
 
 /**
  * `resolve` handler — runs a resolution pass on an open pull request:
@@ -87,6 +88,8 @@ export const handler: WorkflowHandler = async (ctx) => {
     });
     const topLevelComments = reviewComments.filter((c) => c.in_reply_to_id === undefined);
 
+    const staleness = await getBranchStaleness(octokit, target.owner, target.repo, target.number);
+
     const triggerBody = buildResolvePrompt({
       prNumber: target.number,
       prTitle: pr.title,
@@ -94,6 +97,7 @@ export const handler: WorkflowHandler = async (ctx) => {
       baseBranch: pr.base.ref,
       failingChecks,
       unresolvedCount: topLevelComments.length,
+      staleness,
     });
 
     const botCtx: BotContext = {
@@ -127,6 +131,11 @@ export const handler: WorkflowHandler = async (ctx) => {
       pr_number: target.number,
       failing_checks: failingChecks,
       top_level_comments: topLevelComments.length,
+      branch_state: {
+        commits_behind_base: staleness.commitsBehindBase,
+        commits_ahead_of_base: staleness.commitsAheadOfBase,
+        is_fork: staleness.isFork,
+      },
       report,
       costUsd: result.costUsd ?? 0,
       turns: result.numTurns ?? 0,
@@ -173,6 +182,7 @@ function buildResolvePrompt(input: {
   baseBranch: string;
   failingChecks: readonly string[];
   unresolvedCount: number;
+  staleness: BranchStaleness;
 }): string {
   return [
     `You are a PR resolve agent for pull request #${String(input.prNumber)}: ${input.prTitle}`,
@@ -184,7 +194,10 @@ function buildResolvePrompt(input: {
       : `  - failing checks: ${input.failingChecks.join(", ")}`,
     `Unresolved reviewer comments: ${String(input.unresolvedCount)}`,
     ``,
+    formatRefreshDirective(input.staleness),
+    ``,
     `Do the following in order:`,
+    `0. **Refresh the branch first if needed** (see "Branch state" above). A senior engineer rebases before triaging anything; resolving feedback against a stale branch is wasted work.`,
     `1. If failing checks exist, fetch their logs (gh run view --log-failed) and classify the failure. If it's a test / lint / type / build failure with a clear root cause, attempt one fix — diagnose, edit, commit, push. Do NOT retry more than once per run (FIX_ATTEMPTS_CAP=3 is tracked across runs).`,
     `2. For every unresolved review comment, classify into one of: Valid | Partially Valid | Invalid | Needs Clarification. For Valid/Partially Valid: fix the code, commit, push, and reply to the comment with the commit SHA and a one-sentence explanation. For Invalid: reply with evidence-backed explanation, no code changes. For Needs Clarification: reply asking the specific question needed to proceed.`,
     `3. If all checks pass AND all comments resolved AND reviewDecision is APPROVED, post a one-line "review complete — ready to merge" comment.`,

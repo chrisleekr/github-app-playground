@@ -50,26 +50,49 @@ interface PrOverrides {
   changedFiles?: number;
   additions?: number;
   deletions?: number;
+  /** Default 0 — branch is up-to-date. */
+  behindBy?: number;
+  /** Default false — head is on the same repo as base. */
+  isFork?: boolean;
 }
 
 function buildCtx(
   prOverrides?: PrOverrides,
   targetType: "pr" | "issue" = "pr",
 ): WorkflowRunContext & { setStateMock: ReturnType<typeof mock> } {
+  const isFork = prOverrides?.isFork ?? false;
+  const headRepoFullName = isFork ? "fork/widgets" : "acme/widgets";
+
+  const prData = {
+    state: prOverrides?.state ?? "open",
+    title: prOverrides?.title ?? "Sample PR",
+    body: prOverrides?.body ?? "PR description",
+    changed_files: prOverrides?.changedFiles ?? 3,
+    additions: prOverrides?.additions ?? 42,
+    deletions: prOverrides?.deletions ?? 7,
+    head: {
+      ref: "feature/foo",
+      sha: "abc1234",
+      label: "acme:feature/foo",
+      repo: { full_name: headRepoFullName },
+    },
+    base: {
+      ref: "main",
+      repo: { full_name: "acme/widgets", default_branch: "main" },
+    },
+  };
+
   const octokit = {
     rest: {
       pulls: {
-        get: mock(async () =>
+        get: mock(async () => Promise.resolve({ data: prData })),
+      },
+      repos: {
+        compareCommitsWithBasehead: mock(async () =>
           Promise.resolve({
             data: {
-              state: prOverrides?.state ?? "open",
-              title: prOverrides?.title ?? "Sample PR",
-              body: prOverrides?.body ?? "PR description",
-              changed_files: prOverrides?.changedFiles ?? 3,
-              additions: prOverrides?.additions ?? 42,
-              deletions: prOverrides?.deletions ?? 7,
-              head: { ref: "feature/foo", sha: "abc1234" },
-              base: { ref: "main", repo: { default_branch: "main" } },
+              behind_by: prOverrides?.behindBy ?? 0,
+              ahead_by: 5,
             },
           }),
         ),
@@ -142,6 +165,9 @@ describe("review handler", () => {
       expect(state["report"]).toContain("Reviewed 3 files");
       expect(state["costUsd"]).toBe(0.42);
       expect(state["turns"]).toBe(12);
+      const branch = state["branch_state"] as Record<string, unknown>;
+      expect(branch["commits_behind_base"]).toBe(0);
+      expect(branch["is_fork"]).toBe(false);
     }
     expect(ctx.setStateMock).toHaveBeenCalledTimes(1);
     const setStateArgs = ctx.setStateMock.mock.calls[0] as [unknown, string];
@@ -149,6 +175,28 @@ describe("review handler", () => {
     expect(setStateArgs[1]).toContain("5 files");
     expect(setStateArgs[1]).toContain("+100/-20");
     expect(setStateArgs[1]).toContain("Reviewed 3 files");
+  });
+
+  it("records commits_behind_base when the branch is stale", async () => {
+    const ctx = buildCtx({ behindBy: 7 });
+    const result = await reviewHandler(ctx);
+    expect(result.status).toBe("succeeded");
+    if (result.status === "succeeded") {
+      const state = result.state as { branch_state: Record<string, unknown> };
+      expect(state.branch_state["commits_behind_base"]).toBe(7);
+      expect(state.branch_state["is_fork"]).toBe(false);
+    }
+  });
+
+  it("flags fork PRs in branch_state so the agent knows it can't push", async () => {
+    const ctx = buildCtx({ behindBy: 3, isFork: true });
+    const result = await reviewHandler(ctx);
+    expect(result.status).toBe("succeeded");
+    if (result.status === "succeeded") {
+      const state = result.state as { branch_state: Record<string, unknown> };
+      expect(state.branch_state["commits_behind_base"]).toBe(3);
+      expect(state.branch_state["is_fork"]).toBe(true);
+    }
   });
 
   it("falls back to a placeholder when REVIEW.md is missing", async () => {
