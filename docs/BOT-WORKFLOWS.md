@@ -42,19 +42,28 @@ Composite workflows like `ship` insert a child row per step. When the child comp
 
 - **Label**: `bot:triage`
 - **Accepted context**: `issue`
-- **Inputs**: issue title + body
-- **Outputs**: `state.recommendedNext` ∈ {`plan`, `unsupported`, `clarify`}
-- **Stop conditions**: classifier returns terminal verdict; no retry in handler
+- **Inputs**: issue title + body, plus a fresh clone of the repo (the handler runs the Claude Agent SDK with `Read`/`Grep`/`Glob`/`Bash`/`Write` against the working tree).
+- **Outputs**:
+  - `state.valid` — boolean verdict
+  - `state.confidence` — 0-1 float from the agent's self-assessment
+  - `state.summary` — one-paragraph rationale
+  - `state.recommendedNext` ∈ {`plan`, `stop`}
+  - `state.evidence` — array of `{file, line?, note?}` cites
+  - `state.report` — full `TRIAGE.md` markdown (with sections: Method, Verdict, What was inspected, Findings, Reasoning, Recommended next step). Embedded verbatim into the tracking comment.
+- **Stop conditions**:
+  - Agent writes both `TRIAGE.md` and `TRIAGE_VERDICT.json`; verdict JSON validates against the Zod schema.
+  - When `valid === false`, the handler returns `failed` so the `bot:ship` cascade halts at this step (no plan/implement/review).
+  - Missing markdown, malformed JSON, or an SDK error all map to `failed` with a specific `reason`.
 - **Example trigger**: add label `bot:triage`, or comment "`@chrisleekr-bot triage this`"
 
 ### plan
 
 - **Label**: `bot:plan`
 - **Accepted context**: `issue`
-- **Requires prior**: a successful `triage` run on the same issue
+- **Requires prior**: a successful `triage` run on the same issue **with `state.valid === true`** (the dispatcher's `requiresPrior: 'triage'` gate plus the triage handler's own `valid=false → failed` return together enforce this).
 - **Inputs**: issue body + triage state
-- **Outputs**: `state.plan` — a `PLAN.md` markdown string checked in by a multi-turn agent session over a clone of the repo
-- **Stop conditions**: agent writes `PLAN.md`; pipeline reports success or failure
+- **Outputs**: `state.plan` — a `PLAN.md` markdown string written by a multi-turn agent session over a clone of the repo, captured via `runPipeline({ captureFiles: ["PLAN.md"] })` before workspace cleanup. Plus `costUsd` / `turns` / `durationMs` metadata. The full `PLAN.md` body is embedded verbatim into the tracking comment.
+- **Stop conditions**: agent writes `PLAN.md`; pipeline reports success or failure. No turn cap (`AGENT_MAX_TURNS` defaults to unset; `DEFAULT_MAXTURNS` also unset).
 - **Example trigger**: `@chrisleekr-bot plan this out`
 
 ### implement
@@ -62,9 +71,10 @@ Composite workflows like `ship` insert a child row per step. When the child comp
 - **Label**: `bot:implement`
 - **Accepted context**: `issue`
 - **Requires prior**: a successful `plan` run
-- **Inputs**: issue body + saved plan
-- **Outputs**: `state.pr_number`, `state.pr_url`, `state.branch`
-- **Stop conditions**: pipeline pushes a branch and opens a PR, OR pipeline fails; the handler does NOT poll CI or reviewer state — that is `review`'s job.
+- **Inputs**: issue body + saved plan markdown (carried forward as the prompt trigger body)
+- **Outputs**: `state.pr_number`, `state.pr_url`, `state.branch`, `state.report` (full `IMPLEMENT.md` body — Summary / Files changed / Commits / Tests run / Verification), `state.costUsd`, `state.turns`. The agent is asked to write `IMPLEMENT.md` before finishing; the handler captures it pre-cleanup and embeds it in the tracking comment.
+- **PR detection**: `findRecentOpenedPr` filters on `pr.user?.type === "Bot"` plus `created_at >= since - 5s`. It deliberately does **not** match on a hard-coded slug — dev installs publish as `chrisleekr-bot-dev[bot]` and prod as `chrisleekr-bot[bot]`, so a slug check produces false negatives.
+- **Stop conditions**: pipeline pushes a branch and opens a PR, OR pipeline fails. If the pipeline reports success but `findRecentOpenedPr` returns null, the handler fails with `"implement completed but no PR was found"`. The handler does NOT poll CI or reviewer state — that is `review`'s job.
 - **Example trigger**: `@chrisleekr-bot implement this`
 
 ### review
@@ -72,7 +82,7 @@ Composite workflows like `ship` insert a child row per step. When the child comp
 - **Label**: `bot:review`
 - **Accepted context**: `pr`
 - **Inputs**: PR title, failing check names, unresolved review comments
-- **Outputs**: `state.failing_checks`, `state.unresolved_comments`
+- **Outputs**: `state.failing_checks`, `state.unresolved_comments`, `state.report` (full `REVIEW.md` body — Summary / CI status / Review comments / Commits pushed / Outstanding), `state.costUsd`, `state.turns`. The agent is asked to write `REVIEW.md` before finishing; the handler captures it pre-cleanup and embeds it in the tracking comment.
 - **Stop conditions** (from `src/workflows/handlers/review.ts`):
   - `FIX_ATTEMPTS_CAP = 3` — max consecutive CI-fix attempts per PR
   - `POLL_WAIT_SECS_CAP = 900` — 15-minute reviewer-patience window
@@ -88,7 +98,7 @@ Composite workflows like `ship` insert a child row per step. When the child comp
 - **Resume semantics** (`src/workflows/handlers/ship.ts`):
   - `bot:ship` is re-applicable on a target whose prior parent row is **terminal** (the partial unique index only blocks in-flight parents).
   - Per-step staleness rules:
-    - `triage` — fresh iff succeeded AND `state.recommendedNext === 'plan'`
+    - `triage` — fresh iff succeeded AND `state.valid === true` AND `state.recommendedNext === 'plan'` (an invalid verdict halts the cascade rather than poisoning future ship runs)
     - `plan` — fresh iff succeeded AND created after the last triage success
     - `implement` — fresh iff succeeded AND the recorded PR is still open
     - `review` — always stale
