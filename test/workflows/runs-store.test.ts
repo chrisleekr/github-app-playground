@@ -65,6 +65,8 @@ describe.skipIf(sql === null)("runs-store", () => {
         target: { ...target, number: 100 },
         deliveryId: "delivery-100",
         initialState: { seeded: true },
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
       },
       requireSql(),
     );
@@ -88,17 +90,22 @@ describe.skipIf(sql === null)("runs-store", () => {
     const { insertQueued, markRunning, findById, markSucceeded } =
       await import("../../src/workflows/runs-store");
     const row = await insertQueued(
-      { workflowName: "plan", target: { ...target, number: 101 } },
+      {
+        workflowName: "plan",
+        target: { ...target, number: 101 },
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
+      },
       requireSql(),
     );
 
-    await markRunning(row.id, requireSql());
+    await markRunning(row.id, "test-daemon", requireSql());
     const afterRunning = await findById(row.id, requireSql());
     expect(afterRunning?.status).toBe("running");
 
     // Second call must not flip succeeded back to running.
     await markSucceeded(row.id, {}, requireSql());
-    await markRunning(row.id, requireSql());
+    await markRunning(row.id, "test-daemon", requireSql());
     const afterNoop = await findById(row.id, requireSql());
     expect(afterNoop?.status).toBe("succeeded");
   });
@@ -111,6 +118,8 @@ describe.skipIf(sql === null)("runs-store", () => {
         workflowName: "implement",
         target: { ...target, number: 102 },
         initialState: { a: 1, b: 2 },
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
       },
       requireSql(),
     );
@@ -124,7 +133,12 @@ describe.skipIf(sql === null)("runs-store", () => {
   it("markFailed records the reason inside state", async () => {
     const { insertQueued, markFailed, findById } = await import("../../src/workflows/runs-store");
     const row = await insertQueued(
-      { workflowName: "review", target: { type: "pr", owner: "acme", repo: "repo", number: 103 } },
+      {
+        workflowName: "review",
+        target: { type: "pr", owner: "acme", repo: "repo", number: 103 },
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
+      },
       requireSql(),
     );
 
@@ -137,7 +151,12 @@ describe.skipIf(sql === null)("runs-store", () => {
   it("mergeState updates state without changing status", async () => {
     const { insertQueued, mergeState, findById } = await import("../../src/workflows/runs-store");
     const row = await insertQueued(
-      { workflowName: "triage", target: { ...target, number: 104 } },
+      {
+        workflowName: "triage",
+        target: { ...target, number: 104 },
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
+      },
       requireSql(),
     );
 
@@ -151,7 +170,12 @@ describe.skipIf(sql === null)("runs-store", () => {
     const { insertQueued, setTrackingCommentId, findById } =
       await import("../../src/workflows/runs-store");
     const row = await insertQueued(
-      { workflowName: "triage", target: { ...target, number: 105 } },
+      {
+        workflowName: "triage",
+        target: { ...target, number: 105 },
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
+      },
       requireSql(),
     );
 
@@ -165,14 +189,19 @@ describe.skipIf(sql === null)("runs-store", () => {
       await import("../../src/workflows/runs-store");
     const t = { owner: "acme", repo: "repo", number: 106 };
     const row = await insertQueued(
-      { workflowName: "plan", target: { ...target, number: 106 } },
+      {
+        workflowName: "plan",
+        target: { ...target, number: 106 },
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
+      },
       requireSql(),
     );
 
     const queuedHit = await findInflight("plan", t, requireSql());
     expect(queuedHit?.id).toBe(row.id);
 
-    await markRunning(row.id, requireSql());
+    await markRunning(row.id, "test-daemon", requireSql());
     const runningHit = await findInflight("plan", t, requireSql());
     expect(runningHit?.id).toBe(row.id);
 
@@ -186,7 +215,12 @@ describe.skipIf(sql === null)("runs-store", () => {
       await import("../../src/workflows/runs-store");
     const t = { owner: "acme", repo: "repo", number: 107 };
     const first = await insertQueued(
-      { workflowName: "triage", target: { ...target, number: 107 } },
+      {
+        workflowName: "triage",
+        target: { ...target, number: 107 },
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
+      },
       requireSql(),
     );
     await markSucceeded(first.id, {}, requireSql());
@@ -195,7 +229,12 @@ describe.skipIf(sql === null)("runs-store", () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     const second = await insertQueued(
-      { workflowName: "triage", target: { ...target, number: 107 } },
+      {
+        workflowName: "triage",
+        target: { ...target, number: 107 },
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
+      },
       requireSql(),
     );
 
@@ -206,7 +245,12 @@ describe.skipIf(sql === null)("runs-store", () => {
   it("partial unique index rejects a second in-flight row for the same (workflow, target)", async () => {
     const { insertQueued } = await import("../../src/workflows/runs-store");
     await insertQueued(
-      { workflowName: "triage", target: { ...target, number: 108 } },
+      {
+        workflowName: "triage",
+        target: { ...target, number: 108 },
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
+      },
       requireSql(),
     );
 
@@ -219,13 +263,23 @@ describe.skipIf(sql === null)("runs-store", () => {
   it("allows a new queued row once the prior one is terminal", async () => {
     const { insertQueued, markSucceeded } = await import("../../src/workflows/runs-store");
     const first = await insertQueued(
-      { workflowName: "triage", target: { ...target, number: 109 } },
+      {
+        workflowName: "triage",
+        target: { ...target, number: 109 },
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
+      },
       requireSql(),
     );
     await markSucceeded(first.id, {}, requireSql());
 
     const second = await insertQueued(
-      { workflowName: "triage", target: { ...target, number: 109 } },
+      {
+        workflowName: "triage",
+        target: { ...target, number: 109 },
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
+      },
       requireSql(),
     );
     expect(second.status).toBe("queued");
@@ -235,7 +289,12 @@ describe.skipIf(sql === null)("runs-store", () => {
   it("listChildrenByParent returns children ordered by parent_step_index", async () => {
     const { insertQueued, listChildrenByParent } = await import("../../src/workflows/runs-store");
     const parent = await insertQueued(
-      { workflowName: "ship", target: { ...target, number: 110 } },
+      {
+        workflowName: "ship",
+        target: { ...target, number: 110 },
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
+      },
       requireSql(),
     );
 
@@ -246,6 +305,8 @@ describe.skipIf(sql === null)("runs-store", () => {
         target: { ...target, number: 110 },
         parentRunId: parent.id,
         parentStepIndex: 1,
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
       },
       requireSql(),
     );
@@ -255,6 +316,8 @@ describe.skipIf(sql === null)("runs-store", () => {
         target: { ...target, number: 110 },
         parentRunId: parent.id,
         parentStepIndex: 0,
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
       },
       requireSql(),
     );
@@ -268,7 +331,12 @@ describe.skipIf(sql === null)("runs-store", () => {
     const { insertQueued, tryReserveTrackingCommentId } =
       await import("../../src/workflows/runs-store");
     const row = await insertQueued(
-      { workflowName: "triage", target: { ...target, number: 115 } },
+      {
+        workflowName: "triage",
+        target: { ...target, number: 115 },
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
+      },
       requireSql(),
     );
 
@@ -287,7 +355,12 @@ describe.skipIf(sql === null)("runs-store", () => {
 
     // First run: succeeded.
     const first = await insertQueued(
-      { workflowName: "triage", target: { ...target, number: 116 } },
+      {
+        workflowName: "triage",
+        target: { ...target, number: 116 },
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
+      },
       requireSql(),
     );
     await markSucceeded(first.id, { verdict: "valid" }, requireSql());
@@ -295,7 +368,12 @@ describe.skipIf(sql === null)("runs-store", () => {
 
     // Second run: failed (must not shadow the earlier success).
     const second = await insertQueued(
-      { workflowName: "triage", target: { ...target, number: 116 } },
+      {
+        workflowName: "triage",
+        target: { ...target, number: 116 },
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
+      },
       requireSql(),
     );
     await markFailed(second.id, "intermittent network error", {}, requireSql());
@@ -310,7 +388,12 @@ describe.skipIf(sql === null)("runs-store", () => {
     const t = { owner: "acme", repo: "repo", number: 117 };
 
     const row = await insertQueued(
-      { workflowName: "review", target: { type: "pr", ...t } },
+      {
+        workflowName: "review",
+        target: { type: "pr", ...t },
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
+      },
       requireSql(),
     );
     await markFailed(row.id, "no CI yet", {}, requireSql());

@@ -57,7 +57,6 @@ export const handler: WorkflowHandler = async (ctx) => {
       mcpServers: {},
       workDir: checkout.workDir,
       allowedTools: ["Read", "Grep", "Glob", "Write", "Bash"],
-      maxTurns: 30,
     });
 
     if (!result.success) {
@@ -79,7 +78,13 @@ export const handler: WorkflowHandler = async (ctx) => {
       costUsd: result.costUsd ?? 0,
       turns: result.numTurns ?? 0,
     };
-    const humanMessage = `plan ready — ${String(planMarkdown.split("\n").length)} lines of task decomposition written.`;
+    const meta: string[] = [];
+    if (result.costUsd !== undefined) meta.push(`cost: $${result.costUsd.toFixed(4)}`);
+    if (result.numTurns !== undefined) meta.push(`turns: ${String(result.numTurns)}`);
+    if (result.durationMs !== undefined)
+      meta.push(`duration: ${String(Math.round(result.durationMs / 1000))}s`);
+    const metaLine = meta.length > 0 ? `\n\n_${meta.join(" · ")}_` : "";
+    const humanMessage = `📋 **Plan ready** — task decomposition below.\n\n${planMarkdown.trim()}${metaLine}`;
     await ctx.setState(state, humanMessage);
 
     log.info(

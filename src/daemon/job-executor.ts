@@ -273,7 +273,7 @@ export async function executeJob(
     // handleJobCancel and registerExitCleanup can rm it (and its `.cred.sh`)
     // even if the pipeline does not finish its own cleanup.
     const result = await runPipeline(fullCtx, {
-      maxTurns,
+      ...(maxTurns !== undefined ? { maxTurns } : {}),
       allowedTools,
       onWorkDirReady: (wd: string) => {
         job.workDir = wd;

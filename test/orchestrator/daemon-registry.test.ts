@@ -158,8 +158,9 @@ describe("registerDaemon", () => {
       "90",
       JSON.stringify(msg.payload.capabilities),
     ]);
-    // SET daemon:{id}:active_jobs 0
-    expect(mockSend).toHaveBeenCalledWith("SET", ["daemon:daemon-1:active_jobs", "0"]);
+    // SET daemon:{id}:active_jobs 0 EX 90 — shares TTL with the liveness key
+    // so an orchestrator crash can't leak the counter independently.
+    expect(mockSend).toHaveBeenCalledWith("SET", ["daemon:daemon-1:active_jobs", "0", "EX", "90"]);
     // SADD active_daemons daemon-1
     expect(mockSend).toHaveBeenCalledWith("SADD", ["active_daemons", "daemon-1"]);
   });
@@ -265,6 +266,12 @@ describe("refreshDaemonTtl", () => {
     await refreshDaemonTtl("daemon-5", caps);
 
     expect(mockSend).toHaveBeenCalledWith("SETEX", ["daemon:daemon-5", "90", JSON.stringify(caps)]);
+  });
+
+  it("also extends the active_jobs TTL via EXPIRE so both keys stay aligned", async () => {
+    await refreshDaemonTtl("daemon-5", makeCapabilities());
+
+    expect(mockSend).toHaveBeenCalledWith("EXPIRE", ["daemon:daemon-5:active_jobs", "90"]);
   });
 
   it("updates last_seen_at in Postgres when db is available", async () => {

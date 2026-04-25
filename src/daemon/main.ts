@@ -1,9 +1,10 @@
-import { hostname, platform } from "node:os";
+import { platform } from "node:os";
 
 import { config } from "../config";
 import { logger } from "../logger";
 import type { DaemonCapabilities } from "../shared/daemon-types";
 import { createMessageEnvelope, type ServerMessage } from "../shared/ws-messages";
+import { getDaemonId } from "./daemon-id";
 import { buildHeartbeatPong } from "./health-reporter";
 import {
   evaluateOffer,
@@ -15,9 +16,7 @@ import {
 import { discoverCapabilities, getCurrentResources } from "./tool-discovery";
 import { DaemonWsClient } from "./ws-client";
 
-// Daemon ID generation
-
-const daemonId = `daemon-${hostname()}-${process.pid}`;
+const daemonId = getDaemonId();
 
 // State
 
@@ -294,6 +293,19 @@ function startEphemeralIdleLoop(): void {
 
 async function main(): Promise<void> {
   logger.info({ daemonId }, "Daemon starting");
+
+  // Surface silent exits: if the event loop ever drains while we're not
+  // explicitly shutting down, log it so future regressions of the "daemon
+  // just disappeared" class are immediately visible.
+  process.on("beforeExit", (code) => {
+    logger.warn(
+      { code, activeJobs: getActiveJobCount(), draining },
+      "Event loop drained, about to exit",
+    );
+  });
+  process.on("exit", (code) => {
+    logger.info({ code, draining }, "Process exit");
+  });
 
   registerExitCleanup();
 

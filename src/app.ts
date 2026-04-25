@@ -19,7 +19,17 @@ import { closeDb, getDb } from "./db";
 import { runMigrations } from "./db/migrate";
 import { logger } from "./logger";
 import { recoverStaleExecutions } from "./orchestrator/history";
+import { getInstanceId } from "./orchestrator/instance-id";
+import { startInstanceHeartbeat, stopInstanceHeartbeat } from "./orchestrator/instance-liveness";
+import { recoverProcessingList } from "./orchestrator/job-queue";
+import {
+  reapOnce as reapLivenessOnce,
+  startLivenessReaper,
+  stopLivenessReaper,
+} from "./orchestrator/liveness-reaper";
+import { startQueueWorker, stopQueueWorker } from "./orchestrator/queue-worker";
 import { closeValkey, connectValkey, isValkeyHealthy } from "./orchestrator/valkey";
+import { sweepValkeyOrphans } from "./orchestrator/valkey-cleanup";
 import { startWebSocketServer, stopWebSocketServer } from "./orchestrator/ws-server";
 import type { BotContext } from "./types";
 import { handleIssueComment } from "./webhook/events/issue-comment";
@@ -315,8 +325,40 @@ async function runStartupChecks(): Promise<void> {
   // tick, producing 503s on /readyz until then. See src/orchestrator/valkey.ts.
   await connectValkey();
 
+  // Publish this orchestrator's liveness key BEFORE the Valkey orphan sweep
+  // so concurrently-starting peers don't misidentify us as dead and drain
+  // our own processing list out from under us.
+  const instanceId = getInstanceId();
+  await startInstanceHeartbeat();
+
+  // Best-effort recovery passes. None of these block startup if they fail —
+  // the queue worker still comes up and makes forward progress.
+  try {
+    await sweepValkeyOrphans(instanceId);
+  } catch (err) {
+    logger.error({ err }, "Valkey orphan sweep failed — continuing startup");
+  }
+  try {
+    await recoverProcessingList(instanceId);
+  } catch (err) {
+    logger.error({ err }, "recoverProcessingList failed — continuing startup");
+  }
+
+  // One eager reaper pass on startup catches rows abandoned by a previous
+  // crash before the periodic timer's first tick. Then start the timer.
+  try {
+    await reapLivenessOnce();
+  } catch (err) {
+    logger.error({ err }, "Initial liveness reaper pass failed — continuing startup");
+  }
+  startLivenessReaper();
+
   startWebSocketServer();
   logger.info({ wsPort: config.wsPort }, "Orchestrator WebSocket server started");
+
+  // Queue worker is started AFTER the WS server so any leased-then-dispatched
+  // offers have a listening server to receive the eventual job:accept reply.
+  startQueueWorker();
 
   isReady = true;
   logger.info({ valkeyHealthy: isValkeyHealthy() }, "Startup checks passed, server is ready");
@@ -339,9 +381,15 @@ function shutdown(signal: string): void {
   server.close(() => {
     void (async (): Promise<void> => {
       try {
-        // Drain the WebSocket server first so daemon disconnect cleanup
-        // (which still uses the Valkey client) finishes before we close Valkey.
+        // Stop the queue worker FIRST so no new offers go out during WS
+        // shutdown. Then drain the WebSocket server (daemon disconnect cleanup
+        // still uses Valkey). Then release this instance's liveness key so
+        // peers immediately pick up our leased jobs via the reaper. Close
+        // Valkey + DB last, once nothing else needs them.
+        await stopQueueWorker();
+        stopLivenessReaper();
         await stopWebSocketServer();
+        await stopInstanceHeartbeat();
         closeValkey();
         await closeDb();
         logger.info("Server closed, exiting");

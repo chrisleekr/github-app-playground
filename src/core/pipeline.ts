@@ -48,6 +48,32 @@ function readDaemonActionsFile(
 }
 
 /**
+ * Read agent-written report files from the workspace before cleanup runs.
+ * Best-effort: missing files are silently dropped from the returned map.
+ * Returns undefined when the caller didn't request anything, so the result
+ * shape stays clean (no empty `capturedFiles: {}` for default callers).
+ */
+async function readCapturedFiles(
+  workDir: string,
+  basenames: readonly string[] | undefined,
+  log: { info: (obj: object, msg: string) => void; warn: (obj: object, msg: string) => void },
+): Promise<Record<string, string> | undefined> {
+  if (basenames === undefined || basenames.length === 0) return undefined;
+  const { readFile } = await import("node:fs/promises");
+  const captured: Record<string, string> = {};
+  for (const name of basenames) {
+    try {
+      const content = await readFile(join(workDir, name), "utf-8");
+      if (content.trim().length > 0) captured[name] = content;
+    } catch {
+      // Missing file is expected when the agent declines to write it.
+    }
+  }
+  log.info({ captured: Object.keys(captured) }, "Read captured workspace files");
+  return Object.keys(captured).length > 0 ? captured : undefined;
+}
+
+/**
  * Build the options object passed to `finalizeTrackingComment` on success.
  *
  * `exactOptionalPropertyTypes` forbids assigning `undefined` to optional
@@ -83,6 +109,14 @@ export interface RunPipelineOverrides {
    * Used by the daemon to track workDir for cancellation and SIGKILL cleanup.
    */
   onWorkDirReady?: (workDir: string) => void;
+  /**
+   * Basenames (e.g. "IMPLEMENT.md") for files the agent may have written to
+   * the workspace. Read best-effort BEFORE cleanup — content is returned in
+   * `ExecutionResult.capturedFiles`. Missing files are not errors. Used so
+   * a workflow handler can include a structured agent report in its
+   * tracking comment without duplicating the pipeline machinery.
+   */
+  captureFiles?: string[];
 }
 
 /**
@@ -221,12 +255,18 @@ export async function runPipeline(
       );
 
       const daemonActions = readDaemonActionsFile(workDir, enrichedCtx.log);
+      const capturedFiles = await readCapturedFiles(
+        workDir,
+        overrides.captureFiles,
+        enrichedCtx.log,
+      );
 
       return {
         ...result,
         ...(daemonActions.learnings.length > 0 || daemonActions.deletions.length > 0
           ? { daemonActions }
           : {}),
+        ...(capturedFiles !== undefined ? { capturedFiles } : {}),
       };
     } finally {
       try {

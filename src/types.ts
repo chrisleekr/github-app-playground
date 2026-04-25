@@ -76,6 +76,13 @@ export interface ExecutionResult {
     learnings: { category: string; content: string }[];
     deletions: string[];
   };
+  /**
+   * Contents of files the caller asked the pipeline to capture from the
+   * workspace before cleanup. Keyed by basename (e.g. "IMPLEMENT.md").
+   * Missing files are simply absent from the map — callers must handle
+   * undefined, since an agent may legitimately decline to write a report.
+   */
+  capturedFiles?: Record<string, string>;
 }
 
 /**

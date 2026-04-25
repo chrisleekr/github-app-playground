@@ -71,7 +71,7 @@ const jobPayloadSchema = z.object({
   payload: z.object({
     context: z.record(z.string(), z.unknown()),
     installationToken: z.string(),
-    maxTurns: z.number().int().positive(),
+    maxTurns: z.number().int().positive().optional(),
     allowedTools: z.array(z.string()),
     envVars: z.record(z.string(), z.string()).optional(),
     memory: z.array(repoMemoryEntrySchema).optional(),

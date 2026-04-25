@@ -78,18 +78,23 @@ export async function executeAgent({
   const startTime = Date.now();
   let result: SDKResultMessage | undefined;
 
-  // Build query options. model is only included when set (exactOptionalPropertyTypes
-  // forbids assigning undefined to optional properties).
+  // Build query options. model and maxTurns are only included when set
+  // (exactOptionalPropertyTypes forbids assigning undefined to optional
+  // properties). When maxTurns is omitted entirely, the SDK runs the agent
+  // to completion — that's the default we want for end-to-end workflows.
   const queryOptions: Parameters<typeof query>[0]["options"] = {
     cwd: workDir,
     permissionMode: "bypassPermissions",
     allowDangerouslySkipPermissions: true,
     allowedTools,
     mcpServers,
-    maxTurns: maxTurns ?? config.agentMaxTurns ?? 50,
     systemPrompt: { type: "preset", preset: "claude_code" },
     env: buildProviderEnv(),
   };
+  const resolvedMaxTurns = maxTurns ?? config.agentMaxTurns;
+  if (resolvedMaxTurns !== undefined) {
+    queryOptions.maxTurns = resolvedMaxTurns;
+  }
   queryOptions.model = config.model;
   if (config.claudeCodePath !== undefined) {
     queryOptions.pathToClaudeCodeExecutable = config.claudeCodePath;

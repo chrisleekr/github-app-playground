@@ -3,6 +3,7 @@ import { logger } from "../logger";
 import type { DaemonCapabilities, PendingOffer } from "../shared/daemon-types";
 import type { WorkflowRunRef } from "../shared/workflow-types";
 import { createMessageEnvelope } from "../shared/ws-messages";
+import { markFailed as markWorkflowRunFailed } from "../workflows/runs-store";
 import { getConnections, getDaemonInfo, isDaemonDraining } from "./connection-handler";
 import { getActiveDaemons, getDaemonActiveJobs } from "./daemon-registry";
 import { markExecutionFailed, markExecutionOffered, requeueExecution } from "./history";
@@ -133,8 +134,23 @@ export async function selectDaemon(requiredTools: string[]): Promise<string | nu
 export async function dispatchJob(job: QueuedJob): Promise<boolean> {
   const requiredTools = inferRequiredTools(job.labels, job.triggerBodyPreview);
   const daemonId = await selectDaemon(requiredTools);
+  const fleetSize = getConnections().size;
+
+  logger.debug(
+    {
+      deliveryId: job.deliveryId,
+      requiredTools,
+      fleetSize,
+      selectedDaemon: daemonId,
+    },
+    "dispatchJob: selectDaemon result",
+  );
 
   if (daemonId === null) {
+    logger.info(
+      { deliveryId: job.deliveryId, fleetSize, requiredTools },
+      "dispatchJob: no daemon available — caller should enqueue or retry",
+    );
     return false; // Caller handles FM-3 fallback
   }
 
@@ -231,10 +247,7 @@ async function handleOfferTimeout(offerId: string): Promise<void> {
 
   const requeued = await requeueJob(job);
   if (!requeued) {
-    await markExecutionFailed(
-      offer.deliveryId,
-      "All daemons rejected or timed out after maximum retries",
-    );
+    await markJobTerminallyFailed(job, "All daemons rejected or timed out after maximum retries");
   }
 }
 
@@ -248,7 +261,8 @@ export interface JobAcceptParams {
   deliveryId: string;
   installationToken: string;
   contextJson: Record<string, unknown>;
-  maxTurns: number;
+  /** Optional turn cap. Omitted = no cap (the SDK runs the agent to completion). */
+  maxTurns?: number;
   allowedTools: string[];
   envVars: Record<string, string>;
   memory: { id: string; category: string; content: string; pinned: boolean }[];
@@ -285,7 +299,7 @@ export function handleJobAccept({
       payload: {
         context: contextJson,
         installationToken,
-        maxTurns,
+        ...(maxTurns !== undefined ? { maxTurns } : {}),
         allowedTools,
         ...(Object.keys(envVars).length > 0 ? { envVars } : {}),
         ...(memory.length > 0 ? { memory } : {}),
@@ -337,9 +351,37 @@ export async function handleJobReject(offerId: string, reason: string): Promise<
 
   const requeued = await requeueJob(job);
   if (!requeued) {
-    await markExecutionFailed(
-      offer.deliveryId,
+    await markJobTerminallyFailed(
+      job,
       `All daemons rejected after maximum retries. Last reason: ${reason}`,
     );
+  }
+}
+
+/**
+ * Terminal failure write that covers both the legacy `executions` row (set by
+ * `src/webhook/router.ts` for the `@chrisleekr-bot` mention path) and the
+ * `workflow_runs` row (set by the workflow dispatcher path). Either or both
+ * may be present for a given job; UPDATEs are no-ops when the row is absent.
+ *
+ * Marking the `workflow_runs` row as `failed` is essential — the partial
+ * unique index `idx_workflow_runs_inflight` prevents future dispatches for
+ * the same target until this row leaves the queued/running states.
+ */
+export async function markJobTerminallyFailed(job: QueuedJob, reason: string): Promise<void> {
+  await markExecutionFailed(job.deliveryId, reason);
+  if (job.workflowRun !== undefined) {
+    try {
+      await markWorkflowRunFailed(job.workflowRun.runId, reason, {});
+    } catch (err) {
+      logger.error(
+        {
+          err: err instanceof Error ? err.message : String(err),
+          runId: job.workflowRun.runId,
+          deliveryId: job.deliveryId,
+        },
+        "Failed to mark workflow_runs row as failed — in-flight guard may block re-dispatch",
+      );
+    }
   }
 }

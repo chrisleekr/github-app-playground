@@ -20,6 +20,17 @@ void mock.module("../../src/orchestrator/job-queue", () => ({
   enqueueJob: mockEnqueueJob,
 }));
 
+const mockRecordWorkflowExecution = mock(() => Promise.resolve());
+void mock.module("../../src/workflows/execution-row", () => ({
+  recordWorkflowExecution: mockRecordWorkflowExecution,
+  buildWorkflowContextJson: mock(() => ({})),
+}));
+
+void mock.module("../../src/orchestrator/concurrency", () => ({
+  incrementActiveCount: mock(() => {}),
+  decrementActiveCount: mock(() => {}),
+}));
+
 const mockEnforceSingleBotLabel = mock(() =>
   Promise.resolve({ kept: "bot:plan", removed: [] as string[] }),
 );

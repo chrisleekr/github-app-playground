@@ -65,6 +65,14 @@ export interface WorkflowRunContext {
   readonly logger: pino.Logger;
   readonly octokit: Octokit;
   readonly deliveryId: string | null;
+  /**
+   * Identifier of the daemon process executing this run. Handlers writing
+   * new `workflow_runs` rows from inside the daemon (e.g., the `ship`
+   * composite spawning child runs) must set `owner_kind='daemon',
+   * owner_id=daemonId` so the liveness reaper can detect inserter death
+   * before the row reaches a downstream handler.
+   */
+  readonly daemonId: string;
   readonly setState: (state: unknown, humanMessage: string) => Promise<void>;
 }
 

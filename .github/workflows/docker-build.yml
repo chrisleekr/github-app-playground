@@ -105,7 +105,11 @@ jobs:
         env:
           TAG_NAME: ${{ inputs.tag-name }}
         run: |
-          if ! [[ "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-dev-[0-9a-f]{7}\.[0-9]+)?$ ]]; then
+          # Prod release: v1.2.3
+          # Dev pre-release: v1.2.3-<sanitized-branch>.N — branch name is
+          # alphanumerics+hyphens (release.config.mjs strips slashes), and N
+          # is the prerelease counter semantic-release auto-increments.
+          if ! [[ "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z][a-zA-Z0-9-]*\.[0-9]+)?$ ]]; then
             echo "ERROR: tag-name input does not match the expected format." >&2
             exit 1
           fi
