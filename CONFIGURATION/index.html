@@ -1316,13 +1316,13 @@
 </tr>
 <tr>
 <td><code>AGENT_TIMEOUT_MS</code></td>
-<td><code>600000</code></td>
-<td>Wall-clock budget for one agent execution.</td>
+<td><code>3600000</code></td>
+<td>Wall-clock budget for one agent execution (default 60 min). Lower it only when you trust the job is bounded.</td>
 </tr>
 <tr>
 <td><code>AGENT_MAX_TURNS</code></td>
 <td>unset</td>
-<td>Fallback turn cap — see <a href="../TRIAGE/">Triage</a> for how it interacts with the router.</td>
+<td>Optional Claude SDK turn cap. Unset = no cap (the agent runs to completion). Overrides <code>DEFAULT_MAXTURNS</code>.</td>
 </tr>
 <tr>
 <td><code>CLAUDE_CODE_PATH</code></td>
@@ -1452,7 +1452,7 @@
 </tr>
 <tr>
 <td><code>STALE_EXECUTION_THRESHOLD_MS</code></td>
-<td><code>600000</code></td>
+<td><code>3600000</code></td>
 <td>How long a <code>running</code> execution may sit before the watcher marks it failed. Set <code>≥ AGENT_TIMEOUT_MS</code>.</td>
 </tr>
 <tr>
@@ -1469,6 +1469,16 @@
 <td><code>OFFER_TIMEOUT_MS</code></td>
 <td><code>5000</code></td>
 <td>How long the orchestrator waits for a daemon to claim an offer before falling through.</td>
+</tr>
+<tr>
+<td><code>QUEUE_WORKER_BACKOFF_MAX_MS</code></td>
+<td><code>5000</code></td>
+<td>Upper bound on the queue-worker's sleep between retries when no locally-connected daemon can take a job.</td>
+</tr>
+<tr>
+<td><code>LIVENESS_REAPER_INTERVAL_MS</code></td>
+<td><code>30000</code></td>
+<td>Cadence of the heartbeat-based reaper that fails <code>workflow_runs</code> rows whose owning orchestrator/daemon stops heartbeating in Valkey, and flips abandoned <code>daemons</code> rows to <code>inactive</code>. Min 20000 (orchestrator heartbeat refresh).</td>
 </tr>
 <tr>
 <td><code>DAEMON_UPDATE_STRATEGY</code></td>
@@ -1529,8 +1539,8 @@
 </tr>
 <tr>
 <td><code>DEFAULT_MAXTURNS</code></td>
-<td><code>30</code></td>
-<td>Agent turn cap. Applied on every execution — triage no longer influences <code>maxTurns</code>.</td>
+<td>unset</td>
+<td>Optional process-wide turn cap. Unset = no cap; agent runs end-to-end. Set only if ops needs a hard ceiling. <code>AGENT_MAX_TURNS</code> overrides when both are set.</td>
 </tr>
 <tr>
 <td><code>INTENT_CONFIDENCE_THRESHOLD</code></td>

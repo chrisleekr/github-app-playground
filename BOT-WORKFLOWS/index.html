@@ -1206,19 +1206,28 @@
 <ul>
 <li><strong>Label</strong>: <code>bot:triage</code></li>
 <li><strong>Accepted context</strong>: <code>issue</code></li>
-<li><strong>Inputs</strong>: issue title + body</li>
-<li><strong>Outputs</strong>: <code>state.recommendedNext</code> ∈ {<code>plan</code>, <code>unsupported</code>, <code>clarify</code>}</li>
-<li><strong>Stop conditions</strong>: classifier returns terminal verdict; no retry in handler</li>
+<li><strong>Inputs</strong>: issue title + body, plus a fresh clone of the repo (the handler runs the Claude Agent SDK with <code>Read</code>/<code>Grep</code>/<code>Glob</code>/<code>Bash</code>/<code>Write</code> against the working tree).</li>
+<li><strong>Outputs</strong>:</li>
+<li><code>state.valid</code> — boolean verdict</li>
+<li><code>state.confidence</code> — 0-1 float from the agent's self-assessment</li>
+<li><code>state.summary</code> — one-paragraph rationale</li>
+<li><code>state.recommendedNext</code> ∈ {<code>plan</code>, <code>stop</code>}</li>
+<li><code>state.evidence</code> — array of <code>{file, line?, note?}</code> cites</li>
+<li><code>state.report</code> — full <code>TRIAGE.md</code> markdown (with sections: Method, Verdict, What was inspected, Findings, Reasoning, Recommended next step). Embedded verbatim into the tracking comment.</li>
+<li><strong>Stop conditions</strong>:</li>
+<li>Agent writes both <code>TRIAGE.md</code> and <code>TRIAGE_VERDICT.json</code>; verdict JSON validates against the Zod schema.</li>
+<li>When <code>valid === false</code>, the handler returns <code>failed</code> so the <code>bot:ship</code> cascade halts at this step (no plan/implement/review).</li>
+<li>Missing markdown, malformed JSON, or an SDK error all map to <code>failed</code> with a specific <code>reason</code>.</li>
 <li><strong>Example trigger</strong>: add label <code>bot:triage</code>, or comment "<code>@chrisleekr-bot triage this</code>"</li>
 </ul>
 <h3 id="plan">plan<a class="headerlink" href="#plan" title="Permanent link">&para;</a></h3>
 <ul>
 <li><strong>Label</strong>: <code>bot:plan</code></li>
 <li><strong>Accepted context</strong>: <code>issue</code></li>
-<li><strong>Requires prior</strong>: a successful <code>triage</code> run on the same issue</li>
+<li><strong>Requires prior</strong>: a successful <code>triage</code> run on the same issue <strong>with <code>state.valid === true</code></strong> (the dispatcher's <code>requiresPrior: 'triage'</code> gate plus the triage handler's own <code>valid=false → failed</code> return together enforce this).</li>
 <li><strong>Inputs</strong>: issue body + triage state</li>
-<li><strong>Outputs</strong>: <code>state.plan</code> — a <code>PLAN.md</code> markdown string checked in by a multi-turn agent session over a clone of the repo</li>
-<li><strong>Stop conditions</strong>: agent writes <code>PLAN.md</code>; pipeline reports success or failure</li>
+<li><strong>Outputs</strong>: <code>state.plan</code> — a <code>PLAN.md</code> markdown string written by a multi-turn agent session over a clone of the repo, captured via <code>runPipeline({ captureFiles: ["PLAN.md"] })</code> before workspace cleanup. Plus <code>costUsd</code> / <code>turns</code> / <code>durationMs</code> metadata. The full <code>PLAN.md</code> body is embedded verbatim into the tracking comment.</li>
+<li><strong>Stop conditions</strong>: agent writes <code>PLAN.md</code>; pipeline reports success or failure. No turn cap (<code>AGENT_MAX_TURNS</code> defaults to unset; <code>DEFAULT_MAXTURNS</code> also unset).</li>
 <li><strong>Example trigger</strong>: <code>@chrisleekr-bot plan this out</code></li>
 </ul>
 <h3 id="implement">implement<a class="headerlink" href="#implement" title="Permanent link">&para;</a></h3>
@@ -1226,9 +1235,10 @@
 <li><strong>Label</strong>: <code>bot:implement</code></li>
 <li><strong>Accepted context</strong>: <code>issue</code></li>
 <li><strong>Requires prior</strong>: a successful <code>plan</code> run</li>
-<li><strong>Inputs</strong>: issue body + saved plan</li>
-<li><strong>Outputs</strong>: <code>state.pr_number</code>, <code>state.pr_url</code>, <code>state.branch</code></li>
-<li><strong>Stop conditions</strong>: pipeline pushes a branch and opens a PR, OR pipeline fails; the handler does NOT poll CI or reviewer state — that is <code>review</code>'s job.</li>
+<li><strong>Inputs</strong>: issue body + saved plan markdown (carried forward as the prompt trigger body)</li>
+<li><strong>Outputs</strong>: <code>state.pr_number</code>, <code>state.pr_url</code>, <code>state.branch</code>, <code>state.report</code> (full <code>IMPLEMENT.md</code> body — Summary / Files changed / Commits / Tests run / Verification), <code>state.costUsd</code>, <code>state.turns</code>. The agent is asked to write <code>IMPLEMENT.md</code> before finishing; the handler captures it pre-cleanup and embeds it in the tracking comment.</li>
+<li><strong>PR detection</strong>: <code>findRecentOpenedPr</code> filters on <code>pr.user?.type === "Bot"</code> plus <code>created_at &gt;= since - 5s</code>. It deliberately does <strong>not</strong> match on a hard-coded slug — dev installs publish as <code>chrisleekr-bot-dev[bot]</code> and prod as <code>chrisleekr-bot[bot]</code>, so a slug check produces false negatives.</li>
+<li><strong>Stop conditions</strong>: pipeline pushes a branch and opens a PR, OR pipeline fails. If the pipeline reports success but <code>findRecentOpenedPr</code> returns null, the handler fails with <code>"implement completed but no PR was found"</code>. The handler does NOT poll CI or reviewer state — that is <code>review</code>'s job.</li>
 <li><strong>Example trigger</strong>: <code>@chrisleekr-bot implement this</code></li>
 </ul>
 <h3 id="review">review<a class="headerlink" href="#review" title="Permanent link">&para;</a></h3>
@@ -1236,7 +1246,7 @@
 <li><strong>Label</strong>: <code>bot:review</code></li>
 <li><strong>Accepted context</strong>: <code>pr</code></li>
 <li><strong>Inputs</strong>: PR title, failing check names, unresolved review comments</li>
-<li><strong>Outputs</strong>: <code>state.failing_checks</code>, <code>state.unresolved_comments</code></li>
+<li><strong>Outputs</strong>: <code>state.failing_checks</code>, <code>state.unresolved_comments</code>, <code>state.report</code> (full <code>REVIEW.md</code> body — Summary / CI status / Review comments / Commits pushed / Outstanding), <code>state.costUsd</code>, <code>state.turns</code>. The agent is asked to write <code>REVIEW.md</code> before finishing; the handler captures it pre-cleanup and embeds it in the tracking comment.</li>
 <li><strong>Stop conditions</strong> (from <code>src/workflows/handlers/review.ts</code>):</li>
 <li><code>FIX_ATTEMPTS_CAP = 3</code> — max consecutive CI-fix attempts per PR</li>
 <li><code>POLL_WAIT_SECS_CAP = 900</code> — 15-minute reviewer-patience window</li>
@@ -1252,7 +1262,7 @@
 <li><strong>Resume semantics</strong> (<code>src/workflows/handlers/ship.ts</code>):</li>
 <li><code>bot:ship</code> is re-applicable on a target whose prior parent row is <strong>terminal</strong> (the partial unique index only blocks in-flight parents).</li>
 <li>Per-step staleness rules:<ul>
-<li><code>triage</code> — fresh iff succeeded AND <code>state.recommendedNext === 'plan'</code></li>
+<li><code>triage</code> — fresh iff succeeded AND <code>state.valid === true</code> AND <code>state.recommendedNext === 'plan'</code> (an invalid verdict halts the cascade rather than poisoning future ship runs)</li>
 <li><code>plan</code> — fresh iff succeeded AND created after the last triage success</li>
 <li><code>implement</code> — fresh iff succeeded AND the recorded PR is still open</li>
 <li><code>review</code> — always stale</li>
