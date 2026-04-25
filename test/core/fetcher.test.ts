@@ -1,8 +1,8 @@
-import { describe, expect, it, mock } from "bun:test";
-import type { Octokit } from "octokit";
+import { describe, expect, it } from "bun:test";
 
 import { fetchGitHubData, filterByTriggerTime } from "../../src/core/fetcher";
 import type { BotContext } from "../../src/types";
+import { makeBotContext, makeOctokit } from "../factories";
 import { expectToReject } from "../utils/assertions";
 
 const TRIGGER = "2025-06-01T12:00:00Z";
@@ -102,49 +102,19 @@ describe("filterByTriggerTime", () => {
 
 // ─── fetchGitHubData ───────────────────────────────────────────────────────
 
-function makeLog(): BotContext["log"] {
-  return {
-    info: () => undefined,
-    warn: () => undefined,
-    error: () => undefined,
-    debug: () => undefined,
-    child(): BotContext["log"] {
-      return this as unknown as BotContext["log"];
-    },
-  } as unknown as BotContext["log"];
-}
-
 function makeCtx(
   overrides: Partial<BotContext> & { graphqlResponse?: unknown; graphqlError?: Error },
 ): BotContext {
   const { graphqlResponse, graphqlError, ...ctxOverrides } = overrides;
-  const graphqlFn = mock(() => {
-    if (graphqlError !== undefined) {
-      return Promise.reject(graphqlError);
-    }
-    return Promise.resolve(graphqlResponse);
-  });
-
-  const octokit = {
-    graphql: graphqlFn,
-  } as unknown as Octokit;
-
-  return {
-    owner: "myorg",
-    repo: "myrepo",
-    entityNumber: 42,
-    isPR: false,
-    eventName: "issue_comment" as const,
-    triggerUsername: "tester",
+  const octokitOpts: { graphqlResponse?: unknown; graphqlError?: Error } = {};
+  if (graphqlResponse !== undefined) octokitOpts.graphqlResponse = graphqlResponse;
+  if (graphqlError !== undefined) octokitOpts.graphqlError = graphqlError;
+  return makeBotContext({
     triggerTimestamp: "2025-06-01T12:00:00Z",
     triggerBody: "body",
-    commentId: 1,
-    deliveryId: "test-delivery",
-    defaultBranch: "main",
-    octokit,
-    log: makeLog(),
+    octokit: makeOctokit(octokitOpts),
     ...ctxOverrides,
-  };
+  });
 }
 
 describe("fetchGitHubData — issue path", () => {

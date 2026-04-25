@@ -1,17 +1,9 @@
 import { describe, expect, it, mock } from "bun:test";
 
 import { retryWithBackoff } from "../../src/utils/retry";
+import { makeSilentLogger } from "../factories";
 
-/** Minimal silent logger for tests — suppresses pino output */
-const silentLog = {
-  warn: mock(() => {}),
-  error: mock(() => {}),
-  info: mock(() => {}),
-  debug: mock(() => {}),
-  child: mock(function () {
-    return this;
-  }),
-} as never;
+const silentLog = makeSilentLogger();
 
 function makeStatusError(status: number): Error & { status: number } {
   const err = new Error(`HTTP ${status}`) as Error & { status: number };

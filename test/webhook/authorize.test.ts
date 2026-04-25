@@ -7,30 +7,11 @@
  * in the same Bun process run, poisoning other suites.
  */
 
-import { afterEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 
 import { config } from "../../src/config";
 import { isOwnerAllowed } from "../../src/webhook/authorize";
-
-/** Minimal silent logger — mirrors the pattern in test/utils/retry.test.ts */
-function makeSilentLog(): {
-  warn: ReturnType<typeof mock>;
-  error: ReturnType<typeof mock>;
-  info: ReturnType<typeof mock>;
-  debug: ReturnType<typeof mock>;
-  child: ReturnType<typeof mock>;
-} {
-  const log = {
-    warn: mock(() => {}),
-    error: mock(() => {}),
-    info: mock(() => {}),
-    debug: mock(() => {}),
-    child: mock(function (this: unknown) {
-      return this;
-    }),
-  };
-  return log;
-}
+import { makeSilentLogger } from "../factories";
 
 describe("isOwnerAllowed", () => {
   // Preserve the original value so earlier tests don't leak into later suites
@@ -43,7 +24,7 @@ describe("isOwnerAllowed", () => {
 
   it("allows any owner when allowedOwners is undefined", () => {
     config.allowedOwners = undefined;
-    const log = makeSilentLog();
+    const log = makeSilentLogger();
     const result = isOwnerAllowed("chrisleekr", log as never);
     expect(result.allowed).toBe(true);
     expect(log.warn).toHaveBeenCalledTimes(0);
@@ -51,7 +32,7 @@ describe("isOwnerAllowed", () => {
 
   it("allows a matching owner (exact case)", () => {
     config.allowedOwners = ["chrisleekr"];
-    const log = makeSilentLog();
+    const log = makeSilentLogger();
     const result = isOwnerAllowed("chrisleekr", log as never);
     expect(result.allowed).toBe(true);
     expect(log.warn).toHaveBeenCalledTimes(0);
@@ -61,7 +42,7 @@ describe("isOwnerAllowed", () => {
     // GitHub owner logins are case-insensitive for identity purposes:
     // ChrisLeeKR and chrisleekr are the same account.
     config.allowedOwners = ["chrisleekr"];
-    const log = makeSilentLog();
+    const log = makeSilentLogger();
     const result = isOwnerAllowed("ChrisLeeKR", log as never);
     expect(result.allowed).toBe(true);
     expect(log.warn).toHaveBeenCalledTimes(0);
@@ -69,7 +50,7 @@ describe("isOwnerAllowed", () => {
 
   it("rejects a non-matching owner and logs a warning", () => {
     config.allowedOwners = ["chrisleekr"];
-    const log = makeSilentLog();
+    const log = makeSilentLogger();
     const result = isOwnerAllowed("someone-else", log as never);
     expect(result.allowed).toBe(false);
     if (!result.allowed) {
@@ -87,14 +68,14 @@ describe("isOwnerAllowed", () => {
 
   it("allows any owner in a multi-entry allowlist", () => {
     config.allowedOwners = ["user-a", "user-b"];
-    const log = makeSilentLog();
+    const log = makeSilentLogger();
     const result = isOwnerAllowed("user-b", log as never);
     expect(result.allowed).toBe(true);
   });
 
   it("rejects when the owner is not in a multi-entry allowlist", () => {
     config.allowedOwners = ["user-a", "user-b"];
-    const log = makeSilentLog();
+    const log = makeSilentLogger();
     const result = isOwnerAllowed("user-c", log as never);
     expect(result.allowed).toBe(false);
     expect(log.warn).toHaveBeenCalledTimes(1);

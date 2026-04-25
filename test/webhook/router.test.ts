@@ -13,10 +13,9 @@
  */
 
 import { beforeEach, describe, expect, it, mock } from "bun:test";
-import type { Octokit } from "octokit";
-import type { pino } from "pino";
 
 import type { BotContext } from "../../src/types";
+import { makeBotContext, makeOctokit } from "../factories";
 
 // ─── Mocked downstream surfaces (persist across this process run) ─────────
 
@@ -115,46 +114,16 @@ const { config } = await import("../../src/config");
 
 // ─── Context / octokit factories ──────────────────────────────────────────
 
-function silentLog(): pino.Logger {
-  const log = {
-    info: mock(() => {}),
-    warn: mock(() => {}),
-    error: mock(() => {}),
-    debug: mock(() => {}),
-    child: mock(() => log),
-  };
-  return log as unknown as pino.Logger;
-}
-
-function makeOctokit(): Octokit {
-  return {
-    rest: {
-      issues: {
-        createComment: mock(() => Promise.resolve({ data: { id: 1 } })),
-        listComments: mock(() => Promise.resolve({ data: [] })),
-      },
-    },
-  } as unknown as Octokit;
-}
-
 function makeCtx(overrides: Partial<BotContext> = {}): BotContext {
-  const base: BotContext = {
+  return makeBotContext({
     owner: "chrisleekr",
     repo: "app",
-    entityNumber: 42,
-    isPR: false,
-    eventName: "issue_comment",
     triggerUsername: "chrisleekr",
     triggerTimestamp: "2026-04-19T00:00:00Z",
-    triggerBody: "@chrisleekr-bot help",
-    commentId: 1,
     deliveryId: `del-${Math.random().toString(36).slice(2)}`,
-    defaultBranch: "main",
-    labels: [],
     octokit: makeOctokit(),
-    log: silentLog(),
-  };
-  return { ...base, ...overrides };
+    ...overrides,
+  });
 }
 
 // ─── Config mutation helpers ──────────────────────────────────────────────
