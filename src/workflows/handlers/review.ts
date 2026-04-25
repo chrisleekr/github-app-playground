@@ -113,23 +113,36 @@ export const handler: WorkflowHandler = async (ctx) => {
       log,
     };
 
-    const result = await runPipeline(botCtx);
+    const result = await runPipeline(botCtx, { captureFiles: ["REVIEW.md"] });
     if (!result.success) {
       return { status: "failed", reason: "review pipeline execution failed" };
     }
+
+    const report = result.capturedFiles?.["REVIEW.md"]?.trim() ?? "";
 
     const state = {
       pr_number: target.number,
       failing_checks: failingChecks,
       top_level_comments: topLevelComments.length,
+      report,
       costUsd: result.costUsd ?? 0,
       turns: result.numTurns ?? 0,
     };
 
-    const humanMessage =
+    const meta: string[] = [];
+    if (result.costUsd !== undefined) meta.push(`cost: $${result.costUsd.toFixed(4)}`);
+    if (result.numTurns !== undefined) meta.push(`turns: ${String(result.numTurns)}`);
+    if (result.durationMs !== undefined)
+      meta.push(`duration: ${String(Math.round(result.durationMs / 1000))}s`);
+    const metaLine = meta.length > 0 ? `\n\n_${meta.join(" · ")}_` : "";
+
+    const headline =
       failingChecks.length === 0 && topLevelComments.length === 0
-        ? `review passed — no failing checks, no open review comments.`
-        : `review iteration complete — ${String(failingChecks.length)} failing checks, ${String(topLevelComments.length)} open review comments.`;
+        ? `🔎 **Review passed** — no failing checks, no open review comments.`
+        : `🔎 **Review iteration complete** — ${String(failingChecks.length)} failing checks, ${String(topLevelComments.length)} open review comments.`;
+    const reportSection =
+      report.length > 0 ? `\n\n${report}` : `\n\n_(no REVIEW.md report — agent did not write one)_`;
+    const humanMessage = `${headline}${reportSection}${metaLine}`;
 
     await ctx.setState(state, humanMessage);
     log.info(
@@ -172,5 +185,13 @@ function buildReviewPrompt(input: {
     `3. If all checks pass AND all comments resolved AND reviewDecision is APPROVED, post a one-line "review complete — ready to merge" comment.`,
     `4. NEVER call \`gh pr merge\` or \`octokit.pulls.merge\`. Merging is a human action (FR-017).`,
     `5. NEVER push to the base branch ${input.baseBranch}.`,
+    `6. Before finishing, write \`REVIEW.md\` at the repo root summarizing this review iteration.`,
+    `   Required sections:`,
+    `   ## Summary — one paragraph: what state the PR is in now and what's left.`,
+    `   ## CI status — list each failing check and what you did about it.`,
+    `   ## Review comments — for each comment: classification, action taken, commit/reply link.`,
+    `   ## Commits pushed — sha · subject.`,
+    `   ## Outstanding — what still blocks merge (if anything).`,
+    `   This becomes the tracking comment body — be specific, cite files and links.`,
   ].join("\n");
 }

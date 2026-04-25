@@ -64,9 +64,10 @@ FROM base AS production
 ARG PACKAGE_VERSION=untagged
 ARG GIT_HASH=unspecified
 
-# claude-code is installed globally by npm (see base stage above).
-# The Agent SDK defaults to {cwd}/dist/cli.js which does not exist in this image.
-ENV CLAUDE_CODE_PATH=/usr/lib/node_modules/@anthropic-ai/claude-code/cli.js
+# See Dockerfile.daemon for why CLAUDE_CODE_PATH is pinned. The orchestrator
+# never executes the SDK pipeline, but keep parity to avoid surprise if a
+# future code path imports the SDK in this image.
+ENV CLAUDE_CODE_PATH=/usr/bin/claude
 
 LABEL maintainer="Chris Lee"
 LABEL com.chrisleekr.bot.package-version=${PACKAGE_VERSION}

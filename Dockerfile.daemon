@@ -287,8 +287,12 @@ FROM daemon-tools AS production
 ARG PACKAGE_VERSION=untagged
 ARG GIT_HASH=unspecified
 
-# Agent SDK defaults cwd-relative; point at the npm-global install.
-ENV CLAUDE_CODE_PATH=/usr/lib/node_modules/@anthropic-ai/claude-code/cli.js
+# Pin the Claude Code native binary path. The Agent SDK auto-detects the
+# platform package via `process.report.header.glibcVersionRuntime`, which
+# Bun does not expose — under Bun the SDK falsely picks the `-musl` variant
+# on glibc systems, so we bypass auto-detection by pointing at the
+# `@anthropic-ai/claude-code` global install (correct libc for this image).
+ENV CLAUDE_CODE_PATH=/usr/bin/claude
 
 LABEL maintainer="Chris Lee"
 LABEL com.chrisleekr.bot.package-version=${PACKAGE_VERSION}

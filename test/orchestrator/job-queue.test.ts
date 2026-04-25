@@ -62,8 +62,17 @@ void mock.module("../../src/config", () => ({
 }));
 
 // Import AFTER mocks
-const { enqueueJob, tryDequeueJob, dequeueJob, requeueJob } =
-  await import("../../src/orchestrator/job-queue");
+const {
+  enqueueJob,
+  tryDequeueJob,
+  dequeueJob,
+  requeueJob,
+  leaseJob,
+  releaseLeasedJob,
+  requeueLeasedJob,
+  recoverProcessingList,
+  processingListKey,
+} = await import("../../src/orchestrator/job-queue");
 
 // Test fixtures
 
@@ -267,6 +276,111 @@ describe("job-queue", () => {
       expect(serialized.labels).toEqual(["feature", "urgent"]);
       expect(serialized.triggerBodyPreview).toBe("please help");
       expect(serialized.retryCount).toBe(2);
+    });
+  });
+
+  describe("processingListKey", () => {
+    it("namespaces the key with the instance id", () => {
+      expect(processingListKey("orch-a")).toBe("queue:processing:orch-a");
+    });
+  });
+
+  describe("leaseJob", () => {
+    it("returns null when LMOVE reports an empty source", async () => {
+      mockSend.mockResolvedValueOnce(null);
+
+      const result = await leaseJob("orch-a");
+
+      expect(result).toBeNull();
+      expect(mockSend).toHaveBeenCalledWith("LMOVE", [
+        "queue:jobs",
+        "queue:processing:orch-a",
+        "RIGHT",
+        "LEFT",
+      ]);
+    });
+
+    it("parses a leased job and returns the raw string alongside it", async () => {
+      const job = makeQueuedJob({ deliveryId: "lease-1" });
+      const raw = JSON.stringify(job);
+      mockSend.mockResolvedValueOnce(raw);
+
+      const result = await leaseJob("orch-a");
+
+      expect(result).not.toBeNull();
+      expect(result?.raw).toBe(raw);
+      expect(result?.job.deliveryId).toBe("lease-1");
+    });
+
+    it("removes poison-pill JSON from the processing list and returns null", async () => {
+      mockSend.mockResolvedValueOnce("not-valid-json");
+      mockSend.mockResolvedValueOnce(1); // LREM result
+
+      const result = await leaseJob("orch-a");
+
+      expect(result).toBeNull();
+      expect(mockSend).toHaveBeenCalledWith("LREM", [
+        "queue:processing:orch-a",
+        "1",
+        "not-valid-json",
+      ]);
+    });
+  });
+
+  describe("releaseLeasedJob", () => {
+    it("LREMs the raw element from the instance processing list", async () => {
+      const raw = JSON.stringify(makeQueuedJob());
+      await releaseLeasedJob("orch-a", raw);
+
+      expect(mockSend).toHaveBeenCalledWith("LREM", ["queue:processing:orch-a", "1", raw]);
+    });
+  });
+
+  describe("requeueLeasedJob", () => {
+    it("increments retryCount and calls EVAL with processing + queue keys", async () => {
+      const job = makeQueuedJob({ retryCount: 1 });
+      const raw = JSON.stringify(job);
+
+      const newRetry = await requeueLeasedJob("orch-a", raw, job);
+
+      expect(newRetry).toBe(2);
+      // eslint-disable-next-line max-nested-callbacks -- one-line predicate, no logic
+      const call = mockSend.mock.calls.find((c) => c[0] === "EVAL");
+      expect(call).toBeDefined();
+      // EVAL args: [script, "2", procKey, queueKey, rawOldJson, rawNewJson]
+      expect(call?.[1]?.[1]).toBe("2");
+      expect(call?.[1]?.[2]).toBe("queue:processing:orch-a");
+      expect(call?.[1]?.[3]).toBe("queue:jobs");
+      expect(call?.[1]?.[4]).toBe(raw);
+      const pushed = JSON.parse(call?.[1]?.[5] as string) as { retryCount: number };
+      expect(pushed.retryCount).toBe(2);
+    });
+  });
+
+  describe("recoverProcessingList", () => {
+    it("drains the processing list back to queue:jobs and returns count", async () => {
+      mockSend.mockResolvedValueOnce("job-a");
+      mockSend.mockResolvedValueOnce("job-b");
+      mockSend.mockResolvedValueOnce(null);
+
+      const recovered = await recoverProcessingList("orch-a");
+
+      expect(recovered).toBe(2);
+      // Each LMOVE uses LEFT/LEFT so items end up at the HEAD of queue:jobs.
+      expect(mockSend).toHaveBeenCalledWith("LMOVE", [
+        "queue:processing:orch-a",
+        "queue:jobs",
+        "LEFT",
+        "LEFT",
+      ]);
+    });
+
+    it("returns 0 when the processing list is empty", async () => {
+      mockSend.mockResolvedValueOnce(null);
+
+      const recovered = await recoverProcessingList("orch-a");
+
+      expect(recovered).toBe(0);
     });
   });
 });

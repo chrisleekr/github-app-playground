@@ -94,8 +94,12 @@ const configSchema = z
 
     // Wall-clock timeout for a single Claude agent execution in milliseconds.
     // Guards against resource exhaustion from hung model responses or MCP servers.
-    // Set via AGENT_TIMEOUT_MS env var (default: 10 minutes).
-    agentTimeoutMs: z.coerce.number().int().positive().default(600_000),
+    // Default 60 minutes — implement / review steps on non-trivial issues
+    // routinely take 30-50 min of real work; capping shorter cuts the agent
+    // off mid-task and loses progress. Hung-process risk is bounded by
+    // container resource limits, not this number. Set AGENT_TIMEOUT_MS lower
+    // for testing or smaller-scope deployments.
+    agentTimeoutMs: z.coerce.number().int().positive().default(3_600_000),
 
     // Override max turns for the Claude Agent SDK, used as a FALLBACK ONLY on
     // src/core/executor.ts when invoked without an explicit `maxTurns`
@@ -176,8 +180,9 @@ const configSchema = z
     // How long an execution may sit in status="running" before the watcher treats
     // it as abandoned and marks it failed. Should generally be ≥ agentTimeoutMs
     // so a legitimate long run isn't reaped mid-flight; the built-in default
-    // equals agentTimeoutMs (both 600_000ms), which is the minimum safe setting.
-    staleExecutionThresholdMs: z.coerce.number().int().positive().default(600_000),
+    // equals agentTimeoutMs (both 3_600_000ms / 60 min), which is the minimum
+    // safe setting.
+    staleExecutionThresholdMs: z.coerce.number().int().positive().default(3_600_000),
 
     // Post-SIGTERM window the daemon uses to finish in-flight work before
     // force-exit. The default (300_000ms) is intentionally shorter than
@@ -191,6 +196,22 @@ const configSchema = z
     // How long the orchestrator waits for a daemon in the fleet to claim a
     // job offer before re-queueing it for another daemon to pick up.
     offerTimeoutMs: z.coerce.number().int().positive().default(5_000),
+
+    // Maximum sleep between queue-worker iterations when a leased job has no
+    // locally-connected capable daemon and is re-pushed for another instance
+    // to claim. Backoff doubles per retry attempt; this caps it.
+    queueWorkerBackoffMaxMs: z.coerce.number().int().positive().default(5_000),
+
+    // Cadence of the heartbeat-based liveness reaper (src/orchestrator/
+    // liveness-reaper.ts). On each tick the reaper scans Valkey for live
+    // orchestrator + daemon heartbeats and fails any in-flight workflow_runs
+    // row whose owner heartbeat is missing. Replaces the prior
+    // time-threshold daemons reaper (5-minute blind window).
+    //
+    // Min sane value is the orchestrator heartbeat refresh interval (20s);
+    // below that, a heartbeat momentarily not yet republished could trigger
+    // a false reap.
+    livenessReaperIntervalMs: z.coerce.number().int().min(20_000).default(30_000),
 
     // Advisory hint REPORTED to the orchestrator after an update signal. The
     // daemon itself always calls initiateGracefulShutdown() regardless of value
@@ -296,9 +317,10 @@ const configSchema = z
 
     // --- 11. Agent maxTurns ---
 
-    // Every dispatched job uses this turn budget. Triage no longer sizes the
-    // budget — `{heavy: boolean}` is all we ask it for.
-    defaultMaxTurns: z.coerce.number().int().positive().default(30),
+    // Optional turn cap. Unset by default so workflows run end-to-end without
+    // losing progress to a mid-run cap. Set DEFAULT_MAXTURNS only when ops
+    // needs a hard ceiling. AGENT_MAX_TURNS overrides this when both are set.
+    defaultMaxTurns: z.coerce.number().int().positive().optional(),
   })
   .superRefine((data, ctx) => {
     validateServerModeCredentials(data, ctx);
@@ -553,6 +575,8 @@ function loadConfig(): Config {
     daemonDrainTimeoutMs: process.env["DAEMON_DRAIN_TIMEOUT_MS"],
     jobMaxRetries: process.env["JOB_MAX_RETRIES"],
     offerTimeoutMs: process.env["OFFER_TIMEOUT_MS"],
+    queueWorkerBackoffMaxMs: process.env["QUEUE_WORKER_BACKOFF_MAX_MS"],
+    livenessReaperIntervalMs: process.env["LIVENESS_REAPER_INTERVAL_MS"],
     daemonUpdateStrategy: process.env["DAEMON_UPDATE_STRATEGY"],
     daemonUpdateDelayMs: process.env["DAEMON_UPDATE_DELAY_MS"],
     daemonMemoryFloorMb: process.env["DAEMON_MEMORY_FLOOR_MB"],

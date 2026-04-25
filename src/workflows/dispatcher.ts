@@ -2,7 +2,9 @@ import type { Octokit } from "octokit";
 import type pino from "pino";
 
 import { config } from "../config";
+import { getInstanceId } from "../orchestrator/instance-id";
 import { enqueueJob } from "../orchestrator/job-queue";
+import { recordWorkflowExecution } from "./execution-row";
 import { classify, type ClassifyResult } from "./intent-classifier";
 import { enforceSingleBotLabel } from "./label-mutex";
 import { getByLabel, getByName, type WorkflowName } from "./registry";
@@ -89,6 +91,8 @@ export async function dispatchByLabel(params: DispatchByLabelParams): Promise<Di
       workflowName: entry.name,
       target,
       deliveryId,
+      ownerKind: "orchestrator",
+      ownerId: getInstanceId(),
     });
   } catch (err) {
     if (isInflightCollision(err)) {
@@ -110,6 +114,15 @@ export async function dispatchByLabel(params: DispatchByLabelParams): Promise<Di
   }
 
   try {
+    await recordWorkflowExecution({
+      deliveryId,
+      target,
+      senderLogin,
+      workflowName: entry.name,
+      runId: runRow.id,
+      labels: [label],
+      logger,
+    });
     await enqueueJob({
       deliveryId,
       repoOwner: target.owner,
@@ -125,8 +138,10 @@ export async function dispatchByLabel(params: DispatchByLabelParams): Promise<Di
       workflowRun: { runId: runRow.id, workflowName: entry.name },
     });
   } catch (err) {
-    // Enqueue failed after the DB row was inserted. Flip the row to `failed`
-    // so the partial unique index no longer blocks subsequent dispatches.
+    // executions row may or may not have been written; the compensating
+    // `markFailed` on the workflow_runs row is what matters for the partial
+    // unique index. The capacity slot is owned by handleAccept/handleResult
+    // — nothing to release here.
     logger.error(
       {
         runId: runRow.id,
@@ -244,7 +259,13 @@ export async function dispatchByIntent(params: DispatchByIntentParams): Promise<
 
   let runRow;
   try {
-    runRow = await insertQueued({ workflowName: entry.name, target, deliveryId });
+    runRow = await insertQueued({
+      workflowName: entry.name,
+      target,
+      deliveryId,
+      ownerKind: "orchestrator",
+      ownerId: getInstanceId(),
+    });
   } catch (err) {
     if (isInflightCollision(err)) {
       logger.info(
@@ -265,6 +286,15 @@ export async function dispatchByIntent(params: DispatchByIntentParams): Promise<
   }
 
   try {
+    await recordWorkflowExecution({
+      deliveryId,
+      target,
+      senderLogin,
+      workflowName: entry.name,
+      runId: runRow.id,
+      labels: [entry.label],
+      logger,
+    });
     await enqueueJob({
       deliveryId,
       repoOwner: target.owner,

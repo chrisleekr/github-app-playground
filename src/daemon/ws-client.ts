@@ -109,7 +109,15 @@ export class DaemonWsClient {
     };
 
     this.ws.onerror = (event: Event): void => {
-      logger.error({ event }, "WebSocket error");
+      const maybeMessage = (event as { message?: unknown }).message;
+      logger.error(
+        {
+          ...(typeof maybeMessage === "string" ? { message: maybeMessage } : {}),
+          readyState: this.ws?.readyState ?? null,
+          orchestratorUrl: this.opts.orchestratorUrl,
+        },
+        "WebSocket error",
+      );
     };
   }
 
@@ -154,8 +162,10 @@ export class DaemonWsClient {
       this.reconnecting = false;
       this.connect();
     }, this.backoffMs);
-    // Don't keep the process alive during reconnect backoff (allows graceful shutdown)
-    timer.unref();
+    // NOTE: Timer is intentionally ref'd so the daemon keeps the event loop
+    // alive across reconnect backoff. Graceful shutdown is still clean because
+    // close() clears this timer and the setInterval inside
+    // initiateGracefulShutdown holds the loop on its own.
     this.reconnectTimer = timer;
   }
 

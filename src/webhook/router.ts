@@ -2,12 +2,7 @@ import { config } from "../config";
 import { isAlreadyProcessed } from "../core/tracking-comment";
 import { getDb } from "../db";
 import { EphemeralSpawnError, spawnEphemeralDaemon } from "../k8s/ephemeral-daemon-spawner";
-import {
-  decrementActiveCount,
-  getActiveCount,
-  incrementActiveCount,
-  isAtCapacity,
-} from "../orchestrator/concurrency";
+import { getActiveCount, isAtCapacity } from "../orchestrator/concurrency";
 import { getPersistentPoolFreeSlots } from "../orchestrator/daemon-registry";
 import {
   decideEphemeralSpawn,
@@ -126,18 +121,11 @@ export async function processRequest(ctx: BotContext): Promise<void> {
     return;
   }
 
-  incrementActiveCount();
-
   const decision = await decideDispatch(ctx);
 
   logDispatchDecision(ctx, decision);
 
-  try {
-    await dispatch(ctx, decision);
-  } catch (err) {
-    decrementActiveCount();
-    throw err;
-  }
+  await dispatch(ctx, decision);
 }
 
 /**
@@ -273,7 +261,6 @@ export async function decideDispatch(ctx: BotContext): Promise<DispatchDecision>
 export async function dispatch(ctx: BotContext, decision: DispatchDecision): Promise<void> {
   if (decision.reason === "ephemeral-spawn-failed") {
     await recordSpawnFailedRejection(ctx, decision);
-    decrementActiveCount();
     return;
   }
   await dispatchDaemon(ctx, decision);
@@ -340,13 +327,13 @@ async function recordSpawnFailedRejection(
 /**
  * Daemon dispatch: validate Valkey health, persist the executions row,
  * attempt direct dispatch to a claimable daemon, fall back to enqueue.
- * The concurrency slot is released when a daemon returns job:result; this
- * function only decrements on infrastructure failures or when the job
- * sits in the queue awaiting a future daemon.
+ * The concurrency slot is owned by handleAccept/handleResult in
+ * connection-handler.ts; this function only writes the executions row and
+ * publishes the queued job. Capacity bookkeeping is no longer this layer's
+ * concern.
  */
 async function dispatchDaemon(ctx: BotContext, decision: DispatchDecision): Promise<void> {
   if (!isValkeyHealthy()) {
-    decrementActiveCount();
     ctx.log.error("Valkey unavailable — rejecting request (FM-7)");
     try {
       await ctx.octokit.rest.issues.createComment({
@@ -361,52 +348,46 @@ async function dispatchDaemon(ctx: BotContext, decision: DispatchDecision): Prom
     return;
   }
 
-  try {
-    const serializedCtx = serializeBotContext(ctx);
-    await createExecution({
-      deliveryId: ctx.deliveryId,
-      repoOwner: ctx.owner,
-      repoName: ctx.repo,
-      entityNumber: ctx.entityNumber,
-      entityType: ctx.isPR ? "pull_request" : "issue",
-      eventName: ctx.eventName,
-      triggerUsername: ctx.triggerUsername,
-      dispatchMode: "daemon",
-      dispatchReason: decision.reason,
-      ...(decision.triage !== undefined && {
-        triageConfidence: decision.triage.confidence,
-        triageCostUsd: decision.triage.costUsd,
-      }),
-      contextJson: serializedCtx,
-    });
+  const serializedCtx = serializeBotContext(ctx);
+  await createExecution({
+    deliveryId: ctx.deliveryId,
+    repoOwner: ctx.owner,
+    repoName: ctx.repo,
+    entityNumber: ctx.entityNumber,
+    entityType: ctx.isPR ? "pull_request" : "issue",
+    eventName: ctx.eventName,
+    triggerUsername: ctx.triggerUsername,
+    dispatchMode: "daemon",
+    dispatchReason: decision.reason,
+    ...(decision.triage !== undefined && {
+      triageConfidence: decision.triage.confidence,
+      triageCostUsd: decision.triage.costUsd,
+    }),
+    contextJson: serializedCtx,
+  });
 
-    const queuedJob: QueuedJob = {
-      deliveryId: ctx.deliveryId,
-      repoOwner: ctx.owner,
-      repoName: ctx.repo,
-      entityNumber: ctx.entityNumber,
-      isPR: ctx.isPR,
-      eventName: ctx.eventName,
-      triggerUsername: ctx.triggerUsername,
-      labels: ctx.labels,
-      triggerBodyPreview: ctx.triggerBody.slice(0, 200),
-      enqueuedAt: Date.now(),
-      retryCount: 0,
-    };
+  const queuedJob: QueuedJob = {
+    deliveryId: ctx.deliveryId,
+    repoOwner: ctx.owner,
+    repoName: ctx.repo,
+    entityNumber: ctx.entityNumber,
+    isPR: ctx.isPR,
+    eventName: ctx.eventName,
+    triggerUsername: ctx.triggerUsername,
+    labels: ctx.labels,
+    triggerBodyPreview: ctx.triggerBody.slice(0, 200),
+    enqueuedAt: Date.now(),
+    retryCount: 0,
+  };
 
-    const dispatched = await dispatchJob(queuedJob);
-    if (dispatched) {
-      ctx.log.info({ deliveryId: ctx.deliveryId }, "Job dispatched to daemon");
-    } else {
-      await enqueueJob(queuedJob);
-      decrementActiveCount();
-      ctx.log.warn(
-        { deliveryId: ctx.deliveryId },
-        "No daemon available — job enqueued, concurrency slot released",
-      );
-    }
-  } catch (err) {
-    decrementActiveCount();
-    throw err;
+  const dispatched = await dispatchJob(queuedJob);
+  if (dispatched) {
+    ctx.log.info({ deliveryId: ctx.deliveryId }, "Job dispatched to daemon");
+  } else {
+    await enqueueJob(queuedJob);
+    ctx.log.info(
+      { deliveryId: ctx.deliveryId },
+      "No daemon available — job enqueued, awaiting daemon claim",
+    );
   }
 }
