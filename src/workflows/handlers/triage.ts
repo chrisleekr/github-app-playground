@@ -10,27 +10,62 @@ import type { WorkflowHandler } from "../registry";
 
 /**
  * `triage` handler — code-aware validation of an issue against the actual
- * repository state.
+ * repository state, with mandatory reproduction for bug-class issues.
  *
- * Replaces the prior keyword-regex classifier (which never read the code).
  * The handler:
  *   1. Fetches the issue title + body via Octokit.
  *   2. Clones the repository to a temp working directory.
- *   3. Runs Claude Agent SDK with read-mostly tools (Read/Grep/Glob/Bash)
- *      and instructs the agent to: search relevant source, reproduce-by-reading
- *      the reported behaviour, decide validity, and emit two artefacts at the
- *      repo root — `TRIAGE.md` (human-readable report, becomes the tracking
- *      comment body) and `TRIAGE_VERDICT.json` (machine-readable verdict).
+ *   3. Runs Claude Agent SDK with read+execute tools (Read/Grep/Glob/Bash/
+ *      Write) and instructs the agent to: classify the issue, search
+ *      relevant source, ACTUALLY REPRODUCE the bug (if it claims one) by
+ *      running the failing case, decide validity, and emit two artefacts
+ *      at the repo root — `TRIAGE.md` (human-readable report, becomes the
+ *      tracking comment body) and `TRIAGE_VERDICT.json` (machine-readable
+ *      verdict).
  *   4. Parses `TRIAGE_VERDICT.json`. When `valid === false` the handler
  *      returns `failed` with the verdict summary as the reason — this
  *      halts a parent `ship` cascade at the triage step (see
  *      `workflows/orchestrator.ts onStepComplete`).
  *   5. The full `TRIAGE.md` report is the tracking comment body so the user
- *      sees evidence and reasoning, not a one-liner.
+ *      sees evidence, reasoning, and reproduction details — not a one-liner.
+ *
+ * Reproduction: there is NO turn cap. A senior engineer's job is to
+ * determine whether a reported bug is real; that requires running the code,
+ * not just reading it. If reproduction is impossible (e.g., production-only,
+ * needs external services we lack), the agent reports
+ * `attempted: true, reproduced: null` with honest details — never lies.
+ * Non-bug issues (features, refactors, docs) skip reproduction with
+ * `attempted: false`.
  *
  * The handler does NOT post chat-style summaries; the agent's report IS the
  * comment. Cost / duration / numTurns are appended below the agent's report.
  */
+
+const reproductionSchema = z
+  .object({
+    /**
+     * `attempted=false` means the agent decided the issue is not a bug
+     * claim (feature request, refactor proposal, doc fix). `attempted=true`
+     * means the agent ran code to validate the bug.
+     */
+    attempted: z.boolean(),
+    /**
+     * `null` when `attempted === false` (nothing to reproduce). When
+     * `attempted === true`: `true` = bug confirmed by running code,
+     * `false` = code runs cleanly and the bug as described does not occur.
+     * The agent uses `null` only when reproduction was attempted but
+     * couldn't reach a verdict (e.g., needs production data we lack) —
+     * in that case `details` MUST explain the obstacle honestly.
+     */
+    reproduced: z.boolean().nullable(),
+    /**
+     * What the agent did and observed. For non-bug issues, a one-liner
+     * explaining why reproduction was skipped. For attempted reproductions,
+     * commands run, output snippets, and the verdict.
+     */
+    details: z.string().min(1).max(2000),
+  })
+  .strict();
 
 const verdictSchema = z
   .object({
@@ -47,6 +82,7 @@ const verdictSchema = z
         }),
       )
       .default([]),
+    reproduction: reproductionSchema,
   })
   .strict();
 type Verdict = z.infer<typeof verdictSchema>;
@@ -125,6 +161,7 @@ export const handler: WorkflowHandler = async (ctx) => {
       summary: verdict.summary,
       recommendedNext: verdict.recommendedNext,
       evidence: verdict.evidence,
+      reproduction: verdict.reproduction,
       report,
       costUsd: result.costUsd ?? 0,
       turns: result.numTurns ?? 0,
@@ -135,6 +172,8 @@ export const handler: WorkflowHandler = async (ctx) => {
         valid: verdict.valid,
         confidence: verdict.confidence,
         evidenceCount: verdict.evidence.length,
+        reproductionAttempted: verdict.reproduction.attempted,
+        reproduced: verdict.reproduction.reproduced,
         costUsd: result.costUsd,
       },
       "triage handler completed",
@@ -223,13 +262,35 @@ function buildTriagePrompt(input: {
     `--- End issue body ---`,
     ``,
     `Method:`,
-    `1. Read the issue carefully. Identify every claim it makes about the code (file paths, behaviours, bugs, missing features).`,
-    `2. Use Read / Grep / Glob to inspect the actual code. Read the relevant files in full where claims are specific.`,
-    `3. Cross-check each claim. Note evidence with file paths and line numbers.`,
-    `4. Decide validity:`,
-    `   - VALID = the issue accurately describes a real bug, missing feature, or improvement worth doing.`,
-    `   - INVALID = the issue is wrong (already-fixed, misreads code, duplicates, out-of-scope, unclear, or unreproducible).`,
-    `5. Write TRIAGE.md at the repo root with this structure (markdown):`,
+    `1. **Classify the issue.** Read it carefully and decide which class it falls into:`,
+    `   - **bug** — claims that something currently broken / incorrect / failing.`,
+    `   - **feature** — asks for new capability that doesn't exist.`,
+    `   - **refactor** — asks to restructure existing code without behaviour change.`,
+    `   - **docs** — asks for documentation only.`,
+    `   - **question/unclear** — not actionable without more info.`,
+    ``,
+    `2. **Inspect the code.** Use Read / Grep / Glob to find relevant files. Read them in full where claims are specific. Note evidence with file:line citations.`,
+    ``,
+    `3. **Reproduce (BUG ISSUES ONLY).** This is the senior-developer step the bot exists to perform. If the issue is class **bug**:`,
+    `   a. Identify the smallest command that should expose the bug. Usually one of:`,
+    `      \`bun test path/to/specific.test.ts\` (existing failing test)`,
+    `      \`bun run typecheck\` / \`bun run lint\` (compile/style failure)`,
+    `      a fresh test you write in /tmp that exercises the claimed behaviour`,
+    `      a CLI invocation, REST request, or repo-local script the issue describes`,
+    `   b. Run it via Bash. Capture the output.`,
+    `   c. Decide:`,
+    `      \`reproduced=true\`  → output matches the issue's claim. The bug is real.`,
+    `      \`reproduced=false\` → code runs cleanly / output contradicts the claim. The issue is wrong (already-fixed, misread, environment-only) — mark VALID=false.`,
+    `      \`reproduced=null\`  → reproduction was honestly attempted but couldn't reach a verdict (needs prod data, external service we don't have, race condition we can't trigger). Explain in detail.`,
+    `   d. There is NO turn cap. Take as many turns as you need. If reproduction needs you to write a temporary test file in /tmp, install a dependency, or read additional code — do it. The cost of a thorough triage is far smaller than the cost of planning + implementing a non-bug.`,
+    ``,
+    `   For non-bug classes (feature/refactor/docs/unclear): set \`attempted=false\`, \`reproduced=null\`, \`details\` to a one-liner explaining why reproduction was skipped.`,
+    ``,
+    `4. **Decide validity.**`,
+    `   - VALID = bug confirmed by reproduction, OR feature/refactor/docs ask is sensible and actionable as written.`,
+    `   - INVALID = bug not reproducible (and not a "needs prod data" honest failure), or the issue misreads the code, duplicates an existing one, is out-of-scope, or genuinely unclear.`,
+    ``,
+    `5. **Write TRIAGE.md** at the repo root with this structure (markdown):`,
     ``,
     `    # Triage: <issue title>`,
     `    ## Verdict`,
@@ -238,16 +299,20 @@ function buildTriagePrompt(input: {
     `    ## What was inspected`,
     `    - <file path> — <why you read it>`,
     `    ...`,
+    `    ## Reproduction`,
+    `    <If bug class: the command(s) you ran, the output you saw, and your conclusion.`,
+    `     If non-bug class: "Not a bug claim — reproduction skipped." plus one sentence why.`,
+    `     Be specific. A senior reviewer should be able to re-run your steps verbatim.>`,
     `    ## Findings`,
     `    - <finding 1, with file:line citation>`,
     `    - <finding 2, with file:line citation>`,
     `    ...`,
     `    ## Reasoning`,
-    `    <step-by-step argument that links findings to verdict>`,
+    `    <step-by-step argument that links findings + reproduction outcome to verdict>`,
     `    ## Recommended next step`,
     `    <"plan" if VALID, otherwise "stop" with one-sentence reason>`,
     ``,
-    `6. Write TRIAGE_VERDICT.json at the repo root with the EXACT shape:`,
+    `6. **Write TRIAGE_VERDICT.json** at the repo root with the EXACT shape:`,
     ``,
     `    {`,
     `      "valid": true | false,`,
@@ -257,14 +322,21 @@ function buildTriagePrompt(input: {
     `      "evidence": [`,
     `        { "file": "<path>", "line": <int|omit>, "note": "<short>" },`,
     `        ...`,
-    `      ]`,
+    `      ],`,
+    `      "reproduction": {`,
+    `        "attempted": true | false,`,
+    `        "reproduced": true | false | null,`,
+    `        "details": "<≤2000 chars; commands run + output + conclusion, OR 'Not a bug claim' for non-bugs>"`,
+    `      }`,
     `    }`,
     ``,
     `Rules:`,
     `- Be ruthless about evidence. A claim without a file:line citation is a guess.`,
-    `- If the issue is genuinely unclear, mark INVALID with recommendedNext="stop" and explain what's needed.`,
-    `- Do NOT modify any source files. Do NOT make recommendations beyond "plan" or "stop". Do NOT write code.`,
-    `- The two output files (TRIAGE.md, TRIAGE_VERDICT.json) are the only things you should write.`,
+    `- For bug issues, a verdict without an honest reproduction attempt is a failure of your job.`,
+    `- It is OK to report \`reproduced=null\` if the bug genuinely can't be reproduced in this environment — but you MUST explain WHY honestly. Never lie about reproduction status.`,
+    `- Do NOT modify any source files in the repo (writing temporary scripts under /tmp is fine; running tests is fine; do not stage or commit anything).`,
+    `- Do NOT make recommendations beyond "plan" or "stop". Do NOT write code that fixes the issue.`,
+    `- The two output files (TRIAGE.md, TRIAGE_VERDICT.json) are the only artefacts you should leave at the repo root.`,
     `- When both files are saved, your job is done.`,
   ].join("\n");
 }
