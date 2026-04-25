@@ -7,6 +7,7 @@ import { type CompletionResult, onStepComplete } from "../workflows/orchestrator
 import { getByName, type WorkflowRunContext } from "../workflows/registry";
 import { markFailed, markRunning, markSucceeded, mergeState } from "../workflows/runs-store";
 import { setState } from "../workflows/tracking-mirror";
+import { getDaemonId } from "./daemon-id";
 
 /**
  * Daemon-side entry point for jobs carrying a `workflowRun` field. Implements
@@ -60,7 +61,8 @@ export async function executeWorkflowRun(
 
   try {
     const entry = getByName(workflowRun.workflowName);
-    await markRunning(workflowRun.runId);
+    const daemonId = getDaemonId();
+    await markRunning(workflowRun.runId, daemonId);
 
     const runCtx: WorkflowRunContext = {
       runId: workflowRun.runId,
@@ -72,6 +74,7 @@ export async function executeWorkflowRun(
       logger: log,
       octokit,
       deliveryId: context.deliveryId,
+      daemonId,
       setState: async (state, humanMessage) => {
         const patch =
           typeof state === "object" && state !== null

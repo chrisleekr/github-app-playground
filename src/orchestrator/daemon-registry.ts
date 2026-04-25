@@ -26,10 +26,17 @@ export async function registerDaemon(msg: DaemonRegisterMessage): Promise<Daemon
 
   const valkey = requireValkeyClient();
 
-  // Valkey: store daemon liveness with TTL + add to active set for O(1) lookup
+  // Valkey: store daemon liveness with TTL + add to active set for O(1) lookup.
+  // The active_jobs counter shares the same TTL so an orchestrator crash without
+  // graceful deregister leaks neither key — both expire together.
   const valkeyPayload = JSON.stringify(capabilities);
   await valkey.send("SETEX", [`daemon:${daemonId}`, String(DAEMON_TTL_SECONDS), valkeyPayload]);
-  await valkey.send("SET", [`daemon:${daemonId}:active_jobs`, "0"]);
+  await valkey.send("SET", [
+    `daemon:${daemonId}:active_jobs`,
+    "0",
+    "EX",
+    String(DAEMON_TTL_SECONDS),
+  ]);
   await valkey.send("SADD", ["active_daemons", daemonId]);
 
   // Postgres upsert — resources column separated per data-model.md
@@ -108,6 +115,9 @@ export async function refreshDaemonTtl(
   const valkey = requireValkeyClient();
   const valkeyPayload = JSON.stringify(capabilities);
   await valkey.send("SETEX", [`daemon:${daemonId}`, String(DAEMON_TTL_SECONDS), valkeyPayload]);
+  // Keep active_jobs alive alongside the liveness key so the two never
+  // diverge under TTL pressure. EXPIRE is a no-op if the key is gone.
+  await valkey.send("EXPIRE", [`daemon:${daemonId}:active_jobs`, String(DAEMON_TTL_SECONDS)]);
 
   const db = getDb();
   if (db !== null) {

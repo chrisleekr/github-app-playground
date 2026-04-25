@@ -3,7 +3,9 @@ import type { Octokit } from "octokit";
 import type pino from "pino";
 
 import { requireDb } from "../db";
+import { getInstanceId } from "../orchestrator/instance-id";
 import { enqueueJob } from "../orchestrator/job-queue";
+import { recordWorkflowExecution } from "./execution-row";
 import { getByName, type WorkflowName } from "./registry";
 import { markFailed, type WorkflowRunRow } from "./runs-store";
 import { setState } from "./tracking-mirror";
@@ -122,11 +124,13 @@ export async function onStepComplete(
     const inserted: WorkflowRunRow[] = await tx`
       INSERT INTO workflow_runs (
         workflow_name, target_type, target_owner, target_repo, target_number,
-        parent_run_id, parent_step_index, status, state, delivery_id
+        parent_run_id, parent_step_index, status, state, delivery_id,
+        owner_kind, owner_id
       ) VALUES (
         ${nextStepName}, ${parent.target_type}, ${parent.target_owner},
         ${parent.target_repo}, ${parent.target_number},
-        ${parent.id}, ${nextIndex}, 'queued', '{}'::jsonb, ${parent.delivery_id}
+        ${parent.id}, ${nextIndex}, 'queued', '{}'::jsonb, ${parent.delivery_id},
+        'orchestrator', ${getInstanceId()}
       )
       RETURNING *
     `;
@@ -163,9 +167,22 @@ export async function onStepComplete(
 
   if (postCommit.enqueue !== null) {
     const job = postCommit.enqueue;
+    // Cascade steps use `runId` as deliveryId to avoid collision with the
+    // parent's `executions.delivery_id` (UNIQUE NOT NULL). Parent's original
+    // webhook deliveryId is retained on the workflow_runs row for traceability
+    // but is NOT reused as the per-step executions key.
+    const childDeliveryId = job.runId;
     try {
+      await recordWorkflowExecution({
+        deliveryId: childDeliveryId,
+        target: job.target,
+        senderLogin: "chrisleekr-bot[bot]",
+        workflowName: job.workflowName,
+        runId: job.runId,
+        logger,
+      });
       await enqueueJob({
-        deliveryId: job.deliveryId ?? job.runId,
+        deliveryId: childDeliveryId,
         repoOwner: job.target.owner,
         repoName: job.target.repo,
         entityNumber: job.target.number,

@@ -1,5 +1,6 @@
 import { requireDb } from "../../db";
 import { enqueueJob } from "../../orchestrator/job-queue";
+import { recordWorkflowExecution } from "../execution-row";
 import {
   getByName,
   type WorkflowHandler,
@@ -34,7 +35,7 @@ import { findLatestForTarget, type WorkflowRunRow } from "../runs-store";
  * handles the terminal transition.
  */
 export const handler: WorkflowHandler = async (ctx) => {
-  const { target, logger: log, runId: parentRunId, deliveryId } = ctx;
+  const { target, logger: log, runId: parentRunId, deliveryId, daemonId } = ctx;
 
   try {
     if (target.type !== "issue") {
@@ -67,10 +68,22 @@ export const handler: WorkflowHandler = async (ctx) => {
       workflowName: firstStep,
       target,
       deliveryId: deliveryId ?? null,
+      daemonId,
     });
 
+    // First child step uses its own runId as deliveryId so the `executions`
+    // row doesn't collide with the parent's webhook-scoped deliveryId.
+    const childDeliveryId = child.id;
+    await recordWorkflowExecution({
+      deliveryId: childDeliveryId,
+      target,
+      senderLogin: "chrisleekr-bot[bot]",
+      workflowName: firstStep,
+      runId: child.id,
+      logger: log,
+    });
     await enqueueJob({
-      deliveryId: deliveryId ?? child.id,
+      deliveryId: childDeliveryId,
       repoOwner: target.owner,
       repoName: target.repo,
       entityNumber: target.number,
@@ -222,6 +235,7 @@ interface InsertChildParams {
   readonly workflowName: WorkflowName;
   readonly target: WorkflowRunContext["target"];
   readonly deliveryId: string | null;
+  readonly daemonId: string;
 }
 
 async function insertChildRow(params: InsertChildParams): Promise<WorkflowRunRow> {
@@ -229,12 +243,13 @@ async function insertChildRow(params: InsertChildParams): Promise<WorkflowRunRow
   const rows: WorkflowRunRow[] = await sql`
     INSERT INTO workflow_runs (
       workflow_name, target_type, target_owner, target_repo, target_number,
-      parent_run_id, parent_step_index, status, state, delivery_id
+      parent_run_id, parent_step_index, status, state, delivery_id,
+      owner_kind, owner_id
     ) VALUES (
       ${params.workflowName}, ${params.target.type}, ${params.target.owner},
       ${params.target.repo}, ${params.target.number},
       ${params.parentRunId}, ${params.parentStepIndex}, 'queued', '{}'::jsonb,
-      ${params.deliveryId}
+      ${params.deliveryId}, 'daemon', ${params.daemonId}
     )
     RETURNING *
   `;

@@ -62,6 +62,10 @@ export const handler: WorkflowHandler = async (ctx) => {
       `- Implement the tasks in order.`,
       `- Commit with conventional-commit messages.`,
       `- Push the branch and open a pull request targeting ${defaultBranch}.`,
+      `- Before finishing, write \`IMPLEMENT.md\` at the repo root summarizing what you did.`,
+      `  Required sections: ## Summary, ## Files changed (path · one-line rationale),`,
+      `  ## Commits (sha · subject), ## Tests run (command · result), ## Verification.`,
+      `  This becomes the tracking comment body — be specific, cite files.`,
       ``,
       `--- Plan ---`,
       planMarkdown,
@@ -86,7 +90,7 @@ export const handler: WorkflowHandler = async (ctx) => {
       log,
     };
 
-    const result = await runPipeline(botCtx);
+    const result = await runPipeline(botCtx, { captureFiles: ["IMPLEMENT.md"] });
     if (!result.success) {
       return { status: "failed", reason: "implement pipeline execution failed" };
     }
@@ -99,14 +103,28 @@ export const handler: WorkflowHandler = async (ctx) => {
       };
     }
 
+    const report = result.capturedFiles?.["IMPLEMENT.md"]?.trim() ?? "";
+
     const state = {
       pr_number: opened.number,
       pr_url: opened.url,
       branch: opened.branch,
+      report,
       costUsd: result.costUsd ?? 0,
       turns: result.numTurns ?? 0,
     };
-    const humanMessage = `implement complete — opened PR [#${String(opened.number)}](${opened.url}) on branch \`${opened.branch}\`.`;
+
+    const meta: string[] = [];
+    if (result.costUsd !== undefined) meta.push(`cost: $${result.costUsd.toFixed(4)}`);
+    if (result.numTurns !== undefined) meta.push(`turns: ${String(result.numTurns)}`);
+    if (result.durationMs !== undefined)
+      meta.push(`duration: ${String(Math.round(result.durationMs / 1000))}s`);
+    const metaLine = meta.length > 0 ? `\n\n_${meta.join(" · ")}_` : "";
+    const reportSection =
+      report.length > 0
+        ? `\n\n${report}`
+        : `\n\n_(no IMPLEMENT.md report — agent did not write one)_`;
+    const humanMessage = `🛠️ **Implement complete** — opened PR [#${String(opened.number)}](${opened.url}) on branch \`${opened.branch}\`.${reportSection}${metaLine}`;
     await ctx.setState(state, humanMessage);
 
     log.info(
@@ -128,19 +146,19 @@ interface OpenedPr {
 }
 
 /**
- * GitHub App installation tokens author commits under this login. All PRs
- * opened by the implement agent go out as this user, so we can use it as a
- * cheap filter against the "list recent PRs" endpoint to avoid picking up
- * an unrelated PR that a human opened during the pipeline run.
- */
-const BOT_USER_LOGIN = "chrisleekr-bot[bot]";
-
-/**
- * Locate the PR the agent opened during this pipeline run. Scoped to PRs
- * authored by the bot account so a concurrent human PR on the same repo
- * cannot be mistakenly attributed to this run. `per_page` is bumped to 30
- * so a burst of unrelated PRs inside the time window doesn't push ours
- * past the page boundary.
+ * Locate the PR the agent opened during this pipeline run. Filters on:
+ *  - `pr.user.type === "Bot"` — the App's installation token always
+ *    authors PRs as the App's bot account, so any non-bot PR is human
+ *    work we mustn't claim. We deliberately do NOT hard-code a slug
+ *    (e.g. `chrisleekr-bot[bot]`) because the dev and prod installations
+ *    publish as different slugs (`chrisleekr-bot-dev[bot]` vs
+ *    `chrisleekr-bot[bot]`); a hard-coded match makes the handler return
+ *    `failed` for a PR that was actually opened correctly.
+ *  - `created_at >= since - 5s` — the run's start. The 5s slop absorbs
+ *    clock skew between the daemon's `Date.now()` and GitHub's server.
+ *
+ * `per_page` is bumped to 30 so a burst of unrelated PRs inside the time
+ * window doesn't push ours past the page boundary.
  */
 async function findRecentOpenedPr(
   octokit: Parameters<WorkflowHandler>[0]["octokit"],
@@ -157,7 +175,7 @@ async function findRecentOpenedPr(
     per_page: 30,
   });
   for (const pr of prs) {
-    if (pr.user?.login !== BOT_USER_LOGIN) continue;
+    if (pr.user?.type !== "Bot") continue;
     const created = new Date(pr.created_at).getTime();
     if (created >= since.getTime() - 5_000) {
       return { number: pr.number, url: pr.html_url, branch: pr.head.ref };

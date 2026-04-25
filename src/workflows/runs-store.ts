@@ -11,6 +11,8 @@ import type { WorkflowName } from "./registry";
 
 export type WorkflowRunStatus = "queued" | "running" | "succeeded" | "failed";
 
+export type WorkflowOwnerKind = "orchestrator" | "daemon";
+
 export interface WorkflowRunRow {
   id: string;
   workflow_name: WorkflowName;
@@ -24,6 +26,8 @@ export interface WorkflowRunRow {
   state: Record<string, unknown>;
   tracking_comment_id: number | null;
   delivery_id: string | null;
+  owner_kind: WorkflowOwnerKind | null;
+  owner_id: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -57,6 +61,13 @@ export interface InsertQueuedParams {
   parentStepIndex?: number | null;
   deliveryId?: string | null;
   initialState?: Record<string, unknown>;
+  /**
+   * Identifier of the process responsible for advancing this row. The
+   * liveness reaper resolves the matching Valkey heartbeat key from
+   * `(ownerKind, ownerId)` and fails the row if the key is missing.
+   */
+  ownerKind: WorkflowOwnerKind;
+  ownerId: string;
 }
 
 /**
@@ -75,11 +86,13 @@ export async function insertQueued(
   const rows: WorkflowRunRow[] = await sql`
     INSERT INTO workflow_runs (
       workflow_name, target_type, target_owner, target_repo, target_number,
-      parent_run_id, parent_step_index, status, state, delivery_id
+      parent_run_id, parent_step_index, status, state, delivery_id,
+      owner_kind, owner_id
     ) VALUES (
       ${params.workflowName}, ${params.target.type}, ${params.target.owner},
       ${params.target.repo}, ${params.target.number},
-      ${parentRunId}, ${parentStepIndex}, 'queued', ${state}::jsonb, ${deliveryId}
+      ${parentRunId}, ${parentStepIndex}, 'queued', ${state}::jsonb, ${deliveryId},
+      ${params.ownerKind}, ${params.ownerId}
     )
     RETURNING *
   `;
@@ -92,13 +105,20 @@ export async function insertQueued(
 }
 
 /**
- * Flip a row to `running`. Called by the daemon right before invoking the
- * handler. No-op if the row is already past `queued`.
+ * Flip a row to `running` and transfer ownership to the executing daemon so
+ * the liveness reaper tracks the daemon's heartbeat (not the orchestrator's)
+ * for the duration of the run. No-op if the row is already past `queued`.
  */
-export async function markRunning(runId: string, sql: SQL = requireDb()): Promise<void> {
+export async function markRunning(
+  runId: string,
+  daemonId: string,
+  sql: SQL = requireDb(),
+): Promise<void> {
   await sql`
     UPDATE workflow_runs
-       SET status = 'running'
+       SET status = 'running',
+           owner_kind = 'daemon',
+           owner_id = ${daemonId}
      WHERE id = ${runId}
        AND status = 'queued'
   `;

@@ -37,7 +37,7 @@ import {
   WS_CLOSE_CODES,
   WS_ERROR_CODES,
 } from "../shared/ws-messages";
-import { decrementActiveCount } from "./concurrency";
+import { decrementActiveCount, incrementActiveCount } from "./concurrency";
 import {
   decrementDaemonActiveJobs,
   deregisterDaemon,
@@ -461,6 +461,10 @@ async function handleAccept(
   // where the timeout fires during async work below and re-queues the job.
   removePendingOffer(offerId);
 
+  // Capacity slot is owned here: take one when the daemon claims, release
+  // in handleResult or in the error paths below. Every accept path must
+  // therefore decrement on failure to keep the counter balanced.
+  incrementActiveCount();
   await incrementDaemonActiveJobs(daemonId);
   await markExecutionRunning(offer.deliveryId);
 
@@ -478,8 +482,31 @@ async function handleAccept(
     SELECT context_json FROM executions WHERE delivery_id = ${offer.deliveryId}
   `;
   const contextJson = rows[0]?.context_json ?? null;
+  logger.debug(
+    {
+      offerId,
+      daemonId,
+      deliveryId: offer.deliveryId,
+      rowCount: rows.length,
+      hasContextJson: contextJson !== null,
+      contextKeys: contextJson !== null ? Object.keys(contextJson) : [],
+    },
+    "Accept: executions row lookup",
+  );
   if (contextJson === null) {
-    logger.error({ offerId, daemonId, deliveryId: offer.deliveryId }, "No execution context found");
+    logger.error(
+      {
+        offerId,
+        daemonId,
+        deliveryId: offer.deliveryId,
+        rowCount: rows.length,
+        hint:
+          rows.length === 0
+            ? "no executions row for this deliveryId — producer did not call createExecution"
+            : "executions row exists but context_json is NULL — row was written without context",
+      },
+      "No execution context found",
+    );
     await markExecutionFailed(offer.deliveryId, "Execution context not found");
     await decrementDaemonActiveJobs(daemonId);
     decrementActiveCount();
@@ -498,9 +525,10 @@ async function handleAccept(
     const octokit = await app.getInstallationOctokit(installation.id);
     const { token } = (await octokit.auth({ type: "installation" })) as { token: string };
 
-    // FR-008a: fallback when no explicit override and triage didn't run is
-    // DEFAULT_MAXTURNS (30), not the per-complexity "complex" value (50).
-    // The latter over-allocates turns for events that never got classified.
+    // No turn cap by default: workflows must run end-to-end without losing
+    // progress to a mid-run cap. `AGENT_MAX_TURNS` and `DEFAULT_MAXTURNS`
+    // remain as opt-in escape hatches for ops; when both are unset we pass
+    // `undefined` to the SDK and the agent decides when it's done.
     const maxTurns = config.agentMaxTurns ?? config.defaultMaxTurns;
     const { resolveAllowedTools } = await import("../core/prompt-builder");
 
@@ -525,7 +553,7 @@ async function handleAccept(
       deliveryId: offer.deliveryId,
       installationToken: token,
       contextJson,
-      maxTurns,
+      ...(maxTurns !== undefined ? { maxTurns } : {}),
       allowedTools: resolveAllowedTools(
         ctxForTools as Parameters<typeof resolveAllowedTools>[0],
         daemonInfo?.capabilities,

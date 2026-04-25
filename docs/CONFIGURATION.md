@@ -33,19 +33,19 @@ Server mode only. If `ORCHESTRATOR_URL` is set, the process runs in daemon mode 
 
 ## Runtime
 
-| Variable                  | Default                      | Notes                                                                                                   |
-| ------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `PORT`                    | `3000`                       | HTTP webhook listener.                                                                                  |
-| `LOG_LEVEL`               | `info`                       | Pino level: `fatal`, `error`, `warn`, `info`, `debug`, `trace`. `debug` surfaces full webhook payloads. |
-| `NODE_ENV`                | `production`                 | `production`, `development`, or `test`.                                                                 |
-| `TRIGGER_PHRASE`          | `@chrisleekr-bot`            | Mention text that triggers the bot. Must match the App's bot login.                                     |
-| `MAX_CONCURRENT_REQUESTS` | `3`                          | Ceiling on simultaneous Claude executions per process.                                                  |
-| `AGENT_TIMEOUT_MS`        | `600000`                     | Wall-clock budget for one agent execution.                                                              |
-| `AGENT_MAX_TURNS`         | unset                        | Fallback turn cap — see [Triage](TRIAGE.md) for how it interacts with the router.                       |
-| `CLAUDE_CODE_PATH`        | resolved from `node_modules` | Absolute path to the Claude Code CLI `cli.js`. Set when globally installed.                             |
-| `CLONE_BASE_DIR`          | `/tmp/bot-workspaces`        | Parent directory for per-delivery clones.                                                               |
-| `CLONE_DEPTH`             | `50`                         | Shallow-clone depth. Increase for deeply-diverged PRs.                                                  |
-| `CONTEXT7_API_KEY`        | unset                        | Lifts Context7 MCP rate limiting. No other effect.                                                      |
+| Variable                  | Default                      | Notes                                                                                                        |
+| ------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `PORT`                    | `3000`                       | HTTP webhook listener.                                                                                       |
+| `LOG_LEVEL`               | `info`                       | Pino level: `fatal`, `error`, `warn`, `info`, `debug`, `trace`. `debug` surfaces full webhook payloads.      |
+| `NODE_ENV`                | `production`                 | `production`, `development`, or `test`.                                                                      |
+| `TRIGGER_PHRASE`          | `@chrisleekr-bot`            | Mention text that triggers the bot. Must match the App's bot login.                                          |
+| `MAX_CONCURRENT_REQUESTS` | `3`                          | Ceiling on simultaneous Claude executions per process.                                                       |
+| `AGENT_TIMEOUT_MS`        | `3600000`                    | Wall-clock budget for one agent execution (default 60 min). Lower it only when you trust the job is bounded. |
+| `AGENT_MAX_TURNS`         | unset                        | Optional Claude SDK turn cap. Unset = no cap (the agent runs to completion). Overrides `DEFAULT_MAXTURNS`.   |
+| `CLAUDE_CODE_PATH`        | resolved from `node_modules` | Absolute path to the Claude Code CLI `cli.js`. Set when globally installed.                                  |
+| `CLONE_BASE_DIR`          | `/tmp/bot-workspaces`        | Parent directory for per-delivery clones.                                                                    |
+| `CLONE_DEPTH`             | `50`                         | Shallow-clone depth. Increase for deeply-diverged PRs.                                                       |
+| `CONTEXT7_API_KEY`        | unset                        | Lifts Context7 MCP rate limiting. No other effect.                                                           |
 
 ## Dispatch
 
@@ -77,21 +77,23 @@ Required whenever the orchestrator role is active (i.e. the webhook server proce
 
 ## Orchestrator and daemon
 
-| Variable                       | Default  | Notes                                                                                                       |
-| ------------------------------ | -------- | ----------------------------------------------------------------------------------------------------------- |
-| `WS_PORT`                      | `3002`   | Orchestrator WebSocket listener. Bound only in server mode. Must differ from `PORT`.                        |
-| `ORCHESTRATOR_URL`             | —        | Presence flips the process from server mode to **daemon** mode. Must be `ws://` or `wss://`.                |
-| `DAEMON_AUTH_TOKEN`            | —        | Shared secret for the daemon ⇄ orchestrator handshake. Required on both orchestrator and daemon processes.  |
-| `HEARTBEAT_INTERVAL_MS`        | `30000`  | Daemon → orchestrator ping cadence.                                                                         |
-| `HEARTBEAT_TIMEOUT_MS`         | `90000`  | Eviction threshold. Keep `≥ 2 × HEARTBEAT_INTERVAL_MS` to tolerate a dropped packet.                        |
-| `STALE_EXECUTION_THRESHOLD_MS` | `600000` | How long a `running` execution may sit before the watcher marks it failed. Set `≥ AGENT_TIMEOUT_MS`.        |
-| `DAEMON_DRAIN_TIMEOUT_MS`      | `300000` | Post-SIGTERM window to finish in-flight work. Raise to `≥ AGENT_TIMEOUT_MS` if you want zero mid-run kills. |
-| `JOB_MAX_RETRIES`              | `3`      | Retries for transient daemon dispatch failures only. Isolated-job ignores this.                             |
-| `OFFER_TIMEOUT_MS`             | `5000`   | How long the orchestrator waits for a daemon to claim an offer before falling through.                      |
-| `DAEMON_UPDATE_STRATEGY`       | `exit`   | `exit`, `pull`, or `notify`. Advisory hint reported in the update response.                                 |
-| `DAEMON_UPDATE_DELAY_MS`       | `0`      | Delay before graceful shutdown after an update signal.                                                      |
-| `DAEMON_MEMORY_FLOOR_MB`       | `512`    | Minimum free memory the orchestrator requires before dispatching.                                           |
-| `DAEMON_DISK_FLOOR_MB`         | `1024`   | Minimum free disk the orchestrator requires before dispatching.                                             |
+| Variable                       | Default   | Notes                                                                                                                                                                                                                              |
+| ------------------------------ | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WS_PORT`                      | `3002`    | Orchestrator WebSocket listener. Bound only in server mode. Must differ from `PORT`.                                                                                                                                               |
+| `ORCHESTRATOR_URL`             | —         | Presence flips the process from server mode to **daemon** mode. Must be `ws://` or `wss://`.                                                                                                                                       |
+| `DAEMON_AUTH_TOKEN`            | —         | Shared secret for the daemon ⇄ orchestrator handshake. Required on both orchestrator and daemon processes.                                                                                                                         |
+| `HEARTBEAT_INTERVAL_MS`        | `30000`   | Daemon → orchestrator ping cadence.                                                                                                                                                                                                |
+| `HEARTBEAT_TIMEOUT_MS`         | `90000`   | Eviction threshold. Keep `≥ 2 × HEARTBEAT_INTERVAL_MS` to tolerate a dropped packet.                                                                                                                                               |
+| `STALE_EXECUTION_THRESHOLD_MS` | `3600000` | How long a `running` execution may sit before the watcher marks it failed. Set `≥ AGENT_TIMEOUT_MS`.                                                                                                                               |
+| `DAEMON_DRAIN_TIMEOUT_MS`      | `300000`  | Post-SIGTERM window to finish in-flight work. Raise to `≥ AGENT_TIMEOUT_MS` if you want zero mid-run kills.                                                                                                                        |
+| `JOB_MAX_RETRIES`              | `3`       | Retries for transient daemon dispatch failures only. Isolated-job ignores this.                                                                                                                                                    |
+| `OFFER_TIMEOUT_MS`             | `5000`    | How long the orchestrator waits for a daemon to claim an offer before falling through.                                                                                                                                             |
+| `QUEUE_WORKER_BACKOFF_MAX_MS`  | `5000`    | Upper bound on the queue-worker's sleep between retries when no locally-connected daemon can take a job.                                                                                                                           |
+| `LIVENESS_REAPER_INTERVAL_MS`  | `30000`   | Cadence of the heartbeat-based reaper that fails `workflow_runs` rows whose owning orchestrator/daemon stops heartbeating in Valkey, and flips abandoned `daemons` rows to `inactive`. Min 20000 (orchestrator heartbeat refresh). |
+| `DAEMON_UPDATE_STRATEGY`       | `exit`    | `exit`, `pull`, or `notify`. Advisory hint reported in the update response.                                                                                                                                                        |
+| `DAEMON_UPDATE_DELAY_MS`       | `0`       | Delay before graceful shutdown after an update signal.                                                                                                                                                                             |
+| `DAEMON_MEMORY_FLOOR_MB`       | `512`     | Minimum free memory the orchestrator requires before dispatching.                                                                                                                                                                  |
+| `DAEMON_DISK_FLOOR_MB`         | `1024`    | Minimum free disk the orchestrator requires before dispatching.                                                                                                                                                                    |
 
 ## Triage
 
@@ -102,7 +104,7 @@ Required whenever the orchestrator role is active (i.e. the webhook server proce
 | `TRIAGE_CONFIDENCE_THRESHOLD` | `1.0`       | Below this, triage is treated as sub-threshold and the job routes to `persistent-daemon`.                                                                                                                                  |
 | `TRIAGE_MAX_TOKENS`           | `256`       | Cap on the JSON response. Values above ~100 are wasted budget.                                                                                                                                                             |
 | `TRIAGE_TIMEOUT_MS`           | `5000`      | Per-call wall clock. Beyond this, the circuit-breaker counter increments.                                                                                                                                                  |
-| `DEFAULT_MAXTURNS`            | `30`        | Agent turn cap. Applied on every execution — triage no longer influences `maxTurns`.                                                                                                                                       |
+| `DEFAULT_MAXTURNS`            | unset       | Optional process-wide turn cap. Unset = no cap; agent runs end-to-end. Set only if ops needs a hard ceiling. `AGENT_MAX_TURNS` overrides when both are set.                                                                |
 | `INTENT_CONFIDENCE_THRESHOLD` | `0.75`      | Range `[0, 1]`. Below this, a `@chrisleekr-bot` comment is treated as ambiguous and the dispatcher posts a clarification request instead of dispatching a workflow. See [bot workflows](BOT-WORKFLOWS.md#comment-trigger). |
 
 See [Triage](TRIAGE.md) for the binary `heavy` signal, circuit breaker, and the six fallback reasons that appear in logs.

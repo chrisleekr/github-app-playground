@@ -47,6 +47,16 @@ void mock.module("../../../src/orchestrator/job-queue", () => ({
   enqueueJob: mockEnqueueJob,
 }));
 
+void mock.module("../../../src/workflows/execution-row", () => ({
+  recordWorkflowExecution: mock(() => Promise.resolve()),
+  buildWorkflowContextJson: mock(() => ({})),
+}));
+
+void mock.module("../../../src/orchestrator/concurrency", () => ({
+  incrementActiveCount: mock(() => {}),
+  decrementActiveCount: mock(() => {}),
+}));
+
 void mock.module("../../../src/workflows/tracking-mirror", () => ({
   setState: mock(() => Promise.resolve()),
   postRefusalComment: mock(() => Promise.resolve()),
@@ -109,6 +119,8 @@ async function seedSucceededRun(params: {
       workflowName: params.workflowName,
       target: { type: "issue" as const, ...params.target },
       initialState: {},
+      ownerKind: "orchestrator",
+      ownerId: "test-orchestrator",
     },
     requireSql(),
   );
@@ -177,6 +189,8 @@ describe.skipIf(sql === null)("ship handler", () => {
           number: targetNumber,
         },
         initialState: {},
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
       },
       requireSql(),
     );
@@ -193,6 +207,8 @@ describe.skipIf(sql === null)("ship handler", () => {
           number: targetNumber,
         },
         initialState: { currentStepIndex: 0, stepRuns: [] },
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
       },
       requireSql(),
     );
@@ -263,6 +279,8 @@ describe.skipIf(sql === null)("ship handler", () => {
           number: targetNumber,
         },
         initialState: { currentStepIndex: 0, stepRuns: [] },
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
       },
       requireSql(),
     );

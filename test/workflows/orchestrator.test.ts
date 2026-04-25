@@ -43,6 +43,16 @@ void mock.module("../../src/orchestrator/job-queue", () => ({
   enqueueJob: mockEnqueueJob,
 }));
 
+void mock.module("../../src/workflows/execution-row", () => ({
+  recordWorkflowExecution: mock(() => Promise.resolve()),
+  buildWorkflowContextJson: mock(() => ({})),
+}));
+
+void mock.module("../../src/orchestrator/concurrency", () => ({
+  incrementActiveCount: mock(() => {}),
+  decrementActiveCount: mock(() => {}),
+}));
+
 const mockSetState = mock(() => Promise.resolve());
 void mock.module("../../src/workflows/tracking-mirror", () => ({
   setState: mockSetState,
@@ -119,16 +129,20 @@ describe.skipIf(sql === null)("orchestrator.onStepComplete", () => {
         workflowName: "ship",
         target: shipTarget,
         initialState: { currentStepIndex: 0, stepRuns: [] },
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
       },
       requireSql(),
     );
-    await markRunning(parent.id, requireSql());
+    await markRunning(parent.id, "test-daemon", requireSql());
     const child0 = await insertQueued(
       {
         workflowName: "triage",
         target: shipTarget,
         parentRunId: parent.id,
         parentStepIndex: 0,
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
       },
       requireSql(),
     );
@@ -227,16 +241,20 @@ describe.skipIf(sql === null)("orchestrator.onStepComplete", () => {
         workflowName: "ship",
         target: shipTarget,
         initialState: { currentStepIndex: 0, stepRuns: [] },
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
       },
       requireSql(),
     );
-    await markRunning(parent.id, requireSql());
+    await markRunning(parent.id, "test-daemon", requireSql());
     const child0 = await insertQueued(
       {
         workflowName: "triage",
         target: shipTarget,
         parentRunId: parent.id,
         parentStepIndex: 0,
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
       },
       requireSql(),
     );
