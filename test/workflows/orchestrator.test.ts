@@ -3,7 +3,7 @@
  *
  * Covers the `contracts/handoff-protocol.md` per-step cascade:
  *   - Success chain: parent + child 0 succeed → child 1 enqueued → … → on
- *     child-3 (review) success, parent flips to `succeeded` with the full
+ *     child-3 (resolve) success, parent flips to `succeeded` with the full
  *     `state.stepRuns` ordering.
  *   - Failure cascade: child-2 (implement) fails → parent flips to `failed`
  *     with `state.failedAtStepIndex=2` → no child 3 is enqueued.
@@ -200,11 +200,11 @@ describe.skipIf(sql === null)("orchestrator.onStepComplete", () => {
     const call2 = mockEnqueueJob.mock.calls[2]?.[0] as
       | { workflowRun: { workflowName: string; parentStepIndex: number; runId: string } }
       | undefined;
-    expect(call2?.workflowRun.workflowName).toBe("review");
+    expect(call2?.workflowRun.workflowName).toBe("resolve");
     expect(call2?.workflowRun.parentStepIndex).toBe(3);
     const child3RunId = call2?.workflowRun.runId ?? "";
 
-    // ── child 3 (review) succeeds → parent flips to succeeded ────────────
+    // ── child 3 (resolve) succeeds → parent flips to succeeded ────────────
     await markSucceeded(child3RunId, { approved: true }, requireSql());
     await onStepComplete({ octokit: {} as never, logger: silentLogger() }, child3RunId, {
       status: "succeeded",

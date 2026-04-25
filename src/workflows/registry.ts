@@ -4,11 +4,11 @@ import { z } from "zod";
 
 import { handler as implementHandler } from "./handlers/implement";
 import { handler as planHandler } from "./handlers/plan";
-import { handler as reviewHandler } from "./handlers/review";
+import { handler as resolveHandler } from "./handlers/resolve";
 import { handler as shipHandler } from "./handlers/ship";
 import { handler as triageHandler } from "./handlers/triage";
 
-export const WorkflowNameSchema = z.enum(["triage", "plan", "implement", "review", "ship"]);
+export const WorkflowNameSchema = z.enum(["triage", "plan", "implement", "resolve", "ship"]);
 export type WorkflowName = z.infer<typeof WorkflowNameSchema>;
 
 export const WorkflowContextSchema = z.enum(["issue", "pr", "both"]);
@@ -142,19 +142,19 @@ const rawRegistry: RegistryEntry[] = [
     handler: implementHandler,
   },
   {
-    name: "review",
-    label: "bot:review",
+    name: "resolve",
+    label: "bot:resolve",
     context: "pr",
     requiresPrior: null,
     steps: [],
-    handler: reviewHandler,
+    handler: resolveHandler,
   },
   {
     name: "ship",
     label: "bot:ship",
     context: "issue",
     requiresPrior: null,
-    steps: ["triage", "plan", "implement", "review"],
+    steps: ["triage", "plan", "implement", "resolve"],
     handler: shipHandler,
   },
 ];

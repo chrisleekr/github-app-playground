@@ -75,7 +75,15 @@ describe("intent-classifier fixture accuracy (T034)", () => {
     for (const f of fixtureSet) {
       counts.set(f.expected_workflow, (counts.get(f.expected_workflow) ?? 0) + 1);
     }
-    for (const key of ["triage", "plan", "implement", "review", "ship", "clarify", "unsupported"]) {
+    for (const key of [
+      "triage",
+      "plan",
+      "implement",
+      "resolve",
+      "ship",
+      "clarify",
+      "unsupported",
+    ]) {
       expect(counts.get(key) ?? 0).toBeGreaterThanOrEqual(3);
     }
   });

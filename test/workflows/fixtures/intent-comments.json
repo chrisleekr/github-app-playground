@@ -55,19 +55,19 @@
   },
   {
     "comment_body": "@chrisleekr-bot please review this PR — CI is green, I want a second pair of eyes.",
-    "expected_workflow": "review",
+    "expected_workflow": "resolve",
     "confidence_band": "high",
     "author_note": "review on a PR — canonical review ask"
   },
   {
     "comment_body": "Can you check this PR for issues and let me know if it's merge-ready?",
-    "expected_workflow": "review",
+    "expected_workflow": "resolve",
     "confidence_band": "high",
     "author_note": "merge-ready = review verdict"
   },
   {
     "comment_body": "@chrisleekr-bot please do a code review on this PR.",
-    "expected_workflow": "review",
+    "expected_workflow": "resolve",
     "confidence_band": "high",
     "author_note": "code review, on a PR"
   },

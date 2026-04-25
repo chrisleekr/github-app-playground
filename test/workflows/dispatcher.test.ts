@@ -144,12 +144,12 @@ describe("dispatchByLabel", () => {
     expect(queued.workflowRun?.workflowName).toBe("triage");
   });
 
-  it("refuses a known label whose context mismatches (bot:review on issue)", async () => {
-    const result = await dispatchByLabel(baseParams({ label: "bot:review", targetType: "issue" }));
+  it("refuses a known label whose context mismatches (bot:resolve on issue)", async () => {
+    const result = await dispatchByLabel(baseParams({ label: "bot:resolve", targetType: "issue" }));
 
     expect(result.status).toBe("refused");
     if (result.status === "refused") {
-      expect(result.workflowName).toBe("review");
+      expect(result.workflowName).toBe("resolve");
       expect(result.reason).toContain("pr");
     }
     expect(mockPostRefusalComment).toHaveBeenCalledTimes(1);

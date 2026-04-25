@@ -3,7 +3,10 @@ import type { BotContext } from "../../types";
 import type { WorkflowHandler } from "../registry";
 
 /**
- * `review` handler (T023) — runs a review pass on an open pull request.
+ * `resolve` handler — runs a resolution pass on an open pull request:
+ * fixes failing CI and replies to/fixes reviewer comments. Renamed from
+ * `review` because the previous name implied proactive code review,
+ * whereas the actual job is responding to existing reviewer feedback.
  *
  * Stop bounds (ported verbatim from the `pr-auto` skill, per FR-005(c)):
  *   - `FIX_ATTEMPTS_CAP = 3` — max consecutive CI-fix attempts per PR before
@@ -11,7 +14,7 @@ import type { WorkflowHandler } from "../registry";
  *   - `POLL_WAIT_SECS_CAP = 900` — 15-minute reviewer-patience window after
  *     which the bot stops waiting for a slow reviewer. Advisory here (the
  *     handler itself is not a polling loop — each re-application of
- *     `bot:review` does one iteration; ship-composite orchestration handles
+ *     `bot:resolve` does one iteration; ship-composite orchestration handles
  *     multi-iteration waits).
  *
  * Comment-validity taxonomy (also from `pr-auto` review-comments skill):
@@ -36,7 +39,7 @@ export const handler: WorkflowHandler = async (ctx) => {
 
   try {
     if (target.type !== "pr") {
-      return { status: "failed", reason: "review requires PR target" };
+      return { status: "failed", reason: "resolve requires PR target" };
     }
 
     const { data: pr } = await octokit.rest.pulls.get({
@@ -48,13 +51,13 @@ export const handler: WorkflowHandler = async (ctx) => {
     if (pr.state !== "open") {
       return {
         status: "failed",
-        reason: `PR #${String(target.number)} is ${pr.state}; review requires an open PR`,
+        reason: `PR #${String(target.number)} is ${pr.state}; resolve requires an open PR`,
       };
     }
 
     // Paginate — `checks.listForRef` defaults to per_page=30. On busy PRs
     // with large CI matrices, a non-paginated call silently under-reports
-    // failing checks and the review prompt gets a stale picture.
+    // failing checks and the resolve prompt gets a stale picture.
     const allCheckRuns = await octokit.paginate(octokit.rest.checks.listForRef, {
       owner: target.owner,
       repo: target.repo,
@@ -84,7 +87,7 @@ export const handler: WorkflowHandler = async (ctx) => {
     });
     const topLevelComments = reviewComments.filter((c) => c.in_reply_to_id === undefined);
 
-    const triggerBody = buildReviewPrompt({
+    const triggerBody = buildResolvePrompt({
       prNumber: target.number,
       prTitle: pr.title,
       headBranch: pr.head.ref,
@@ -115,7 +118,7 @@ export const handler: WorkflowHandler = async (ctx) => {
 
     const result = await runPipeline(botCtx, { captureFiles: ["REVIEW.md"] });
     if (!result.success) {
-      return { status: "failed", reason: "review pipeline execution failed" };
+      return { status: "failed", reason: "resolve pipeline execution failed" };
     }
 
     const report = result.capturedFiles?.["REVIEW.md"]?.trim() ?? "";
@@ -138,8 +141,8 @@ export const handler: WorkflowHandler = async (ctx) => {
 
     const headline =
       failingChecks.length === 0 && topLevelComments.length === 0
-        ? `🔎 **Review passed** — no failing checks, no open review comments.`
-        : `🔎 **Review iteration complete** — ${String(failingChecks.length)} failing checks, ${String(topLevelComments.length)} open review comments.`;
+        ? `🔎 **Resolve passed** — no failing checks, no open review comments.`
+        : `🔎 **Resolve iteration complete** — ${String(failingChecks.length)} failing checks, ${String(topLevelComments.length)} open review comments.`;
     const reportSection =
       report.length > 0 ? `\n\n${report}` : `\n\n_(no REVIEW.md report — agent did not write one)_`;
     const humanMessage = `${headline}${reportSection}${metaLine}`;
@@ -151,17 +154,17 @@ export const handler: WorkflowHandler = async (ctx) => {
         topLevelComments: topLevelComments.length,
         costUsd: result.costUsd,
       },
-      "review handler succeeded",
+      "resolve handler succeeded",
     );
     return { status: "succeeded", state, humanMessage };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    log.warn({ err }, "review handler caught error");
-    return { status: "failed", reason: `review failed: ${message}` };
+    log.warn({ err }, "resolve handler caught error");
+    return { status: "failed", reason: `resolve failed: ${message}` };
   }
 };
 
-function buildReviewPrompt(input: {
+function buildResolvePrompt(input: {
   prNumber: number;
   prTitle: string;
   headBranch: string;
@@ -170,7 +173,7 @@ function buildReviewPrompt(input: {
   unresolvedCount: number;
 }): string {
   return [
-    `You are a PR review agent for pull request #${String(input.prNumber)}: ${input.prTitle}`,
+    `You are a PR resolve agent for pull request #${String(input.prNumber)}: ${input.prTitle}`,
     `Head: ${input.headBranch} → Base: ${input.baseBranch}`,
     ``,
     `CI status:`,
