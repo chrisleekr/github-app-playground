@@ -69,8 +69,11 @@ function fixtureToJson(fixture: Fixture): string {
 }
 
 describe("intent-classifier fixture accuracy (T034)", () => {
-  it("fixture set covers ≥20 comments with ≥3 per atomic workflow / ship / clarify / unsupported", () => {
-    expect(fixtureSet.length).toBeGreaterThanOrEqual(20);
+  it("fixture set covers ≥24 comments with ≥3 per atomic (triage/plan/implement/review/resolve) / ship / clarify / unsupported", () => {
+    // 8 keys × ≥3 each = 24 floor. The per-key loop below is the strict
+    // gate; this length floor is a quick fail-fast for the common case
+    // where someone removes fixtures wholesale.
+    expect(fixtureSet.length).toBeGreaterThanOrEqual(24);
     const counts = new Map<string, number>();
     for (const f of fixtureSet) {
       counts.set(f.expected_workflow, (counts.get(f.expected_workflow) ?? 0) + 1);
@@ -148,9 +151,9 @@ describe("intent-classifier fixture accuracy (T034)", () => {
     }
 
     const accuracy = hits / fixtureSet.length;
-    // Two of the first-two fixtures are `triage` / `triage` with expected
-    // = `triage`; stub returns `clarify` fallback. That's 2 misses out of
-    // 23 fixtures = ~91.3%.
+    // Two degraded responses fall back to `clarify`. With ≥24 fixtures,
+    // 2 misses leaves accuracy ≥ (n-2)/n ≥ 22/24 ≈ 91.7%, comfortably
+    // above the 90% threshold.
     expect(accuracy).toBeGreaterThanOrEqual(0.9);
   });
 });

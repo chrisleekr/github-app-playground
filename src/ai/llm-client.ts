@@ -179,20 +179,35 @@ async function invokeSdk(sdk: AnthropicLikeSdk, p: LLMCreateParams): Promise<LLM
 }
 
 /**
- * Cost estimate (USD) for a Haiku-class triage call. Haiku 3.5 pricing
- * (2026-04 Anthropic public rate sheet):
- *   - input:  US$0.80 / 1M tokens
- *   - output: US$4.00 / 1M tokens
- *
- * Bedrock charges the same underlying Anthropic rates (AWS adds a surcharge
- * that varies by region; we don't model it here — operators can read the
+ * Per-model rate sheet (USD per token). Anthropic public pricing as of
+ * 2026-04. Bedrock charges the same underlying Anthropic rates (AWS adds a
+ * region-dependent surcharge we don't model here — operators can read the
  * usage columns and multiply). The estimate is advisory — billing of record
  * is whatever the provider invoice says.
+ *
+ * Haiku 3.5 (2024-10): input $0.80 / output $4.00 per 1M tokens.
+ * Haiku 4.5 (2025-10): input $1.00 / output $5.00 per 1M tokens.
+ *
+ * The map is keyed by the *resolved* provider model ID (what the API
+ * returns in `response.model`), so callers don't have to know about aliases.
  */
-export function estimateHaikuCostUsd(usage: LLMUsage): number {
-  const INPUT_RATE_USD_PER_TOKEN = 0.8 / 1_000_000;
-  const OUTPUT_RATE_USD_PER_TOKEN = 4.0 / 1_000_000;
-  return (
-    usage.inputTokens * INPUT_RATE_USD_PER_TOKEN + usage.outputTokens * OUTPUT_RATE_USD_PER_TOKEN
-  );
+const RATE_SHEET_USD_PER_TOKEN: Readonly<Record<string, { input: number; output: number }>> = {
+  // Haiku 3.5
+  "claude-3-5-haiku-20241022": { input: 0.8 / 1_000_000, output: 4.0 / 1_000_000 },
+  "anthropic.claude-3-5-haiku-20241022-v1:0": { input: 0.8 / 1_000_000, output: 4.0 / 1_000_000 },
+  // Haiku 4.5
+  "claude-haiku-4-5-20251001": { input: 1.0 / 1_000_000, output: 5.0 / 1_000_000 },
+  "anthropic.claude-haiku-4-5-20251001-v1:0": { input: 1.0 / 1_000_000, output: 5.0 / 1_000_000 },
+};
+
+/**
+ * Cost estimate (USD) for a Haiku-class triage call. Branches on the
+ * resolved model ID returned by the provider; falls back to Haiku 3.5
+ * rates for unknown models so a stale rate sheet under-counts (warns the
+ * operator) rather than over-counts.
+ */
+export function estimateHaikuCostUsd(usage: LLMUsage, modelId?: string): number {
+  const FALLBACK = { input: 0.8 / 1_000_000, output: 4.0 / 1_000_000 };
+  const rates = modelId !== undefined ? (RATE_SHEET_USD_PER_TOKEN[modelId] ?? FALLBACK) : FALLBACK;
+  return usage.inputTokens * rates.input + usage.outputTokens * rates.output;
 }

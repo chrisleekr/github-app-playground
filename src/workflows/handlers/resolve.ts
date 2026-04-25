@@ -10,8 +10,11 @@ import { type BranchStaleness, formatRefreshDirective, getBranchStaleness } from
  * whereas the actual job is responding to existing reviewer feedback.
  *
  * Stop bounds (ported verbatim from the `pr-auto` skill, per FR-005(c)):
- *   - `FIX_ATTEMPTS_CAP = 3` — max consecutive CI-fix attempts per PR before
- *     handing off to a human. Tracked across runs in `state.fix_attempts`.
+ *   - `FIX_ATTEMPTS_CAP = 3` — max CI-fix attempts the agent should make
+ *     within a single resolve iteration. Currently surfaced only via prompt
+ *     interpolation (the agent self-enforces it); cross-run enforcement
+ *     would require persisting `fix_attempts` to `state` and is intentionally
+ *     deferred until we see real overrun in production.
  *   - `POLL_WAIT_SECS_CAP = 900` — 15-minute reviewer-patience window after
  *     which the bot stops waiting for a slow reviewer. Advisory here (the
  *     handler itself is not a polling loop — each re-application of
@@ -78,13 +81,16 @@ export const handler: WorkflowHandler = async (ctx) => {
     // Count top-level review comments — GitHub's REST API does not expose
     // thread-level resolution state (only the GraphQL `PullRequestReviewThread`
     // surface does), so this is a conservative upper bound. The agent prompt
-    // uses it as "how many inline threads the reviewer has opened"; resolved
-    // threads are over-counted but never under-counted. Rename — `unresolved`
-    // would be a lie.
-    const { data: reviewComments } = await octokit.rest.pulls.listReviewComments({
+    // surfaces it as "open comment threads (some may already be resolved)";
+    // resolved threads are over-counted but never under-counted.
+    //
+    // Paginate — `listReviewComments` defaults to per_page=30 like
+    // `listForRef`. Without paginate, large PRs silently undercount.
+    const reviewComments = await octokit.paginate(octokit.rest.pulls.listReviewComments, {
       owner: target.owner,
       repo: target.repo,
       pull_number: target.number,
+      per_page: 100,
     });
     const topLevelComments = reviewComments.filter((c) => c.in_reply_to_id === undefined);
 
@@ -96,7 +102,7 @@ export const handler: WorkflowHandler = async (ctx) => {
       headBranch: pr.head.ref,
       baseBranch: pr.base.ref,
       failingChecks,
-      unresolvedCount: topLevelComments.length,
+      topLevelCommentCount: topLevelComments.length,
       staleness,
     });
 
@@ -151,7 +157,7 @@ export const handler: WorkflowHandler = async (ctx) => {
     const headline =
       failingChecks.length === 0 && topLevelComments.length === 0
         ? `🔎 **Resolve passed** — no failing checks, no open review comments.`
-        : `🔎 **Resolve iteration complete** — ${String(failingChecks.length)} failing checks, ${String(topLevelComments.length)} open review comments.`;
+        : `🔎 **Resolve iteration complete** — ${String(failingChecks.length)} failing checks, ${String(topLevelComments.length)} open comment threads (some may already be resolved).`;
     const reportSection =
       report.length > 0
         ? `\n\n${report}`
@@ -181,7 +187,7 @@ function buildResolvePrompt(input: {
   headBranch: string;
   baseBranch: string;
   failingChecks: readonly string[];
-  unresolvedCount: number;
+  topLevelCommentCount: number;
   staleness: BranchStaleness;
 }): string {
   return [
@@ -192,14 +198,14 @@ function buildResolvePrompt(input: {
     input.failingChecks.length === 0
       ? `  - all checks passing`
       : `  - failing checks: ${input.failingChecks.join(", ")}`,
-    `Unresolved reviewer comments: ${String(input.unresolvedCount)}`,
+    `Open comment threads (some may already be resolved): ${String(input.topLevelCommentCount)}`,
     ``,
     formatRefreshDirective(input.staleness),
     ``,
     `Do the following in order:`,
     `0. **Refresh the branch first if needed** (see "Branch state" above). A senior engineer rebases before triaging anything; resolving feedback against a stale branch is wasted work.`,
-    `1. If failing checks exist, fetch their logs (gh run view --log-failed) and classify the failure. If it's a test / lint / type / build failure with a clear root cause, attempt one fix — diagnose, edit, commit, push. Do NOT retry more than once per run (FIX_ATTEMPTS_CAP=3 is tracked across runs).`,
-    `2. For every unresolved review comment, classify into one of: Valid | Partially Valid | Invalid | Needs Clarification. For Valid/Partially Valid: fix the code, commit, push, and reply to the comment with the commit SHA and a one-sentence explanation. For Invalid: reply with evidence-backed explanation, no code changes. For Needs Clarification: reply asking the specific question needed to proceed.`,
+    `1. If failing checks exist, fetch their logs (gh run view --log-failed) and classify the failure. If it's a test / lint / type / build failure with a clear root cause, attempt one fix — diagnose, edit, commit, push. Do NOT retry more than once per run (FIX_ATTEMPTS_CAP=3 is the per-iteration cap; cross-run enforcement is not yet wired).`,
+    `2. For each open comment thread, classify into one of: Valid | Partially Valid | Invalid | Needs Clarification. The count above is an upper bound — some threads may already be resolved, in which case skip them. For Valid/Partially Valid: fix the code, commit, push, and reply to the comment with the commit SHA and a one-sentence explanation. For Invalid: reply with evidence-backed explanation, no code changes. For Needs Clarification: reply asking the specific question needed to proceed.`,
     `3. If all checks pass AND all comments resolved AND reviewDecision is APPROVED, post a one-line "review complete — ready to merge" comment.`,
     `4. NEVER call \`gh pr merge\` or \`octokit.pulls.merge\`. Merging is a human action (FR-017).`,
     `5. NEVER push to the base branch ${input.baseBranch}.`,
