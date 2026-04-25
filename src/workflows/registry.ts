@@ -170,7 +170,7 @@ const rawRegistry: RegistryEntry[] = [
     label: "bot:ship",
     context: "issue",
     requiresPrior: null,
-    steps: ["triage", "plan", "implement", "resolve"],
+    steps: ["triage", "plan", "implement", "review", "resolve"],
     handler: shipHandler,
   },
 ];

@@ -11,7 +11,7 @@ import { findLatestForTarget, type WorkflowRunRow } from "../runs-store";
 
 /**
  * `ship` composite handler (T031) — the entry point for the end-to-end
- * triage → plan → implement → resolve pipeline.
+ * triage → plan → implement → review → resolve pipeline.
  *
  * Resume semantics (T033 / FR-013 / FR-020):
  *   - `bot:ship` is re-applicable on a target that has a prior **terminal**
@@ -24,6 +24,7 @@ import { findLatestForTarget, type WorkflowRunRow } from "../runs-store";
  *       triage    — fresh iff succeeded row exists AND `state.recommendedNext==='plan'`
  *       plan      — fresh iff succeeded row exists AND created AFTER the last triage success
  *       implement — fresh iff succeeded row exists AND recorded PR is still open
+ *       review    — always stale (bot self-reviews on every ship iteration)
  *       resolve   — always stale
  *   - The first stale step becomes `startIndex`. Prior-step run ids are
  *     carried forward in `state.stepRuns` so the tracking comment can link
@@ -196,7 +197,7 @@ async function isFresh(params: IsFreshParams): Promise<boolean> {
 
   if (latest?.status !== "succeeded") return false;
 
-  if (step === "resolve") return false;
+  if (step === "review" || step === "resolve") return false;
 
   if (step === "triage") {
     return latest.state["recommendedNext"] === "plan";

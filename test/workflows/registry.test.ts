@@ -40,11 +40,11 @@ describe("registry parsed at module load", () => {
     expect(names).toEqual(["implement", "plan", "resolve", "review", "ship", "triage"]);
   });
 
-  it("has exactly one composite workflow with ship's four-step chain", () => {
+  it("has exactly one composite workflow with ship's five-step chain", () => {
     const composites = registry.filter((e) => e.steps.length > 0);
     expect(composites.length).toBe(1);
     expect(composites[0]?.name).toBe("ship");
-    expect(composites[0]?.steps).toEqual(["triage", "plan", "implement", "resolve"]);
+    expect(composites[0]?.steps).toEqual(["triage", "plan", "implement", "review", "resolve"]);
   });
 
   it("preserves the requiresPrior chain for atomic workflows", () => {
