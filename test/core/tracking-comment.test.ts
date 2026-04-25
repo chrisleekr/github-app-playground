@@ -28,7 +28,7 @@ describe("deliveryMarker", () => {
 
 describe("isAlreadyProcessed", () => {
   it("returns true when the delivery marker is found in comments", async () => {
-    const ctx = makeBotContext({ deliveryId: DELIVERY_ID, octokit: {} as Octokit });
+    const ctx = makeBotContext({ deliveryId: DELIVERY_ID });
     ctx.octokit = {
       rest: {
         issues: {
@@ -49,7 +49,7 @@ describe("isAlreadyProcessed", () => {
   });
 
   it("calls listComments with direction:desc and per_page:100", async () => {
-    const ctx = makeBotContext({ deliveryId: DELIVERY_ID, octokit: {} as Octokit });
+    const ctx = makeBotContext({ deliveryId: DELIVERY_ID });
     const listComments = mock(() => Promise.resolve({ data: [] }));
     ctx.octokit = { rest: { issues: { listComments } } } as unknown as Octokit;
 
@@ -63,7 +63,7 @@ describe("isAlreadyProcessed", () => {
   });
 
   it("returns false when no comment contains the delivery marker", async () => {
-    const ctx = makeBotContext({ deliveryId: DELIVERY_ID, octokit: {} as Octokit });
+    const ctx = makeBotContext({ deliveryId: DELIVERY_ID });
     ctx.octokit = {
       rest: {
         issues: {
@@ -84,7 +84,7 @@ describe("isAlreadyProcessed", () => {
   });
 
   it("returns false when comment list is empty", async () => {
-    const ctx = makeBotContext({ deliveryId: DELIVERY_ID, octokit: {} as Octokit });
+    const ctx = makeBotContext({ deliveryId: DELIVERY_ID });
     ctx.octokit = {
       rest: { issues: { listComments: mock(() => Promise.resolve({ data: [] })) } },
     } as unknown as Octokit;
@@ -93,7 +93,7 @@ describe("isAlreadyProcessed", () => {
   });
 
   it("returns false for a comment with undefined body", async () => {
-    const ctx = makeBotContext({ deliveryId: DELIVERY_ID, octokit: {} as Octokit });
+    const ctx = makeBotContext({ deliveryId: DELIVERY_ID });
     ctx.octokit = {
       rest: {
         issues: { listComments: mock(() => Promise.resolve({ data: [{ body: undefined }] })) },
@@ -108,7 +108,7 @@ describe("isAlreadyProcessed", () => {
 
 describe("createTrackingComment", () => {
   it("creates a comment containing the delivery marker and returns the comment ID", async () => {
-    const ctx = makeBotContext({ deliveryId: DELIVERY_ID, octokit: {} as Octokit });
+    const ctx = makeBotContext({ deliveryId: DELIVERY_ID });
     let capturedBody = "";
     ctx.octokit = {
       rest: {
@@ -133,7 +133,7 @@ describe("createTrackingComment", () => {
 
 describe("updateTrackingComment", () => {
   it("calls updateComment with the provided body", async () => {
-    const ctx = makeBotContext({ deliveryId: DELIVERY_ID, octokit: {} as Octokit });
+    const ctx = makeBotContext({ deliveryId: DELIVERY_ID });
     let capturedArgs: Record<string, unknown> = {};
     ctx.octokit = {
       rest: {
@@ -159,11 +159,11 @@ describe("updateTrackingComment", () => {
 
 describe("finalizeTrackingComment", () => {
   let capturedUpdateBody = "";
-  let ctx: BotContext;
+  let ctx = makeBotContext({ deliveryId: DELIVERY_ID });
 
   beforeEach(() => {
     capturedUpdateBody = "";
-    ctx = makeBotContext({ deliveryId: DELIVERY_ID, octokit: {} as Octokit });
+    ctx = makeBotContext({ deliveryId: DELIVERY_ID });
     ctx.octokit = {
       rest: {
         issues: {

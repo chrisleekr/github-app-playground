@@ -14,7 +14,7 @@
 import { mock } from "bun:test";
 import type { Octokit } from "octokit";
 
-import type { BotContext, EnrichedBotContext, FetchedData } from "../src/types";
+import type { BotContext, FetchedData } from "../src/types";
 
 /**
  * Silent logger with `mock(() => {})` spies on each method. The return type
@@ -105,22 +105,6 @@ export function makeBotContext(overrides: Partial<BotContext> = {}): BotContext 
     log: makeSilentLogger(),
   };
   return { ...base, ...overrides };
-}
-
-/**
- * Build an `EnrichedBotContext` (BotContext + non-optional headBranch and
- * baseBranch). Used by tests that assert on context after the fetcher has
- * resolved branch info from GraphQL.
- */
-export function makeEnrichedBotContext(
-  overrides: Partial<EnrichedBotContext> = {},
-): EnrichedBotContext {
-  return {
-    ...makeBotContext(overrides),
-    headBranch: "feature",
-    baseBranch: "main",
-    ...overrides,
-  };
 }
 
 /**
