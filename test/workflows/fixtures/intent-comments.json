@@ -55,21 +55,39 @@
   },
   {
     "comment_body": "@chrisleekr-bot please review this PR — CI is green, I want a second pair of eyes.",
-    "expected_workflow": "resolve",
+    "expected_workflow": "review",
     "confidence_band": "high",
-    "author_note": "review on a PR — canonical review ask"
+    "author_note": "code review on a green PR — canonical review ask"
   },
   {
     "comment_body": "Can you check this PR for issues and let me know if it's merge-ready?",
-    "expected_workflow": "resolve",
+    "expected_workflow": "review",
     "confidence_band": "high",
-    "author_note": "merge-ready = review verdict"
+    "author_note": "checking for issues = review (find bugs), not resolve (fix feedback)"
   },
   {
     "comment_body": "@chrisleekr-bot please do a code review on this PR.",
+    "expected_workflow": "review",
+    "confidence_band": "high",
+    "author_note": "explicit code review request"
+  },
+  {
+    "comment_body": "@chrisleekr-bot CI is failing on this PR — can you fix it?",
     "expected_workflow": "resolve",
     "confidence_band": "high",
-    "author_note": "code review, on a PR"
+    "author_note": "fix-CI ask = resolve, not review"
+  },
+  {
+    "comment_body": "@chrisleekr-bot can you address the reviewer's comments?",
+    "expected_workflow": "resolve",
+    "confidence_band": "high",
+    "author_note": "address feedback = resolve"
+  },
+  {
+    "comment_body": "@chrisleekr-bot please respond to the open review comments on this PR.",
+    "expected_workflow": "resolve",
+    "confidence_band": "high",
+    "author_note": "respond to comments = resolve"
   },
   {
     "comment_body": "@chrisleekr-bot ship it end-to-end — triage, plan, implement, and review.",

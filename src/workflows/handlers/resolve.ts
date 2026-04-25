@@ -116,12 +116,12 @@ export const handler: WorkflowHandler = async (ctx) => {
       log,
     };
 
-    const result = await runPipeline(botCtx, { captureFiles: ["REVIEW.md"] });
+    const result = await runPipeline(botCtx, { captureFiles: ["RESOLVE.md"] });
     if (!result.success) {
       return { status: "failed", reason: "resolve pipeline execution failed" };
     }
 
-    const report = result.capturedFiles?.["REVIEW.md"]?.trim() ?? "";
+    const report = result.capturedFiles?.["RESOLVE.md"]?.trim() ?? "";
 
     const state = {
       pr_number: target.number,
@@ -144,7 +144,9 @@ export const handler: WorkflowHandler = async (ctx) => {
         ? `🔎 **Resolve passed** — no failing checks, no open review comments.`
         : `🔎 **Resolve iteration complete** — ${String(failingChecks.length)} failing checks, ${String(topLevelComments.length)} open review comments.`;
     const reportSection =
-      report.length > 0 ? `\n\n${report}` : `\n\n_(no REVIEW.md report — agent did not write one)_`;
+      report.length > 0
+        ? `\n\n${report}`
+        : `\n\n_(no RESOLVE.md report — agent did not write one)_`;
     const humanMessage = `${headline}${reportSection}${metaLine}`;
 
     await ctx.setState(state, humanMessage);
@@ -188,7 +190,7 @@ function buildResolvePrompt(input: {
     `3. If all checks pass AND all comments resolved AND reviewDecision is APPROVED, post a one-line "review complete — ready to merge" comment.`,
     `4. NEVER call \`gh pr merge\` or \`octokit.pulls.merge\`. Merging is a human action (FR-017).`,
     `5. NEVER push to the base branch ${input.baseBranch}.`,
-    `6. Before finishing, write \`REVIEW.md\` at the repo root summarizing this review iteration.`,
+    `6. Before finishing, write \`RESOLVE.md\` at the repo root summarizing this resolve iteration.`,
     `   Required sections:`,
     `   ## Summary — one paragraph: what state the PR is in now and what's left.`,
     `   ## CI status — list each failing check and what you did about it.`,

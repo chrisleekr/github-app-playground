@@ -79,6 +79,7 @@ describe("intent-classifier fixture accuracy (T034)", () => {
       "triage",
       "plan",
       "implement",
+      "review",
       "resolve",
       "ship",
       "clarify",

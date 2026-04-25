@@ -60,7 +60,7 @@ const repoMemoryEntrySchema = z.object({
  */
 const workflowRunRefSchema = z.object({
   runId: z.string().min(1),
-  workflowName: z.enum(["triage", "plan", "implement", "resolve", "ship"]),
+  workflowName: z.enum(["triage", "plan", "implement", "review", "resolve", "ship"]),
   parentRunId: z.string().min(1).optional(),
   parentStepIndex: z.number().int().nonnegative().optional(),
 });

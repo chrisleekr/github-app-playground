@@ -35,9 +35,9 @@ function makeEntry(overrides: Partial<RegistryEntryInput>): RegistryEntryInput {
 }
 
 describe("registry parsed at module load", () => {
-  it("exposes the five canonical workflow names", () => {
+  it("exposes the six canonical workflow names", () => {
     const names = registry.map((e) => e.name).sort();
-    expect(names).toEqual(["implement", "plan", "resolve", "ship", "triage"]);
+    expect(names).toEqual(["implement", "plan", "resolve", "review", "ship", "triage"]);
   });
 
   it("has exactly one composite workflow with ship's four-step chain", () => {
@@ -52,6 +52,7 @@ describe("registry parsed at module load", () => {
     expect(byName.get("triage")?.requiresPrior).toBeNull();
     expect(byName.get("plan")?.requiresPrior).toBe("triage");
     expect(byName.get("implement")?.requiresPrior).toBe("plan");
+    expect(byName.get("review")?.requiresPrior).toBeNull();
     expect(byName.get("resolve")?.requiresPrior).toBeNull();
     expect(byName.get("ship")?.requiresPrior).toBeNull();
   });
@@ -123,8 +124,8 @@ describe("RegistrySchema invariants", () => {
 });
 
 describe("WorkflowNameSchema", () => {
-  it("accepts the five canonical names", () => {
-    for (const name of ["triage", "plan", "implement", "resolve", "ship"] as const) {
+  it("accepts the six canonical names", () => {
+    for (const name of ["triage", "plan", "implement", "review", "resolve", "ship"] as const) {
       expect(WorkflowNameSchema.parse(name)).toBe(name);
     }
   });
