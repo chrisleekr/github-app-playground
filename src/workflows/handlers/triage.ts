@@ -71,7 +71,7 @@ const verdictSchema = z
   .object({
     valid: z.boolean(),
     confidence: z.number().min(0).max(1),
-    summary: z.string().min(1).max(500),
+    summary: z.string().min(1),
     recommendedNext: z.enum(["plan", "stop"]),
     evidence: z
       .array(
@@ -181,7 +181,7 @@ export const handler: WorkflowHandler = async (ctx) => {
 
     if (!verdict.valid) {
       // Fail-out so ship cascade halts at this step. The full report is in
-      // the tracking comment; the reason carries the one-line summary that
+      // the tracking comment; the reason carries the verdict summary that
       // ship surfaces in its own parent comment ("ship halted at step 0...").
       return {
         status: "failed",
@@ -317,7 +317,7 @@ function buildTriagePrompt(input: {
     `    {`,
     `      "valid": true | false,`,
     `      "confidence": <0.0-1.0>,`,
-    `      "summary": "<single line, ≤500 chars, no newlines>",`,
+    `      "summary": "<as long as needed to faithfully convey the verdict>",`,
     `      "recommendedNext": "plan" | "stop",`,
     `      "evidence": [`,
     `        { "file": "<path>", "line": <int|omit>, "note": "<short>" },`,
