@@ -1,3 +1,10 @@
+## [1.3.1](https://github.com/chrisleekr/github-app-playground/compare/v1.3.0...v1.3.1) (2026-04-26)
+
+
+### Bug Fixes
+
+* **auth:** prevent empty ANTHROPIC_API_KEY from shadowing real OAuth token ([#59](https://github.com/chrisleekr/github-app-playground/issues/59)) ([d7001ef](https://github.com/chrisleekr/github-app-playground/commit/d7001efc0e4ea6125b86dfda93fba08b9e8464b5))
+
 # [1.3.0](https://github.com/chrisleekr/github-app-playground/compare/v1.2.2...v1.3.0) (2026-04-25)
 
 
