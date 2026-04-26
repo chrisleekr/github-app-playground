@@ -1,3 +1,10 @@
+## [1.3.2](https://github.com/chrisleekr/github-app-playground/compare/v1.3.1...v1.3.2) (2026-04-26)
+
+
+### Bug Fixes
+
+* **triage:** remove 500-char cap on verdict summary ([#60](https://github.com/chrisleekr/github-app-playground/issues/60)) ([ed3c657](https://github.com/chrisleekr/github-app-playground/commit/ed3c657d5a93bc4d6379f0b6dd844cb71188e1ae))
+
 ## [1.3.1](https://github.com/chrisleekr/github-app-playground/compare/v1.3.0...v1.3.1) (2026-04-26)
 
 
