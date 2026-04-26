@@ -121,13 +121,18 @@ export async function setState(
           "Failed to delete duplicate tracking comment",
         );
       }
+      // Re-render against the freshest row so we don't clobber the winner's
+      // newer body with our stale snapshot. Both racers wrote `_lastHumanMessage`
+      // before the reservation, so the latest row already contains the merged
+      // human message — we just need its post-merge view.
+      const latest = (await findById(runId)) ?? row;
       await octokit.rest.issues.updateComment({
-        owner: row.target_owner,
-        repo: row.target_repo,
+        owner: latest.target_owner,
+        repo: latest.target_repo,
         comment_id: reservation.trackingCommentId,
-        body,
+        body: renderCommentBody(latest, humanMessage),
       });
-      resultRow = { ...row, tracking_comment_id: reservation.trackingCommentId };
+      resultRow = { ...latest, tracking_comment_id: reservation.trackingCommentId };
     }
   } else {
     await octokit.rest.issues.updateComment({

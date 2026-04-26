@@ -217,7 +217,10 @@ async function notifyOrphanedWorkflowRuns(daemonId: string): Promise<void> {
 
 /**
  * Walk parent_run_id up to the topmost row. Returns the input row if it has
- * no parent, or null if the parent chain is broken (orphaned mid-walk).
+ * no parent, or null if the parent chain is broken (orphaned mid-walk) or
+ * exceeds the safety cap. Returning the cap-iteration row would be a silent
+ * bug: it still has a non-null parent_run_id, so we'd update the wrong
+ * (mid-chain) tracking comment.
  */
 async function findTopAncestor(row: WorkflowRunRow): Promise<WorkflowRunRow | null> {
   let current: WorkflowRunRow | null = row;
@@ -230,7 +233,11 @@ async function findTopAncestor(row: WorkflowRunRow): Promise<WorkflowRunRow | nu
     // eslint-disable-next-line no-await-in-loop
     current = await findById(current.parent_run_id);
   }
-  return current;
+  logger.warn(
+    { startRunId: row.id, lastSeenRunId: current?.id ?? null },
+    "findTopAncestor: parent chain exceeded 8 levels — skipping orphan notification to avoid touching the wrong comment",
+  );
+  return null;
 }
 
 async function postOrphanNotification(ancestor: WorkflowRunRow): Promise<void> {

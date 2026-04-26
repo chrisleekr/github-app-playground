@@ -2,7 +2,8 @@ import type pino from "pino";
 
 import { createExecution } from "../orchestrator/history";
 import type { SerializableBotContext } from "../shared/daemon-types";
-import type { DispatchTarget, TriggerEventType } from "./dispatcher";
+import type { TriggerEventType } from "../shared/dispatch-types";
+import type { DispatchTarget } from "./dispatcher";
 
 /**
  * Builds the `context_json` shape the accept handler on

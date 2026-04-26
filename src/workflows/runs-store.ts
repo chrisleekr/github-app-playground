@@ -1,6 +1,7 @@
 import type { SQL } from "bun";
 
 import { requireDb } from "../db";
+import type { TriggerEventType } from "../shared/dispatch-types";
 import type { WorkflowName } from "./registry";
 
 /**
@@ -12,8 +13,6 @@ import type { WorkflowName } from "./registry";
 export type WorkflowRunStatus = "queued" | "running" | "succeeded" | "failed";
 
 export type WorkflowOwnerKind = "orchestrator" | "daemon";
-
-export type TriggerEventType = "issue_comment" | "pull_request_review_comment";
 
 export interface WorkflowRunRow {
   id: string;

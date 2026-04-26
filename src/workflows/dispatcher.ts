@@ -4,6 +4,7 @@ import type pino from "pino";
 import { config } from "../config";
 import { getInstanceId } from "../orchestrator/instance-id";
 import { enqueueJob } from "../orchestrator/job-queue";
+import type { TriggerEventType } from "../shared/dispatch-types";
 import { addReaction } from "../utils/reactions";
 import { recordWorkflowExecution } from "./execution-row";
 import { classify, type ClassifyResult } from "./intent-classifier";
@@ -18,14 +19,6 @@ export interface DispatchTarget {
   readonly repo: string;
   readonly number: number;
 }
-
-/**
- * Trigger event type for the user-facing comment that started this workflow.
- * Drives which Octokit reactions endpoint is used when the bot reacts on the
- * trigger comment (eyes → rocket → hooray → confused). NULL when the trigger
- * carries no comment (label apply, branch event).
- */
-export type TriggerEventType = "issue_comment" | "pull_request_review_comment";
 
 export interface DispatchByLabelParams {
   readonly octokit: Octokit;
