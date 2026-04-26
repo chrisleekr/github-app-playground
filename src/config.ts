@@ -1,6 +1,21 @@
 import { z } from "zod";
 
 /**
+ * Optional string that treats empty / whitespace-only input as absent.
+ *
+ * Why: `envFrom: secretRef` injects every Secret key as an env var, even
+ * keys whose decrypted value is "". Plain `z.string().optional()` would
+ * keep that "" alive and let it shadow a real credential downstream
+ * (e.g. `apiKey ?? oauthToken` returns "" instead of falling through).
+ * Coercing here makes the invariant uniform: if the field is defined
+ * on `Config`, the value is non-empty.
+ */
+const nonEmptyOptionalString = z.preprocess(
+  (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+  z.string().optional(),
+);
+
+/**
  * Zod-validated environment variables.
  * Fails fast at startup if required vars are missing.
  */
@@ -34,8 +49,14 @@ const configSchema = z
     // Either Console API key (pay-as-you-go) or Max/Pro subscription OAuth token
     // (generated via `claude setup-token`, sk-ant-oat... prefix).
     // See https://code.claude.com/docs/en/authentication#authentication-precedence
-    anthropicApiKey: z.string().optional(),
-    claudeCodeOauthToken: z.string().optional(),
+    //
+    // `preprocess` coerces empty / whitespace-only strings to `undefined` so a
+    // Secret key whose decrypted value is "" (e.g. `envFrom: secretRef` over a
+    // SealedSecret with a stale empty entry) cannot shadow a real OAuth token
+    // via downstream `??` short-circuits. Callers can rely on the invariant:
+    // if defined, the value is non-empty after trim.
+    anthropicApiKey: nonEmptyOptionalString,
+    claudeCodeOauthToken: nonEmptyOptionalString,
 
     // --- 4. AWS Bedrock credentials ---
 

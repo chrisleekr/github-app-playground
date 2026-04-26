@@ -105,13 +105,19 @@ export interface CreateLLMClientParams {
 export function createLLMClient(params: CreateLLMClientParams): LLMClient {
   let sdk: AnthropicLikeSdk;
   if (params.provider === "anthropic") {
-    const apiKey = params.anthropicApiKey ?? params.claudeCodeOauthToken;
-    if (apiKey === undefined || apiKey.length === 0) {
+    const apiKeyRaw = params.anthropicApiKey;
+    const oauthRaw = params.claudeCodeOauthToken;
+    const apiKey = apiKeyRaw !== undefined && apiKeyRaw.length > 0 ? apiKeyRaw : undefined;
+    const oauth = oauthRaw !== undefined && oauthRaw.length > 0 ? oauthRaw : undefined;
+    const chosen = apiKey ?? oauth;
+    if (chosen === undefined) {
+      const apiKeyState = apiKeyRaw === undefined ? "missing" : "empty";
+      const oauthState = oauthRaw === undefined ? "missing" : "empty";
       throw new Error(
-        "createLLMClient: provider=anthropic requires anthropicApiKey or claudeCodeOauthToken",
+        `createLLMClient: provider=anthropic requires a non-empty anthropicApiKey or claudeCodeOauthToken (anthropicApiKey=${apiKeyState}, claudeCodeOauthToken=${oauthState})`,
       );
     }
-    sdk = new Anthropic({ apiKey }) as unknown as AnthropicLikeSdk;
+    sdk = new Anthropic({ apiKey: chosen }) as unknown as AnthropicLikeSdk;
   } else {
     if (params.awsRegion === undefined || params.awsRegion.length === 0) {
       throw new Error("createLLMClient: provider=bedrock requires awsRegion");
