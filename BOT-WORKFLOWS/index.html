@@ -1328,7 +1328,7 @@
 <li><strong>Outputs</strong>:</li>
 <li><code>state.valid</code> — boolean verdict</li>
 <li><code>state.confidence</code> — 0-1 float from the agent's self-assessment</li>
-<li><code>state.summary</code> — one-paragraph rationale</li>
+<li><code>state.summary</code> — the agent's verdict rationale; length is uncapped (the agent writes as much as the verdict honestly requires). Embedded into the failed-cascade <code>reason</code> line when <code>valid === false</code>.</li>
 <li><code>state.recommendedNext</code> ∈ {<code>plan</code>, <code>stop</code>}</li>
 <li><code>state.evidence</code> — array of <code>{file, line?, note?}</code> cites</li>
 <li><code>state.reproduction</code> — <code>{ attempted: boolean, reproduced: boolean | null, details: string }</code>. <code>attempted=false</code> means non-bug class. <code>reproduced=null</code> with <code>attempted=true</code> means the agent honestly tried but couldn't reach a verdict (needs prod data, external service we lack). The agent never lies about reproduction status.</li>
