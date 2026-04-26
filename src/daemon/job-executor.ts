@@ -198,10 +198,11 @@ export async function executeJob(
   const abortController = new AbortController();
   jobAbortControllers.set(offerId, abortController);
 
-  // Track active job (FM-9)
-  // TODO: agentPid is never populated because runPipeline does not expose
-  // the Claude Agent SDK subprocess PID. Until the SDK provides a process handle,
-  // job cancellation (handleJobCancel) cannot kill the running agent subprocess.
+  // Track active job (FM-9). `agentPid` is intentionally left null — the
+  // Claude Agent SDK does not expose the subprocess PID, but the per-job
+  // AbortController plumbed into runPipeline below already gives
+  // handleJobCancel a clean way to terminate the agent (and its MCP servers)
+  // by aborting the SDK iterator.
   const job: ActiveJob = {
     offerId,
     deliveryId: context.deliveryId,
@@ -278,6 +279,7 @@ export async function executeJob(
       onWorkDirReady: (wd: string) => {
         job.workDir = wd;
       },
+      signal: abortController.signal,
     });
     const learnings = result.daemonActions?.learnings ?? [];
     const deletions = result.daemonActions?.deletions ?? [];

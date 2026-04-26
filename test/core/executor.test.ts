@@ -1,0 +1,190 @@
+/**
+ * Unit tests for executeAgent's cancellation surface.
+ *
+ * Covers issue #16: timeout/cancel must abort the SDK iterator (not just
+ * reject a racing promise), and the wall-clock setTimeout must be cleared
+ * on the happy path so the Bun test runner exits promptly.
+ *
+ * The Claude Agent SDK is replaced at module level so we can drive the
+ * iterator from the test. mock.module persists for the Bun process — that
+ * is acceptable here because no other test file imports the SDK directly
+ * (only `src/core/executor.ts` does, and other suites mock executor itself).
+ */
+
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+
+import { config } from "../../src/config";
+import type { McpServerConfig } from "../../src/types";
+import { makeBotContext } from "../factories";
+
+interface QueryCall {
+  options: { abortController?: AbortController };
+}
+
+let lastQueryCall: QueryCall | undefined;
+
+/**
+ * Async-iterable factory the mocked `query()` returns. Tests reassign this
+ * before calling executeAgent. Default emits no messages (happy path).
+ */
+type IteratorFactory = () => AsyncIterableIterator<unknown>;
+
+function emptyIterator(): AsyncIterableIterator<unknown> {
+  return {
+    [Symbol.asyncIterator]() {
+      return this;
+    },
+    next: () => Promise.resolve({ value: undefined, done: true }),
+    return: () => Promise.resolve({ value: undefined, done: true }),
+  } as AsyncIterableIterator<unknown>;
+}
+
+let nextIterator: IteratorFactory = emptyIterator;
+
+void mock.module("@anthropic-ai/claude-agent-sdk", () => ({
+  query: mock((opts: { prompt: string; options: { abortController?: AbortController } }) => {
+    lastQueryCall = { options: opts.options };
+    return nextIterator();
+  }),
+}));
+
+const { executeAgent } = await import("../../src/core/executor");
+
+const ORIGINAL_TIMEOUT = config.agentTimeoutMs;
+
+function baseParams(
+  extra: Partial<Parameters<typeof executeAgent>[0]> = {},
+): Parameters<typeof executeAgent>[0] {
+  return {
+    ctx: makeBotContext(),
+    prompt: "test prompt",
+    mcpServers: {} as McpServerConfig,
+    workDir: "/tmp/fake-workdir",
+    allowedTools: [],
+    ...extra,
+  };
+}
+
+/** Build an iterator that resolves only when the SDK controller fires abort. */
+function awaitAbortIterator(
+  onAbort: (reason: unknown) => void = () => {},
+): AsyncIterableIterator<unknown> {
+  return {
+    [Symbol.asyncIterator]() {
+      return this;
+    },
+    next: () => {
+      const controller = lastQueryCall?.options.abortController;
+      if (controller === undefined) {
+        return Promise.reject(new Error("controller missing from query options"));
+      }
+      return new Promise((_, reject) => {
+        const fire = (): void => {
+          const reason = controller.signal.reason;
+          onAbort(reason);
+          reject(reason instanceof Error ? reason : new Error("aborted"));
+        };
+        if (controller.signal.aborted) {
+          fire();
+        } else {
+          controller.signal.addEventListener("abort", fire, { once: true });
+        }
+      });
+    },
+    return: () => Promise.resolve({ value: undefined, done: true }),
+  } as AsyncIterableIterator<unknown>;
+}
+
+describe("executeAgent — cancellation", () => {
+  beforeEach(() => {
+    lastQueryCall = undefined;
+    nextIterator = emptyIterator;
+  });
+
+  afterEach(() => {
+    config.agentTimeoutMs = ORIGINAL_TIMEOUT;
+  });
+
+  it("forwards an AbortController into the SDK query options", async () => {
+    await executeAgent(baseParams());
+
+    expect(lastQueryCall).toBeDefined();
+    expect(lastQueryCall?.options.abortController).toBeInstanceOf(AbortController);
+  });
+
+  it("aborts the SDK controller when the wall-clock timeout fires", async () => {
+    config.agentTimeoutMs = 25;
+
+    let observedReason: unknown;
+    nextIterator = (): AsyncIterableIterator<unknown> =>
+      awaitAbortIterator((reason) => {
+        observedReason = reason;
+      });
+
+    const result = await executeAgent(baseParams());
+
+    expect(result.success).toBe(false);
+    expect(observedReason).toBeInstanceOf(Error);
+    expect((observedReason as Error).message).toContain("timed out after 25ms");
+  });
+
+  it("clears the wall-clock timer on the happy path", async () => {
+    config.agentTimeoutMs = 60_000;
+
+    // Spy on setTimeout/clearTimeout so we can confirm the timer handle is
+    // released — leaving it pending is what would otherwise pin the Bun
+    // event loop for up to AGENT_TIMEOUT_MS after a successful run.
+    const realSetTimeout = globalThis.setTimeout;
+    const realClearTimeout = globalThis.clearTimeout;
+    const setSpy = mock(realSetTimeout);
+    const clearSpy = mock(realClearTimeout);
+
+    globalThis.setTimeout = setSpy as unknown as typeof setTimeout;
+
+    globalThis.clearTimeout = clearSpy as unknown as typeof clearTimeout;
+    try {
+      await executeAgent(baseParams());
+    } finally {
+      // eslint-disable-next-line require-atomic-updates -- restore in finally
+      globalThis.setTimeout = realSetTimeout;
+      // eslint-disable-next-line require-atomic-updates -- restore in finally
+      globalThis.clearTimeout = realClearTimeout;
+    }
+
+    const wallClockIdx = setSpy.mock.calls.findIndex((call) => call[1] === 60_000);
+    expect(wallClockIdx).toBeGreaterThanOrEqual(0);
+    const wallClockHandle = setSpy.mock.results[wallClockIdx]?.value;
+    expect(wallClockHandle).toBeDefined();
+    expect(clearSpy.mock.calls.some((call) => call[0] === wallClockHandle)).toBe(true);
+  });
+
+  it("propagates a caller-supplied aborted signal as a failed result", async () => {
+    const controller = new AbortController();
+    controller.abort(new Error("cancelled by orchestrator"));
+
+    nextIterator = () => awaitAbortIterator();
+
+    const result = await executeAgent(baseParams({ signal: controller.signal }));
+
+    expect(result.success).toBe(false);
+    expect(lastQueryCall?.options.abortController?.signal.aborted).toBe(true);
+  });
+
+  it("propagates a caller signal aborted mid-execution", async () => {
+    const controller = new AbortController();
+
+    nextIterator = () => {
+      // Fire the caller abort one microtask after the iterator starts — the
+      // SDK controller must receive it via the listener wired in executeAgent.
+      queueMicrotask(() => {
+        controller.abort(new Error("daemon cancel"));
+      });
+      return awaitAbortIterator();
+    };
+
+    const result = await executeAgent(baseParams({ signal: controller.signal }));
+
+    expect(result.success).toBe(false);
+    expect(lastQueryCall?.options.abortController?.signal.aborted).toBe(true);
+  });
+});
