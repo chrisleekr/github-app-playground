@@ -162,6 +162,8 @@ describe.skipIf(sql === null)("issue-comment → dispatchByIntent integration (T
       target: { type: "issue", owner: "acme", repo: "repo", number: 402 },
       senderLogin: "acme",
       deliveryId: "delivery-intent-402",
+      triggerCommentId: 555_402,
+      triggerEventType: "issue_comment",
     });
     expect(intentOutcome.status).toBe("dispatched");
     if (intentOutcome.status !== "dispatched") throw new Error("expected dispatched");
@@ -211,6 +213,8 @@ describe.skipIf(sql === null)("issue-comment → dispatchByIntent integration (T
       target: { type: "issue", owner: "acme", repo: "repo", number: 403 },
       senderLogin: "acme",
       deliveryId: "delivery-intent-403",
+      triggerCommentId: 555_403,
+      triggerEventType: "issue_comment",
     });
     expect(outcome.status).toBe("ignored");
     expect(mockEnqueueJob).not.toHaveBeenCalled();

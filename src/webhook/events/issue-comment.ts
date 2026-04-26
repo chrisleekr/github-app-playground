@@ -3,6 +3,7 @@ import type { Octokit } from "octokit";
 
 import { containsTrigger } from "../../core/trigger";
 import { logger } from "../../logger";
+import { addReaction } from "../../utils/reactions";
 import { dispatchByIntent } from "../../workflows/dispatcher";
 import { isOwnerAllowed } from "../authorize";
 
@@ -41,6 +42,19 @@ export function handleIssueComment(
     return;
   }
 
+  // Acknowledge receipt before the (slow) intent classifier kicks off so the
+  // user sees an immediate reaction. Subsequent dispatch/handler stages stack
+  // rocket / hooray / confused on top.
+  void addReaction({
+    octokit,
+    logger: log,
+    owner: payload.repository.owner.login,
+    repo: payload.repository.name,
+    commentId: payload.comment.id,
+    eventType: "issue_comment",
+    content: "eyes",
+  });
+
   const isPR = payload.issue.pull_request !== undefined;
 
   void dispatchByIntent({
@@ -55,6 +69,8 @@ export function handleIssueComment(
     },
     senderLogin,
     deliveryId,
+    triggerCommentId: payload.comment.id,
+    triggerEventType: "issue_comment",
   }).catch((err: unknown) => {
     log.error({ err }, "dispatchByIntent threw for issue_comment");
   });

@@ -102,6 +102,12 @@ export const handler: WorkflowHandler = async (ctx) => {
       issue_number: target.number,
     });
 
+    await postStartingComment(ctx, {
+      title: issue.title,
+      number: target.number,
+      author: issue.user?.login ?? null,
+    });
+
     const defaultBranch = await resolveDefaultBranch(octokit, target.owner, target.repo);
 
     const { token: installationToken } = (await octokit.auth({
@@ -339,6 +345,36 @@ function buildTriagePrompt(input: {
     `- The two output files (TRIAGE.md, TRIAGE_VERDICT.json) are the only artefacts you should leave at the repo root.`,
     `- When both files are saved, your job is done.`,
   ].join("\n");
+}
+
+/**
+ * Up-front tracking comment so the user sees the bot has started before the
+ * (multi-minute) agent run produces its final TRIAGE.md. Best-effort: if the
+ * comment write fails the handler still proceeds and the terminal setState
+ * call posts the verdict.
+ */
+async function postStartingComment(
+  ctx: Parameters<WorkflowHandler>[0],
+  input: { title: string; number: number; author: string | null },
+): Promise<void> {
+  const author = input.author === null ? "" : ` (opened by @${input.author})`;
+  const body = [
+    `🔍 **Triage starting** — analyzing issue #${String(input.number)}${author}`,
+    ``,
+    `> ${input.title}`,
+    ``,
+    `Cloning the repo and running the agent. Bug-class issues will be reproduced by`,
+    `running code, so this can take a few minutes. The full report and verdict`,
+    `replace this comment when triage finishes.`,
+  ].join("\n");
+  try {
+    await ctx.setState({ phase: "starting" }, body);
+  } catch (err) {
+    ctx.logger.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      "triage starting-comment write failed — continuing without up-front comment",
+    );
+  }
 }
 
 function composeComment(

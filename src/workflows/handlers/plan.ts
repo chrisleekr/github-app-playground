@@ -33,6 +33,12 @@ export const handler: WorkflowHandler = async (ctx) => {
       issue_number: target.number,
     });
 
+    await postStartingComment(ctx, {
+      title: issue.title,
+      number: target.number,
+      author: issue.user?.login ?? null,
+    });
+
     const defaultBranch = await resolveDefaultBranch(octokit, target.owner, target.repo);
 
     const { token: installationToken } = (await octokit.auth({
@@ -179,4 +185,32 @@ function buildPlanPrompt(input: {
     `5. Do NOT make code changes yet — only write PLAN.md.`,
     `6. When PLAN.md is written and saved, your job is done.`,
   ].join("\n");
+}
+
+/**
+ * Up-front tracking comment so the user sees the bot has started before the
+ * (multi-minute) agent run produces PLAN.md. Best-effort: if the write fails
+ * the handler still proceeds and the terminal setState writes the plan.
+ */
+async function postStartingComment(
+  ctx: Parameters<WorkflowHandler>[0],
+  input: { title: string; number: number; author: string | null },
+): Promise<void> {
+  const author = input.author === null ? "" : ` (opened by @${input.author})`;
+  const body = [
+    `📋 **Plan starting** — analyzing issue #${String(input.number)}${author}`,
+    ``,
+    `> ${input.title}`,
+    ``,
+    `Cloning the repo and asking the agent to produce PLAN.md describing the task`,
+    `decomposition. The plan replaces this comment when the agent finishes.`,
+  ].join("\n");
+  try {
+    await ctx.setState({ phase: "starting" }, body);
+  } catch (err) {
+    ctx.logger.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      "plan starting-comment write failed — continuing without up-front comment",
+    );
+  }
 }

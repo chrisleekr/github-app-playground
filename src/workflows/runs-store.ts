@@ -13,6 +13,8 @@ export type WorkflowRunStatus = "queued" | "running" | "succeeded" | "failed";
 
 export type WorkflowOwnerKind = "orchestrator" | "daemon";
 
+export type TriggerEventType = "issue_comment" | "pull_request_review_comment";
+
 export interface WorkflowRunRow {
   id: string;
   workflow_name: WorkflowName;
@@ -28,6 +30,8 @@ export interface WorkflowRunRow {
   delivery_id: string | null;
   owner_kind: WorkflowOwnerKind | null;
   owner_id: string | null;
+  trigger_comment_id: number | null;
+  trigger_event_type: TriggerEventType | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -39,14 +43,15 @@ export interface WorkflowRunRow {
  * up through the rest of the codebase.
  */
 function normalizeRow(row: WorkflowRunRow): WorkflowRunRow {
-  const raw = row.tracking_comment_id as unknown;
-  const tracking_comment_id =
-    raw === null || raw === undefined
-      ? null
-      : typeof raw === "string"
-        ? Number(raw)
-        : (raw as number);
-  return { ...row, tracking_comment_id };
+  const tracking_comment_id = coerceBigintId(row.tracking_comment_id as unknown);
+  const trigger_comment_id = coerceBigintId(row.trigger_comment_id as unknown);
+  return { ...row, tracking_comment_id, trigger_comment_id };
+}
+
+function coerceBigintId(raw: unknown): number | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === "string") return Number(raw);
+  return raw as number;
 }
 
 export interface InsertQueuedParams {
@@ -68,6 +73,12 @@ export interface InsertQueuedParams {
    */
   ownerKind: WorkflowOwnerKind;
   ownerId: string;
+  /**
+   * REST id of the user comment that triggered this run. NULL for
+   * label-triggered or system-spawned runs (no comment to react on).
+   */
+  triggerCommentId?: number | null;
+  triggerEventType?: TriggerEventType | null;
 }
 
 /**
@@ -82,17 +93,19 @@ export async function insertQueued(
   const parentStepIndex = params.parentStepIndex ?? null;
   const deliveryId = params.deliveryId ?? null;
   const state = params.initialState ?? {};
+  const triggerCommentId = params.triggerCommentId ?? null;
+  const triggerEventType = params.triggerEventType ?? null;
 
   const rows: WorkflowRunRow[] = await sql`
     INSERT INTO workflow_runs (
       workflow_name, target_type, target_owner, target_repo, target_number,
       parent_run_id, parent_step_index, status, state, delivery_id,
-      owner_kind, owner_id
+      owner_kind, owner_id, trigger_comment_id, trigger_event_type
     ) VALUES (
       ${params.workflowName}, ${params.target.type}, ${params.target.owner},
       ${params.target.repo}, ${params.target.number},
       ${parentRunId}, ${parentStepIndex}, 'queued', ${state}::jsonb, ${deliveryId},
-      ${params.ownerKind}, ${params.ownerId}
+      ${params.ownerKind}, ${params.ownerId}, ${triggerCommentId}, ${triggerEventType}
     )
     RETURNING *
   `;
@@ -310,6 +323,25 @@ export async function findLatestSucceededForTarget(
   `;
   const row = rows[0];
   return row === undefined ? null : normalizeRow(row);
+}
+
+/**
+ * In-flight rows owned by a specific (kind, id) — used by the disconnect
+ * cleanup path to find workflow_runs that need a user-facing failure
+ * notification when their owning daemon dies abruptly.
+ */
+export async function findInflightByOwner(
+  ownerKind: WorkflowOwnerKind,
+  ownerId: string,
+  sql: SQL = requireDb(),
+): Promise<WorkflowRunRow[]> {
+  const rows = (await sql`
+    SELECT * FROM workflow_runs
+     WHERE owner_kind = ${ownerKind}
+       AND owner_id = ${ownerId}
+       AND status IN ('queued', 'running')
+  `) as unknown as WorkflowRunRow[];
+  return rows.map(normalizeRow);
 }
 
 /**
