@@ -320,4 +320,50 @@ describe.skipIf(sql === null)("orchestrator.onStepComplete", () => {
     // Terminal tracking emit fired for the parent's failed transition.
     expect(mockSetState).toHaveBeenCalled();
   });
+
+  it("T027 cascade retargeting: missing pr_number on implement → review fails the parent with a clear reason", async () => {
+    const { insertQueued, findById, markRunning, markSucceeded } =
+      await import("../../src/workflows/runs-store");
+    const { onStepComplete } = await import("../../src/workflows/orchestrator");
+
+    const issueNumber = 203;
+    const shipTarget = { ...target, number: issueNumber };
+    const parent = await insertQueued(
+      {
+        workflowName: "ship",
+        target: shipTarget,
+        initialState: { currentStepIndex: 2, stepRuns: [] },
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
+      },
+      requireSql(),
+    );
+    await markRunning(parent.id, "test-daemon", requireSql());
+
+    // Seed an implement child as if the prior cascade reached it.
+    // Implement forgets to write pr_number to its state — simulates a
+    // regressed handler. Orchestrator must NOT silently inherit issue → review.
+    const implementChild = await insertQueued(
+      {
+        workflowName: "implement",
+        target: shipTarget,
+        parentRunId: parent.id,
+        parentStepIndex: 2,
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
+      },
+      requireSql(),
+    );
+    await markSucceeded(implementChild.id, { branch: "feature/foo" }, requireSql());
+
+    await onStepComplete({ octokit: {} as never, logger: silentLogger() }, implementChild.id, {
+      status: "succeeded",
+    });
+
+    const parentRow = await findById(parent.id, requireSql());
+    expect(parentRow?.status).toBe("failed");
+    expect(parentRow?.state["failedAtStepIndex"]).toBe(3);
+    expect(String(parentRow?.state["failedReason"])).toContain("pr_number");
+    expect(mockEnqueueJob).not.toHaveBeenCalled();
+  });
 });

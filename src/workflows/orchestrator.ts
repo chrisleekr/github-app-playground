@@ -122,14 +122,45 @@ export async function onStepComplete(
       throw new Error(`orchestrator: step index ${String(nextIndex)} out of bounds`);
     }
 
+    // Retarget when the next step's registry context is "pr" but the
+    // parent's target is an issue (typical: ship → review/resolve after
+    // implement). Discover the PR number from the just-completed child's
+    // state (implement writes pr_number) or from the parent's state
+    // (preserved from a prior retarget). Without this, review/resolve
+    // would inherit the issue target and immediately fail their
+    // `target.type !== "pr"` guard.
+    const targetResult = deriveChildTarget(parent, child, nextStepName);
+    if ("error" in targetResult) {
+      const failPatch = {
+        failedAtStepIndex: nextIndex,
+        failedReason: targetResult.error,
+      };
+      await tx`
+        UPDATE workflow_runs
+           SET status = 'failed',
+               state = state || ${failPatch}::jsonb
+         WHERE id = ${parent.id}
+      `;
+      postCommit = {
+        enqueue: null,
+        parentRunId: parent.id,
+        parentTerminal: {
+          status: "failed",
+          humanMessage: `ship halted at step ${String(nextIndex)} (${parent.workflow_name} → ${nextStepName}): ${targetResult.error}`,
+        },
+      };
+      return;
+    }
+    const childTarget = targetResult;
+
     const inserted: WorkflowRunRow[] = await tx`
       INSERT INTO workflow_runs (
         workflow_name, target_type, target_owner, target_repo, target_number,
         parent_run_id, parent_step_index, status, state, delivery_id,
         owner_kind, owner_id
       ) VALUES (
-        ${nextStepName}, ${parent.target_type}, ${parent.target_owner},
-        ${parent.target_repo}, ${parent.target_number},
+        ${nextStepName}, ${childTarget.type}, ${childTarget.owner},
+        ${childTarget.repo}, ${childTarget.number},
         ${parent.id}, ${nextIndex}, 'queued', '{}'::jsonb, ${parent.delivery_id},
         'orchestrator', ${getInstanceId()}
       )
@@ -140,7 +171,13 @@ export async function onStepComplete(
       throw new Error("orchestrator: failed to insert next child row");
     }
 
-    const progressPatch = { currentStepIndex: nextIndex, stepRuns };
+    const progressPatch: Record<string, unknown> = { currentStepIndex: nextIndex, stepRuns };
+    // Persist pr_number on parent state once retargeting kicks in so
+    // subsequent inserts (e.g., implement → review → resolve) can
+    // rediscover it without joining back to the implement child row.
+    if (childTarget.type === "pr" && parent.target_type === "issue") {
+      progressPatch["pr_number"] = childTarget.number;
+    }
     await tx`
       UPDATE workflow_runs
          SET state = state || ${progressPatch}::jsonb
@@ -154,12 +191,7 @@ export async function onStepComplete(
         parentRunId: parent.id,
         parentStepIndex: nextIndex,
         deliveryId: parent.delivery_id,
-        target: {
-          type: parent.target_type,
-          owner: parent.target_owner,
-          repo: parent.target_repo,
-          number: parent.target_number,
-        },
+        target: childTarget,
       },
       parentRunId: parent.id,
       parentTerminal: null,
@@ -309,6 +341,46 @@ function extractStepRuns(state: Record<string, unknown>): string[] {
   const raw = state["stepRuns"];
   if (!Array.isArray(raw)) return [];
   return raw.filter((v): v is string => typeof v === "string");
+}
+
+function extractPrNumber(state: Record<string, unknown>): number | null {
+  const raw = state["pr_number"];
+  return typeof raw === "number" && Number.isInteger(raw) && raw > 0 ? raw : null;
+}
+
+interface ChildTarget {
+  type: "issue" | "pr";
+  owner: string;
+  repo: string;
+  number: number;
+}
+
+function deriveChildTarget(
+  parent: WorkflowRunRow,
+  child: WorkflowRunRow,
+  nextStepName: WorkflowName,
+): ChildTarget | { error: string } {
+  const nextEntry = getByName(nextStepName);
+  if (nextEntry.context !== "pr" || parent.target_type === "pr") {
+    return {
+      type: parent.target_type,
+      owner: parent.target_owner,
+      repo: parent.target_repo,
+      number: parent.target_number,
+    };
+  }
+  const prNumber = extractPrNumber(child.state) ?? extractPrNumber(parent.state);
+  if (prNumber === null) {
+    return {
+      error: `${nextStepName} requires PR target but no pr_number found in child or parent state`,
+    };
+  }
+  return {
+    type: "pr",
+    owner: parent.target_owner,
+    repo: parent.target_repo,
+    number: prNumber,
+  };
 }
 
 async function loadChild(tx: SQL, childRunId: string): Promise<WorkflowRunRow | null> {
