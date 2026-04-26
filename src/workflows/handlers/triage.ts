@@ -17,11 +17,12 @@ import type { WorkflowHandler } from "../registry";
  *   2. Clones the repository to a temp working directory.
  *   3. Runs Claude Agent SDK with read+execute tools (Read/Grep/Glob/Bash/
  *      Write) and instructs the agent to: classify the issue, search
- *      relevant source, ACTUALLY REPRODUCE the bug (if it claims one) by
- *      running the failing case, decide validity, and emit two artefacts
- *      at the repo root — `TRIAGE.md` (human-readable report, becomes the
- *      tracking comment body) and `TRIAGE_VERDICT.json` (machine-readable
- *      verdict).
+ *      relevant source, establish the defect via one of three evidence
+ *      paths (structural `file:line` inspection, runtime test, or
+ *      invariant test that locks the property the fix will rely on),
+ *      decide validity, and emit two artefacts at the repo root —
+ *      `TRIAGE.md` (human-readable report, becomes the tracking comment
+ *      body) and `TRIAGE_VERDICT.json` (machine-readable verdict).
  *   4. Parses `TRIAGE_VERDICT.json`. When `valid === false` the handler
  *      returns `failed` with the verdict summary as the reason — this
  *      halts a parent `ship` cascade at the triage step (see
@@ -29,13 +30,19 @@ import type { WorkflowHandler } from "../registry";
  *   5. The full `TRIAGE.md` report is the tracking comment body so the user
  *      sees evidence, reasoning, and reproduction details — not a one-liner.
  *
- * Reproduction: there is NO turn cap. A senior engineer's job is to
- * determine whether a reported bug is real; that requires running the code,
- * not just reading it. If reproduction is impossible (e.g., production-only,
- * needs external services we lack), the agent reports
- * `attempted: true, reproduced: null` with honest details — never lies.
- * Non-bug issues (features, refactors, docs) skip reproduction with
- * `attempted: false`.
+ * Reproduction methodology: there is NO turn cap. The agent must establish
+ * the defect via one of three evidence paths (see Step 3 of the agent
+ * prompt): (a) structural inspection backed by `file:line` citations for
+ * defects provable by code shape — module-scoped state, missing
+ * constraint, race window across an `await`; (b) a runtime test that
+ * exercises the claim; (c) an invariant test that locks the property the
+ * fix will rely on (preferred over synthetic race repros — survives the
+ * fix as a regression guard). `attempted: true, reproduced: null` is
+ * permitted only after the harness ladder (unit → mocked unit →
+ * integration via `bun run dev:deps` → multi-process docker-compose) has
+ * been walked AND no invariant test fits — `details` must name the rung
+ * tried and why escalating wouldn't help. Non-bug issues (features,
+ * refactors, docs) skip reproduction with `attempted: false`.
  *
  * The handler does NOT post chat-style summaries; the agent's report IS the
  * comment. Cost / duration / numTurns are appended below the agent's report.
@@ -51,11 +58,19 @@ const reproductionSchema = z
     attempted: z.boolean(),
     /**
      * `null` when `attempted === false` (nothing to reproduce). When
-     * `attempted === true`: `true` = bug confirmed by running code,
-     * `false` = code runs cleanly and the bug as described does not occur.
-     * The agent uses `null` only when reproduction was attempted but
-     * couldn't reach a verdict (e.g., needs production data we lack) —
-     * in that case `details` MUST explain the obstacle honestly.
+     * `attempted === true`:
+     *   `true`  = defect established by EITHER a runtime/invariant test
+     *             that passed against the real code, OR a structural
+     *             `file:line` citation (module-scoped state, missing
+     *             constraint, race window across `await`, etc.) per
+     *             Step 3b of the agent prompt.
+     *   `false` = code runs cleanly / output directly contradicts the
+     *             claim (already-fixed, misread, env-only).
+     *   `null`  = only after walking the harness ladder (unit → mocked →
+     *             `bun run dev:deps` → docker-compose) AND ruling out an
+     *             invariant test. `details` must name the highest rung
+     *             tried and explain why the next rung wouldn't help.
+     *             "Race we can't trigger" alone is NOT a valid `null`.
      */
     reproduced: z.boolean().nullable(),
     /**
@@ -63,7 +78,7 @@ const reproductionSchema = z
      * explaining why reproduction was skipped. For attempted reproductions,
      * commands run, output snippets, and the verdict.
      */
-    details: z.string().min(1).max(2000),
+    details: z.string().min(1).max(4000),
   })
   .strict();
 
@@ -343,14 +358,14 @@ function buildTriagePrompt(input: {
     `      "reproduction": {`,
     `        "attempted": true | false,`,
     `        "reproduced": true | false | null,`,
-    `        "details": "<≤2000 chars; commands run + output + conclusion, OR 'Not a bug claim' for non-bugs>"`,
+    `        "details": "<≤4000 chars; for bug class — which evidence path (3b/3c/3d), commands run + output OR file:line citation, conclusion. For non-bugs — 'Not a bug claim' + one-sentence reason. For \`reproduced=null\` — name the highest harness rung tried and why escalating wouldn't help.>"`,
     `      }`,
     `    }`,
     ``,
     `Rules:`,
     `- Be ruthless about evidence. A claim without a file:line citation is a guess.`,
     `- For bug issues, a verdict without an honest reproduction attempt is a failure of your job.`,
-    `- It is OK to report \`reproduced=null\` if the bug genuinely can't be reproduced in this environment — but you MUST explain WHY honestly. Never lie about reproduction status.`,
+    `- \`reproduced=null\` is permitted only after walking Steps 3b (structural inspection), 3c (harness ladder up to docker-compose), AND 3d (invariant test) and explicitly ruling each out. \`details\` MUST name the highest rung tried and why the next rung wouldn't help. Never lie about reproduction status.`,
     `- Do NOT modify any source files in the repo (writing temporary scripts under /tmp is fine; running tests is fine; do not stage or commit anything).`,
     `- Do NOT make recommendations beyond "plan" or "stop". Do NOT write code that fixes the issue.`,
     `- The two output files (TRIAGE.md, TRIAGE_VERDICT.json) are the only artefacts you should leave at the repo root.`,
