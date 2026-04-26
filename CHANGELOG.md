@@ -1,3 +1,15 @@
+# [1.6.0](https://github.com/chrisleekr/github-app-playground/compare/v1.5.0...v1.6.0) (2026-04-26)
+
+
+### Bug Fixes
+
+* **pipeline:** abort SDK query on timeout and daemon cancel ([#62](https://github.com/chrisleekr/github-app-playground/issues/62)) ([94a103a](https://github.com/chrisleekr/github-app-playground/commit/94a103a64330c2976d91a6663eb81cc7ad04d049))
+
+
+### Features
+
+* **triage:** tighten bug reproduction methodology in agent prompt ([#64](https://github.com/chrisleekr/github-app-playground/issues/64)) ([5416bb9](https://github.com/chrisleekr/github-app-playground/commit/5416bb9c6674fbc0edb2ac10cc5864281ed90a97))
+
 # [1.5.0](https://github.com/chrisleekr/github-app-playground/compare/v1.4.0...v1.5.0) (2026-04-26)
 
 
