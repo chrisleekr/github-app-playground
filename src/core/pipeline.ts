@@ -126,6 +126,14 @@ export interface RunPipelineOverrides {
    * agent can post mid-run progress via `update_claude_comment`.
    */
   trackingCommentId?: number;
+  /**
+   * Caller-supplied AbortSignal forwarded to `executeAgent` (and through to
+   * the Claude Agent SDK's `query()` via its `abortController` option). When
+   * fired, the SDK iterator is torn down, the Claude Code subprocess and MCP
+   * servers exit, and the pipeline returns `success: false`. Used by the
+   * daemon to make `handleJobCancel` actually terminate the agent.
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -244,6 +252,7 @@ export async function runPipeline(
         allowedTools,
         installationToken,
         ...(overrides.maxTurns !== undefined ? { maxTurns: overrides.maxTurns } : {}),
+        ...(overrides.signal !== undefined ? { signal: overrides.signal } : {}),
       });
 
       if (resolvedTrackingCommentId !== undefined && !callerOwnsTrackingComment) {

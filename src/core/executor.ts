@@ -73,6 +73,14 @@ export interface ExecuteAgentParams {
   allowedTools: string[];
   maxTurns?: number;
   installationToken?: string;
+  /**
+   * Optional caller-supplied abort signal. When aborted, the SDK `query()`
+   * iterator is torn down (via the controller plumbed into `queryOptions`),
+   * the Claude Code subprocess and MCP servers exit, and `executeAgent`
+   * resolves with `success: false`. The wall-clock timeout is implemented
+   * by the same mechanism, so an external abort short-circuits the timer.
+   */
+  signal?: AbortSignal;
 }
 
 export async function executeAgent({
@@ -83,6 +91,7 @@ export async function executeAgent({
   allowedTools,
   maxTurns,
   installationToken,
+  signal,
 }: ExecuteAgentParams): Promise<ExecutionResult> {
   const { log } = ctx;
 
@@ -101,6 +110,23 @@ export async function executeAgent({
   const startTime = Date.now();
   let result: SDKResultMessage | undefined;
 
+  // Cancellation controller plumbed into the SDK so the wall-clock timer and
+  // any caller-supplied AbortSignal actually tear down the `query()` async
+  // iterator (and the underlying Claude Code subprocess + MCP servers).
+  // Without this, the SDK keeps streaming tokens and writing to the workspace
+  // long after `executeAgent` returns — see issue #16.
+  const controller = new AbortController();
+  const onCallerAbort = (): void => {
+    controller.abort(signal?.reason);
+  };
+  if (signal !== undefined) {
+    if (signal.aborted) {
+      controller.abort(signal.reason);
+    } else {
+      signal.addEventListener("abort", onCallerAbort, { once: true });
+    }
+  }
+
   // Build query options. model and maxTurns are only included when set
   // (exactOptionalPropertyTypes forbids assigning undefined to optional
   // properties). When maxTurns is omitted entirely, the SDK runs the agent
@@ -113,6 +139,7 @@ export async function executeAgent({
     mcpServers,
     systemPrompt: { type: "preset", preset: "claude_code" },
     env: buildProviderEnv(installationToken),
+    abortController: controller,
   };
   const resolvedMaxTurns = maxTurns ?? config.agentMaxTurns;
   if (resolvedMaxTurns !== undefined) {
@@ -134,10 +161,18 @@ export async function executeAgent({
     "Agent SDK query options built",
   );
 
+  // Bound wall-clock time to prevent a hung model response or MCP server from
+  // holding an activeCount slot and a cloned workspace indefinitely, which would
+  // eventually exhaust MAX_CONCURRENT_REQUESTS for all subsequent requests.
+  // The timer aborts the SDK controller (rather than just rejecting a racing
+  // promise) so the iterator stops consuming tokens and the subprocess exits.
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort(new Error(`Agent execution timed out after ${config.agentTimeoutMs}ms`));
+  }, config.agentTimeoutMs);
+
   try {
-    // Bound wall-clock time to prevent a hung model response or MCP server from
-    // holding an activeCount slot and a cloned workspace indefinitely, which would
-    // eventually exhaust MAX_CONCURRENT_REQUESTS for all subsequent requests.
     const agentLoop = (async (): Promise<void> => {
       for await (const message of query({ prompt, options: queryOptions })) {
         const msg = message as Record<string, unknown>;
@@ -188,21 +223,25 @@ export async function executeAgent({
       }
     })();
 
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => {
-        reject(new Error(`Agent execution timed out after ${config.agentTimeoutMs}ms`));
-      }, config.agentTimeoutMs);
-    });
-
-    await Promise.race([agentLoop, timeoutPromise]);
+    await agentLoop;
   } catch (error) {
     const durationMs = Date.now() - startTime;
-    log.error({ err: error, durationMs }, "Claude Agent SDK execution failed");
+    // Distinguish a timeout-induced abort from any other failure so operators
+    // can grep for the same log line as the legacy reject-only timeout.
+    const cause = timedOut
+      ? new Error(`Agent execution timed out after ${config.agentTimeoutMs}ms`)
+      : error;
+    log.error({ err: cause, durationMs, timedOut }, "Claude Agent SDK execution failed");
 
     return {
       success: false,
       durationMs,
     };
+  } finally {
+    clearTimeout(timer);
+    if (signal !== undefined) {
+      signal.removeEventListener("abort", onCallerAbort);
+    }
   }
 
   const durationMs = Date.now() - startTime;
