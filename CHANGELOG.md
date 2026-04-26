@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/chrisleekr/github-app-playground/compare/v1.3.2...v1.4.0) (2026-04-26)
+
+
+### Features
+
+* **workflows:** up-front tracking comments, trigger reactions, parent cascade ([#61](https://github.com/chrisleekr/github-app-playground/issues/61)) ([befe07c](https://github.com/chrisleekr/github-app-playground/commit/befe07caff9e0f9b7b1984103e989a1bd3732a2c))
+
 ## [1.3.2](https://github.com/chrisleekr/github-app-playground/compare/v1.3.1...v1.3.2) (2026-04-26)
 
 
