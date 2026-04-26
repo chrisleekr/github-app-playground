@@ -57,6 +57,21 @@ describe("createLLMClient — validation guards", () => {
     expect(c.provider).toBe("anthropic");
   });
 
+  it("treats whitespace-only anthropicApiKey as empty (matches config.ts trim semantics)", () => {
+    // A whitespace-only key would otherwise produce a confusing 401 from the
+    // SDK instead of the clear "missing vs empty" error.
+    expect(() => createLLMClient({ provider: "anthropic", anthropicApiKey: "   " })).toThrow(
+      /anthropicApiKey=empty, claudeCodeOauthToken=missing/,
+    );
+
+    const c = createLLMClient({
+      provider: "anthropic",
+      anthropicApiKey: "   ",
+      claudeCodeOauthToken: "sk-ant-oat-test",
+    });
+    expect(c.provider).toBe("anthropic");
+  });
+
   it("throws when provider=bedrock and no region supplied", () => {
     expect(() => createLLMClient({ provider: "bedrock" })).toThrow(
       /provider=bedrock requires awsRegion/,

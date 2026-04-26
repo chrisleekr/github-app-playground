@@ -107,8 +107,12 @@ export function createLLMClient(params: CreateLLMClientParams): LLMClient {
   if (params.provider === "anthropic") {
     const apiKeyRaw = params.anthropicApiKey;
     const oauthRaw = params.claudeCodeOauthToken;
-    const apiKey = apiKeyRaw !== undefined && apiKeyRaw.length > 0 ? apiKeyRaw : undefined;
-    const oauth = oauthRaw !== undefined && oauthRaw.length > 0 ? oauthRaw : undefined;
+    // Trim before checking length so whitespace-only credentials are treated as
+    // absent — matches `nonEmptyOptionalString` in config.ts. Direct callers
+    // (tests, future code paths) that bypass the schema must not be able to
+    // leak " " into `new Anthropic({ apiKey })` and produce a confusing 401.
+    const apiKey = apiKeyRaw !== undefined && apiKeyRaw.trim().length > 0 ? apiKeyRaw : undefined;
+    const oauth = oauthRaw !== undefined && oauthRaw.trim().length > 0 ? oauthRaw : undefined;
     const chosen = apiKey ?? oauth;
     if (chosen === undefined) {
       const apiKeyState = apiKeyRaw === undefined ? "missing" : "empty";
