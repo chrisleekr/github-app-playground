@@ -116,6 +116,7 @@ export const handler: WorkflowHandler = async (ctx) => {
     }
 
     const report = result.capturedFiles?.["REVIEW.md"]?.trim() ?? "";
+    const findings = countFindings(report);
 
     const state = {
       pr_number: target.number,
@@ -129,6 +130,7 @@ export const handler: WorkflowHandler = async (ctx) => {
         is_fork: staleness.isFork,
       },
       report,
+      findings,
       costUsd: result.costUsd ?? 0,
       turns: result.numTurns ?? 0,
     };
@@ -254,4 +256,41 @@ function buildReviewPrompt(input: {
     ``,
     `Remember: you are a senior engineer. Your goal is to find real bugs, not perform thoroughness theatre. False positives erode trust as much as missed bugs.`,
   ].join("\n");
+}
+
+export interface ReviewFindings {
+  blocker: number;
+  major: number;
+  minor: number;
+  nit: number;
+  total: number;
+}
+
+/**
+ * Counts severity-tagged findings in a REVIEW.md body. The agent prompt
+ * (step 10) requires every finding to start with one of `[blocker]`,
+ * `[major]`, `[minor]`, `[nit]`, so the line-anchored regex below matches
+ * tags that appear at the start of a line or list item. This deliberately
+ * excludes tags that appear inside prose, code fences, or inline-code
+ * spans (e.g., a quoted ``[major]`` example in `## Reasoning` would
+ * otherwise over-count by one and mis-trip the loop's early-exit
+ * decision). `total` excludes `nit` because nits are taste-level and
+ * should not block ship.
+ */
+export function countFindings(report: string): ReviewFindings {
+  const counts: Record<"blocker" | "major" | "minor" | "nit", number> = {
+    blocker: 0,
+    major: 0,
+    minor: 0,
+    nit: 0,
+  };
+  const re = /^\s*(?:[*\-+>]\s+)?\[(blocker|major|minor|nit)\]/gim;
+  for (const match of report.matchAll(re)) {
+    const severity = match[1]?.toLowerCase() as keyof typeof counts | undefined;
+    if (severity !== undefined) counts[severity] += 1;
+  }
+  return {
+    ...counts,
+    total: counts.blocker + counts.major + counts.minor,
+  };
 }

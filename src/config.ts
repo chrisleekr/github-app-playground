@@ -342,6 +342,16 @@ const configSchema = z
     // losing progress to a mid-run cap. Set DEFAULT_MAXTURNS only when ops
     // needs a hard ceiling. AGENT_MAX_TURNS overrides this when both are set.
     defaultMaxTurns: z.coerce.number().int().positive().optional(),
+
+    // --- 12. Composite ship review/resolve loop ---
+
+    // Maximum review iterations inside ship's review/resolve cycle. Each
+    // iteration is one review run; a clean review (findings == 0) after at
+    // least 2 iterations short-circuits the loop. When the cap is reached
+    // with non-zero findings still flagged by the most recent review, the
+    // ship parent terminates with status=succeeded but its tracking comment
+    // recommends a manual re-review. Range: 1–5; default 2.
+    reviewResolveMaxIterations: z.coerce.number().int().min(1).max(5).default(2),
   })
   .superRefine((data, ctx) => {
     validateServerModeCredentials(data, ctx);
@@ -622,6 +632,9 @@ function loadConfig(): Config {
 
     // Group 11 — Agent maxTurns
     defaultMaxTurns: process.env["DEFAULT_MAXTURNS"],
+
+    // Group 12 — Composite ship review/resolve loop
+    reviewResolveMaxIterations: process.env["REVIEW_RESOLVE_MAX_ITERATIONS"],
   });
 
   assertOauthRequiresAllowlist(cfg);
