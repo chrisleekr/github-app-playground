@@ -175,6 +175,13 @@ describe("review handler", () => {
       expect(state["additions"]).toBe(100);
       expect(state["deletions"]).toBe(20);
       expect(state["report"]).toContain("Reviewed 3 files");
+      expect(state["findings"]).toEqual({
+        blocker: 0,
+        major: 1,
+        minor: 0,
+        nit: 0,
+        total: 1,
+      });
       expect(state["costUsd"]).toBe(0.42);
       expect(state["turns"]).toBe(12);
       const branch = state["branch_state"] as Record<string, unknown>;
@@ -239,5 +246,39 @@ describe("review handler", () => {
     if (result.status === "failed") {
       expect(result.reason).toContain("pipeline");
     }
+  });
+});
+
+describe("countFindings", () => {
+  it("counts severity tags case-insensitively and excludes nits from total", async () => {
+    const { countFindings } = await import("../../../src/workflows/handlers/review");
+    const report = `## Summary
+
+Found 4 issues.
+
+[blocker] Null deref on line 12.
+[major] Missing test for X.
+[Major] Race condition in Y.
+[minor] Inefficient sort.
+[NIT] Variable name could be clearer.`;
+    expect(countFindings(report)).toEqual({
+      blocker: 1,
+      major: 2,
+      minor: 1,
+      nit: 1,
+      total: 4,
+    });
+  });
+
+  it("returns all-zeros for an empty or no-findings report", async () => {
+    const { countFindings } = await import("../../../src/workflows/handlers/review");
+    expect(countFindings("")).toEqual({ blocker: 0, major: 0, minor: 0, nit: 0, total: 0 });
+    expect(countFindings("## Summary\n\nNo findings — all clean.")).toEqual({
+      blocker: 0,
+      major: 0,
+      minor: 0,
+      nit: 0,
+      total: 0,
+    });
   });
 });

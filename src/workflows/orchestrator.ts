@@ -2,6 +2,7 @@ import type { SQL } from "bun";
 import type { Octokit } from "octokit";
 import type pino from "pino";
 
+import { config } from "../config";
 import { requireDb } from "../db";
 import { getInstanceId } from "../orchestrator/instance-id";
 import { enqueueJob } from "../orchestrator/job-queue";
@@ -98,42 +99,87 @@ export async function onStepComplete(
     const stepRuns = extractStepRuns(parent.state);
     stepRuns.push(childRunId);
 
-    if (nextIndex >= steps.length) {
-      const successPatch = { currentStepIndex: nextIndex, stepRuns };
+    // ── Bespoke ship review/resolve loop ──────────────────────────────────
+    // Localised here intentionally — generalising the registry to express
+    // "loop back to step N when condition X holds" would add surface area
+    // for one use case. If a second composite ever needs looping, extract.
+    //
+    // Semantics (cap = config.reviewResolveMaxIterations, default 2):
+    //   - Each completed `review` child increments parent.state.review_iterations
+    //     and records its findings count on parent.state.last_review_findings.
+    //   - After review-N: if N ≥ 2 AND findings == 0 → parent succeeds early
+    //     (skip resolve; nothing left to fix).
+    //   - After resolve-N: if N < cap → insert another review (loop back to
+    //     ship.steps.indexOf("review")). Else → parent succeeds; if
+    //     last_review_findings > 0 the terminal message recommends manual
+    //     re-review (we did not get to confirm resolve-N's fixes).
+    const isShipParent = parent.workflow_name === "ship";
+    const isReviewChild = child.workflow_name === "review";
+    const isResolveChild = child.workflow_name === "resolve";
+
+    let reviewIterations = extractReviewIterations(parent.state);
+    let lastReviewFindings = extractLastReviewFindings(parent.state);
+    if (isShipParent && isReviewChild) {
+      reviewIterations += 1;
+      lastReviewFindings = extractFindings(child.state);
+    }
+    const reviewLoopState: Record<string, number> =
+      isShipParent && (isReviewChild || isResolveChild)
+        ? { review_iterations: reviewIterations, last_review_findings: lastReviewFindings }
+        : {};
+
+    const cap = config.reviewResolveMaxIterations;
+    const reviewClean =
+      isShipParent && isReviewChild && reviewIterations >= 2 && lastReviewFindings === 0;
+    const shouldLoopBackToReview = isShipParent && isResolveChild && reviewIterations < cap;
+
+    if (reviewClean || (nextIndex >= steps.length && !shouldLoopBackToReview)) {
+      const successPatch = {
+        currentStepIndex: nextIndex,
+        stepRuns,
+        ...reviewLoopState,
+      };
       await tx`
         UPDATE workflow_runs
            SET status = 'succeeded',
                state = state || ${successPatch}::jsonb
          WHERE id = ${parent.id}
       `;
+      let humanMessage = `ship complete — all ${String(steps.length)} steps succeeded.`;
+      if (reviewClean) {
+        humanMessage = `ship complete — review found no issues after ${String(reviewIterations)} iterations.`;
+      } else if (isShipParent && reviewIterations >= cap && lastReviewFindings > 0) {
+        humanMessage = `ship complete — review-${String(reviewIterations)} flagged ${String(lastReviewFindings)} issue${
+          lastReviewFindings === 1 ? "" : "s"
+        }; resolve-${String(reviewIterations)} attempted fixes. Manual re-review recommended.`;
+      }
       postCommit = {
         enqueue: null,
         parentRunId: parent.id,
-        parentTerminal: {
-          status: "succeeded",
-          humanMessage: `ship complete — all ${String(steps.length)} steps succeeded.`,
-        },
+        parentTerminal: { status: "succeeded", humanMessage },
       };
       return;
     }
 
-    const nextStepName = steps[nextIndex];
+    // Determine the next step. Loop-back overrides the natural advance so
+    // resolve-N → review-(N+1) instead of falling off the end of `steps`.
+    const nextStepIndex = shouldLoopBackToReview ? steps.indexOf("review") : nextIndex;
+    const nextStepName = steps[nextStepIndex];
     if (nextStepName === undefined) {
-      throw new Error(`orchestrator: step index ${String(nextIndex)} out of bounds`);
+      throw new Error(`orchestrator: step index ${String(nextStepIndex)} out of bounds`);
     }
 
-    // Retarget when the next step's registry context is "pr" but the
-    // parent's target is an issue (typical: ship → review/resolve after
-    // implement). Discover the PR number from the just-completed child's
-    // state (implement writes pr_number) or from the parent's state
-    // (preserved from a prior retarget). Without this, review/resolve
-    // would inherit the issue target and immediately fail their
-    // `target.type !== "pr"` guard.
+    // Phase 1 retargeting: when the next step's registry context is "pr"
+    // but the parent's target is an issue (e.g., ship → review/resolve),
+    // discover the PR number from the just-completed child's state (typical
+    // hand-off from `implement`) or the parent's state (preserved across
+    // loop-back iterations).
     const targetResult = deriveChildTarget(parent, child, nextStepName);
     if ("error" in targetResult) {
       const failPatch = {
-        failedAtStepIndex: nextIndex,
+        failedAtStepIndex: nextStepIndex,
         failedReason: targetResult.error,
+        ...reviewLoopState,
       };
       await tx`
         UPDATE workflow_runs
@@ -146,7 +192,7 @@ export async function onStepComplete(
         parentRunId: parent.id,
         parentTerminal: {
           status: "failed",
-          humanMessage: `ship halted at step ${String(nextIndex)} (${parent.workflow_name} → ${nextStepName}): ${targetResult.error}`,
+          humanMessage: `ship halted at step ${String(nextStepIndex)} (${parent.workflow_name} → ${nextStepName}): ${targetResult.error}`,
         },
       };
       return;
@@ -161,7 +207,7 @@ export async function onStepComplete(
       ) VALUES (
         ${nextStepName}, ${childTarget.type}, ${childTarget.owner},
         ${childTarget.repo}, ${childTarget.number},
-        ${parent.id}, ${nextIndex}, 'queued', '{}'::jsonb, ${parent.delivery_id},
+        ${parent.id}, ${nextStepIndex}, 'queued', '{}'::jsonb, ${parent.delivery_id},
         'orchestrator', ${getInstanceId()}
       )
       RETURNING *
@@ -171,10 +217,13 @@ export async function onStepComplete(
       throw new Error("orchestrator: failed to insert next child row");
     }
 
-    const progressPatch: Record<string, unknown> = { currentStepIndex: nextIndex, stepRuns };
-    // Persist pr_number on parent state once retargeting kicks in so
-    // subsequent inserts (e.g., implement → review → resolve) can
-    // rediscover it without joining back to the implement child row.
+    const progressPatch: Record<string, unknown> = {
+      currentStepIndex: nextStepIndex,
+      stepRuns,
+      ...reviewLoopState,
+    };
+    // Persist pr_number on parent state on first retarget so subsequent
+    // loop-back inserts can rediscover it without re-reading a child row.
     if (childTarget.type === "pr" && parent.target_type === "issue") {
       progressPatch["pr_number"] = childTarget.number;
     }
@@ -189,7 +238,7 @@ export async function onStepComplete(
         runId: nextChild.id,
         workflowName: nextStepName,
         parentRunId: parent.id,
-        parentStepIndex: nextIndex,
+        parentStepIndex: nextStepIndex,
         deliveryId: parent.delivery_id,
         target: childTarget,
       },
@@ -346,6 +395,25 @@ function extractStepRuns(state: Record<string, unknown>): string[] {
 function extractPrNumber(state: Record<string, unknown>): number | null {
   const raw = state["pr_number"];
   return typeof raw === "number" && Number.isInteger(raw) && raw > 0 ? raw : null;
+}
+
+function extractFindings(state: Record<string, unknown>): number {
+  const raw = state["findings"];
+  if (raw !== null && typeof raw === "object") {
+    const total = (raw as Record<string, unknown>)["total"];
+    if (typeof total === "number" && Number.isFinite(total) && total >= 0) return total;
+  }
+  return 0;
+}
+
+function extractReviewIterations(state: Record<string, unknown>): number {
+  const raw = state["review_iterations"];
+  return typeof raw === "number" && Number.isInteger(raw) && raw >= 0 ? raw : 0;
+}
+
+function extractLastReviewFindings(state: Record<string, unknown>): number {
+  const raw = state["last_review_findings"];
+  return typeof raw === "number" && Number.isInteger(raw) && raw >= 0 ? raw : 0;
 }
 
 interface ChildTarget {

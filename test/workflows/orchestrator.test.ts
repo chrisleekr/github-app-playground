@@ -204,44 +204,88 @@ describe.skipIf(sql === null)("orchestrator.onStepComplete", () => {
     expect(call2?.workflowRun.parentStepIndex).toBe(3);
     const child3RunId = call2?.workflowRun.runId ?? "";
 
-    // ── child 3 (review) succeeds → child 4 (resolve) enqueued ───────────
-    await markSucceeded(child3RunId, { findings: 0 }, requireSql());
+    // ── child 3 (review-1) succeeds with findings → resolve-1 enqueued ──
+    // Phase 1: review must run on the PR target (#42), not the issue.
+    await markSucceeded(
+      child3RunId,
+      { findings: { blocker: 0, major: 1, minor: 0, nit: 0, total: 1 } },
+      requireSql(),
+    );
     await onStepComplete({ octokit: {} as never, logger: silentLogger() }, child3RunId, {
       status: "succeeded",
     });
 
     parentRow = await findById(parent.id, requireSql());
     expect(parentRow?.state["currentStepIndex"]).toBe(4);
+    expect(parentRow?.state["review_iterations"]).toBe(1);
+    expect(parentRow?.state["last_review_findings"]).toBe(1);
+    expect(parentRow?.state["pr_number"]).toBe(42);
 
     const call3 = mockEnqueueJob.mock.calls[3]?.[0] as
-      | { workflowRun: { workflowName: string; parentStepIndex: number; runId: string } }
+      | {
+          workflowRun: { workflowName: string; parentStepIndex: number; runId: string };
+          isPR: boolean;
+          entityNumber: number;
+        }
       | undefined;
     expect(call3?.workflowRun.workflowName).toBe("resolve");
     expect(call3?.workflowRun.parentStepIndex).toBe(4);
+    expect(call3?.isPR).toBe(true);
+    expect(call3?.entityNumber).toBe(42);
     const child4RunId = call3?.workflowRun.runId ?? "";
 
-    // ── child 4 (resolve) succeeds → parent flips to succeeded ────────────
+    // ── child 4 (resolve-1) succeeds → loops back to review-2 ───────────
+    // Phase 2c: review_iterations(1) < cap(2), so a new review child is
+    // inserted at parent_step_index = ship.steps.indexOf("review") = 3.
     await markSucceeded(child4RunId, { approved: true }, requireSql());
     await onStepComplete({ octokit: {} as never, logger: silentLogger() }, child4RunId, {
       status: "succeeded",
     });
 
     parentRow = await findById(parent.id, requireSql());
+    expect(parentRow?.status).toBe("running");
+    expect(parentRow?.state["currentStepIndex"]).toBe(3);
+
+    const call4 = mockEnqueueJob.mock.calls[4]?.[0] as
+      | {
+          workflowRun: { workflowName: string; parentStepIndex: number; runId: string };
+          isPR: boolean;
+          entityNumber: number;
+        }
+      | undefined;
+    expect(call4?.workflowRun.workflowName).toBe("review");
+    expect(call4?.workflowRun.parentStepIndex).toBe(3);
+    expect(call4?.isPR).toBe(true);
+    expect(call4?.entityNumber).toBe(42);
+    const child5RunId = call4?.workflowRun.runId ?? "";
+
+    // ── child 5 (review-2) succeeds with no findings → parent succeeded ─
+    // Phase 2c: review_iterations(2) >= 2 AND total findings == 0, so the
+    // loop short-circuits and the ship parent terminates as succeeded.
+    await markSucceeded(
+      child5RunId,
+      { findings: { blocker: 0, major: 0, minor: 0, nit: 0, total: 0 } },
+      requireSql(),
+    );
+    await onStepComplete({ octokit: {} as never, logger: silentLogger() }, child5RunId, {
+      status: "succeeded",
+    });
+
+    parentRow = await findById(parent.id, requireSql());
     expect(parentRow?.status).toBe("succeeded");
-    expect(parentRow?.state["currentStepIndex"]).toBe(5);
+    expect(parentRow?.state["review_iterations"]).toBe(2);
+    expect(parentRow?.state["last_review_findings"]).toBe(0);
     expect(parentRow?.state["stepRuns"]).toEqual([
       child0.id,
       child1RunId,
       child2RunId,
       child3RunId,
       child4RunId,
+      child5RunId,
     ]);
 
-    // Final call is a terminal tracking emit, not an enqueue — enqueue
-    // count is still 4 (one per non-terminal transition: triage → plan →
-    // implement → review → resolve). Triage was inserted before this
-    // sequence as child-0 directly, not via enqueue.
-    expect(mockEnqueueJob).toHaveBeenCalledTimes(4);
+    // Enqueue count: plan, implement, review-1, resolve-1, review-2 = 5.
+    expect(mockEnqueueJob).toHaveBeenCalledTimes(5);
     expect(mockSetState).toHaveBeenCalled();
   });
 
@@ -340,9 +384,9 @@ describe.skipIf(sql === null)("orchestrator.onStepComplete", () => {
     );
     await markRunning(parent.id, "test-daemon", requireSql());
 
-    // Seed an implement child as if the prior cascade reached it.
-    // Implement forgets to write pr_number to its state — simulates a
-    // regressed handler. Orchestrator must NOT silently inherit issue → review.
+    // Seed an implement child as if the prior cascade reached it. Implement
+    // forgets to write pr_number to its state — simulates a regressed
+    // handler. Orchestrator must NOT silently inherit issue → review.
     const implementChild = await insertQueued(
       {
         workflowName: "implement",
@@ -365,5 +409,93 @@ describe.skipIf(sql === null)("orchestrator.onStepComplete", () => {
     expect(parentRow?.state["failedAtStepIndex"]).toBe(3);
     expect(String(parentRow?.state["failedReason"])).toContain("pr_number");
     expect(mockEnqueueJob).not.toHaveBeenCalled();
+  });
+
+  it("T028 cap reached: review-2 still has findings → resolve-2 runs → parent succeeds with manual-re-review warning", async () => {
+    const { insertQueued, findById, markRunning, markSucceeded } =
+      await import("../../src/workflows/runs-store");
+    const { onStepComplete } = await import("../../src/workflows/orchestrator");
+
+    const issueNumber = 204;
+    const shipTarget = { ...target, number: issueNumber };
+    const parent = await insertQueued(
+      {
+        workflowName: "ship",
+        target: shipTarget,
+        initialState: {
+          currentStepIndex: 4,
+          stepRuns: [],
+          pr_number: 88,
+          review_iterations: 1,
+          last_review_findings: 2,
+        },
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
+      },
+      requireSql(),
+    );
+    await markRunning(parent.id, "test-daemon", requireSql());
+
+    // Resolve-1 just succeeded; this triggers loop back to review-2.
+    const resolve1 = await insertQueued(
+      {
+        workflowName: "resolve",
+        target: { ...shipTarget, type: "pr", number: 88 },
+        parentRunId: parent.id,
+        parentStepIndex: 4,
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
+      },
+      requireSql(),
+    );
+    await markSucceeded(resolve1.id, {}, requireSql());
+
+    await onStepComplete({ octokit: {} as never, logger: silentLogger() }, resolve1.id, {
+      status: "succeeded",
+    });
+
+    // Loop-back inserted a review child at step index 3.
+    const loopBackCall = mockEnqueueJob.mock.calls.at(-1)?.[0] as
+      | { workflowRun: { workflowName: string; parentStepIndex: number; runId: string } }
+      | undefined;
+    expect(loopBackCall?.workflowRun.workflowName).toBe("review");
+    expect(loopBackCall?.workflowRun.parentStepIndex).toBe(3);
+    const review2Id = loopBackCall?.workflowRun.runId ?? "";
+
+    // Review-2 still finds blocker issues (cap-reached scenario).
+    await markSucceeded(
+      review2Id,
+      { findings: { blocker: 1, major: 1, minor: 0, nit: 0, total: 2 } },
+      requireSql(),
+    );
+    await onStepComplete({ octokit: {} as never, logger: silentLogger() }, review2Id, {
+      status: "succeeded",
+    });
+
+    // review_iterations is now 2 (== cap), so the next resolve must run
+    // (cascade as normal) — and after THAT, the cap-reached branch fires.
+    const resolve2Call = mockEnqueueJob.mock.calls.at(-1)?.[0] as
+      | { workflowRun: { workflowName: string; runId: string } }
+      | undefined;
+    expect(resolve2Call?.workflowRun.workflowName).toBe("resolve");
+    const resolve2Id = resolve2Call?.workflowRun.runId ?? "";
+
+    await markSucceeded(resolve2Id, {}, requireSql());
+    await onStepComplete({ octokit: {} as never, logger: silentLogger() }, resolve2Id, {
+      status: "succeeded",
+    });
+
+    const parentRow = await findById(parent.id, requireSql());
+    expect(parentRow?.status).toBe("succeeded");
+    expect(parentRow?.state["review_iterations"]).toBe(2);
+    expect(parentRow?.state["last_review_findings"]).toBe(2);
+
+    // setState was called with the manual-re-review warning message.
+    const lastSetStateCall = mockSetState.mock.calls.at(-1) as
+      | [unknown, { humanMessage?: string } | undefined]
+      | undefined;
+    const humanMessage = lastSetStateCall?.[1]?.humanMessage ?? "";
+    expect(humanMessage).toContain("review-2");
+    expect(humanMessage).toContain("Manual re-review recommended");
   });
 });
