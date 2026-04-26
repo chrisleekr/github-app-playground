@@ -1,3 +1,10 @@
+# [1.5.0](https://github.com/chrisleekr/github-app-playground/compare/v1.4.0...v1.5.0) (2026-04-26)
+
+
+### Features
+
+* **workflows:** cascade PR retargeting + bounded review/resolve loop ([#63](https://github.com/chrisleekr/github-app-playground/issues/63)) ([3079014](https://github.com/chrisleekr/github-app-playground/commit/3079014a21b5c7a4a22e077caa0b23d23b21a9dc))
+
 # [1.4.0](https://github.com/chrisleekr/github-app-playground/compare/v1.3.2...v1.4.0) (2026-04-26)
 
 
