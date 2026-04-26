@@ -757,6 +757,67 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#user-facing-surfaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        User-facing surfaces
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="User-facing surfaces">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tracking-comments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tracking comments
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#trigger-comment-reactions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trigger-comment reactions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#failure-surface-on-daemon-disconnect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Failure surface on daemon disconnect
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#re-trigger-resume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Re-trigger / resume
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#comment-intent-classifier" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1180,6 +1241,67 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#user-facing-surfaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        User-facing surfaces
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="User-facing surfaces">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tracking-comments" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tracking comments
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#trigger-comment-reactions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Trigger-comment reactions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#failure-surface-on-daemon-disconnect" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Failure surface on daemon disconnect
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#re-trigger-resume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Re-trigger / resume
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#comment-intent-classifier" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1411,6 +1533,57 @@
 <li><strong>Cost note</strong>: every ship pays for both <code>review</code> and <code>resolve</code> agent runs. Per project direction (2026-04-25), accuracy beats cost — closing the loop justifies the extra spend.</li>
 <li><strong>Example trigger</strong>: add label <code>bot:ship</code>, or comment "<code>@chrisleekr-bot ship this</code>"</li>
 </ul>
+<h2 id="user-facing-surfaces">User-facing surfaces<a class="headerlink" href="#user-facing-surfaces" title="Permanent link">&para;</a></h2>
+<p>Each workflow run produces two GitHub-visible signals: a <strong>tracking comment</strong> (the bot's working/result body) and a <strong>reaction set</strong> on the user's trigger comment.</p>
+<h3 id="tracking-comments">Tracking comments<a class="headerlink" href="#tracking-comments" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>triage</code>, <code>plan</code>, and <code>implement</code> post an <strong>up-front "starting…" comment</strong> as soon as they fetch the issue title, before the (multi-minute) agent run. The terminal <code>setState</code> call rewrites the same comment with the verdict / plan / PR link. Skipping the up-front write would leave the user staring at an empty issue while the daemon worked.</li>
+<li><code>review</code> and <code>resolve</code> already post upfront; behaviour unchanged.</li>
+<li>For composite parents (<code>ship</code>), the tracking comment is rendered as a <strong>verbose composite</strong>: the parent's narrative followed by one <code>### &lt;emoji&gt; &lt;step&gt; — &lt;status&gt;</code> block per child step, each linking back to the child's own tracking comment via deep <code>#issuecomment-&lt;id&gt;</code> anchors. The composite refresh is triggered automatically by <code>tracking-mirror.setState</code> whenever a child run writes — the cascade walks <code>parent_run_id</code> and re-renders the parent's body so the user always sees the latest child status on the surface they're already watching.</li>
+</ul>
+<h3 id="trigger-comment-reactions">Trigger-comment reactions<a class="headerlink" href="#trigger-comment-reactions" title="Permanent link">&para;</a></h3>
+<p>Comment-driven workflows stack four GitHub reactions on the user's trigger comment so the lifecycle is visible without scrolling:</p>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th>Reaction</th>
+<th>Where it fires</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Trigger detected, before classifier</td>
+<td>👀 <code>eyes</code></td>
+<td><code>src/webhook/events/issue-comment.ts</code>, <code>review-comment.ts</code> (after allowlist)</td>
+</tr>
+<tr>
+<td>Job dispatched to a daemon</td>
+<td>🚀 <code>rocket</code></td>
+<td><code>src/workflows/dispatcher.ts</code> (after <code>enqueueJob</code>)</td>
+</tr>
+<tr>
+<td>Workflow succeeded</td>
+<td>🎉 <code>hooray</code></td>
+<td><code>src/daemon/workflow-executor.ts</code> for atomic runs; <code>src/workflows/orchestrator.ts</code> for composite parents (cascade)</td>
+</tr>
+<tr>
+<td>Workflow failed (handler error, daemon disconnect, OOM)</td>
+<td>😕 <code>confused</code></td>
+<td><code>workflow-executor.ts</code>, <code>orchestrator.ts</code>, <code>src/orchestrator/connection-handler.ts</code> (orphan path)</td>
+</tr>
+</tbody>
+</table>
+<p>GitHub reactions are additive — the combined set is the audit trail. Label-triggered runs (<code>bot:ship</code> via label apply) skip reactions silently because no comment exists to react on. Reaction failures (e.g., missing <code>reactions:write</code> scope) are logged at warn level and swallowed; they never block a workflow.</p>
+<h3 id="failure-surface-on-daemon-disconnect">Failure surface on daemon disconnect<a class="headerlink" href="#failure-surface-on-daemon-disconnect" title="Permanent link">&para;</a></h3>
+<p>When a daemon dies abruptly (OOM, pod eviction, network partition), <code>connection-handler.cleanupAfterDisconnect</code> walks every in-flight <code>workflow_runs</code> row owned by that daemon, finds the topmost ancestor (so a child step failure shows up on the parent's surface), and:</p>
+<ol>
+<li>Updates the ancestor's tracking comment with an <code>❌ Daemon disconnected (likely OOM)</code> message and resume instructions.</li>
+<li>Adds 😕 <code>confused</code> to the user's trigger comment.</li>
+</ol>
+<p>This closes the silent-failure window that previously left users staring at a stale "starting…" comment after an OOM. The liveness reaper still flips the <code>workflow_runs.status</code> to <code>failed</code>; the cleanup path only owns the user-visible surface.</p>
+<h3 id="re-trigger-resume">Re-trigger / resume<a class="headerlink" href="#re-trigger-resume" title="Permanent link">&para;</a></h3>
+<p>Re-triggering <code>ship</code> (re-applying the <code>bot:ship</code> label or re-commenting the intent) walks the prior runs via <code>computeStartIndex</code> in <code>src/workflows/handlers/ship.ts</code>: succeeded <code>triage</code>/<code>plan</code> rows are reused, succeeded <code>implement</code> is reused only while its PR is still open, and <code>review</code>/<code>resolve</code> always re-run. A failed <code>implement</code> row from a prior crash means resume picks up at <code>implement</code> — the row is not "succeeded" so <code>isFresh</code> returns false and the step is re-queued.</p>
 <h2 id="comment-intent-classifier">Comment intent classifier<a class="headerlink" href="#comment-intent-classifier" title="Permanent link">&para;</a></h2>
 <p>Comments that mention <code>@chrisleekr-bot</code> are routed through <code>src/workflows/intent-classifier.ts</code>, which returns <code>{ workflow, confidence, rationale }</code> using a single-turn Haiku call. Rules:</p>
 <ul>
