@@ -62,7 +62,7 @@ Composite workflows like `ship` insert a child row per step. When the child comp
 - **Outputs**:
   - `state.valid` — boolean verdict
   - `state.confidence` — 0-1 float from the agent's self-assessment
-  - `state.summary` — one-paragraph rationale
+  - `state.summary` — the agent's verdict rationale; length is uncapped (the agent writes as much as the verdict honestly requires). Embedded into the failed-cascade `reason` line when `valid === false`.
   - `state.recommendedNext` ∈ {`plan`, `stop`}
   - `state.evidence` — array of `{file, line?, note?}` cites
   - `state.reproduction` — `{ attempted: boolean, reproduced: boolean | null, details: string }`. `attempted=false` means non-bug class. `reproduced=null` with `attempted=true` means the agent honestly tried but couldn't reach a verdict (needs prod data, external service we lack). The agent never lies about reproduction status.
