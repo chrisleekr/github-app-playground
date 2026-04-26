@@ -121,7 +121,7 @@ export async function onStepComplete(
     let lastReviewFindings = extractLastReviewFindings(parent.state);
     if (isShipParent && isReviewChild) {
       reviewIterations += 1;
-      lastReviewFindings = extractFindings(child.state);
+      lastReviewFindings = extractFindings(child.state, logger, child.id);
     }
     const reviewLoopState: Record<string, number> =
       isShipParent && (isReviewChild || isResolveChild)
@@ -129,8 +129,15 @@ export async function onStepComplete(
         : {};
 
     const cap = config.reviewResolveMaxIterations;
+    // The early-exit floor is `min(2, cap)` so a `cap === 1` deployment
+    // — which means "never loop" — still terminates on its single review.
+    // For `cap >= 2` this stays at 2, preserving the "at least two
+    // independent passes" guarantee the user originally asked for.
     const reviewClean =
-      isShipParent && isReviewChild && reviewIterations >= 2 && lastReviewFindings === 0;
+      isShipParent &&
+      isReviewChild &&
+      reviewIterations >= Math.min(2, cap) &&
+      lastReviewFindings === 0;
     const shouldLoopBackToReview = isShipParent && isResolveChild && reviewIterations < cap;
 
     if (reviewClean || (nextIndex >= steps.length && !shouldLoopBackToReview)) {
@@ -397,13 +404,29 @@ function extractPrNumber(state: Record<string, unknown>): number | null {
   return typeof raw === "number" && Number.isInteger(raw) && raw > 0 ? raw : null;
 }
 
-function extractFindings(state: Record<string, unknown>): number {
+/**
+ * Reads `state.findings.total` written by the `review` handler. A missing
+ * or malformed value is treated as "non-clean" via `Number.MAX_SAFE_INTEGER`
+ * so a regressed review handler that forgets to populate findings cannot
+ * accidentally short-circuit the loop into an early ship-succeed (which is
+ * the silent-bail class this PR is otherwise tightening). The warning
+ * surfaces the regression in operator logs instead of swallowing it.
+ */
+function extractFindings(
+  state: Record<string, unknown>,
+  logger: pino.Logger,
+  childRunId: string,
+): number {
   const raw = state["findings"];
   if (raw !== null && typeof raw === "object") {
     const total = (raw as Record<string, unknown>)["total"];
     if (typeof total === "number" && Number.isFinite(total) && total >= 0) return total;
   }
-  return 0;
+  logger.warn(
+    { childRunId, findings: raw },
+    "orchestrator: review child has no usable findings.total — refusing to short-circuit ship loop",
+  );
+  return Number.MAX_SAFE_INTEGER;
 }
 
 function extractReviewIterations(state: Record<string, unknown>): number {

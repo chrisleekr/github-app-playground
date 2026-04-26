@@ -109,6 +109,14 @@ Required whenever the orchestrator role is active (i.e. the webhook server proce
 
 See [Triage](TRIAGE.md) for the binary `heavy` signal, circuit breaker, and the six fallback reasons that appear in logs.
 
+## Composite ship workflow
+
+| Variable                        | Default | Notes                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `REVIEW_RESOLVE_MAX_ITERATIONS` | `2`     | Range `1–5`. Caps the post-implement review/resolve loop inside `bot:ship`. Each iteration is one `review` run. A clean review (`findings.total === 0`) after at least 2 iterations short-circuits the loop; if the cap is reached with non-zero findings, ship marks succeeded but recommends manual re-review. Set to `1` to disable looping (run review and resolve once each, never short-circuit). |
+
+See [bot workflows: ship (composite)](BOT-WORKFLOWS.md#ship-composite) for the full loop semantics and retargeting rules.
+
 ## Mode matrix — what's required when
 
 | Role                                    | Required                                                                                                                                                                         |

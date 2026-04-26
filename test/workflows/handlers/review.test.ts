@@ -136,7 +136,7 @@ describe("review handler", () => {
       durationMs: 60000,
       capturedFiles: {
         "REVIEW.md":
-          "## Summary\n\nReviewed 3 files. One [major] finding posted inline.\n\n## What was checked\n\n- src/foo.ts\n- src/bar.ts\n- src/baz.ts",
+          "## Summary\n\nReviewed 3 files. One inline finding posted.\n\n## What was checked\n\n- src/foo.ts\n- src/bar.ts\n- src/baz.ts\n\n## Findings\n\n- [major] src/foo.ts:42 — example finding for the test fixture",
       },
     };
   });

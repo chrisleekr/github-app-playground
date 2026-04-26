@@ -269,16 +269,28 @@ export interface ReviewFindings {
 /**
  * Counts severity-tagged findings in a REVIEW.md body. The agent prompt
  * (step 10) requires every finding to start with one of `[blocker]`,
- * `[major]`, `[minor]`, `[nit]`, so a regex over the literal tag is a
- * sufficient — and stable — proxy for "how many issues did the reviewer
- * raise". `total` excludes `nit` because nits are taste-level and should
- * not block the ship review/resolve loop's early-exit decision.
+ * `[major]`, `[minor]`, `[nit]`, so the line-anchored regex below matches
+ * tags that appear at the start of a line or list item. This deliberately
+ * excludes tags that appear inside prose, code fences, or inline-code
+ * spans (e.g., a quoted ``[major]`` example in `## Reasoning` would
+ * otherwise over-count by one and mis-trip the loop's early-exit
+ * decision). `total` excludes `nit` because nits are taste-level and
+ * should not block ship.
  */
 export function countFindings(report: string): ReviewFindings {
-  const count = (re: RegExp): number => report.match(re)?.length ?? 0;
-  const blocker = count(/\[blocker\]/gi);
-  const major = count(/\[major\]/gi);
-  const minor = count(/\[minor\]/gi);
-  const nit = count(/\[nit\]/gi);
-  return { blocker, major, minor, nit, total: blocker + major + minor };
+  const counts: Record<"blocker" | "major" | "minor" | "nit", number> = {
+    blocker: 0,
+    major: 0,
+    minor: 0,
+    nit: 0,
+  };
+  const re = /^\s*(?:[*\-+>]\s+)?\[(blocker|major|minor|nit)\]/gim;
+  for (const match of report.matchAll(re)) {
+    const severity = match[1]?.toLowerCase() as keyof typeof counts | undefined;
+    if (severity !== undefined) counts[severity] += 1;
+  }
+  return {
+    ...counts,
+    total: counts.blocker + counts.major + counts.minor,
+  };
 }

@@ -7,7 +7,8 @@ Issues / Test plan) but adds machine-fillable sections the bot already
 captures during its run (Files changed, Commits, Tests run, Verification).
 
 The agent reads this file, fills each section from its actual work, and
-passes the result as `--body` to `gh pr create`. Sections marked optional
+passes the rendered result via `gh pr create --body-file <tempfile>` (so
+`gh` does not auto-pick the human PR template). Sections marked optional
 should be omitted if they would only contain placeholder text.
 -->
 
