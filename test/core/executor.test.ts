@@ -138,9 +138,9 @@ describe("executeAgent — cancellation", () => {
     const realClearTimeout = globalThis.clearTimeout;
     const setSpy = mock(realSetTimeout);
     const clearSpy = mock(realClearTimeout);
-     
+
     globalThis.setTimeout = setSpy as unknown as typeof setTimeout;
-     
+
     globalThis.clearTimeout = clearSpy as unknown as typeof clearTimeout;
     try {
       await executeAgent(baseParams());

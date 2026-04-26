@@ -166,10 +166,12 @@ export async function executeAgent({
   // eventually exhaust MAX_CONCURRENT_REQUESTS for all subsequent requests.
   // The timer aborts the SDK controller (rather than just rejecting a racing
   // promise) so the iterator stops consuming tokens and the subprocess exits.
-  let timedOut = false;
+  // The Error is hoisted so the catch block can identify a timer-fired abort
+  // by reference (controller.signal.reason === timeoutError) rather than a
+  // separate flag — also avoids constructing the same message twice.
+  const timeoutError = new Error(`Agent execution timed out after ${config.agentTimeoutMs}ms`);
   const timer = setTimeout(() => {
-    timedOut = true;
-    controller.abort(new Error(`Agent execution timed out after ${config.agentTimeoutMs}ms`));
+    controller.abort(timeoutError);
   }, config.agentTimeoutMs);
 
   try {
@@ -226,12 +228,13 @@ export async function executeAgent({
     await agentLoop;
   } catch (error) {
     const durationMs = Date.now() - startTime;
-    // Distinguish a timeout-induced abort from any other failure so operators
-    // can grep for the same log line as the legacy reject-only timeout.
-    const cause = timedOut
-      ? new Error(`Agent execution timed out after ${config.agentTimeoutMs}ms`)
-      : error;
-    log.error({ err: cause, durationMs, timedOut }, "Claude Agent SDK execution failed");
+    // Identity comparison on the abort reason gives us the right answer even
+    // when a caller-supplied signal fires nanoseconds before the timer (the
+    // controller's first abort wins; subsequent calls are no-ops). The SDK
+    // rethrows the abort reason, so for timeout/caller-cancel paths `error`
+    // is the same instance held in controller.signal.reason.
+    const timedOut = controller.signal.reason === timeoutError;
+    log.error({ err: error, durationMs, timedOut }, "Claude Agent SDK execution failed");
 
     return {
       success: false,
