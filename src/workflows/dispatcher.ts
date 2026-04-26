@@ -4,6 +4,8 @@ import type pino from "pino";
 import { config } from "../config";
 import { getInstanceId } from "../orchestrator/instance-id";
 import { enqueueJob } from "../orchestrator/job-queue";
+import type { TriggerEventType } from "../shared/dispatch-types";
+import { addReaction } from "../utils/reactions";
 import { recordWorkflowExecution } from "./execution-row";
 import { classify, type ClassifyResult } from "./intent-classifier";
 import { enforceSingleBotLabel } from "./label-mutex";
@@ -179,6 +181,8 @@ export interface DispatchByIntentParams {
   readonly target: DispatchTarget;
   readonly senderLogin: string;
   readonly deliveryId: string;
+  readonly triggerCommentId: number;
+  readonly triggerEventType: TriggerEventType;
 }
 
 /**
@@ -194,6 +198,7 @@ export interface DispatchByIntentParams {
  */
 export async function dispatchByIntent(params: DispatchByIntentParams): Promise<DispatchOutcome> {
   const { octokit, logger, commentBody, target, senderLogin, deliveryId } = params;
+  const { triggerCommentId, triggerEventType } = params;
 
   const verdict = await classify(commentBody);
   logger.info(
@@ -265,6 +270,8 @@ export async function dispatchByIntent(params: DispatchByIntentParams): Promise<
       deliveryId,
       ownerKind: "orchestrator",
       ownerId: getInstanceId(),
+      triggerCommentId,
+      triggerEventType,
     });
   } catch (err) {
     if (isInflightCollision(err)) {
@@ -294,6 +301,8 @@ export async function dispatchByIntent(params: DispatchByIntentParams): Promise<
       runId: runRow.id,
       labels: [entry.label],
       logger,
+      triggerCommentId,
+      triggerEventType,
     });
     await enqueueJob({
       deliveryId,
@@ -337,6 +346,16 @@ export async function dispatchByIntent(params: DispatchByIntentParams): Promise<
     },
     "Workflow run dispatched via intent",
   );
+
+  void addReaction({
+    octokit,
+    logger,
+    owner: target.owner,
+    repo: target.repo,
+    commentId: triggerCommentId,
+    eventType: triggerEventType,
+    content: "rocket",
+  });
 
   return { status: "dispatched", runId: runRow.id, workflowName: entry.name };
 }

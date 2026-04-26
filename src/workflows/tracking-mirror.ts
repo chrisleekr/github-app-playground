@@ -4,10 +4,20 @@ import type pino from "pino";
 import type { WorkflowName } from "./registry";
 import {
   findById,
+  listChildrenByParent,
   mergeState,
   tryReserveTrackingCommentId,
   type WorkflowRunRow,
 } from "./runs-store";
+
+/**
+ * State key used to persist the last human-readable message written by a
+ * setState call. The cascade refresh re-uses this when re-rendering the
+ * parent's composite tracking comment so the parent's own narrative survives
+ * across child step updates. Underscore prefix marks it as an internal field
+ * not meant for handler-visible state.
+ */
+const LAST_HUMAN_MESSAGE_KEY = "_lastHumanMessage";
 
 /**
  * FR-026: the tracking comment is a projection of `workflow_runs.state`, not
@@ -54,7 +64,10 @@ export async function setState(
   const { octokit, logger } = deps;
   const { runId, patch, humanMessage } = params;
 
-  await mergeState(runId, patch);
+  // Persist the human message alongside the caller's patch so the cascade
+  // refresh can re-render the parent's composite body without losing this
+  // run's narrative.
+  await mergeState(runId, { ...patch, [LAST_HUMAN_MESSAGE_KEY]: humanMessage });
 
   const row = await findById(runId);
   if (row === null) {
@@ -63,6 +76,7 @@ export async function setState(
 
   const body = renderCommentBody(row, humanMessage);
 
+  let resultRow: WorkflowRunRow;
   if (row.tracking_comment_id === null) {
     const created = await octokit.rest.issues.createComment({
       owner: row.target_owner,
@@ -76,54 +90,178 @@ export async function setState(
         { runId, commentId: created.data.id, workflowName: row.workflow_name },
         "Created tracking comment",
       );
-      return { ...row, tracking_comment_id: created.data.id };
-    }
-
-    // Lost the race: another concurrent setState already reserved a comment.
-    // Delete the duplicate we just created so a single canonical comment
-    // remains. A delete failure is not fatal — the DB still points at the
-    // winning comment, and the duplicate is cosmetic.
-    logger.warn(
-      {
-        runId,
-        losingCommentId: created.data.id,
-        winningCommentId: reservation.trackingCommentId,
-        workflowName: row.workflow_name,
-      },
-      "Lost tracking-comment reservation race; deleting duplicate comment",
-    );
-    try {
-      await octokit.rest.issues.deleteComment({
-        owner: row.target_owner,
-        repo: row.target_repo,
-        comment_id: created.data.id,
-      });
-    } catch (deleteErr) {
+      resultRow = { ...row, tracking_comment_id: created.data.id };
+    } else {
+      // Lost the race: another concurrent setState already reserved a comment.
+      // Delete the duplicate we just created so a single canonical comment
+      // remains. A delete failure is not fatal — the DB still points at the
+      // winning comment, and the duplicate is cosmetic.
       logger.warn(
         {
           runId,
           losingCommentId: created.data.id,
-          err: deleteErr instanceof Error ? deleteErr.message : String(deleteErr),
+          winningCommentId: reservation.trackingCommentId,
+          workflowName: row.workflow_name,
         },
-        "Failed to delete duplicate tracking comment",
+        "Lost tracking-comment reservation race; deleting duplicate comment",
       );
+      try {
+        await octokit.rest.issues.deleteComment({
+          owner: row.target_owner,
+          repo: row.target_repo,
+          comment_id: created.data.id,
+        });
+      } catch (deleteErr) {
+        logger.warn(
+          {
+            runId,
+            losingCommentId: created.data.id,
+            err: deleteErr instanceof Error ? deleteErr.message : String(deleteErr),
+          },
+          "Failed to delete duplicate tracking comment",
+        );
+      }
+      // Re-render against the freshest row so we don't clobber the winner's
+      // newer body with our stale snapshot. Both racers wrote `_lastHumanMessage`
+      // before the reservation, so the latest row already contains the merged
+      // human message — we just need its post-merge view.
+      const latest = (await findById(runId)) ?? row;
+      await octokit.rest.issues.updateComment({
+        owner: latest.target_owner,
+        repo: latest.target_repo,
+        comment_id: reservation.trackingCommentId,
+        body: renderCommentBody(latest, humanMessage),
+      });
+      resultRow = { ...latest, tracking_comment_id: reservation.trackingCommentId };
     }
+  } else {
     await octokit.rest.issues.updateComment({
       owner: row.target_owner,
       repo: row.target_repo,
-      comment_id: reservation.trackingCommentId,
+      comment_id: row.tracking_comment_id,
       body,
     });
-    return { ...row, tracking_comment_id: reservation.trackingCommentId };
+    resultRow = row;
   }
 
+  // Cascade: when this run is a child of a composite (e.g., ship), refresh
+  // the parent's tracking comment so the user sees this child's status
+  // reflected on the parent's comment in real time. Best-effort — a cascade
+  // failure must never bubble up because the child's own write already
+  // succeeded.
+  if (resultRow.parent_run_id !== null) {
+    await refreshParentCompositeBody(deps, resultRow.parent_run_id).catch((err: unknown) => {
+      logger.warn(
+        {
+          err: err instanceof Error ? err.message : String(err),
+          parentRunId: resultRow.parent_run_id,
+          childRunId: runId,
+        },
+        "Cascade refresh of parent composite body failed",
+      );
+    });
+  }
+
+  return resultRow;
+}
+
+/**
+ * Re-render the parent's tracking comment with this run's narrative plus a
+ * verbose block per child step. No-op when the parent never created its own
+ * comment (no `tracking_comment_id`) — handlers that opted out cannot have
+ * their comment refreshed.
+ */
+async function refreshParentCompositeBody(
+  deps: TrackingMirrorDeps,
+  parentRunId: string,
+): Promise<void> {
+  const { octokit } = deps;
+
+  const parent = await findById(parentRunId);
+  if (parent === null) return;
+  if (parent.tracking_comment_id === null) return;
+
+  const children = await listChildrenByParent(parentRunId);
+  const body = renderCompositeBody(parent, children);
+
   await octokit.rest.issues.updateComment({
-    owner: row.target_owner,
-    repo: row.target_repo,
-    comment_id: row.tracking_comment_id,
+    owner: parent.target_owner,
+    repo: parent.target_repo,
+    comment_id: parent.tracking_comment_id,
     body,
   });
-  return row;
+}
+
+/**
+ * Composite render for a parent (e.g., ship) and its child steps. Verbose by
+ * design — each child gets its own block with status, narrative, and a deep
+ * link to the child's own tracking comment so the user can drill in.
+ */
+export function renderCompositeBody(
+  parent: WorkflowRunRow,
+  children: readonly WorkflowRunRow[],
+): string {
+  const parentMessage = readLastHumanMessage(parent);
+  const parentBody = renderCommentBody(parent, parentMessage ?? "");
+
+  if (children.length === 0) return parentBody;
+
+  const childBlocks = children.map((child) => renderChildBlock(child)).join("\n\n");
+
+  return `${parentBody}\n\n---\n\n## Steps\n\n${childBlocks}`;
+}
+
+function renderChildBlock(child: WorkflowRunRow): string {
+  const emoji = statusEmoji(child.status);
+  const link =
+    child.tracking_comment_id !== null
+      ? ` · [open comment](https://github.com/${child.target_owner}/${child.target_repo}/issues/${String(child.target_number)}#issuecomment-${String(child.tracking_comment_id)})`
+      : "";
+
+  const meta = renderChildMeta(child);
+  const message = readLastHumanMessage(child);
+  const messageBlock = message === null ? "" : `\n${truncateForComposite(message)}`;
+
+  return `### ${emoji} \`${child.workflow_name}\` — ${child.status}${link}${meta}${messageBlock}`;
+}
+
+function readLastHumanMessage(row: WorkflowRunRow): string | null {
+  const raw = row.state[LAST_HUMAN_MESSAGE_KEY];
+  return typeof raw === "string" && raw.length > 0 ? raw : null;
+}
+
+function renderChildMeta(child: WorkflowRunRow): string {
+  const cost = child.state["costUsd"];
+  const turns = child.state["turns"];
+  const parts: string[] = [];
+  if (typeof cost === "number") parts.push(`cost: $${cost.toFixed(4)}`);
+  if (typeof turns === "number") parts.push(`turns: ${String(turns)}`);
+  return parts.length > 0 ? `\n_${parts.join(" · ")}_` : "";
+}
+
+function statusEmoji(status: WorkflowRunRow["status"]): string {
+  switch (status) {
+    case "queued":
+      return "⏳";
+    case "running":
+      return "🔄";
+    case "succeeded":
+      return "✅";
+    case "failed":
+      return "❌";
+  }
+}
+
+/**
+ * The composite body sits inside one GitHub comment alongside the parent's
+ * own narrative — keep each child's excerpt short so the comment stays
+ * readable. Drill-in users follow the per-step link to read the full body.
+ */
+function truncateForComposite(text: string): string {
+  const limit = 600;
+  const trimmed = text.trim();
+  if (trimmed.length <= limit) return trimmed;
+  return `${trimmed.slice(0, limit)}…`;
 }
 
 /**

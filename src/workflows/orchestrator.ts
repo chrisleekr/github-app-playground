@@ -5,9 +5,10 @@ import type pino from "pino";
 import { requireDb } from "../db";
 import { getInstanceId } from "../orchestrator/instance-id";
 import { enqueueJob } from "../orchestrator/job-queue";
+import { addReaction, type ReactionContent } from "../utils/reactions";
 import { recordWorkflowExecution } from "./execution-row";
 import { getByName, type WorkflowName } from "./registry";
-import { markFailed, type WorkflowRunRow } from "./runs-store";
+import { findById, markFailed, type WorkflowRunRow } from "./runs-store";
 import { setState } from "./tracking-mirror";
 
 /**
@@ -244,13 +245,50 @@ export async function onStepComplete(
   }
 
   if (postCommit.parentTerminal !== null && postCommit.parentRunId !== null) {
+    const parentRunId = postCommit.parentRunId;
+    const terminal = postCommit.parentTerminal;
     await setState(deps, {
-      runId: postCommit.parentRunId,
+      runId: parentRunId,
       patch: {},
-      humanMessage: postCommit.parentTerminal.humanMessage,
+      humanMessage: terminal.humanMessage,
     }).catch((err: unknown) => {
-      logger.warn({ err, parentId: postCommit.parentRunId }, "parent tracking emit failed");
+      logger.warn({ err, parentId: parentRunId }, "parent tracking emit failed");
     });
+
+    // Composite parents (e.g., ship) terminate here, not in the daemon
+    // executor — so this is the right point to react on the user's trigger
+    // comment with the chain's final outcome.
+    await reactOnParentTrigger(
+      deps,
+      parentRunId,
+      terminal.status === "succeeded" ? "hooray" : "confused",
+    );
+  }
+}
+
+async function reactOnParentTrigger(
+  deps: OnStepCompleteDeps,
+  parentRunId: string,
+  content: ReactionContent,
+): Promise<void> {
+  try {
+    const row = await findById(parentRunId);
+    if (row === null) return;
+    if (row.trigger_comment_id === null || row.trigger_event_type === null) return;
+    await addReaction({
+      octokit: deps.octokit,
+      logger: deps.logger,
+      owner: row.target_owner,
+      repo: row.target_repo,
+      commentId: row.trigger_comment_id,
+      eventType: row.trigger_event_type,
+      content,
+    });
+  } catch (err) {
+    deps.logger.warn(
+      { err: err instanceof Error ? err.message : String(err), parentRunId, content },
+      "reactOnParentTrigger failed",
+    );
   }
 }
 

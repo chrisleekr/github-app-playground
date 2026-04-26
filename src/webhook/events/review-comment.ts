@@ -3,6 +3,7 @@ import type { Octokit } from "octokit";
 
 import { containsTrigger } from "../../core/trigger";
 import { logger } from "../../logger";
+import { addReaction } from "../../utils/reactions";
 import { dispatchByIntent } from "../../workflows/dispatcher";
 import { isOwnerAllowed } from "../authorize";
 
@@ -38,6 +39,16 @@ export function handleReviewComment(
     return;
   }
 
+  void addReaction({
+    octokit,
+    logger: log,
+    owner: payload.repository.owner.login,
+    repo: payload.repository.name,
+    commentId: payload.comment.id,
+    eventType: "pull_request_review_comment",
+    content: "eyes",
+  });
+
   void dispatchByIntent({
     octokit,
     logger: log,
@@ -50,6 +61,8 @@ export function handleReviewComment(
     },
     senderLogin,
     deliveryId,
+    triggerCommentId: payload.comment.id,
+    triggerEventType: "pull_request_review_comment",
   }).catch((err: unknown) => {
     log.error({ err }, "dispatchByIntent threw for review_comment");
   });

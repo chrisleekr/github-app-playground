@@ -46,6 +46,12 @@ export const handler: WorkflowHandler = async (ctx) => {
       issue_number: target.number,
     });
 
+    await postStartingComment(ctx, {
+      title: issue.title,
+      number: target.number,
+      author: issue.user?.login ?? null,
+    });
+
     const { data: repoData } = await octokit.rest.repos.get({
       owner: target.owner,
       repo: target.repo,
@@ -182,4 +188,34 @@ async function findRecentOpenedPr(
     }
   }
   return null;
+}
+
+/**
+ * Up-front tracking comment so the user sees implement has started before the
+ * (5–15 minute) agent run finishes and opens a PR. Best-effort: if the write
+ * fails, the handler still proceeds and the terminal setState writes the PR
+ * link + IMPLEMENT.md report.
+ */
+async function postStartingComment(
+  ctx: Parameters<WorkflowHandler>[0],
+  input: { title: string; number: number; author: string | null },
+): Promise<void> {
+  const author = input.author === null ? "" : ` (opened by @${input.author})`;
+  const body = [
+    `🛠️ **Implement starting** — executing plan for issue #${String(input.number)}${author}`,
+    ``,
+    `> ${input.title}`,
+    ``,
+    `Cloning the repo, creating a feature branch, and asking the agent to implement`,
+    `the plan and open a PR. This typically takes 5–15 minutes. The PR link and`,
+    `IMPLEMENT.md summary replace this comment when the agent finishes.`,
+  ].join("\n");
+  try {
+    await ctx.setState({ phase: "starting" }, body);
+  } catch (err) {
+    ctx.logger.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      "implement starting-comment write failed — continuing without up-front comment",
+    );
+  }
 }

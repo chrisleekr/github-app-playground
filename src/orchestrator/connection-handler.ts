@@ -1,8 +1,11 @@
 import type { ServerWebSocket } from "bun";
-import { App } from "octokit";
+import { App, type Octokit } from "octokit";
 
 import { config } from "../config";
 import { logger } from "../logger";
+import { addReaction } from "../utils/reactions";
+import { findById, findInflightByOwner, type WorkflowRunRow } from "../workflows/runs-store";
+import { setState } from "../workflows/tracking-mirror";
 
 // Read orchestrator app version at module load so we can detect daemon drift
 // in handleRegister and request an update via daemon:update-required.
@@ -152,8 +155,141 @@ async function cleanupAfterDisconnect(daemonId: string): Promise<void> {
         "Cleaned up orphaned executions after daemon disconnect",
       );
     }
+
+    // User-facing notification: any in-flight workflow_runs owned by this
+    // daemon will be flipped to 'failed' by the liveness reaper. We update
+    // the user's tracking comment + react on the trigger comment now so the
+    // user sees the failure immediately instead of staring at a stale
+    // "starting…" comment.
+    await notifyOrphanedWorkflowRuns(daemonId);
   } catch (err) {
     logger.error({ err, daemonId }, "Failed to cleanup after daemon disconnect");
+  }
+}
+
+/**
+ * Update the user-facing tracking comment + add a `confused` reaction on the
+ * originating comment for every in-flight workflow_run owned by the dying
+ * daemon. Walks the parent chain so a child step's failure shows up on the
+ * top-level run's surface (the surface the user is actually watching) rather
+ * than on a per-child comment they may not have noticed.
+ *
+ * Best-effort throughout — a missing GitHub App config or a comment-update
+ * failure must never bubble up and prevent the rest of cleanup from running.
+ */
+async function notifyOrphanedWorkflowRuns(daemonId: string): Promise<void> {
+  let inflight: WorkflowRunRow[];
+  try {
+    inflight = await findInflightByOwner("daemon", daemonId);
+  } catch (err) {
+    logger.error({ err, daemonId }, "Failed to query in-flight workflow_runs for orphan cleanup");
+    return;
+  }
+
+  if (inflight.length === 0) return;
+
+  // Dedupe by ancestor so a single ship cascade (ship → plan → implement)
+  // only updates one comment + one reaction even if multiple of its rows
+  // were owned by this daemon at the moment of disconnect.
+  const ancestorIds = new Set<string>();
+  for (const row of inflight) {
+    // eslint-disable-next-line no-await-in-loop
+    const ancestor = await findTopAncestor(row);
+    if (ancestor === null) continue;
+    if (ancestorIds.has(ancestor.id)) continue;
+    ancestorIds.add(ancestor.id);
+
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await postOrphanNotification(ancestor);
+    } catch (err) {
+      logger.warn(
+        {
+          err: err instanceof Error ? err.message : String(err),
+          ancestorRunId: ancestor.id,
+          daemonId,
+        },
+        "Orphan notification (comment/reaction) failed",
+      );
+    }
+  }
+}
+
+/**
+ * Walk parent_run_id up to the topmost row. Returns the input row if it has
+ * no parent, or null if the parent chain is broken (orphaned mid-walk) or
+ * exceeds the safety cap. Returning the cap-iteration row would be a silent
+ * bug: it still has a non-null parent_run_id, so we'd update the wrong
+ * (mid-chain) tracking comment.
+ */
+async function findTopAncestor(row: WorkflowRunRow): Promise<WorkflowRunRow | null> {
+  let current: WorkflowRunRow | null = row;
+  // Bound at 8 levels of nesting — defensive cap for a chain that should
+  // realistically never exceed depth 2 (ship → step). A null parent ends
+  // the walk naturally.
+  for (let i = 0; i < 8; i++) {
+    if (current === null) return null;
+    if (current.parent_run_id === null) return current;
+    // eslint-disable-next-line no-await-in-loop
+    current = await findById(current.parent_run_id);
+  }
+  logger.warn(
+    { startRunId: row.id, lastSeenRunId: current?.id ?? null },
+    "findTopAncestor: parent chain exceeded 8 levels — skipping orphan notification to avoid touching the wrong comment",
+  );
+  return null;
+}
+
+async function postOrphanNotification(ancestor: WorkflowRunRow): Promise<void> {
+  if (config.appId === undefined || config.privateKey === undefined) {
+    logger.debug(
+      { ancestorRunId: ancestor.id },
+      "Skipping orphan notification — GitHub App credentials not configured",
+    );
+    return;
+  }
+
+  const app = getOrCreateApp();
+  const { data: installation } = await app.octokit.rest.apps.getRepoInstallation({
+    owner: ancestor.target_owner,
+    repo: ancestor.target_repo,
+  });
+  const octokit = await app.getInstallationOctokit(installation.id);
+
+  const humanMessage = [
+    `❌ **Daemon disconnected during execution** — likely an OOM kill on the workflow pod.`,
+    ``,
+    `The in-flight step has been marked failed. Its workflow_run row will be flipped`,
+    `to \`failed\` by the liveness reaper. To resume, re-trigger the workflow:`,
+    ``,
+    `- For \`ship\`: re-apply the \`bot:ship\` label, or comment again. Resume picks up`,
+    `  from the failed step and reuses prior succeeded steps.`,
+    `- For standalone workflows: re-comment with the same trigger.`,
+  ].join("\n");
+
+  // Re-uses tracking-mirror.setState so the cascade refresh and `_lastHumanMessage`
+  // bookkeeping stay consistent — and so the parent's composite body picks up the
+  // failure narrative on the next render.
+  const installationOctokit = octokit as unknown as Octokit;
+  await setState(
+    { octokit: installationOctokit, logger },
+    {
+      runId: ancestor.id,
+      patch: { phase: "orphaned" },
+      humanMessage,
+    },
+  );
+
+  if (ancestor.trigger_comment_id !== null && ancestor.trigger_event_type !== null) {
+    await addReaction({
+      octokit: installationOctokit,
+      logger,
+      owner: ancestor.target_owner,
+      repo: ancestor.target_repo,
+      commentId: ancestor.trigger_comment_id,
+      eventType: ancestor.trigger_event_type,
+      content: "confused",
+    });
   }
 }
 

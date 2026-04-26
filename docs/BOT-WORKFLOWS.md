@@ -143,6 +143,42 @@ Composite workflows like `ship` insert a child row per step. When the child comp
 - **Cost note**: every ship pays for both `review` and `resolve` agent runs. Per project direction (2026-04-25), accuracy beats cost — closing the loop justifies the extra spend.
 - **Example trigger**: add label `bot:ship`, or comment "`@chrisleekr-bot ship this`"
 
+## User-facing surfaces
+
+Each workflow run produces two GitHub-visible signals: a **tracking comment** (the bot's working/result body) and a **reaction set** on the user's trigger comment.
+
+### Tracking comments
+
+- `triage`, `plan`, and `implement` post an **up-front "starting…" comment** as soon as they fetch the issue title, before the (multi-minute) agent run. The terminal `setState` call rewrites the same comment with the verdict / plan / PR link. Skipping the up-front write would leave the user staring at an empty issue while the daemon worked.
+- `review` and `resolve` already post upfront; behaviour unchanged.
+- For composite parents (`ship`), the tracking comment is rendered as a **verbose composite**: the parent's narrative followed by one `### <emoji> <step> — <status>` block per child step, each linking back to the child's own tracking comment via deep `#issuecomment-<id>` anchors. The composite refresh is triggered automatically by `tracking-mirror.setState` whenever a child run writes — the cascade walks `parent_run_id` and re-renders the parent's body so the user always sees the latest child status on the surface they're already watching.
+
+### Trigger-comment reactions
+
+Comment-driven workflows stack four GitHub reactions on the user's trigger comment so the lifecycle is visible without scrolling:
+
+| Stage                                                   | Reaction      | Where it fires                                                                                                     |
+| ------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Trigger detected, before classifier                     | 👀 `eyes`     | `src/webhook/events/issue-comment.ts`, `review-comment.ts` (after allowlist)                                       |
+| Job dispatched to a daemon                              | 🚀 `rocket`   | `src/workflows/dispatcher.ts` (after `enqueueJob`)                                                                 |
+| Workflow succeeded                                      | 🎉 `hooray`   | `src/daemon/workflow-executor.ts` for atomic runs; `src/workflows/orchestrator.ts` for composite parents (cascade) |
+| Workflow failed (handler error, daemon disconnect, OOM) | 😕 `confused` | `workflow-executor.ts`, `orchestrator.ts`, `src/orchestrator/connection-handler.ts` (orphan path)                  |
+
+GitHub reactions are additive — the combined set is the audit trail. Label-triggered runs (`bot:ship` via label apply) skip reactions silently because no comment exists to react on. Reaction failures (e.g., missing `reactions:write` scope) are logged at warn level and swallowed; they never block a workflow.
+
+### Failure surface on daemon disconnect
+
+When a daemon dies abruptly (OOM, pod eviction, network partition), `connection-handler.cleanupAfterDisconnect` walks every in-flight `workflow_runs` row owned by that daemon, finds the topmost ancestor (so a child step failure shows up on the parent's surface), and:
+
+1. Updates the ancestor's tracking comment with an `❌ Daemon disconnected (likely OOM)` message and resume instructions.
+2. Adds 😕 `confused` to the user's trigger comment.
+
+This closes the silent-failure window that previously left users staring at a stale "starting…" comment after an OOM. The liveness reaper still flips the `workflow_runs.status` to `failed`; the cleanup path only owns the user-visible surface.
+
+### Re-trigger / resume
+
+Re-triggering `ship` (re-applying the `bot:ship` label or re-commenting the intent) walks the prior runs via `computeStartIndex` in `src/workflows/handlers/ship.ts`: succeeded `triage`/`plan` rows are reused, succeeded `implement` is reused only while its PR is still open, and `review`/`resolve` always re-run. A failed `implement` row from a prior crash means resume picks up at `implement` — the row is not "succeeded" so `isFresh` returns false and the step is re-queued.
+
 ## Comment intent classifier
 
 Comments that mention `@chrisleekr-bot` are routed through `src/workflows/intent-classifier.ts`, which returns `{ workflow, confidence, rationale }` using a single-turn Haiku call. Rules:

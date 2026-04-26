@@ -37,6 +37,13 @@ export interface CreateExecutionParams {
   triageConfidence?: number;
   triageCostUsd?: number;
   contextJson?: SerializableBotContext;
+  /**
+   * REST id of the user comment that triggered this run, persisted so the
+   * orphan/disconnect path (which has no live BotContext) can still react
+   * on the right comment after a daemon dies. NULL for label/system runs.
+   */
+  triggerCommentId?: number | null;
+  triggerEventType?: "issue_comment" | "pull_request_review_comment" | null;
 }
 
 /**
@@ -63,6 +70,9 @@ export async function createExecution(params: CreateExecutionParams): Promise<st
   // CHECK (= 'daemon'). Hardcoding the literal here makes the invariant
   // unbreakable at the data-layer boundary — a stray caller passing any
   // other `dispatchMode` value cannot fail the INSERT at runtime.
+  const triggerCommentId = params.triggerCommentId ?? null;
+  const triggerEventType = params.triggerEventType ?? null;
+
   let rows: { id: string }[];
   if (hasTriageFields) {
     rows = await db`
@@ -70,14 +80,14 @@ export async function createExecution(params: CreateExecutionParams): Promise<st
         delivery_id, repo_owner, repo_name, entity_number, entity_type,
         event_name, trigger_username, dispatch_mode, dispatch_target, dispatch_reason,
         triage_confidence, triage_cost_usd,
-        status, context_json
+        status, context_json, trigger_comment_id, trigger_event_type
       ) VALUES (
         ${params.deliveryId}, ${params.repoOwner}, ${params.repoName},
         ${params.entityNumber}, ${params.entityType}, ${params.eventName},
         ${params.triggerUsername}, 'daemon', 'daemon',
         ${params.dispatchReason ?? "persistent-daemon"},
         ${params.triageConfidence ?? null}, ${params.triageCostUsd ?? null},
-        'queued', ${params.contextJson ?? null}
+        'queued', ${params.contextJson ?? null}, ${triggerCommentId}, ${triggerEventType}
       )
       RETURNING id
     `;
@@ -86,12 +96,12 @@ export async function createExecution(params: CreateExecutionParams): Promise<st
       INSERT INTO executions (
         delivery_id, repo_owner, repo_name, entity_number, entity_type,
         event_name, trigger_username, dispatch_mode, dispatch_target, dispatch_reason,
-        status, context_json
+        status, context_json, trigger_comment_id, trigger_event_type
       ) VALUES (
         ${params.deliveryId}, ${params.repoOwner}, ${params.repoName},
         ${params.entityNumber}, ${params.entityType}, ${params.eventName},
         ${params.triggerUsername}, 'daemon', 'daemon', ${params.dispatchReason},
-        'queued', ${params.contextJson ?? null}
+        'queued', ${params.contextJson ?? null}, ${triggerCommentId}, ${triggerEventType}
       )
       RETURNING id
     `;
@@ -99,12 +109,13 @@ export async function createExecution(params: CreateExecutionParams): Promise<st
     rows = await db`
       INSERT INTO executions (
         delivery_id, repo_owner, repo_name, entity_number, entity_type,
-        event_name, trigger_username, dispatch_mode, dispatch_target, status, context_json
+        event_name, trigger_username, dispatch_mode, dispatch_target, status, context_json,
+        trigger_comment_id, trigger_event_type
       ) VALUES (
         ${params.deliveryId}, ${params.repoOwner}, ${params.repoName},
         ${params.entityNumber}, ${params.entityType}, ${params.eventName},
         ${params.triggerUsername}, 'daemon', 'daemon', 'queued',
-        ${params.contextJson ?? null}
+        ${params.contextJson ?? null}, ${triggerCommentId}, ${triggerEventType}
       )
       RETURNING id
     `;

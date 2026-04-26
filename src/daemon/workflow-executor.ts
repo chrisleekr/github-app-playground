@@ -3,6 +3,7 @@ import { Octokit } from "octokit";
 import { logger } from "../logger";
 import type { SerializableBotContext } from "../shared/daemon-types";
 import { createMessageEnvelope, type JobPayloadMessage } from "../shared/ws-messages";
+import { addReaction, type ReactionContent } from "../utils/reactions";
 import { type CompletionResult, onStepComplete } from "../workflows/orchestrator";
 import { getByName, type WorkflowRunContext } from "../workflows/registry";
 import { markFailed, markRunning, markSucceeded, mergeState } from "../workflows/runs-store";
@@ -58,6 +59,22 @@ export async function executeWorkflowRun(
   });
 
   const octokit = new Octokit({ auth: installationToken });
+
+  // Best-effort reaction on the user's trigger comment. No-op for child runs
+  // (commentId === 0 because children inherit nothing from the parent's
+  // dispatch payload) and for label-triggered runs (no comment exists).
+  const reactOnTrigger = (content: ReactionContent): void => {
+    if (context.commentId === 0) return;
+    void addReaction({
+      octokit,
+      logger: log,
+      owner: context.owner,
+      repo: context.repo,
+      commentId: context.commentId,
+      eventType: context.eventName,
+      content,
+    });
+  };
 
   try {
     const entry = getByName(workflowRun.workflowName);
@@ -163,6 +180,8 @@ export async function executeWorkflowRun(
         "Workflow run completed",
       );
 
+      reactOnTrigger("hooray");
+
       completion = { status: "succeeded" };
 
       send({
@@ -201,6 +220,8 @@ export async function executeWorkflowRun(
         { durationMs: Date.now() - startedAt, outcome: "failed", reason: result.reason },
         "Workflow run reported failure",
       );
+
+      reactOnTrigger("confused");
 
       completion = { status: "failed", reason: result.reason };
 
@@ -249,6 +270,8 @@ export async function executeWorkflowRun(
       { err, durationMs: Date.now() - startedAt, outcome: "uncaught" },
       "Workflow handler threw",
     );
+
+    reactOnTrigger("confused");
 
     try {
       await onStepComplete({ octokit, logger: log }, workflowRun.runId, {
