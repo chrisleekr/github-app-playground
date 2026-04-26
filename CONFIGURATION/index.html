@@ -713,6 +713,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#composite-ship-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Composite ship workflow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#mode-matrix-whats-required-when" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1117,6 +1128,17 @@
     <span class="md-ellipsis">
       
         Triage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#composite-ship-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Composite ship workflow
       
     </span>
   </a>
@@ -1550,6 +1572,24 @@
 </tbody>
 </table>
 <p>See <a href="../TRIAGE/">Triage</a> for the binary <code>heavy</code> signal, circuit breaker, and the six fallback reasons that appear in logs.</p>
+<h2 id="composite-ship-workflow">Composite ship workflow<a class="headerlink" href="#composite-ship-workflow" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>REVIEW_RESOLVE_MAX_ITERATIONS</code></td>
+<td><code>2</code></td>
+<td>Range <code>1–5</code>. Caps the post-implement review/resolve loop inside <code>bot:ship</code>. Each iteration is one <code>review</code> run. A clean review (<code>findings.total === 0</code>) after at least 2 iterations short-circuits the loop; if the cap is reached with non-zero findings, ship marks succeeded but recommends manual re-review. Set to <code>1</code> to disable looping (run review and resolve once each, never short-circuit).</td>
+</tr>
+</tbody>
+</table>
+<p>See <a href="../BOT-WORKFLOWS/#ship-composite">bot workflows: ship (composite)</a> for the full loop semantics and retargeting rules.</p>
 <h2 id="mode-matrix-whats-required-when">Mode matrix — what's required when<a class="headerlink" href="#mode-matrix-whats-required-when" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
