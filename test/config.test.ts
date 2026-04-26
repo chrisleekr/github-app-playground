@@ -53,6 +53,39 @@ describe("configSchema — Anthropic provider", () => {
     const result = configSchema.safeParse({ ...BASE, provider: "anthropic" });
     expect(result.success).toBe(false);
   });
+
+  it("coerces empty-string credentials to undefined so they cannot shadow a real value", () => {
+    // Reproduces the production trap: a SealedSecret entry that decrypts to ""
+    // gets injected by `envFrom: secretRef` as ANTHROPIC_API_KEY="". Without
+    // coercion, downstream `apiKey ?? oauthToken` returns "" instead of the
+    // real OAuth token, and createLLMClient throws.
+    const result = configSchema.safeParse({
+      ...BASE,
+      provider: "anthropic",
+      anthropicApiKey: "",
+      claudeCodeOauthToken: "sk-ant-oat-test",
+      allowedOwners: "luxuryescapes",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.anthropicApiKey).toBeUndefined();
+      expect(result.data.claudeCodeOauthToken).toBe("sk-ant-oat-test");
+    }
+  });
+
+  it("coerces whitespace-only credentials to undefined", () => {
+    const result = configSchema.safeParse({
+      ...BASE,
+      provider: "anthropic",
+      anthropicApiKey: "   ",
+      claudeCodeOauthToken: "sk-ant-oat-test",
+      allowedOwners: "luxuryescapes",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.anthropicApiKey).toBeUndefined();
+    }
+  });
 });
 
 describe("configSchema — Bedrock provider", () => {

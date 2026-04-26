@@ -33,14 +33,26 @@ function isResultMessage(msg: unknown): msg is SDKResultMessage {
  * env mapping in `src/mcp/registry.ts`.
  */
 function buildProviderEnv(installationToken?: string): Record<string, string | undefined> {
+  // Strip empty credential env vars before forwarding to the CLI. The CLI's
+  // documented auth precedence chain (ANTHROPIC_API_KEY at position 3 beats
+  // CLAUDE_CODE_OAUTH_TOKEN at position 5) treats an empty string as a
+  // present-but-blank credential and selects it, blocking the real token
+  // from being used. Common cause: `envFrom: secretRef` over a Secret that
+  // carries a stale empty key.
+  const isBlank = (v: string | undefined): boolean => typeof v === "string" && v.trim() === "";
+  const { ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN, ...rest } = process.env;
+  const baseEnv: Record<string, string | undefined> = { ...rest };
+  if (!isBlank(ANTHROPIC_API_KEY)) baseEnv["ANTHROPIC_API_KEY"] = ANTHROPIC_API_KEY;
+  if (!isBlank(CLAUDE_CODE_OAUTH_TOKEN))
+    baseEnv["CLAUDE_CODE_OAUTH_TOKEN"] = CLAUDE_CODE_OAUTH_TOKEN;
   const tokenEnv: Record<string, string> =
     installationToken !== undefined && installationToken !== ""
       ? { GH_TOKEN: installationToken, GITHUB_TOKEN: installationToken }
       : {};
   if (config.provider === "bedrock") {
-    return { ...process.env, ...tokenEnv, CLAUDE_CODE_USE_BEDROCK: "1" };
+    return { ...baseEnv, ...tokenEnv, CLAUDE_CODE_USE_BEDROCK: "1" };
   }
-  return { ...process.env, ...tokenEnv };
+  return { ...baseEnv, ...tokenEnv };
 }
 
 /**
