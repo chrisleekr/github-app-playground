@@ -76,17 +76,37 @@ using Bun's `mock.module()`.
 
 ### Database-backed integration tests
 
-A handful of suites run against a real Postgres + Valkey instance instead
-of mocks. They are gated by `describe.skipIf(sql === null)` and skip
-cleanly when the services are unreachable, so a default `bun test` works
-without local infrastructure — but the suites only **exercise** their
+Some suites run against a real Postgres + Valkey instance instead of
+mocks. They are identified by **a `describe.skipIf(sql === null)` (or
+equivalent) gate against `process.env["TEST_DATABASE_URL"]`** — that is
+the contract, not the file list below. Locate every current opt-in suite
+with `grep -rn 'TEST_DATABASE_URL' test/`. Each suite skips cleanly when
+the services are unreachable, so a default `bun test` works without
+local infrastructure — but those suites only **exercise** their
 assertions when both services are running.
 
-| Suite                                           | What it covers                                                                                  |
-| ----------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `test/db/migrate.test.ts`                       | Applies every SQL migration on a fresh DB and asserts the schema shape.                         |
-| `test/integration/repo-knowledge.test.ts`       | Regression test for the `Bun.sql` UUID-array binding bug fixed in commit `d5e1b17`.             |
-| `test/integration/telemetry-aggregates.test.ts` | Operator aggregate queries in `src/db/queries/dispatch-stats.ts` across every `DispatchReason`. |
+Today's suites covered by this contract:
+
+| Suite                                           | What it covers                                                                                                   |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `test/db/migrate.test.ts`                       | Applies every SQL migration on a fresh DB and asserts the schema shape.                                          |
+| `test/integration/repo-knowledge.test.ts`       | Regression test for the `Bun.sql` UUID-array binding bug fixed in commit `d5e1b17`.                              |
+| `test/integration/telemetry-aggregates.test.ts` | Operator aggregate queries in `src/db/queries/dispatch-stats.ts` across every `DispatchReason`.                  |
+| `test/webhook/events/issue-comment.test.ts`     | Asserts the comment-trigger and label-trigger paths produce indistinguishable `workflow_runs` rows.              |
+| `test/workflows/runs-store.test.ts`             | CRUD shape and defaults for the `workflow_runs` state store.                                                     |
+| `test/workflows/handlers/ship.test.ts`          | Resume semantics for the `ship` composite workflow (T027 prior-failure carry-forward).                           |
+| `test/workflows/orchestrator.test.ts`           | Composite-workflow chaining: each child success enqueues the next, terminal child flips parent to `succeeded`.   |
+| `test/orchestrator/liveness-reaper.test.ts`     | Heartbeat-based reaper flips abandoned in-flight rows to `failed` once the owning daemon/orchestrator goes dark. |
+
+When you add a new suite that touches Postgres, gate it on
+`process.env["TEST_DATABASE_URL"]` the same way and **drop every table
+your migrations create** in `beforeAll`/`afterAll` (`_migrations`,
+`workflow_runs`, `repo_memory`, `triage_results`, `executions`,
+`daemons`, …) — Bun runs each test file in its own process under
+`scripts/test-isolated.sh`, so any table left behind by an earlier file
+makes the next file's migration re-run fail with `relation … already
+exists`. There is no need to update this section's table when adding a
+new suite — the contract above is what readers should follow.
 
 To run them locally:
 
@@ -101,25 +121,26 @@ bun test
 The defaults baked into the test files are:
 
 - `TEST_DATABASE_URL=postgres://bot:bot@localhost:5432/github_app_test`
-- `TEST_VALKEY_URL=redis://localhost:6379`
+- `VALKEY_URL=redis://localhost:6379` (default applied by `test/preload.ts`)
 
 Override either env var if you point the suites at a different host.
 
 > [!WARNING]
 > `test/integration/repo-knowledge.test.ts` is **destructive**: its
 > `beforeAll` hook drops and re-creates the `repo_memory`,
-> `triage_results`, `executions`, and `daemons` tables. To prevent
-> accidental data loss against a development DB, this suite is opt-in —
-> it only runs when `TEST_DATABASE_URL` is **explicitly set**. Set it on
-> the CLI (`TEST_DATABASE_URL=… bun test`) and aim it at a throwaway
-> database, never your `DATABASE_URL` target.
+> `triage_results`, `executions`, `daemons`, and `workflow_runs` tables.
+> To prevent accidental data loss against a development DB, this suite
+> is opt-in — it only runs when `TEST_DATABASE_URL` is **explicitly
+> set**. Set it on the CLI (`TEST_DATABASE_URL=… bun test`) and aim it
+> at a throwaway database, never your `DATABASE_URL` target.
 
 CI provisions Postgres-17 and Valkey-9 as service containers and exports
-both env vars on the `Test` step (see `.github/workflows/ci.yml`), so
-PRs run these suites end-to-end on every push. `scripts/test-isolated.sh`
-treats any non-zero `skip` count as a failure, so a silent skip — caused
-by, for example, a missing service container or a broken
-`TEST_DATABASE_URL` — fails the build instead of masquerading as green.
+`TEST_DATABASE_URL` + `VALKEY_URL` on the `Test` step (see
+`.github/workflows/ci.yml`), so PRs run these suites end-to-end on every
+push. `scripts/test-isolated.sh` treats any non-zero `skip` count as a
+failure, so a silent skip — caused by, for example, a missing service
+container or a broken `TEST_DATABASE_URL` — fails the build instead of
+masquerading as green.
 
 ---
 

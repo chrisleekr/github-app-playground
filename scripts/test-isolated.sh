@@ -12,7 +12,10 @@ for f in test/**/*.test.ts; do
   output=$(bun test "$f" 2>&1)
   has_zero_fail=false
   has_skip=false
-  if echo "$output" | grep -q ' 0 fail'; then
+  # Anchor on the leading-whitespace summary line Bun prints (e.g. " 0 fail")
+  # so test names, echoed strings, or stack traces containing the literal
+  # ' 0 fail' substring can't spuriously satisfy the success condition.
+  if echo "$output" | grep -qE '^[[:space:]]+0 fail'; then
     has_zero_fail=true
   fi
   # Bun prints " N skip" (leading whitespace) only when N > 0. Treat any
