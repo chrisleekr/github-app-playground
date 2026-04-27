@@ -63,7 +63,7 @@ const reproductionSchema = z
      * explaining why reproduction was skipped. For attempted reproductions,
      * commands run, output snippets, and the verdict.
      */
-    details: z.string().min(1).max(2000),
+    details: z.string().min(1).max(50_000),
   })
   .strict();
 
@@ -343,7 +343,7 @@ function buildTriagePrompt(input: {
     `      "reproduction": {`,
     `        "attempted": true | false,`,
     `        "reproduced": true | false | null,`,
-    `        "details": "<≤2000 chars; commands run + output + conclusion, OR 'Not a bug claim' for non-bugs>"`,
+    `        "details": "<concise but accurate and convincing — aim for ≤2000 chars, expand only when evidence demands it; commands run + output + conclusion, OR 'Not a bug claim' for non-bugs>"`,
     `      }`,
     `    }`,
     ``,
