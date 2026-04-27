@@ -1,45 +1,34 @@
-# Issue #16 — agent timeout abort controller
+# Issue #33 — fix(idempotency): isAlreadyProcessed passes direction:"desc" — silently ignored; durable check fails on hot PRs
 
 ## Summary
 
-The agent's wall-clock timeout used `Promise.race(agentLoop, timeoutPromise)`, which only rejected the racing promise — the losing `agentLoop` kept streaming tokens, kept the workspace pinned, and let the SDK subprocess (and its MCP servers) outlive the request. The daemon's `handleJobCancel` had no way to terminate a runaway agent for the same reason: `executeAgent` never accepted a cancellation signal.
+Closes #33. The durable idempotency check in `isAlreadyProcessed` was passing `direction: "desc"` to `octokit.rest.issues.listComments`, but the per-issue REST endpoint does not accept `direction` (or `sort`); GitHub silently dropped the parameter and returned the **oldest** 100 comments ascending. On any PR/issue with >100 prior comments the just-posted tracking-comment marker landed on page 2+, so the durable check returned `false` and webhook retries on a fresh pod (where the in-memory `processed` Map is empty) re-ran the full pipeline — duplicate clones, duplicate Agent SDK runs, duplicate Anthropic spend, and duplicate tracking comments.
 
-The fix replaces the race with an `AbortController` plumbed into the Claude Agent SDK's `query({ options: { abortController } })`. The wall-clock `setTimeout` now aborts that controller (instead of just rejecting), and the iterator tears down — closing the subprocess and MCP servers. `executeAgent` also accepts an optional caller `signal` (e.g. the daemon's per-job `AbortController.signal`) and forwards `abort` events to the SDK controller, so `handleJobCancel` actually stops in-flight work. The timer is cleared in `finally` so the happy path no longer pins the Bun event loop for up to `agentTimeoutMs` after a successful run.
+The fix replaces the bogus `direction: "desc"` with `since: ctx.triggerTimestamp` (already on `BotContext`, populated from `payload.comment.created_at` in `parseIssueCommentEvent` / `parseReviewCommentEvent`). This scopes the scan to comments at-or-after the webhook trigger; the tracking comment is posted seconds later, so even ~24 h of retries land inside the `since` window and the marker is guaranteed to be on page 1. The audit confirmed `tracking-comment.ts` is the only `listComments` caller in `src/`, so no other call sites needed the same correction.
 
-## Files changed
+## Files changed (path · one-line rationale)
 
-- `src/core/executor.ts` — added `signal?: AbortSignal` to `ExecuteAgentParams`; created an `AbortController` linked to the caller signal and wired it into `queryOptions.abortController`; replaced `Promise.race` with `await agentLoop` inside try/finally; timer aborts via `controller.abort(<error>)` and is cleared in `finally`; caller signal listener removed in `finally`.
-- `src/core/pipeline.ts` — added `signal?: AbortSignal` to `RunPipelineOverrides` and forwards it to `executeAgent` (only when defined, to keep `exactOptionalPropertyTypes` happy).
-- `src/daemon/job-executor.ts` — passes `abortController.signal` from the existing per-job controller into `runPipeline`, so `handleJobCancel`'s `abortController.abort()` now actually terminates the SDK iterator. Updated the comment block on `agentPid` to explain the controller-based teardown.
-- `test/core/executor.test.ts` — new file. Five unit tests covering the cancellation surface; mocks `@anthropic-ai/claude-agent-sdk` at module load.
+- `src/core/tracking-comment.ts` · replaced `direction: "desc"` with `since: triggerTimestamp` in `isAlreadyProcessed` and rewrote the inline comment to match the per-issue REST endpoint's documented contract (orders strictly by ascending ID; only `since`/`per_page`/`page` are honoured).
+- `test/core/tracking-comment.test.ts` · updated the call-shape assertion to pin `since`/`per_page` and assert `direction`/`sort` are NOT passed; added two behavioural tests (100-old-comments hot-PR and retry-path positive case) that the previous fixture never exercised.
 
-## Commits
+## Commits (sha · subject)
 
-- `695475d` — `fix(pipeline): abort SDK query on timeout and daemon cancel`
+- `43cfecf` · `fix(idempotency): scope durable check with since=triggerTimestamp instead of bogus direction:"desc"`
 
-## Tests run
+## Tests run (command · result)
 
-- `bun run typecheck` — pass
-- `bun run lint` — 0 errors in changed files
-- `bun test test/core/executor.test.ts` — 5 pass / 0 fail (113 ms; process exits promptly, validating the `clearTimeout` fix)
-- `bun test test/core/ test/workflows/handlers/` — 140 pass / 0 fail
-- Full `bun test` — no regressions vs `main`; pre-existing failures are infrastructure-dependent (Postgres/Valkey not running) and cross-file `mock.module` interactions unrelated to this change.
+- `bun test test/core/tracking-comment.test.ts` · **28 pass / 0 fail** (74 expect calls; `src/core/tracking-comment.ts` 100% line + 100% function coverage).
+- `bun test test/webhook/router.test.ts` · **16 pass / 0 fail** (the file that exercises the two-layer idempotency sequence in `processRequest`).
+- `bun run typecheck` · clean (`tsc --noEmit` exits 0).
+- `bun run lint` · 0 errors (139 pre-existing warnings on unrelated files; none on the changed files).
+- `bun test` (full suite) · 328 pass / 191 fail / 14 errors. The failing/error counts are **identical to the pre-change baseline on `main`** (verified by `git stash` + re-run); no regressions introduced by this change.
 
 ## Verification
 
-1. **Unit (test/core/executor.test.ts)**
-   - `lastQueryCall.options.abortController` is the controller `executeAgent` constructed (forwards correctly).
-   - With `config.agentTimeoutMs = 25` and an iterator that resolves on abort, the iterator's `signal.reason` is an `Error("Agent execution timed out after 25ms")` — confirming the timer reaches the SDK.
-   - On the happy path, `clearTimeout` is called with the same handle that `setTimeout(..., 60_000)` returned — proving the wall-clock timer no longer pins the event loop.
-   - Pre-aborted caller signal: `result.success === false` and `lastQueryCall.options.abortController.signal.aborted === true` — the abort short-circuits and propagates.
-   - Mid-execution caller abort: a `queueMicrotask` triggers `controller.abort()` after the iterator starts; the SDK controller observes `aborted === true` and `executeAgent` resolves with `success: false`.
+- **T1 (patch `isAlreadyProcessed`)** — done. `src/core/tracking-comment.ts:92-115` now passes `since: triggerTimestamp` and `per_page: 100`, with no `direction`/`sort`. The rewritten inline comment explicitly documents that the per-issue endpoint orders by ascending ID and that `direction`/`sort` are silently dropped (only the repo-level sibling endpoint accepts them).
+- **T2 (rewire existing test)** — done. The assertion test at `test/core/tracking-comment.test.ts:51-69` injects an explicit `triggerTimestamp` via `makeBotContext`, asserts `since` matches it, asserts `per_page === 100`, and asserts both `direction` and `sort` are `undefined`.
+- **T3 (regression tests)** — done. The hot-PR test at `test/core/tracking-comment.test.ts:71-87` builds a 100-element fixture of unrelated `<!-- delivery:other-... -->` markers and asserts the function returns `false`. The retry-path positive test at `test/core/tracking-comment.test.ts:89-114` proves that a since-bounded window containing the bot's own marker resolves to `true`.
+- **T4 (audit other callers)** — done. `Grep listComments src/` returns a single hit (`src/core/tracking-comment.ts:100`); no other call site in `src/` needed updating, so this PR remains correctly scoped to the one defect.
+- **T5 (verification commands)** — done. See **Tests run** above.
 
-2. **Integration boundary**
-   - `runPipeline` only forwards the signal when defined (`...(overrides.signal !== undefined ? { signal: overrides.signal } : {})`), preserving `exactOptionalPropertyTypes`.
-   - `executeJob` already creates a `jobAbortControllers` per offerId and aborts it in `handleJobCancel`; this PR closes the gap by piping `abortController.signal` into `runPipeline`. The existing duplicate-`job:result` guard (`if (!abortController.signal.aborted)`) keeps cancel-vs-success races correct.
-
-3. **Static checks**
-   - `bun run typecheck` covers the new `signal` field on `ExecuteAgentParams` and `RunPipelineOverrides`.
-   - `bun run lint` clean for the new file.
-
-Closes #16.
+The fix preserves behaviour for the common case (cold PRs with <100 comments, where the bug was already invisible) while correcting the hot-PR / retry case (>100 prior comments + retry on a fresh pod) that the issue called out as the cause of duplicate Anthropic spend and double tracking comments.
