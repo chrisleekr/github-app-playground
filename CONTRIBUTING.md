@@ -74,6 +74,53 @@ MUST be mocked in tests — no real API calls in the test suite. See the
 existing `test/webhook/router.test.ts` for the project's mocking patterns
 using Bun's `mock.module()`.
 
+### Database-backed integration tests
+
+A handful of suites run against a real Postgres + Valkey instance instead
+of mocks. They are gated by `describe.skipIf(sql === null)` and skip
+cleanly when the services are unreachable, so a default `bun test` works
+without local infrastructure — but the suites only **exercise** their
+assertions when both services are running.
+
+| Suite                                           | What it covers                                                                                  |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `test/db/migrate.test.ts`                       | Applies every SQL migration on a fresh DB and asserts the schema shape.                         |
+| `test/integration/repo-knowledge.test.ts`       | Regression test for the `Bun.sql` UUID-array binding bug fixed in commit `d5e1b17`.             |
+| `test/integration/telemetry-aggregates.test.ts` | Operator aggregate queries in `src/db/queries/dispatch-stats.ts` across every `DispatchReason`. |
+
+To run them locally:
+
+```bash
+# 1. Bring up Postgres + Valkey via Docker Compose
+bun run dev:deps
+
+# 2. Run the suite — defaults match docker-compose.dev.yml
+bun test
+```
+
+The defaults baked into the test files are:
+
+- `TEST_DATABASE_URL=postgres://bot:bot@localhost:5432/github_app_test`
+- `TEST_VALKEY_URL=redis://localhost:6379`
+
+Override either env var if you point the suites at a different host.
+
+> [!WARNING]
+> `test/integration/repo-knowledge.test.ts` is **destructive**: its
+> `beforeAll` hook drops and re-creates the `repo_memory`,
+> `triage_results`, `executions`, and `daemons` tables. To prevent
+> accidental data loss against a development DB, this suite is opt-in —
+> it only runs when `TEST_DATABASE_URL` is **explicitly set**. Set it on
+> the CLI (`TEST_DATABASE_URL=… bun test`) and aim it at a throwaway
+> database, never your `DATABASE_URL` target.
+
+CI provisions Postgres-17 and Valkey-9 as service containers and exports
+both env vars on the `Test` step (see `.github/workflows/ci.yml`), so
+PRs run these suites end-to-end on every push. `scripts/test-isolated.sh`
+treats any non-zero `skip` count as a failure, so a silent skip — caused
+by, for example, a missing service container or a broken
+`TEST_DATABASE_URL` — fails the build instead of masquerading as green.
+
 ---
 
 ## Code Quality

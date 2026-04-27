@@ -10,12 +10,29 @@ failures=()
 
 for f in test/**/*.test.ts; do
   output=$(bun test "$f" 2>&1)
+  has_zero_fail=false
+  has_skip=false
   if echo "$output" | grep -q ' 0 fail'; then
+    has_zero_fail=true
+  fi
+  # Bun prints " N skip" (leading whitespace) only when N > 0. Treat any
+  # non-zero skip as a failure so silently-skipped suites stop counting
+  # as green — a fully-skipped suite trivially satisfies " 0 fail" but
+  # exercises zero assertions, which previously masked DB-backed
+  # integration tests when the test database was unreachable.
+  if echo "$output" | grep -qE '^[[:space:]]+[1-9][0-9]* skip'; then
+    has_skip=true
+  fi
+  if $has_zero_fail && ! $has_skip; then
     ((passed++))
   else
     ((failed++))
     failures+=("$f")
-    echo "FAIL: $f"
+    if $has_zero_fail && $has_skip; then
+      echo "FAIL (skipped tests present): $f"
+    else
+      echo "FAIL: $f"
+    fi
     # Full output — module load failures don't emit '(fail)' lines, so a
     # filtered view would hide the root cause.
     echo "$output"

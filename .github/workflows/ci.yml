@@ -31,6 +31,35 @@ jobs:
       !contains(github.event.head_commit.message, 'skip ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Postgres + Valkey are provisioned as service containers so the
+    # DB-backed integration suites (test/db/migrate.test.ts,
+    # test/integration/repo-knowledge.test.ts,
+    # test/integration/telemetry-aggregates.test.ts) actually execute in
+    # CI instead of `describe.skipIf`-ing themselves to green. Image tags
+    # and healthcheck cadence mirror docker-compose.dev.yml.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: bot
+          POSTGRES_PASSWORD: bot
+          POSTGRES_DB: github_app
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bot -d github_app"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+      valkey:
+        image: valkey/valkey:9
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
     steps:
       - name: Checkout source code
         uses: actions/checkout@v6
@@ -82,7 +111,27 @@ jobs:
         # wrapper restores severity-based gating + an inline GHSA allowlist.
         run: bun run audit:ci
 
+      - name: Seed test database
+        # The `services:` Postgres container does NOT execute
+        # /docker-entrypoint-initdb.d/, so the github_app_test database
+        # mounted by docker-compose.dev.yml does not exist here. Create
+        # it explicitly before the test step. `psql` ships with
+        # postgresql-client, which is preinstalled on ubuntu-latest
+        # runners (apt-get install kept as a fallback in case the image
+        # changes upstream).
+        env:
+          PGPASSWORD: bot
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends postgresql-client
+          fi
+          psql -h localhost -U bot -d github_app -v ON_ERROR_STOP=1 -f scripts/init-test-db.sql
+
       - name: Test
+        env:
+          TEST_DATABASE_URL: postgres://bot:bot@localhost:5432/github_app_test
+          TEST_VALKEY_URL: redis://localhost:6379
         run: bun run test
 
       - name: Build
