@@ -32,7 +32,7 @@ contract in `CONTRIBUTING.md`. Closes #50.
 
 ## Commits (sha · subject)
 
-- (filled in after `git push`) · `ci(testing): wire Postgres + Valkey services into ci.yml`
+- `cb8ef21` · `ci(testing): wire Postgres + Valkey services into ci.yml (closes #50)`
 
 ## Tests run (command · result)
 
