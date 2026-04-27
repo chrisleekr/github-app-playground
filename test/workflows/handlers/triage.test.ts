@@ -265,4 +265,47 @@ describe("triage handler (SDK-driven)", () => {
       expect(result.reason).toContain("issue target");
     }
   });
+
+  it("accepts reproduction.details longer than the old 2000-char cap", async () => {
+    triageVerdict = JSON.stringify({
+      valid: true,
+      confidence: 0.9,
+      summary: "Long-detail repro accepted under new sanity bound.",
+      recommendedNext: "plan",
+      evidence: [{ file: "src/foo.ts", line: 42, note: "race window" }],
+      reproduction: {
+        attempted: true,
+        reproduced: true,
+        details: "x".repeat(3000),
+      },
+    });
+    const ctx = buildCtx();
+
+    const result = await triageHandler(ctx);
+
+    expect(result.status).toBe("succeeded");
+  });
+
+  it("rejects reproduction.details above the 50k sanity bound", async () => {
+    triageVerdict = JSON.stringify({
+      valid: true,
+      confidence: 0.9,
+      summary: "Runaway details should be rejected by sanity bound.",
+      recommendedNext: "plan",
+      evidence: [],
+      reproduction: {
+        attempted: true,
+        reproduced: true,
+        details: "x".repeat(50_001),
+      },
+    });
+    const ctx = buildCtx();
+
+    const result = await triageHandler(ctx);
+
+    expect(result.status).toBe("failed");
+    if (result.status === "failed") {
+      expect(result.reason).toContain("TRIAGE_VERDICT.json failed validation");
+    }
+  });
 });
