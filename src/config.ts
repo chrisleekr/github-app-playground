@@ -16,6 +16,85 @@ const nonEmptyOptionalString = z.preprocess(
 );
 
 /**
+ * Duration field that accepts either a positive integer (ms) or a
+ * duration string with `h`/`m`/`s` suffix (e.g. `4h`, `30m`, `1.5h`,
+ * `90s`). The output is always integer milliseconds. Used by ship-loop
+ * env vars where operators naturally express ceilings as durations.
+ *
+ * `.default()` on the wrapping field bypasses preprocess (Zod applies
+ * defaults when input is `undefined`, before preprocess runs), so
+ * downstream `.default(N)` callers can pass a raw integer.
+ */
+const DURATION_PATTERN = /^(\d+(?:\.\d+)?)(h|m|s)$/;
+const durationMs = z.preprocess((v) => {
+  if (typeof v === "number") return v;
+  if (typeof v !== "string") return v;
+  const trimmed = v.trim();
+  if (trimmed === "") return undefined;
+  if (/^\d+$/.test(trimmed)) return Number(trimmed);
+  // eslint-disable-next-line @typescript-eslint/prefer-regexp-exec -- match() reads cleaner here; equivalent to RegExp#exec for capture-group access
+  const match = trimmed.match(DURATION_PATTERN);
+  if (match === null) return v;
+  const numericPart = match[1];
+  const unit = match[2];
+  if (numericPart === undefined || unit === undefined) return v;
+  const n = Number(numericPart);
+  const mult = unit === "h" ? 3_600_000 : unit === "m" ? 60_000 : 1_000;
+  return Math.round(n * mult);
+}, z.number().int().positive());
+
+/**
+ * Comma-separated list of positive integers (ms). Empty input is
+ * rejected — the list MUST contain at least one value because the
+ * shepherding loop iterates until exhaustion. Used by
+ * `MERGEABLE_NULL_BACKOFF_MS_LIST`.
+ */
+const mergeableBackoffList = z
+  .string()
+  .default("5000,10000,30000,60000,60000")
+  .transform((raw, ctx): number[] => {
+    const parts = raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (parts.length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: "MERGEABLE_NULL_BACKOFF_MS_LIST must contain at least one positive integer",
+      });
+      return z.NEVER;
+    }
+    const out: number[] = [];
+    for (const part of parts) {
+      const n = Number(part);
+      if (!Number.isInteger(n) || n <= 0) {
+        ctx.addIssue({
+          code: "custom",
+          message: `MERGEABLE_NULL_BACKOFF_MS_LIST entries must be positive integers (ms); got "${part}"`,
+        });
+        return z.NEVER;
+      }
+      out.push(n);
+    }
+    return out;
+  });
+
+/**
+ * Comma-separated list of branch names. Empty/unset → empty array
+ * (no branch restriction). Used by `SHIP_FORBIDDEN_TARGET_BRANCHES`.
+ */
+const shipForbiddenTargetBranchesField = z
+  .string()
+  .optional()
+  .transform((v): string[] => {
+    if (v === undefined || v.trim() === "") return [];
+    return v
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  });
+
+/**
  * Zod-validated environment variables.
  * Fails fast at startup if required vars are missing.
  */
@@ -96,6 +175,14 @@ const configSchema = z
     // exactly; a mismatch silently drops every webhook event because the trigger
     // matcher returns no hit.
     triggerPhrase: z.string().default("@chrisleekr-bot"),
+
+    // GitHub App bot author login as it appears in commit/push payloads —
+    // distinct from `triggerPhrase` (which is the @-mention). Used by the ship
+    // workflow's foreign-push detection: pushes whose head author equals
+    // `botAppLogin` are treated as bot-authored and don't terminate active
+    // sessions. Default matches the production app login (`chrisleekr-bot[bot]`).
+    // Override per-environment via `BOT_APP_LOGIN`.
+    botAppLogin: z.string().default("chrisleekr-bot[bot]"),
 
     // HTTP port for the webhook listener. Independent of `wsPort` (orchestrator WS).
     port: z.coerce.number().int().positive().default(3000),
@@ -352,6 +439,83 @@ const configSchema = z
     // ship parent terminates with status=succeeded but its tracking comment
     // recommends a manual re-review. Range: 1–5; default 2.
     reviewResolveMaxIterations: z.coerce.number().int().min(1).max(5).default(2),
+
+    // --- 13. Ship workflow (PR shepherding to merge-ready, feature 20260427-201332) ---
+
+    // Wall-clock ceiling for a single `bot:ship` session — the maximum the
+    // shepherding loop may run end-to-end (across continuations and waits)
+    // before transitioning the intent to `deadline_exceeded`. Accepts either
+    // a plain integer (milliseconds) or a duration string with `h`/`m`/`s`
+    // suffix (e.g., `4h`, `30m`, `90s`, fractional `1.5h`). Default 4h.
+    // Per-invocation `--deadline` overrides on the literal `bot:ship` command
+    // are validated against this ceiling by `src/workflows/ship/literal-command.ts`.
+    maxWallClockPerShipRun: durationMs.default(14_400_000),
+
+    // Iteration-count cap (FR-012). The shepherding loop checks this at the
+    // start of each iteration BEFORE the probe runs; on hit, the intent
+    // transitions to `human_took_over` with `BlockerCategory='iteration-cap'`.
+    // Pairs with `MAX_WALL_CLOCK_PER_SHIP_RUN` — whichever fires first wins.
+    maxShipIterations: z.coerce.number().int().positive().default(50),
+
+    // Cron tickle cadence — how often `src/workflows/ship/tickle-scheduler.ts`
+    // scans Valkey `ship:tickle` for due continuations and re-enqueues them
+    // as daemon jobs. Lower values reduce wake latency at the cost of
+    // background CPU. Default 15s.
+    cronTickleIntervalMs: z.coerce.number().int().positive().default(15_000),
+
+    // Bounded backoff schedule for GitHub `mergeable=null` (FR-021). When
+    // the GraphQL `mergeable` field returns null (GitHub still computing
+    // mergeability), the probe re-polls with intervals from this list.
+    // On schedule exhaustion the verdict is `mergeable_pending` and the
+    // session yields per FR-020 — it MUST NOT terminate. Default
+    // `5000,10000,30000,60000,60000` (≈ 2m45s total).
+    mergeableNullBackoffMsList: mergeableBackoffList,
+
+    // Single global safety margin for the reviewer-latency barrier
+    // (FR-023). When no non-bot review has been observed on the current
+    // head SHA, the barrier defers `ready` until at least this much time
+    // has elapsed since the most recent push. The system MUST NOT carry a
+    // reviewer-login list anywhere — this single-knob design is intentional
+    // (research.md R3). Default 20 minutes.
+    reviewBarrierSafetyMarginMs: z.coerce.number().int().positive().default(1_200_000),
+
+    // Per-(intent, signature) cap on resolve/review fix attempts
+    // (FR-013). Once the count reaches this value for a derived
+    // signature, the next attempt halts with `BlockerCategory='flake-cap'`.
+    // Backed by the `ship_fix_attempts` table (T039).
+    fixAttemptsPerSignatureCap: z.coerce.number().int().positive().default(3),
+
+    // Comma-separated list of branch names the bot must refuse to shepherd
+    // against (FR-015 eligibility gate). Empty list (default) imposes no
+    // branch restriction beyond the standard owner/fork/state checks.
+    // Example: `main,master,release` blocks `bot:ship` against any of
+    // those target branches; the maintainer-facing rejection message
+    // surfaces the offending branch name.
+    shipForbiddenTargetBranches: shipForbiddenTargetBranchesField,
+
+    // Feature flag — when true, the shepherding handler uses the structural
+    // probe verdict (`src/workflows/ship/verdict.ts` + `probe.ts`) as the
+    // terminal-readiness signal. When false, the legacy in-process
+    // review/resolve loop runs unchanged. Defaults off for safe rollout
+    // (research.md R8 cutover plan); flipped on after Phase 1+2 soak.
+    shipUseProbeVerdict: z.boolean().default(false),
+
+    // Feature flag — when true, the shepherding handler releases the
+    // daemon slot between iterations and re-enters via continuation
+    // (Valkey `ship:tickle` + Postgres `ship_continuations`). When false,
+    // the legacy in-process loop holds the slot for the full session.
+    // Defaults off for safe rollout; flipped on after the probe verdict
+    // path is validated.
+    shipUseContinuationLoop: z.boolean().default(false),
+
+    // Feature flag — when true, enables the natural-language classifier
+    // (FR-025/025a) and label-trigger (FR-026/026a) surfaces alongside
+    // the literal `bot:<verb>` comment surface. When false, only the
+    // literal surface is active (matches legacy behaviour). Defaults off
+    // so the cost of the NL classifier is not paid until operators opt
+    // in. The mention-prefix gate (FR-025a) reuses the existing
+    // `TRIGGER_PHRASE` env var; no separate trigger-phrase env is added.
+    shipUseTriggerSurfacesV2: z.boolean().default(false),
   })
   .superRefine((data, ctx) => {
     validateServerModeCredentials(data, ctx);
@@ -581,6 +745,7 @@ function loadConfig(): Config {
     cloneBaseDir: process.env["CLONE_BASE_DIR"],
     cloneDepth: process.env["CLONE_DEPTH"],
     triggerPhrase: process.env["TRIGGER_PHRASE"],
+    botAppLogin: process.env["BOT_APP_LOGIN"],
     port: process.env["PORT"],
     logLevel: process.env["LOG_LEVEL"],
     nodeEnv: process.env.NODE_ENV,
@@ -635,6 +800,27 @@ function loadConfig(): Config {
 
     // Group 12 — Composite ship review/resolve loop
     reviewResolveMaxIterations: process.env["REVIEW_RESOLVE_MAX_ITERATIONS"],
+
+    // Group 13 — Ship workflow (PR shepherding to merge-ready)
+    maxWallClockPerShipRun: process.env["MAX_WALL_CLOCK_PER_SHIP_RUN"],
+    maxShipIterations: process.env["MAX_SHIP_ITERATIONS"],
+    cronTickleIntervalMs: process.env["CRON_TICKLE_INTERVAL_MS"],
+    mergeableNullBackoffMsList: process.env["MERGEABLE_NULL_BACKOFF_MS_LIST"],
+    reviewBarrierSafetyMarginMs: process.env["REVIEW_BARRIER_SAFETY_MARGIN_MS"],
+    fixAttemptsPerSignatureCap: process.env["FIX_ATTEMPTS_PER_SIGNATURE_CAP"],
+    shipForbiddenTargetBranches: process.env["SHIP_FORBIDDEN_TARGET_BRANCHES"],
+    shipUseProbeVerdict: parseBooleanEnv(
+      "SHIP_USE_PROBE_VERDICT",
+      process.env["SHIP_USE_PROBE_VERDICT"],
+    ),
+    shipUseContinuationLoop: parseBooleanEnv(
+      "SHIP_USE_CONTINUATION_LOOP",
+      process.env["SHIP_USE_CONTINUATION_LOOP"],
+    ),
+    shipUseTriggerSurfacesV2: parseBooleanEnv(
+      "SHIP_USE_TRIGGER_SURFACES_V2",
+      process.env["SHIP_USE_TRIGGER_SURFACES_V2"],
+    ),
   });
 
   assertOauthRequiresAllowlist(cfg);

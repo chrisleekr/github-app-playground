@@ -103,6 +103,46 @@ Every dispatch decision writes a `dispatch_reason` log field and, when `DATABASE
 | `src/shared/`       | Types shared between server and daemon (WebSocket messages, dispatch enums).                                                               |
 | `src/utils/`        | Retry, sanitisation, circuit breaker.                                                                                                      |
 
+## PR shepherding reactor + continuation flow
+
+The new `bot:ship` lifecycle (flag-gated; see [SHIP.md](SHIP.md)) is event-driven rather than long-running. A trigger creates a `ship_intents` row and persists a `ship_continuations` row with `wake_at`. Two paths advance the session:
+
+```mermaid
+flowchart LR
+    Trigger["bot:ship trigger<br/>literal / NL / label"]:::input
+    SessRunner["session-runner.ts"]:::core
+    Intent["ship_intents row"]:::store
+    Cont["ship_continuations row<br/>wake_at"]:::store
+
+    WebhookEvt["PR/check/review<br/>webhook event"]:::input
+    Reactor["webhook-reactor.fanOut"]:::core
+    TickleSet["Valkey ship:tickle<br/>sorted set"]:::store
+
+    Cron["tickle-scheduler<br/>polls every CRON_TICKLE_INTERVAL_MS"]:::core
+    Reentry["session-runner re-entry<br/>continuation loop"]:::core
+    Terminal["terminal status<br/>+ tracking comment"]:::output
+
+    Trigger --> SessRunner
+    SessRunner --> Intent
+    SessRunner --> Cont
+
+    WebhookEvt --> Reactor
+    Reactor --> Cont
+    Reactor --> TickleSet
+
+    Cron --> TickleSet
+    TickleSet --> Reentry
+    Reentry --> Intent
+    Reentry --> Terminal
+
+    classDef input fill:#1f6feb,stroke:#0b3d99,color:#ffffff
+    classDef core fill:#8957e5,stroke:#4c2889,color:#ffffff
+    classDef store fill:#0e8a16,stroke:#063d09,color:#ffffff
+    classDef output fill:#cf222e,stroke:#85090e,color:#ffffff
+```
+
+The reactor (`fanOut`) writes `wake_at = now()` and `ZADD ship:tickle 0 <intent_id>` so the next cron tick (typically under 30s) re-enters the runner. This keeps daemon slots free between iterations and gives the bot crash-restart safety: on boot, `tickle-scheduler` reconciles missed wakes from Postgres into Valkey before the periodic timer's first tick.
+
 ## Further reading
 
 - [Bot Workflows](BOT-WORKFLOWS.md) — registry-driven `bot:*` label + `@chrisleekr-bot` comment dispatch, the composite ship cascade, and how to add a new workflow. Source of truth: `src/workflows/registry.ts`.

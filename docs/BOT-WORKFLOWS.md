@@ -150,6 +150,22 @@ Composite workflows like `ship` insert a child row per step. When the child comp
 - **Cost note**: every ship pays for at least two `review` and one `resolve` agent run (the loop's lower bound). With `REVIEW_RESOLVE_MAX_ITERATIONS=2`, the worst case is 2 review + 2 resolve. Per project direction (2026-04-25), accuracy beats cost — closing the loop justifies the extra spend.
 - **Example trigger**: add label `bot:ship`, or comment "`@chrisleekr-bot ship this`"
 
+### ship (PR shepherding lifecycle, `ship_intents`)
+
+A separate, newer lifecycle layered on top of the composite handler — **flag-gated** behind `SHIP_USE_TRIGGER_SURFACES_V2`, `SHIP_USE_PROBE_VERDICT`, and `SHIP_USE_CONTINUATION_LOOP`. Default off; the composite path above is unchanged when these flags are unset. See [`docs/SHIP.md`](SHIP.md) for the operator-facing summary.
+
+- **State**: rows in `ship_intents` (status: `active` | `paused` | `merged_externally` | `ready_awaiting_human_merge` | `deadline_exceeded` | `human_took_over` | `aborted_by_user` | `pr_closed`). Wake events queued in Valkey `ship:tickle`. Cancellation flag at `ship:cancel:{intent_id}`.
+- **Three trigger surfaces (FR-027)** — all functionally equivalent, normalised to a single `CanonicalCommand`:
+  1. **Literal**: `bot:ship` (or `bot:ship --deadline 2h`) PR comment. Deterministic regex parser. Available without the v2 flag.
+  2. **Natural language**: `@chrisleekr-bot ship this please`. Mention-prefix-gated NL classifier (FR-025a) — zero LLM cost on comments without the mention. Bedrock single-turn classification.
+  3. **Label**: apply `bot:ship` (or `bot:ship/deadline=2h`). Bot self-removes the label after acting (FR-026a). Re-application is the supported re-trigger mechanism.
+- **Lifecycle commands** (same three surfaces): `bot:stop` / `bot:resume` / `bot:abort-ship`.
+- **Reactor (T023-T027)**: `pull_request.{synchronize,closed}`, `pull_request_review.submitted`, `pull_request_review_comment.{created,edited,deleted}`, `check_run.completed`, `check_suite.completed` early-wake any active intent on the affected PR via Valkey `ZADD ship:tickle 0 <intent_id>`. Reactor on `synchronize` from a non-bot pusher transitions to terminal `human_took_over` + `manual-push-detected` (FR-010). Reactor on `pull_request.closed` transitions to `merged_externally` or `pr_closed`.
+- **Probe verdict ladder** (`src/workflows/ship/verdict.ts`): `human_took_over` > `behind_base` > `failing_checks` > `pending_checks` > `mergeable_pending` > `changes_requested` > `open_threads` > `ready`. The `mergeable=null` backoff schedule is bounded by `MERGEABLE_NULL_BACKOFF_MS_LIST`.
+- **Terminal `ready` action** (FR-019): `markPullRequestReadyForReview` GraphQL mutation if PR `isDraft === true`, then update tracking comment to terminal state, then transition `ship_intents.status = 'ready_awaiting_human_merge'`. Failure of step 1 does NOT block 2 / 3 (logged + surfaced in the tracking comment). The bot **never** calls `gh pr merge` (FR-008, T046b static guard).
+- **MCP server**: `resolve-review-thread` exposes the `resolveReviewThread` GraphQL mutation as a single tool the resolve handler can call — bound to one PR at construction; refuses cross-PR thread ids.
+- **Rollout** (research.md R8): three flags default off; enable for one-week soak; follow-up PR removes flags + dead code paths.
+
 ## User-facing surfaces
 
 Each workflow run produces two GitHub-visible signals: a **tracking comment** (the bot's working/result body) and a **reaction set** on the user's trigger comment.

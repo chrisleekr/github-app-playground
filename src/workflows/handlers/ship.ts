@@ -8,6 +8,12 @@ import {
   type WorkflowRunContext,
 } from "../registry";
 import { findLatestForTarget, type WorkflowRunRow } from "../runs-store";
+// T028 v2 entry — re-exported for spec-locator parity with the
+// CanonicalCommand path described in the tasks.md T028 description. The
+// legacy WorkflowHandler `handler` below covers the workflow_runs
+// composite lifecycle; `runShipFromCommand` covers the new
+// ship_intents lifecycle driven by trigger-router.routeTrigger(...).
+export { runShipFromCommand } from "../ship/session-runner";
 
 /**
  * `ship` composite handler (T031) — the entry point for the end-to-end

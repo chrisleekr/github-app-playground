@@ -147,6 +147,7 @@ export const handler: WorkflowHandler = async (ctx) => {
       ...(trackingCommentId !== undefined && trackingCommentId !== null
         ? { trackingCommentId }
         : {}),
+      ...(topLevelComments.length > 0 ? { enableResolveReviewThread: true } : {}),
     });
     if (!result.success) {
       return { status: "failed", reason: "resolve pipeline execution failed" };

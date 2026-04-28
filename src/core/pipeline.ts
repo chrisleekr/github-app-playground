@@ -134,6 +134,13 @@ export interface RunPipelineOverrides {
    * daemon to make `handleJobCancel` actually terminate the agent.
    */
   signal?: AbortSignal;
+  /**
+   * Opt-in for the resolve-review-thread MCP server (T029/T030). Set
+   * `true` from the `resolve` handler when the PR has open review threads
+   * — registers the server and adds its tool to the allowed-tools list.
+   * Off by default so other workflows don't see the tool.
+   */
+  enableResolveReviewThread?: boolean;
 }
 
 /**
@@ -238,11 +245,18 @@ export async function runPipeline(
         {
           workDir,
           ...(enrichedCtx.repoMemory !== undefined ? { repoMemory: enrichedCtx.repoMemory } : {}),
+          ...(overrides.enableResolveReviewThread === true
+            ? { enableResolveReviewThread: true }
+            : {}),
         },
       );
 
-      const allowedTools =
+      const baseAllowedTools =
         overrides.allowedTools ?? resolveAllowedTools(enrichedCtx, enrichedCtx.daemonCapabilities);
+      const allowedTools =
+        overrides.enableResolveReviewThread === true && enrichedCtx.isPR
+          ? [...baseAllowedTools, "mcp__resolve_review_thread__resolve_review_thread"]
+          : baseAllowedTools;
 
       const result = await executeAgent({
         ctx: enrichedCtx,

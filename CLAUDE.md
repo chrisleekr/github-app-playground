@@ -147,7 +147,7 @@ Validate locally with `bun run docs:build` before pushing. If no matching doc ex
 
 <!-- SPECKIT START -->
 
-For additional context about technologies to be used, project structure,
-shell commands, and other important information, read the current plan
+Active feature plan: `specs/20260427-201332-pr-shepherding-merge-ready/plan.md`
+(spec, research, data-model, contracts, and quickstart live alongside it).
 
 <!-- SPECKIT END -->

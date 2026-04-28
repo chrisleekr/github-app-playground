@@ -1,0 +1,38 @@
+{
+  "repository": {
+    "pullRequest": {
+      "number": 102,
+      "isDraft": false,
+      "state": "OPEN",
+      "merged": false,
+      "mergeable": "MERGEABLE",
+      "mergeStateStatus": "CLEAN",
+      "reviewDecision": "APPROVED",
+      "baseRefName": "main",
+      "baseRefOid": "base-sha-3",
+      "headRefName": "feat/z",
+      "headRefOid": "human-sha",
+      "author": { "login": "alice" },
+      "reviewThreads": { "totalCount": 0, "nodes": [] },
+      "commits": {
+        "nodes": [
+          {
+            "commit": {
+              "oid": "human-sha",
+              "committedDate": "2026-04-28T01:00:00Z",
+              "author": {
+                "user": { "login": "alice" },
+                "email": "alice@example.com"
+              },
+              "statusCheckRollup": {
+                "state": "SUCCESS",
+                "contexts": { "nodes": [] }
+              }
+            }
+          }
+        ]
+      },
+      "reviews": { "nodes": [] }
+    }
+  }
+}

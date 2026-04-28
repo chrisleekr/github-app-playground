@@ -213,19 +213,26 @@ Under **Permissions & events**, expand the **Repository permissions** section an
 
 ### 1.7 Subscribe to Events
 
-After you set permissions, the **Subscribe to events** section becomes available and lists only events that match the permissions you granted. Check all five:
+After you set permissions, the **Subscribe to events** section becomes available and lists only events that match the permissions you granted. Check all of these:
 
-| Event checkbox in GitHub UI      | Action(s) handled                                                               | Handler file                           |
-| -------------------------------- | ------------------------------------------------------------------------------- | -------------------------------------- |
-| **Issue comments**               | `issue_comment.created`                                                         | `src/webhook/events/issue-comment.ts`  |
-| **Pull requests**                | `pull_request.opened`                                                           | `src/webhook/events/pull-request.ts`   |
-| **Pull request reviews**         | `pull_request_review.submitted`                                                 | `src/webhook/events/review.ts`         |
-| **Pull request review comments** | `pull_request_review_comment.created`                                           | `src/webhook/events/review-comment.ts` |
-| **Pull request review threads**  | `pull_request_review_thread.resolved` / `pull_request_review_thread.unresolved` | `src/webhook/events/review-thread.ts`  |
+| Event checkbox in GitHub UI      | Action(s) handled                                                                                   | Handler file                           |
+| -------------------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| **Issue comments**               | `issue_comment.created`                                                                             | `src/webhook/events/issue-comment.ts`  |
+| **Issues**                       | `issues.labeled` / `issues.unlabeled`                                                               | `src/webhook/events/issues.ts`         |
+| **Pull requests**                | `pull_request.opened` / `.labeled` / `.synchronize` / `.closed`                                     | `src/webhook/events/pull-request.ts`   |
+| **Pull request reviews**         | `pull_request_review.submitted`                                                                     | `src/webhook/events/review.ts`         |
+| **Pull request review comments** | `pull_request_review_comment.created` / `.edited` / `.deleted`                                      | `src/webhook/events/review-comment.ts` |
+| **Pull request review threads**  | `pull_request_review_thread.resolved` / `.unresolved`                                               | `src/webhook/events/review-thread.ts`  |
+| **Check runs**                   | `check_run.completed` (powers the `bot:ship` reactor — early-wakes active intents on CI completion) | `src/webhook/events/check-run.ts`      |
+| **Check suites**                 | `check_suite.completed`                                                                             | `src/webhook/events/check-suite.ts`    |
+
+The PR shepherding reactor uses the new `synchronize`, `closed`, `edited`, `deleted`, `check_run`, and `check_suite` subscriptions to early-wake active sessions. `SHIP_USE_TRIGGER_SURFACES_V2=true` gates the **trigger-surface** wiring (the new literal/NL/label trigger router) — **not** the reactor wake subscriptions, which must be registered regardless. Existing `bot:ship` (composite) operation does not require the new wake subscriptions.
+
+The bot also recognises four GitHub labels on PRs (FR-026): `bot:ship`, `bot:stop`, `bot:resume`, `bot:abort-ship`, plus the suffix-overridden variants `bot:ship/deadline=2h` etc. The bot self-removes the label after acting (FR-026a) — re-application is the supported re-trigger mechanism.
 
 > **Note:** GitHub does **not** emit a `pull_request_review_thread.created` action. The only valid actions for this event are `resolved` and `unresolved`, confirmed by `PullRequestReviewThreadResolvedEvent` and `PullRequestReviewThreadUnresolvedEvent` in `@octokit/webhooks-types`. Both actions route to the same handler.
 >
-> The `pull-request.ts`, `review.ts`, and `review-thread.ts` handlers are **placeholders** — they log the event but take no further action. Implement `processRequest()` inside each when ready.
+> `pull-request.ts` is now an active handler — it dispatches `opened`, `labeled`, `synchronize`, and `closed` actions (the latter two via `fireReactor` to early-wake any active `bot:ship` session). `review.ts` likewise fires the reactor on `pull_request_review.submitted`. `review-thread.ts` remains a placeholder — `resolved`/`unresolved` actions are logged but take no further action; wire `processRequest()` inside it when needed.
 
 Leave all other events **unchecked**. Every subscribed event that your server does not handle still generates an HTTP POST to your webhook URL, wastes bandwidth, and creates noise in the **Advanced** delivery log.
 

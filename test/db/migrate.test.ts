@@ -34,6 +34,10 @@ describe.skipIf(sql === null)("runMigrations", () => {
   beforeAll(async () => {
     await requireDb().unsafe(`
       DROP TABLE IF EXISTS _migrations CASCADE;
+      DROP TABLE IF EXISTS ship_fix_attempts CASCADE;
+      DROP TABLE IF EXISTS ship_continuations CASCADE;
+      DROP TABLE IF EXISTS ship_iterations CASCADE;
+      DROP TABLE IF EXISTS ship_intents CASCADE;
       DROP TABLE IF EXISTS workflow_runs CASCADE;
       DROP TABLE IF EXISTS repo_memory CASCADE;
       DROP TABLE IF EXISTS triage_results CASCADE;
@@ -45,6 +49,10 @@ describe.skipIf(sql === null)("runMigrations", () => {
   afterAll(async () => {
     await requireDb().unsafe(`
       DROP TABLE IF EXISTS _migrations CASCADE;
+      DROP TABLE IF EXISTS ship_fix_attempts CASCADE;
+      DROP TABLE IF EXISTS ship_continuations CASCADE;
+      DROP TABLE IF EXISTS ship_iterations CASCADE;
+      DROP TABLE IF EXISTS ship_intents CASCADE;
       DROP TABLE IF EXISTS workflow_runs CASCADE;
       DROP TABLE IF EXISTS repo_memory CASCADE;
       DROP TABLE IF EXISTS triage_results CASCADE;
@@ -62,7 +70,7 @@ describe.skipIf(sql === null)("runMigrations", () => {
     const versions: { version: string }[] = await requireDb()`
       SELECT version FROM _migrations ORDER BY version
     `;
-    expect(versions.length).toBe(7);
+    expect(versions.length).toBe(8);
     expect(versions[0]?.version).toBe("001_initial");
     expect(versions[1]?.version).toBe("002_repo_knowledge");
     expect(versions[2]?.version).toBe("003_dispatch_decisions");
@@ -70,6 +78,7 @@ describe.skipIf(sql === null)("runMigrations", () => {
     expect(versions[4]?.version).toBe("005_workflow_runs");
     expect(versions[5]?.version).toBe("006_workflow_runs_ownership");
     expect(versions[6]?.version).toBe("007_trigger_comment");
+    expect(versions[7]?.version).toBe("008_ship_intents");
   });
 
   it("is idempotent — second run is a no-op", async () => {
@@ -79,7 +88,7 @@ describe.skipIf(sql === null)("runMigrations", () => {
     const versions: { version: string }[] = await requireDb()`
       SELECT version FROM _migrations ORDER BY version
     `;
-    expect(versions.length).toBe(7);
+    expect(versions.length).toBe(8);
   });
 
   it("creates the executions table with expected columns", async () => {
