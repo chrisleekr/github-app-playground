@@ -22,8 +22,9 @@ const BOT_LABEL_PATTERN = /^bot:[a-z][a-z-]*(?:\/deadline=\d+(?:\.\d+)?[hms])?$/
  *   - `synchronize` — ship reactor early-wake / foreign-push detection (T023)
  *   - `closed` — ship reactor terminal transition (merged_externally / pr_closed) (T023)
  *
- * Registered in `src/app.ts`. Action dispatch happens inside this handler so
- * a single `app.webhooks.on("pull_request", ...)` registration covers all.
+ * Registered in `src/app.ts` via explicit per-action listeners
+ * (`pull_request.opened`, `.labeled`, `.synchronize`, `.closed`); each
+ * delegates here for action-specific dispatch.
  */
 export function handlePullRequest(
   octokit: Octokit,

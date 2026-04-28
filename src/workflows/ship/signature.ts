@@ -41,7 +41,11 @@ const TRAILING_WS = /[ \t]+$/gm;
 /** Tier-1 patterns — known formats from which a stable rule/error key can be extracted. */
 const TIER1_PATTERNS: readonly RegExp[] = [
   // ESLint: "  10:5  error  Unexpected console statement  no-console"
-  /\b(?:error|warning)\s+(.+?)\s+([a-z][a-z0-9-]*\/[a-z][a-z0-9-]*|[a-z][a-z0-9-]*)/i,
+  // The rule id is the **last** whitespace-separated token; anchoring on
+  // end-of-line ensures we don't stop early on a message word, and the
+  // optional `@scope/` prefix covers scoped rules like
+  // `@typescript-eslint/no-unused-vars`.
+  /\b(?:error|warning)\s+(.+?)\s+((?:@[a-z0-9-]+\/)?[a-z0-9-]+(?:\/[a-z0-9-]+)?)\s*$/im,
   // TypeScript: "src/x.ts(10,5): error TS2304: Cannot find name 'foo'."
   /\berror\s+(TS\d+):\s+(.+?)$/im,
   // Prettier: "[error] src/x.ts: SyntaxError: Unexpected token (10:5)"

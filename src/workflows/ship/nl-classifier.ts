@@ -48,6 +48,12 @@ export async function classifyComment(input: ClassifyInput): Promise<NlClassifie
   // do not want to classify (and pay LLM tokens for).
   const trimmed = input.commentBody.trimStart();
   if (!trimmed.startsWith(input.triggerPhrase)) return null;
+  // Require a token boundary after the prefix so a longer login that
+  // happens to share the same prefix (e.g. `@chrisleekr-bot-foo` vs
+  // `@chrisleekr-bot`) does not slip through. Permitted boundaries:
+  // end-of-string, whitespace, or common punctuation.
+  const nextChar = trimmed[input.triggerPhrase.length];
+  if (nextChar !== undefined && !/[\s:;,!.?)]/.test(nextChar)) return null;
   const post = trimmed.slice(input.triggerPhrase.length).trim();
   if (post === "") return null;
 

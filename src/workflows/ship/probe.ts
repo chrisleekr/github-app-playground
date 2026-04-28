@@ -15,6 +15,7 @@ import type { Octokit } from "octokit";
 import { config } from "../../config";
 import { requireDb } from "../../db";
 import { appendIteration } from "../../db/queries/ship";
+import { logger } from "../../logger";
 import {
   type CheckHistoryEntry,
   identifyFlakedRequiredChecks,
@@ -22,7 +23,7 @@ import {
   triggerTargetedRerun,
 } from "./flake-tracker";
 import { resyncBaseSha } from "./intent";
-import { shouldDeferOnReviewLatency } from "./review-barrier";
+import { type BarrierProbeShape, shouldDeferOnReviewLatency } from "./review-barrier";
 import { computeVerdict, type MergeReadiness, type ProbeResponseShape } from "./verdict";
 
 const PROBE_QUERY = `
@@ -209,8 +210,13 @@ export async function runProbeIntegrated(
 
   // T044 — review-barrier: gate `ready` verdicts.
   if (verdict.ready && input.applyReviewBarrier !== undefined) {
+    // The barrier shape is declared narrowly in `review-barrier.ts` and
+    // doesn't fully overlap with `ProbeResponseShape`'s nested types
+    // (e.g. `reviews` is barrier-only). Both fixtures and the runtime
+    // GraphQL response satisfy both shapes; cast through `unknown` so
+    // the intent is explicit rather than silenced via `as never`.
     const defer = shouldDeferOnReviewLatency({
-      probeResponse: result.response as never,
+      probeResponse: result.response as unknown as BarrierProbeShape,
       ourAppLogin: input.botAppLogin,
       safetyMarginMs: input.applyReviewBarrier.safetyMarginMs,
     });
@@ -264,8 +270,13 @@ export async function runProbeIntegrated(
       },
       sql,
     );
-  } catch {
+  } catch (err) {
     // Best-effort — audit-row failure must not abort the iteration.
+    // Log so an unexpected persistence failure shows up in observability.
+    logger.warn(
+      { err, intent_id: input.intent_id, event: "ship.probe.audit_row_failed" },
+      "ship probe audit-row write failed (best-effort)",
+    );
   }
 
   return { verdict, response: result.response, history: fullHistory, baseShaResynced };

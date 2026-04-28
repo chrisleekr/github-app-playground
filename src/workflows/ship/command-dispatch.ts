@@ -116,8 +116,10 @@ export async function dispatchCommentSurface(input: {
     });
     if (nl !== null) dispatchCanonicalCommand(nl, deps);
   } catch (err) {
+    // Pass `err` directly so pino's serializer captures the stack and
+    // structured properties; `String(err)` would discard both.
     (input.log ?? rootLogger).error(
-      { event: "ship.dispatch_comment_surface_failed", err: String(err) },
+      { event: "ship.dispatch_comment_surface_failed", err },
       "ship dispatchCommentSurface threw — swallowed",
     );
   }

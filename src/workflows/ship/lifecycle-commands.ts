@@ -158,7 +158,19 @@ export async function runLifecycleCommand(input: RunLifecycleInput): Promise<voi
         pull_number: command.pr.number,
       });
       if (pr.head.sha !== intent.target_head_sha) {
-        const author = pr.head.user?.login ?? null;
+        // `pr.head.user` is the head-repository owner (a Simple User
+        // identifying the fork or upstream owner) — NOT the commit
+        // author/pusher. To decide whether a foreign push happened we
+        // must inspect the commit itself.
+        const { data: commit } = await octokit.rest.repos.getCommit({
+          owner: command.pr.owner,
+          repo: command.pr.repo,
+          ref: pr.head.sha,
+        });
+        // Prefer the GitHub-mapped author login; fall back to the
+        // committer when the author is null (rare for committer-rewritten
+        // pushes). Either matching `botAppLogin` means the bot pushed.
+        const author = commit.author?.login ?? commit.committer?.login ?? null;
         if (author !== config.botAppLogin) {
           await transitionToTerminal(intent.id, "human_took_over", "manual-push-detected", sql);
           log.info(

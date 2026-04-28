@@ -20,6 +20,8 @@
  * No I/O lives in this module. Network calls are in `probe.ts`.
  */
 
+import { z } from "zod";
+
 export const NON_READINESS_REASONS = [
   "failing_checks",
   "open_threads",
@@ -36,8 +38,6 @@ export const NON_READINESS_REASONS = [
 ] as const;
 
 export type NonReadinessReason = (typeof NON_READINESS_REASONS)[number];
-
-import { z } from "zod";
 
 export const NonReadinessReasonSchema = z.enum(NON_READINESS_REASONS);
 

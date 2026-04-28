@@ -19,6 +19,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { Octokit } from "octokit";
 import { z } from "zod";
 
+import { retryWithBackoff } from "../../utils/retry";
+
 const REPO_OWNER = process.env["REPO_OWNER"];
 const REPO_NAME = process.env["REPO_NAME"];
 const PR_NUMBER = process.env["PR_NUMBER"];
@@ -58,6 +60,10 @@ const GET_THREAD_QUERY = `
         id
         pullRequest {
           number
+          repository {
+            name
+            owner { login }
+          }
         }
       }
     }
@@ -81,7 +87,10 @@ const RESOLVE_MUTATION = `
 interface PreflightResponse {
   node: {
     id: string;
-    pullRequest: { number: number };
+    pullRequest: {
+      number: number;
+      repository: { name: string; owner: { login: string } };
+    };
   } | null;
 }
 
@@ -137,22 +146,39 @@ server.tool(
   },
   async ({ thread_id }) => {
     try {
-      const preflight = await octokit.graphql<PreflightResponse>(GET_THREAD_QUERY, {
-        threadId: thread_id,
-      });
+      // Both GraphQL calls are wrapped in the shared retry helper so the
+      // documented contract (rate-limit retry, network-failure retry up
+      // to 3 attempts) is actually honoured. The helper short-circuits
+      // on non-retriable 4xx (e.g. 404 thread_not_found) so callers
+      // still see prompt failures.
+      const preflight = await retryWithBackoff(() =>
+        octokit.graphql<PreflightResponse>(GET_THREAD_QUERY, { threadId: thread_id }),
+      );
       const preflightPr = preflight.node?.pullRequest.number;
-      if (preflightPr !== BOUND_PR_NUMBER) {
+      const preflightRepo = preflight.node?.pullRequest.repository;
+      // Per-repo PR numbers — `(owner, repo, number)` identifies the
+      // bound PR, not `number` alone. Reject any thread whose repository
+      // identity drifts from the bound `(REPO_OWNER, REPO_NAME)` pair.
+      const repoMismatch =
+        preflightRepo !== undefined &&
+        (preflightRepo.owner.login !== REPO_OWNER || preflightRepo.name !== REPO_NAME);
+      if (preflightPr !== BOUND_PR_NUMBER || repoMismatch) {
+        const code: ErrorCode = preflight.node === null ? "thread_not_found" : "graphql_error";
+        const message =
+          preflight.node === null
+            ? `thread ${thread_id} not found or not a PullRequestReviewThread`
+            : repoMismatch
+              ? `thread belongs to ${preflightRepo?.owner.login}/${preflightRepo?.name} but this server is bound to ${REPO_OWNER}/${REPO_NAME}`
+              : `thread belongs to PR #${String(preflightPr)} but this server is bound to PR #${String(BOUND_PR_NUMBER)}`;
         return {
           content: [
             {
               type: "text" as const,
               text: JSON.stringify({
-                code: "graphql_error",
-                message:
-                  preflightPr === undefined
-                    ? `thread ${thread_id} not found or not a PullRequestReviewThread`
-                    : `thread belongs to PR #${String(preflightPr)} but this server is bound to PR #${String(BOUND_PR_NUMBER)}`,
+                code,
+                message,
                 thread_id,
+                pr_number: BOUND_PR_NUMBER,
               }),
             },
           ],
@@ -160,9 +186,9 @@ server.tool(
         };
       }
 
-      const result = await octokit.graphql<ResolveResponse>(RESOLVE_MUTATION, {
-        threadId: thread_id,
-      });
+      const result = await retryWithBackoff(() =>
+        octokit.graphql<ResolveResponse>(RESOLVE_MUTATION, { threadId: thread_id }),
+      );
       const thread = result.resolveReviewThread.thread;
 
       return {
@@ -184,7 +210,7 @@ server.tool(
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify({ code, message, thread_id }),
+            text: JSON.stringify({ code, message, thread_id, pr_number: BOUND_PR_NUMBER }),
           },
         ],
         isError: true,
@@ -201,4 +227,10 @@ async function runServer(): Promise<void> {
   });
 }
 
-void runServer().catch(console.error);
+void runServer().catch((err: unknown) => {
+  // Fail-fast on transport bind failure: an MCP sidecar that exits 0
+  // after a connect rejection looks healthy to its supervisor, which
+  // then dispatches tool calls into a dead process.
+  console.error(err);
+  process.exit(1);
+});

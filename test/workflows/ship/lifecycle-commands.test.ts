@@ -91,6 +91,15 @@ function buildOctokit(opts: { headSha?: string; headLogin?: string } = {}): {
           });
         },
       },
+      repos: {
+        getCommit: () =>
+          Promise.resolve({
+            data: {
+              author: { login: opts.headLogin ?? "chrisleekr-bot[bot]" },
+              committer: { login: opts.headLogin ?? "chrisleekr-bot[bot]" },
+            },
+          }),
+      },
     },
   } as unknown as Octokit;
   return { octokit, calls };

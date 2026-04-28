@@ -232,7 +232,7 @@ The bot also recognises four GitHub labels on PRs (FR-026): `bot:ship`, `bot:sto
 
 > **Note:** GitHub does **not** emit a `pull_request_review_thread.created` action. The only valid actions for this event are `resolved` and `unresolved`, confirmed by `PullRequestReviewThreadResolvedEvent` and `PullRequestReviewThreadUnresolvedEvent` in `@octokit/webhooks-types`. Both actions route to the same handler.
 >
-> The `pull-request.ts`, `review.ts`, and `review-thread.ts` handlers are **placeholders** — they log the event but take no further action. Implement `processRequest()` inside each when ready.
+> `pull-request.ts` is now an active handler — it dispatches `opened`, `labeled`, `synchronize`, and `closed` actions (the latter two via `fireReactor` to early-wake any active `bot:ship` session). `review.ts` likewise fires the reactor on `pull_request_review.submitted`. `review-thread.ts` remains a placeholder — `resolved`/`unresolved` actions are logged but take no further action; wire `processRequest()` inside it when needed.
 
 Leave all other events **unchecked**. Every subscribed event that your server does not handle still generates an HTTP POST to your webhook URL, wastes bandwidth, and creates noise in the **Advanced** delivery log.
 

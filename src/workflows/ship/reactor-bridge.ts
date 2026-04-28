@@ -16,7 +16,17 @@ import { fanOut, type ReactorEvent } from "./webhook-reactor";
 
 export function fireReactor(event: ReactorEvent): void {
   const sql = getDb();
-  if (sql === null) return;
+  if (sql === null) {
+    // No DB configured (e.g. local dev without DATABASE_URL): skip the
+    // early-wake. The cron tickle is the durable backstop, but knowing
+    // the wake was skipped helps triage "why didn't the bot react to
+    // my push" reports.
+    logger.debug(
+      { event_type: event.type, event: "ship.reactor.bridge_skipped_no_db" },
+      "ship reactor early-wake skipped — DATABASE_URL not configured",
+    );
+    return;
+  }
   void (async (): Promise<void> => {
     try {
       await fanOut(event, {

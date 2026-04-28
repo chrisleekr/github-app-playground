@@ -147,7 +147,7 @@ Audit trail. One row per session iteration. Lifetime: insert-only.
 **Constraints**:
 
 - `CHECK (kind IN ('probe', 'resolve', 'review', 'branch-refresh'))`
-- `CHECK (non_readiness_reason IS NULL OR non_readiness_reason IN ('failing_checks', 'open_threads', 'changes_requested', 'behind_base', 'mergeable_pending', 'pending_checks', 'human_took_over'))`
+- `CHECK (non_readiness_reason IS NULL OR non_readiness_reason IN ('failing_checks', 'open_threads', 'changes_requested', 'behind_base', 'mergeable_pending', 'pending_checks', 'human_took_over', 'review_barrier_deferred'))`
 - `CHECK ((kind = 'probe') OR (verdict_json IS NULL AND non_readiness_reason IS NULL))` — verdict columns only meaningful for probe rows.
 - `UNIQUE (intent_id, iteration_n)`
 
@@ -271,6 +271,7 @@ export const NON_READINESS_REASONS = [
   "mergeable_pending",
   "pending_checks",
   "human_took_over",
+  "review_barrier_deferred",
 ] as const;
 export type NonReadinessReason = (typeof NON_READINESS_REASONS)[number];
 
