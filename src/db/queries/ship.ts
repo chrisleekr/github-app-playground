@@ -62,7 +62,8 @@ export type NonReadinessReason =
   | "behind_base"
   | "mergeable_pending"
   | "pending_checks"
-  | "human_took_over";
+  | "human_took_over"
+  | "review_barrier_deferred";
 
 export interface ShipIterationRow {
   readonly id: string;

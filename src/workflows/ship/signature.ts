@@ -38,20 +38,37 @@ const TIMESTAMP = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?/g;
 const HEX_SHA = /\b[0-9a-f]{7,40}\b/g;
 const TRAILING_WS = /[ \t]+$/gm;
 
-/** Tier-1 patterns — known formats from which a stable rule/error key can be extracted. */
-const TIER1_PATTERNS: readonly RegExp[] = [
+/**
+ * Tier-1 patterns — each entry exposes one stable capture group that
+ * encodes the lint/type class only (rule id, error code, error class).
+ * Volatile message text (variable names, paths, source snippets) is
+ * matched but not captured, so two failures of the same rule on
+ * different lines/files share a signature and the fix-attempts ledger
+ * counts retries correctly.
+ */
+interface Tier1Pattern {
+  readonly re: RegExp;
+  readonly stableGroup: number;
+}
+
+const TIER1_PATTERNS: readonly Tier1Pattern[] = [
   // ESLint: "  10:5  error  Unexpected console statement  no-console"
-  // The rule id is the **last** whitespace-separated token; anchoring on
-  // end-of-line ensures we don't stop early on a message word, and the
-  // optional `@scope/` prefix covers scoped rules like
-  // `@typescript-eslint/no-unused-vars`.
-  /\b(?:error|warning)\s+(.+?)\s+((?:@[a-z0-9-]+\/)?[a-z0-9-]+(?:\/[a-z0-9-]+)?)\s*$/im,
+  // Captures only the rule id (group 1); the human-readable message is
+  // matched as `.+?` but not captured. The optional `@scope/` prefix
+  // covers scoped rules like `@typescript-eslint/no-unused-vars`.
+  {
+    re: /\b(?:error|warning)\s+.+?\s+((?:@[a-z0-9-]+\/)?[a-z0-9-]+(?:\/[a-z0-9-]+)?)\s*$/im,
+    stableGroup: 1,
+  },
   // TypeScript: "src/x.ts(10,5): error TS2304: Cannot find name 'foo'."
-  /\berror\s+(TS\d+):\s+(.+?)$/im,
+  // Captures only the TS error code; the explanatory text is dropped.
+  { re: /\berror\s+(TS\d+):\s+.+?$/im, stableGroup: 1 },
   // Prettier: "[error] src/x.ts: SyntaxError: Unexpected token (10:5)"
-  /\[error\]\s+.+?:\s+(\w+):\s+(.+?)(?:\s+\(\d+:\d+\))?$/im,
-  // Bun test: "  ✗ describe > it [3.21ms]\n  AssertionError: expected ..."
-  /AssertionError:\s+(.+?)$/im,
+  // Captures only the error class.
+  { re: /\[error\]\s+.+?:\s+(\w+):\s+.+?(?:\s+\(\d+:\d+\))?$/im, stableGroup: 1 },
+  // Bun test: "  AssertionError: expected ..."
+  // The assertion text itself is the stable signal here.
+  { re: /AssertionError:\s+(.+?)$/im, stableGroup: 1 },
 ];
 
 function normalise(text: string): string {
@@ -66,12 +83,10 @@ function normalise(text: string): string {
 }
 
 function tryExtractTier1(text: string): string | null {
-  for (const re of TIER1_PATTERNS) {
+  for (const { re, stableGroup } of TIER1_PATTERNS) {
     const match = re.exec(text);
-    if (match !== null) {
-      const groups = match.slice(1).filter((g): g is string => typeof g === "string");
-      if (groups.length > 0) return groups.join("|");
-    }
+    const key = match?.[stableGroup]?.trim();
+    if (key !== undefined && key !== "") return key;
   }
   return null;
 }

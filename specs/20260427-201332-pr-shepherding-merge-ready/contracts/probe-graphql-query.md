@@ -32,18 +32,14 @@ query MergeReadinessProbe($owner: String!, $repo: String!, $number: Int!) {
       }
       reviewThreads(first: 100) {
         totalCount
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
         nodes {
           id
           isResolved
           isOutdated
-          comments(first: 1) {
-            nodes {
-              author {
-                login
-              }
-              createdAt
-            }
-          }
         }
       }
       commits(last: 1) {
@@ -64,6 +60,7 @@ query MergeReadinessProbe($owner: String!, $repo: String!, $number: Int!) {
                   __typename
                   ... on CheckRun {
                     name
+                    databaseId
                     conclusion
                     status
                     completedAt

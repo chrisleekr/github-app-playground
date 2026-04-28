@@ -38,15 +38,7 @@ export function handlePullRequest(
 
   if (payload.action === "synchronize") {
     if (payload.installation === undefined) return;
-    fireReactor({
-      type: "pull_request.synchronize",
-      installation_id: payload.installation.id,
-      owner: payload.repository.owner.login,
-      repo: payload.repository.name,
-      pr_number: payload.pull_request.number,
-      head_sha: payload.pull_request.head.sha,
-      head_author_login: payload.sender.login,
-    });
+    handlePullRequestSynchronize(octokit, payload, deliveryId);
     return;
   }
 
@@ -74,6 +66,52 @@ export function handlePullRequest(
     },
     "pull_request.opened received (no action configured)",
   );
+}
+
+/**
+ * Resolve the actual commit author for the new head SHA before firing
+ * the reactor. `payload.sender.login` is the webhook actor, not the
+ * commit author — for cherry-picks, rebases, or push-on-behalf-of
+ * automation those differ, and the foreign-push detector downstream
+ * needs the real author to avoid both false positives (bot pushes
+ * surfaced as foreign) and false negatives (human pushes hidden behind
+ * a bot sender). This mirrors the lifecycle-commands.ts pattern that
+ * also calls `repos.getCommit` for the same reason.
+ */
+function handlePullRequestSynchronize(
+  octokit: Octokit,
+  payload: PullRequestEvent & { action: "synchronize" },
+  deliveryId: string,
+): void {
+  if (payload.installation === undefined) return;
+  const installationId = payload.installation.id;
+  const owner = payload.repository.owner.login;
+  const repo = payload.repository.name;
+  const prNumber = payload.pull_request.number;
+  const headSha = payload.pull_request.head.sha;
+  const senderFallback = payload.sender.login;
+
+  void (async (): Promise<void> => {
+    let authorLogin: string = senderFallback;
+    try {
+      const { data: commit } = await octokit.rest.repos.getCommit({ owner, repo, ref: headSha });
+      authorLogin = commit.author?.login ?? commit.committer?.login ?? senderFallback;
+    } catch (err) {
+      logger.warn(
+        { err, deliveryId, owner, repo, prNumber, headSha },
+        "pull_request.synchronize: repos.getCommit failed; falling back to sender.login",
+      );
+    }
+    fireReactor({
+      type: "pull_request.synchronize",
+      installation_id: installationId,
+      owner,
+      repo,
+      pr_number: prNumber,
+      head_sha: headSha,
+      head_author_login: authorLogin,
+    });
+  })();
 }
 
 function handlePullRequestLabeled(

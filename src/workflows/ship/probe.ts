@@ -16,6 +16,7 @@ import { config } from "../../config";
 import { requireDb } from "../../db";
 import { appendIteration } from "../../db/queries/ship";
 import { logger } from "../../logger";
+import { retryWithBackoff } from "../../utils/retry";
 import {
   type CheckHistoryEntry,
   identifyFlakedRequiredChecks,
@@ -44,6 +45,7 @@ const PROBE_QUERY = `
         author { login }
         reviewThreads(first: 100) {
           totalCount
+          pageInfo { hasNextPage endCursor }
           nodes { id isResolved isOutdated }
         }
         commits(last: 1) {
@@ -90,6 +92,43 @@ const PROBE_QUERY = `
   }
 `;
 
+/**
+ * Paginated review-threads query (FR-022 follow-up). Used when a PR
+ * carries more than 100 review threads — the main `PROBE_QUERY` only
+ * fetches the first page, so an unresolved thread past the first 100
+ * would otherwise be invisible to `computeVerdict()` and the verdict
+ * could incorrectly return `ready`.
+ */
+const REVIEW_THREADS_PAGE_QUERY = `
+  query ReviewThreadsPage($owner: String!, $repo: String!, $number: Int!, $cursor: String!) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $number) {
+        reviewThreads(first: 100, after: $cursor) {
+          pageInfo { hasNextPage endCursor }
+          nodes { id isResolved isOutdated }
+        }
+      }
+    }
+  }
+`;
+
+interface ReviewThreadNode {
+  readonly id: string;
+  readonly isResolved: boolean;
+  readonly isOutdated: boolean;
+}
+
+interface ReviewThreadsPageResponse {
+  readonly repository: {
+    readonly pullRequest: {
+      readonly reviewThreads: {
+        readonly pageInfo: { readonly hasNextPage: boolean; readonly endCursor: string | null };
+        readonly nodes: readonly ReviewThreadNode[];
+      };
+    } | null;
+  } | null;
+}
+
 export interface RunProbeInput {
   readonly octokit: Pick<Octokit, "graphql">;
   readonly owner: string;
@@ -113,29 +152,119 @@ const defaultSleep = (ms: number): Promise<void> =>
     setTimeout(resolve, ms);
   });
 
+/**
+ * Paginate `reviewThreads` past the first 100 nodes returned by
+ * `PROBE_QUERY`. Early-exits as soon as any unresolved + non-outdated
+ * thread is found (the verdict only needs to know whether at least one
+ * exists — exact count past the first hit is irrelevant).
+ *
+ * Network/rate-limit blips during pagination are handled by
+ * `retryWithBackoff`; if a page genuinely cannot be fetched the helper
+ * throws and the caller treats it as a probe failure (fail-closed).
+ */
+async function paginateReviewThreads(
+  octokit: Pick<Octokit, "graphql">,
+  args: { owner: string; repo: string; pr_number: number },
+  startCursor: string | null,
+): Promise<readonly ReviewThreadNode[]> {
+  const merged: ReviewThreadNode[] = [];
+  let cursor: string | null = startCursor;
+  while (cursor !== null) {
+    // eslint-disable-next-line no-await-in-loop -- pagination is inherently sequential
+    const page = await retryWithBackoff(() =>
+      octokit.graphql<ReviewThreadsPageResponse>(REVIEW_THREADS_PAGE_QUERY, {
+        owner: args.owner,
+        repo: args.repo,
+        number: args.pr_number,
+        cursor,
+      }),
+    );
+    const rt = page.repository?.pullRequest?.reviewThreads;
+    if (rt === undefined) break;
+    merged.push(...rt.nodes);
+    if (rt.nodes.some((n) => !n.isResolved && !n.isOutdated)) break;
+    if (!rt.pageInfo.hasNextPage) break;
+    // Pagination is single-threaded by construction (no concurrent
+    // callers of this function inside one runProbe), so the
+    // require-atomic-updates warning here is a false positive.
+    // eslint-disable-next-line require-atomic-updates
+    cursor = rt.pageInfo.endCursor;
+  }
+  return merged;
+}
+
+/**
+ * Merge any additional review-thread pages into the response so
+ * `computeVerdict()` sees the full picture. Mutation-free: returns a
+ * shallow-cloned response with the merged nodes when pagination is
+ * needed; returns the input unchanged otherwise.
+ */
+async function ensureFullReviewThreads(
+  octokit: Pick<Octokit, "graphql">,
+  args: { owner: string; repo: string; pr_number: number },
+  response: ProbeResponseShape,
+): Promise<ProbeResponseShape> {
+  const pr = response.repository?.pullRequest ?? null;
+  if (pr === null) return response;
+  const rt = pr.reviewThreads;
+  if (rt.pageInfo?.hasNextPage !== true) return response;
+
+  const additional = await paginateReviewThreads(octokit, args, rt.pageInfo.endCursor);
+  if (additional.length === 0) return response;
+
+  return {
+    ...response,
+    repository: {
+      ...response.repository,
+      pullRequest: {
+        ...pr,
+        reviewThreads: {
+          ...rt,
+          nodes: [...rt.nodes, ...additional],
+        },
+      },
+    },
+  } as ProbeResponseShape;
+}
+
 export async function runProbe(input: RunProbeInput): Promise<ProbeResult> {
   const backoff = input.mergeableBackoffMs ?? config.mergeableNullBackoffMsList;
   const sleep = input.sleep ?? defaultSleep;
 
+  // Each individual GraphQL call is wrapped in retryWithBackoff so a
+  // single rate-limit or network blip cannot tear down the whole probe
+  // — turning a recoverable yield into a session-aborting error. The
+  // outer mergeable=null backoff loop is preserved separately because
+  // it has different semantics (waiting for GitHub to finish computing
+  // mergeable, not retrying a transient failure).
   let lastResponse: ProbeResponseShape | null = null;
   for (let attempt = 0; attempt <= backoff.length; attempt += 1) {
-    const response = await input.octokit.graphql<ProbeResponseShape>(PROBE_QUERY, {
-      owner: input.owner,
-      repo: input.repo,
-      number: input.pr_number,
-    });
+    // eslint-disable-next-line no-await-in-loop -- attempts are inherently sequential per FR-021
+    const response = await retryWithBackoff(() =>
+      input.octokit.graphql<ProbeResponseShape>(PROBE_QUERY, {
+        owner: input.owner,
+        repo: input.repo,
+        number: input.pr_number,
+      }),
+    );
     lastResponse = response;
     const mergeable = response.repository?.pullRequest?.mergeable ?? null;
     if (mergeable !== null && mergeable !== "UNKNOWN") {
-      const verdict = computeVerdict({
+      const fullResponse = await ensureFullReviewThreads(
+        input.octokit,
+        { owner: input.owner, repo: input.repo, pr_number: input.pr_number },
         response,
+      );
+      const verdict = computeVerdict({
+        response: fullResponse,
         botAppLogin: input.botAppLogin,
         botPushedShas: input.botPushedShas,
       });
-      return { verdict, response };
+      return { verdict, response: fullResponse };
     }
     if (attempt < backoff.length) {
       const delay = backoff[attempt];
+      // eslint-disable-next-line no-await-in-loop -- bounded backoff schedule per FR-020
       if (delay !== undefined) await sleep(delay);
     }
   }
@@ -144,12 +273,17 @@ export async function runProbe(input: RunProbeInput): Promise<ProbeResult> {
   if (lastResponse === null) {
     throw new Error("runProbe: no GraphQL response captured (this is a bug)");
   }
+  const fullResponse = await ensureFullReviewThreads(
+    input.octokit,
+    { owner: input.owner, repo: input.repo, pr_number: input.pr_number },
+    lastResponse,
+  );
   const verdict = computeVerdict({
-    response: lastResponse,
+    response: fullResponse,
     botAppLogin: input.botAppLogin,
     botPushedShas: input.botPushedShas,
   });
-  return { verdict, response: lastResponse };
+  return { verdict, response: fullResponse };
 }
 
 // ─── T044/T052 — `runProbeIntegrated`: opt-in wrapper that adds the

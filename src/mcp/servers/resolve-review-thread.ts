@@ -17,9 +17,16 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Octokit } from "octokit";
+import pino from "pino";
 import { z } from "zod";
 
 import { retryWithBackoff } from "../../utils/retry";
+
+// MCP servers communicate JSON-RPC over stdout, so pino must write to
+// stderr to avoid corrupting the transport stream. A locally-instantiated
+// logger keeps the dependency on `src/logger.ts` (which writes to stdout)
+// out of this child process.
+const log = pino({ level: process.env["LOG_LEVEL"] ?? "info" }, process.stderr);
 
 const REPO_OWNER = process.env["REPO_OWNER"];
 const REPO_NAME = process.env["REPO_NAME"];
@@ -36,13 +43,21 @@ if (
   GITHUB_TOKEN === undefined ||
   GITHUB_TOKEN === ""
 ) {
-  console.error("Error: REPO_OWNER, REPO_NAME, PR_NUMBER, and GITHUB_TOKEN are required");
+  log.error(
+    {
+      hasRepoOwner: REPO_OWNER !== undefined && REPO_OWNER !== "",
+      hasRepoName: REPO_NAME !== undefined && REPO_NAME !== "",
+      hasPrNumber: PR_NUMBER !== undefined && PR_NUMBER !== "",
+      hasGithubToken: GITHUB_TOKEN !== undefined && GITHUB_TOKEN !== "",
+    },
+    "REPO_OWNER, REPO_NAME, PR_NUMBER, and GITHUB_TOKEN are required",
+  );
   process.exit(1);
 }
 
 const BOUND_PR_NUMBER = parseInt(PR_NUMBER, 10);
 if (!Number.isInteger(BOUND_PR_NUMBER) || BOUND_PR_NUMBER <= 0) {
-  console.error(`Error: PR_NUMBER must be a positive integer, got '${PR_NUMBER}'`);
+  log.error({ prNumber: PR_NUMBER }, "PR_NUMBER must be a positive integer");
   process.exit(1);
 }
 
@@ -112,15 +127,19 @@ type ErrorCode =
   | "graphql_error";
 
 function classifyError(err: unknown): ErrorCode {
+  // Inspect the message before the status branch: GitHub secondary
+  // rate-limits return HTTP 403 with an explicit "secondary rate limit"
+  // message, so a status-only check would misclassify them as
+  // `permission_denied`. Normalise the message once up front and let it
+  // pre-empt the 403 branch.
+  const message = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
   const status = (err as { status?: number }).status;
   if (status === 404) return "thread_not_found";
-  if (status === 403) return "permission_denied";
   if (status === 429) return "rate_limited";
-
-  const message = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+  if (message.includes("rate limit") || message.includes("secondary rate")) return "rate_limited";
+  if (status === 403) return "permission_denied";
   if (message.includes("not found")) return "thread_not_found";
   if (message.includes("forbidden") || message.includes("permission")) return "permission_denied";
-  if (message.includes("rate limit") || message.includes("secondary rate")) return "rate_limited";
   if (
     message.includes("etimedout") ||
     message.includes("econnreset") ||
@@ -231,6 +250,6 @@ void runServer().catch((err: unknown) => {
   // Fail-fast on transport bind failure: an MCP sidecar that exits 0
   // after a connect rejection looks healthy to its supervisor, which
   // then dispatches tool calls into a dead process.
-  console.error(err);
+  log.error({ err }, "MCP server transport bind failed");
   process.exit(1);
 });

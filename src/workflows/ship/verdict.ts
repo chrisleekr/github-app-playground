@@ -84,6 +84,11 @@ export interface ProbeResponseShape {
           readonly isResolved: boolean;
           readonly isOutdated: boolean;
         }[];
+        readonly totalCount?: number;
+        readonly pageInfo?: {
+          readonly hasNextPage: boolean;
+          readonly endCursor: string | null;
+        };
       };
       readonly commits: {
         readonly nodes: readonly {
@@ -180,9 +185,15 @@ export function computeVerdict(input: VerdictInput): MergeReadiness {
         pendingRequired.push(ctx.name ?? "<unknown>");
       }
     } else {
+      // GitHub GraphQL `StatusState` enum: EXPECTED | PENDING | FAILURE
+      // | ERROR | SUCCESS. EXPECTED means the legacy status check has
+      // been registered as required but no reporter has posted a result
+      // yet — treat it as outstanding so the verdict doesn't flip ready
+      // before the check fires.
       const s = ctx.state;
       if (s === "FAILURE" || s === "ERROR") failingRequired.push(ctx.context ?? "<unknown>");
-      else if (s === "PENDING") pendingRequired.push(ctx.context ?? "<unknown>");
+      else if (s === "PENDING" || s === "EXPECTED")
+        pendingRequired.push(ctx.context ?? "<unknown>");
     }
   }
   if (failingRequired.length > 0) {
