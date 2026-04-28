@@ -140,10 +140,28 @@ export default tseslint.config(
       "no-restricted-syntax": [
         "error",
         {
+          // REST: forbid the named octokit.rest.issues.* mutation methods.
           selector:
             "CallExpression[callee.property.name=/^(addLabels|removeLabel|removeAllLabels|setLabels|update|lock|unlock|addAssignees|removeAssignees|pin|unpin)$/]",
           message:
             "bot:triage v1 is suggest-only — issue mutation methods are forbidden in this file (FR-034 / T087).",
+        },
+        {
+          // GraphQL via plain string: forbid mutation names in the
+          // string-literal first arg of `octokit.graphql(...)`.
+          selector:
+            "CallExpression[callee.property.name='graphql'] Literal[value=/\\b(addLabelsToLabelable|removeLabelsFromLabelable|closeIssue|lockLockable|addAssigneesToAssignable|pinIssue)\\b/]",
+          message:
+            "bot:triage v1 is suggest-only — forbidden issue GraphQL mutations are not allowed in this file (FR-034 / T087).",
+        },
+        {
+          // GraphQL via template literal: same set of forbidden mutation
+          // names appearing in any tagged-template part of an
+          // `octokit.graphql(...)` call.
+          selector:
+            "CallExpression[callee.property.name='graphql'] TemplateElement[value.raw=/\\b(addLabelsToLabelable|removeLabelsFromLabelable|closeIssue|lockLockable|addAssigneesToAssignable|pinIssue)\\b/]",
+          message:
+            "bot:triage v1 is suggest-only — forbidden issue GraphQL mutations are not allowed in this file (FR-034 / T087).",
         },
       ],
     },

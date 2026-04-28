@@ -156,7 +156,7 @@ A separate, newer lifecycle layered on top of the composite handler. The probe-v
 
 - **State**: rows in `ship_intents` (status: `active` | `paused` | `merged_externally` | `ready_awaiting_human_merge` | `deadline_exceeded` | `human_took_over` | `aborted_by_user` | `pr_closed`). Wake events queued in Valkey `ship:tickle`. Cancellation flag at `ship:cancel:{intent_id}`.
 - **Three trigger surfaces (FR-027)** — all functionally equivalent, normalised to a single `CanonicalCommand`:
-  1. **Literal**: `bot:ship` (or `bot:ship --deadline 2h`) PR comment. Deterministic regex parser. Available without the v2 flag.
+  1. **Literal**: `bot:ship` (or `bot:ship --deadline 2h`) PR comment. Deterministic regex parser. Permanent surface.
   2. **Natural language**: `@chrisleekr-bot ship this please`. Mention-prefix-gated NL classifier (FR-025a) — zero LLM cost on comments without the mention. Bedrock single-turn classification. Permanent surface.
   3. **Label**: apply `bot:ship` (or `bot:ship/deadline=2h`). Bot self-removes the label after acting (FR-026a). Re-application is the supported re-trigger mechanism.
 - **Lifecycle commands** (same three surfaces): `bot:stop` / `bot:resume` / `bot:abort-ship`.

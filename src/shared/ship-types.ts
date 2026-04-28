@@ -167,10 +167,20 @@ export interface CanonicalCommandPr {
  * distinction, mirroring the unified `issue_comment` event surface.
  *
  * `event_surface` carries the per-event-type origin so per-intent
- * eligibility (FR-029..FR-035) can be enforced downstream;
+ * eligibility (FR-029..FR-035) can be enforced downstream.
+ *
  * `thread_id` is set only when the trigger originated from a
- * `pull_request_review_comment` event and refers to a specific
- * review thread.
+ * `pull_request_review_comment` event. **Identifier semantics**: it
+ * carries the REST `payload.comment.id` (numeric, stringified) — the
+ * originating review-comment id, NOT the GraphQL
+ * `PullRequestReviewThread` node ID. Downstream handlers that need to
+ * resolve the parent review-thread node ID (e.g., the `fix-thread`
+ * MCP `resolveReviewThread` mutation) MUST resolve it at execution
+ * time via GraphQL (`pullRequestReviewThread` lookup keyed on the
+ * comment) rather than treating `thread_id` as a node ID. Carrying
+ * the REST id avoids paying a GraphQL round-trip on every
+ * review-comment webhook delivery, including comments that don't
+ * trigger a scoped command.
  */
 export interface CanonicalCommand {
   readonly intent: CommandIntent;

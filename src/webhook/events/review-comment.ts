@@ -40,10 +40,21 @@ export function handleReviewComment(
 
   // T028e + T089: ship trigger-surface dispatch. Review comments always
   // target a PR; carry the `event_surface: 'review-comment'` tag and
-  // the originating comment's `id` as `thread_id` so scoped commands
+  // the originating comment's REST `id` as `thread_id` so scoped commands
   // that act on a specific thread (`bot:fix-thread`, `bot:explain-thread`)
-  // can resolve the target. The legacy intent-classifier dispatch below
-  // is preserved.
+  // can resolve the target.
+  //
+  // **Identifier semantics** (CanonicalCommand.thread_id): the value below
+  // is the REST `payload.comment.id`, NOT the GraphQL
+  // `PullRequestReviewThread` node ID. Handlers that call the GraphQL
+  // `resolveReviewThread` mutation (e.g., the MCP `resolve-review-thread`
+  // server) MUST resolve the parent thread node ID at execution time
+  // via GraphQL (`pullRequestReviewThread` keyed on the comment).
+  // Pre-fetching the node ID here would impose an extra GraphQL round
+  // trip on every review-comment webhook — including comments that
+  // never trigger a scoped command.
+  //
+  // The legacy intent-classifier dispatch below is preserved.
   if (payload.installation !== undefined) {
     const installationId = payload.installation.id;
     const owner = payload.repository.owner.login;
