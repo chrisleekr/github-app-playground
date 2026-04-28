@@ -341,6 +341,25 @@
   
   
   
+    <li class="md-tabs__item">
+      <a href="../SHIP/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  PR shepherding (`bot:ship`)
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
     
     
       <li class="md-tabs__item">
@@ -1359,6 +1378,33 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="../SHIP/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PR shepherding (`bot:ship`)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
     
     
     
@@ -1373,10 +1419,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
             
   
   
@@ -1394,8 +1440,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_6">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -2605,7 +2651,7 @@ Source: <a href="https://docs.github.com/en/apps/creating-github-apps/registerin
 </ul>
 <hr />
 <h3 id="17-subscribe-to-events">1.7 Subscribe to Events<a class="headerlink" href="#17-subscribe-to-events" title="Permanent link">&para;</a></h3>
-<p>After you set permissions, the <strong>Subscribe to events</strong> section becomes available and lists only events that match the permissions you granted. Check all five:</p>
+<p>After you set permissions, the <strong>Subscribe to events</strong> section becomes available and lists only events that match the permissions you granted. Check all of these:</p>
 <table>
 <thead>
 <tr>
@@ -2621,8 +2667,13 @@ Source: <a href="https://docs.github.com/en/apps/creating-github-apps/registerin
 <td><code>src/webhook/events/issue-comment.ts</code></td>
 </tr>
 <tr>
+<td><strong>Issues</strong></td>
+<td><code>issues.labeled</code> / <code>issues.unlabeled</code></td>
+<td><code>src/webhook/events/issues.ts</code></td>
+</tr>
+<tr>
 <td><strong>Pull requests</strong></td>
-<td><code>pull_request.opened</code></td>
+<td><code>pull_request.opened</code> / <code>.labeled</code> / <code>.synchronize</code> / <code>.closed</code></td>
 <td><code>src/webhook/events/pull-request.ts</code></td>
 </tr>
 <tr>
@@ -2632,19 +2683,31 @@ Source: <a href="https://docs.github.com/en/apps/creating-github-apps/registerin
 </tr>
 <tr>
 <td><strong>Pull request review comments</strong></td>
-<td><code>pull_request_review_comment.created</code></td>
+<td><code>pull_request_review_comment.created</code> / <code>.edited</code> / <code>.deleted</code></td>
 <td><code>src/webhook/events/review-comment.ts</code></td>
 </tr>
 <tr>
 <td><strong>Pull request review threads</strong></td>
-<td><code>pull_request_review_thread.resolved</code> / <code>pull_request_review_thread.unresolved</code></td>
+<td><code>pull_request_review_thread.resolved</code> / <code>.unresolved</code></td>
 <td><code>src/webhook/events/review-thread.ts</code></td>
+</tr>
+<tr>
+<td><strong>Check runs</strong></td>
+<td><code>check_run.completed</code> (powers the <code>bot:ship</code> reactor — early-wakes active intents on CI completion)</td>
+<td><code>src/webhook/events/check-run.ts</code></td>
+</tr>
+<tr>
+<td><strong>Check suites</strong></td>
+<td><code>check_suite.completed</code></td>
+<td><code>src/webhook/events/check-suite.ts</code></td>
 </tr>
 </tbody>
 </table>
+<p>The PR shepherding reactor uses the new <code>synchronize</code>, <code>closed</code>, <code>edited</code>, <code>deleted</code>, <code>check_run</code>, and <code>check_suite</code> subscriptions to early-wake active sessions. <code>SHIP_USE_TRIGGER_SURFACES_V2=true</code> gates the <strong>trigger-surface</strong> wiring (the new literal/NL/label trigger router) — <strong>not</strong> the reactor wake subscriptions, which must be registered regardless. Existing <code>bot:ship</code> (composite) operation does not require the new wake subscriptions.</p>
+<p>The bot also recognises four GitHub labels on PRs (FR-026): <code>bot:ship</code>, <code>bot:stop</code>, <code>bot:resume</code>, <code>bot:abort-ship</code>, plus the suffix-overridden variants <code>bot:ship/deadline=2h</code> etc. The bot self-removes the label after acting (FR-026a) — re-application is the supported re-trigger mechanism.</p>
 <blockquote>
 <p><strong>Note:</strong> GitHub does <strong>not</strong> emit a <code>pull_request_review_thread.created</code> action. The only valid actions for this event are <code>resolved</code> and <code>unresolved</code>, confirmed by <code>PullRequestReviewThreadResolvedEvent</code> and <code>PullRequestReviewThreadUnresolvedEvent</code> in <code>@octokit/webhooks-types</code>. Both actions route to the same handler.</p>
-<p>The <code>pull-request.ts</code>, <code>review.ts</code>, and <code>review-thread.ts</code> handlers are <strong>placeholders</strong> — they log the event but take no further action. Implement <code>processRequest()</code> inside each when ready.</p>
+<p><code>pull-request.ts</code> is now an active handler — it dispatches <code>opened</code>, <code>labeled</code>, <code>synchronize</code>, and <code>closed</code> actions (the latter two via <code>fireReactor</code> to early-wake any active <code>bot:ship</code> session). <code>review.ts</code> likewise fires the reactor on <code>pull_request_review.submitted</code>. <code>review-thread.ts</code> remains a placeholder — <code>resolved</code>/<code>unresolved</code> actions are logged but take no further action; wire <code>processRequest()</code> inside it when needed.</p>
 </blockquote>
 <p>Leave all other events <strong>unchecked</strong>. Every subscribed event that your server does not handle still generates an HTTP POST to your webhook URL, wastes bandwidth, and creates noise in the <strong>Advanced</strong> delivery log.</p>
 <blockquote>

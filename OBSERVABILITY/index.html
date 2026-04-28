@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://chrisleekr.github.io/github-app-playground/OBSERVABILITY/">
       
       
-        <link rel="prev" href="../BOT-WORKFLOWS/">
+        <link rel="prev" href="../SHIP/">
       
       
         <link rel="next" href="../TRIAGE/">
@@ -338,6 +338,25 @@
   
   
   
+  
+    <li class="md-tabs__item">
+      <a href="../SHIP/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  PR shepherding (`bot:ship`)
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
     
   
   
@@ -616,6 +635,33 @@
       
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../SHIP/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PR shepherding (`bot:ship`)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
     
   
   
@@ -637,10 +683,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
             
   
   
@@ -658,8 +704,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_6">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -740,6 +786,17 @@
     <span class="md-ellipsis">
       
         Log fields
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ship-workflow-log-fields-fr-016" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ship-workflow log fields (FR-016)
       
     </span>
   </a>
@@ -1008,6 +1065,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#ship-workflow-log-fields-fr-016" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ship-workflow log fields (FR-016)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#dispatch-reasons" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1153,6 +1221,94 @@
 </tr>
 </tbody>
 </table>
+<h2 id="ship-workflow-log-fields-fr-016">Ship-workflow log fields (FR-016)<a class="headerlink" href="#ship-workflow-log-fields-fr-016" title="Permanent link">&para;</a></h2>
+<p>The <code>bot:ship</code> lifecycle emits structured pino log lines validated against the canonical Zod schema in <code>src/workflows/ship/log-fields.ts</code>. The schema is consumed by every emitter (probe, intent transitions, reactor fan-out) so field names and types do not drift between modules.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>When present</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>event</code></td>
+<td>string (e.g. <code>ship.intent.transition</code>, <code>ship.probe.run</code>, <code>ship.reactor.fanout</code>)</td>
+<td>Always</td>
+</tr>
+<tr>
+<td><code>intent_id</code></td>
+<td>UUID</td>
+<td>Always</td>
+</tr>
+<tr>
+<td><code>pr</code></td>
+<td><code>{owner, repo, number, installation_id}</code></td>
+<td>Always</td>
+</tr>
+<tr>
+<td><code>iteration_n</code></td>
+<td>non-negative int</td>
+<td>Always (0 on pre-iteration events)</td>
+</tr>
+<tr>
+<td><code>phase</code></td>
+<td><code>probe</code> | <code>fix</code> | <code>reply</code> | <code>wait</code> | <code>terminal</code></td>
+<td>Iteration events</td>
+</tr>
+<tr>
+<td><code>from_status</code> / <code>to_status</code></td>
+<td><code>SessionStatus</code></td>
+<td>Transition events only</td>
+</tr>
+<tr>
+<td><code>terminal_blocker_category</code></td>
+<td><code>BlockerCategory</code></td>
+<td>Terminal <code>human_took_over</code> transitions</td>
+</tr>
+<tr>
+<td><code>non_readiness_reason</code></td>
+<td><code>NonReadinessReason</code></td>
+<td>Probe events with non-ready verdict</td>
+</tr>
+<tr>
+<td><code>trigger_surface</code></td>
+<td><code>literal</code> | <code>nl</code> | <code>label</code></td>
+<td>Session-start events only (FR-027)</td>
+</tr>
+<tr>
+<td><code>principal_login</code></td>
+<td>string</td>
+<td>Session-start events only</td>
+</tr>
+<tr>
+<td><code>spent_usd_cents</code></td>
+<td>non-negative integer</td>
+<td>Always — cumulative session spend (cents, NOT float, to avoid binary-fp drift in aggregations)</td>
+</tr>
+<tr>
+<td><code>wall_clock_ms</code></td>
+<td>non-negative integer</td>
+<td>Always — cumulative session wall-clock</td>
+</tr>
+<tr>
+<td><code>delta_usd_cents</code></td>
+<td>non-negative integer</td>
+<td>Per-event spend (iteration events only)</td>
+</tr>
+<tr>
+<td><code>delta_ms</code></td>
+<td>non-negative integer</td>
+<td>Per-event wall-clock duration</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Querying example</strong> (Datadog / Loki):</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>event:&quot;ship.intent.transition&quot; to_status:&quot;human_took_over&quot; terminal_blocker_category:&quot;flake-cap&quot;
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>| count by pr.repo
+</span></code></pre></div>
+<p>The schema is the <strong>source of truth</strong>. Adding or renaming a field requires updating <code>src/workflows/ship/log-fields.ts</code>; the co-located <code>log-fields.test.ts</code> round-trips a sample through the schema and rejects unknown / mistyped fields, so silent drift fails CI.</p>
 <h2 id="dispatch-reasons">Dispatch reasons<a class="headerlink" href="#dispatch-reasons" title="Permanent link">&para;</a></h2>
 <p>Canonical source: <code>src/shared/dispatch-types.ts</code>. Four values, all landing on <code>dispatch_target=daemon</code>.</p>
 <table>
@@ -1270,7 +1426,7 @@
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../BOT-WORKFLOWS/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Bot workflows">
+          <a href="../SHIP/" class="md-footer__link md-footer__link--prev" aria-label="Previous: PR shepherding (`bot:ship`)">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1280,7 +1436,7 @@
                 Previous
               </span>
               <div class="md-ellipsis">
-                Bot workflows
+                PR shepherding (`bot:ship`)
               </div>
             </div>
           </a>

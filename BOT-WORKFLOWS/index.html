@@ -16,7 +16,7 @@
         <link rel="prev" href="../CONFIGURATION/">
       
       
-        <link rel="next" href="../OBSERVABILITY/">
+        <link rel="next" href="../SHIP/">
       
       
         
@@ -330,6 +330,25 @@
     
   
   Bot workflows
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../SHIP/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  PR shepherding (`bot:ship`)
 
       </a>
     </li>
@@ -751,6 +770,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#ship-pr-shepherding-lifecycle-ship_intents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ship (PR shepherding lifecycle, ship_intents)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -864,6 +894,33 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="../SHIP/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PR shepherding (`bot:ship`)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
     
     
     
@@ -878,10 +935,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
             
   
   
@@ -899,8 +956,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_6">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1235,6 +1292,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#ship-pr-shepherding-lifecycle-ship_intents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ship (PR shepherding lifecycle, ship_intents)
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1540,6 +1608,21 @@
 <li><strong>Cost note</strong>: every ship pays for at least two <code>review</code> and one <code>resolve</code> agent run (the loop's lower bound). With <code>REVIEW_RESOLVE_MAX_ITERATIONS=2</code>, the worst case is 2 review + 2 resolve. Per project direction (2026-04-25), accuracy beats cost — closing the loop justifies the extra spend.</li>
 <li><strong>Example trigger</strong>: add label <code>bot:ship</code>, or comment "<code>@chrisleekr-bot ship this</code>"</li>
 </ul>
+<h3 id="ship-pr-shepherding-lifecycle-ship_intents">ship (PR shepherding lifecycle, <code>ship_intents</code>)<a class="headerlink" href="#ship-pr-shepherding-lifecycle-ship_intents" title="Permanent link">&para;</a></h3>
+<p>A separate, newer lifecycle layered on top of the composite handler — <strong>flag-gated</strong> behind <code>SHIP_USE_TRIGGER_SURFACES_V2</code>, <code>SHIP_USE_PROBE_VERDICT</code>, and <code>SHIP_USE_CONTINUATION_LOOP</code>. Default off; the composite path above is unchanged when these flags are unset. See <a href="../SHIP/"><code>docs/SHIP.md</code></a> for the operator-facing summary.</p>
+<ul>
+<li><strong>State</strong>: rows in <code>ship_intents</code> (status: <code>active</code> | <code>paused</code> | <code>merged_externally</code> | <code>ready_awaiting_human_merge</code> | <code>deadline_exceeded</code> | <code>human_took_over</code> | <code>aborted_by_user</code> | <code>pr_closed</code>). Wake events queued in Valkey <code>ship:tickle</code>. Cancellation flag at <code>ship:cancel:{intent_id}</code>.</li>
+<li><strong>Three trigger surfaces (FR-027)</strong> — all functionally equivalent, normalised to a single <code>CanonicalCommand</code>:</li>
+<li><strong>Literal</strong>: <code>bot:ship</code> (or <code>bot:ship --deadline 2h</code>) PR comment. Deterministic regex parser. Available without the v2 flag.</li>
+<li><strong>Natural language</strong>: <code>@chrisleekr-bot ship this please</code>. Mention-prefix-gated NL classifier (FR-025a) — zero LLM cost on comments without the mention. Bedrock single-turn classification.</li>
+<li><strong>Label</strong>: apply <code>bot:ship</code> (or <code>bot:ship/deadline=2h</code>). Bot self-removes the label after acting (FR-026a). Re-application is the supported re-trigger mechanism.</li>
+<li><strong>Lifecycle commands</strong> (same three surfaces): <code>bot:stop</code> / <code>bot:resume</code> / <code>bot:abort-ship</code>.</li>
+<li><strong>Reactor (T023-T027)</strong>: <code>pull_request.{synchronize,closed}</code>, <code>pull_request_review.submitted</code>, <code>pull_request_review_comment.{created,edited,deleted}</code>, <code>check_run.completed</code>, <code>check_suite.completed</code> early-wake any active intent on the affected PR via Valkey <code>ZADD ship:tickle 0 &lt;intent_id&gt;</code>. Reactor on <code>synchronize</code> from a non-bot pusher transitions to terminal <code>human_took_over</code> + <code>manual-push-detected</code> (FR-010). Reactor on <code>pull_request.closed</code> transitions to <code>merged_externally</code> or <code>pr_closed</code>.</li>
+<li><strong>Probe verdict ladder</strong> (<code>src/workflows/ship/verdict.ts</code>): <code>human_took_over</code> &gt; <code>behind_base</code> &gt; <code>failing_checks</code> &gt; <code>pending_checks</code> &gt; <code>mergeable_pending</code> &gt; <code>changes_requested</code> &gt; <code>open_threads</code> &gt; <code>ready</code>. The <code>mergeable=null</code> backoff schedule is bounded by <code>MERGEABLE_NULL_BACKOFF_MS_LIST</code>.</li>
+<li><strong>Terminal <code>ready</code> action</strong> (FR-019): <code>markPullRequestReadyForReview</code> GraphQL mutation if PR <code>isDraft === true</code>, then update tracking comment to terminal state, then transition <code>ship_intents.status = 'ready_awaiting_human_merge'</code>. Failure of step 1 does NOT block 2 / 3 (logged + surfaced in the tracking comment). The bot <strong>never</strong> calls <code>gh pr merge</code> (FR-008, T046b static guard).</li>
+<li><strong>MCP server</strong>: <code>resolve-review-thread</code> exposes the <code>resolveReviewThread</code> GraphQL mutation as a single tool the resolve handler can call — bound to one PR at construction; refuses cross-PR thread ids.</li>
+<li><strong>Rollout</strong> (research.md R8): three flags default off; enable for one-week soak; follow-up PR removes flags + dead code paths.</li>
+</ul>
 <h2 id="user-facing-surfaces">User-facing surfaces<a class="headerlink" href="#user-facing-surfaces" title="Permanent link">&para;</a></h2>
 <p>Each workflow run produces two GitHub-visible signals: a <strong>tracking comment</strong> (the bot's working/result body) and a <strong>reaction set</strong> on the user's trigger comment.</p>
 <h3 id="tracking-comments">Tracking comments<a class="headerlink" href="#tracking-comments" title="Permanent link">&para;</a></h3>
@@ -1680,13 +1763,13 @@
         
         
           
-          <a href="../OBSERVABILITY/" class="md-footer__link md-footer__link--next" aria-label="Next: Observability">
+          <a href="../SHIP/" class="md-footer__link md-footer__link--next" aria-label="Next: PR shepherding (`bot:ship`)">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Observability
+                PR shepherding (`bot:ship`)
               </div>
             </div>
             <div class="md-footer__button md-icon">

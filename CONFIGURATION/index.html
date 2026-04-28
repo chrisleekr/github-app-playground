@@ -341,6 +341,25 @@
   
   
   
+    <li class="md-tabs__item">
+      <a href="../SHIP/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  PR shepherding (`bot:ship`)
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
     
     
       <li class="md-tabs__item">
@@ -713,6 +732,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#pr-shepherding-botship-lifecycle-ship_intents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PR Shepherding (bot:ship lifecycle, ship_intents)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#composite-ship-workflow" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -775,6 +805,33 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="../SHIP/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PR shepherding (`bot:ship`)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
     
     
     
@@ -789,10 +846,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
             
   
   
@@ -810,8 +867,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_6">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1128,6 +1185,17 @@
     <span class="md-ellipsis">
       
         Triage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pr-shepherding-botship-lifecycle-ship_intents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PR Shepherding (bot:ship lifecycle, ship_intents)
       
     </span>
   </a>
@@ -1567,11 +1635,75 @@
 <tr>
 <td><code>INTENT_CONFIDENCE_THRESHOLD</code></td>
 <td><code>0.75</code></td>
-<td>Range <code>[0, 1]</code>. Below this, a <code>@chrisleekr-bot</code> comment is treated as ambiguous and the dispatcher posts a clarification request instead of dispatching a workflow. See <a href="../BOT-WORKFLOWS/#comment-trigger">bot workflows</a>.</td>
+<td>Range <code>[0, 1]</code>. Below this, a <code>@chrisleekr-bot</code> comment is treated as ambiguous and the dispatcher posts a clarification request instead of dispatching a workflow. See <a href="../BOT-WORKFLOWS/#comment-intent-classifier">bot workflows</a>.</td>
 </tr>
 </tbody>
 </table>
 <p>See <a href="../TRIAGE/">Triage</a> for the binary <code>heavy</code> signal, circuit breaker, and the six fallback reasons that appear in logs.</p>
+<h2 id="pr-shepherding-botship-lifecycle-ship_intents">PR Shepherding (<code>bot:ship</code> lifecycle, ship_intents)<a class="headerlink" href="#pr-shepherding-botship-lifecycle-ship_intents" title="Permanent link">&para;</a></h2>
+<p>The new shepherding lifecycle (intents tracked in <code>ship_intents</code>) is gated by feature flags so it can be rolled out incrementally per <code>research.md</code> R8.</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MAX_WALL_CLOCK_PER_SHIP_RUN</code></td>
+<td><code>4h</code></td>
+<td>Hard ceiling on a single intent's wall-clock budget. Accepts integer ms or duration suffix (<code>4h</code> / <code>30m</code> / <code>90s</code>). Per-invocation <code>--deadline</code> is clamped to this ceiling.</td>
+</tr>
+<tr>
+<td><code>MAX_SHIP_ITERATIONS</code></td>
+<td><code>50</code></td>
+<td>Iteration cap (FR-012). Checked at the start of each iteration; firing transitions the intent to terminal <code>human_took_over</code> + <code>BlockerCategory='iteration-cap'</code>.</td>
+</tr>
+<tr>
+<td><code>CRON_TICKLE_INTERVAL_MS</code></td>
+<td><code>30000</code></td>
+<td>How often the cron tickle scans <code>ship:tickle</code> for due intents. Lower = faster wake but more Valkey traffic.</td>
+</tr>
+<tr>
+<td><code>MERGEABLE_NULL_BACKOFF_MS_LIST</code></td>
+<td><code>500,1500,4500</code></td>
+<td>Comma-separated bounded backoff schedule used by <code>runProbe</code> when <code>mergeable=null</code>. Per FR-021, exhaustion yields <code>mergeable_pending</code> and the session yields rather than spinning.</td>
+</tr>
+<tr>
+<td><code>REVIEW_BARRIER_SAFETY_MARGIN_MS</code></td>
+<td><code>1200000</code></td>
+<td>(20 min) FR-023: minimum elapsed time since last bot push before the bot may declare <code>ready</code> without a non-bot review on the current head SHA.</td>
+</tr>
+<tr>
+<td><code>FIX_ATTEMPTS_PER_SIGNATURE_CAP</code></td>
+<td><code>3</code></td>
+<td>FR-013: maximum attempts per failure signature within a single intent. Cap firing terminates the intent with <code>BlockerCategory='flake-cap'</code>.</td>
+</tr>
+<tr>
+<td><code>SHIP_FORBIDDEN_TARGET_BRANCHES</code></td>
+<td>empty</td>
+<td>Comma-separated branch names (e.g., <code>main,production,release</code>) that the bot refuses to shepherd PRs against. Per FR-015 refusal case 4.</td>
+</tr>
+<tr>
+<td><code>SHIP_USE_PROBE_VERDICT</code></td>
+<td><code>false</code></td>
+<td>Rollout flag — when <code>true</code>, terminal-readiness uses the new GraphQL probe verdict ladder. Default off keeps the legacy in-process loop in charge.</td>
+</tr>
+<tr>
+<td><code>SHIP_USE_CONTINUATION_LOOP</code></td>
+<td><code>false</code></td>
+<td>Rollout flag — when <code>true</code>, the iteration loop exits after each phase and re-enters via the cron tickle (Valkey <code>ship:tickle</code>). Restart-safe and slot-friendly.</td>
+</tr>
+<tr>
+<td><code>SHIP_USE_TRIGGER_SURFACES_V2</code></td>
+<td><code>false</code></td>
+<td>Rollout flag — when <code>true</code>, the natural-language and label trigger surfaces (FR-025/025a/026/026a/027) are active alongside the legacy literal-comment surface. Default off preserves today's behaviour with zero LLM cost.</td>
+</tr>
+</tbody>
+</table>
+<p>After a one-week soak with all three flags set to <code>true</code> and clean operation observed, a follow-up PR removes the flags and the legacy code paths (research.md R8 cutover plan, T071).</p>
 <h2 id="composite-ship-workflow">Composite ship workflow<a class="headerlink" href="#composite-ship-workflow" title="Permanent link">&para;</a></h2>
 <table>
 <thead>

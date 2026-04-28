@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://chrisleekr.github.io/github-app-playground/ARCHITECTURE/">
+        <link rel="canonical" href="https://chrisleekr.github.io/github-app-playground/SHIP/">
       
       
-        <link rel="prev" href="../SETUP/">
+        <link rel="prev" href="../BOT-WORKFLOWS/">
       
       
-        <link rel="next" href="../CONFIGURATION/">
+        <link rel="next" href="../OBSERVABILITY/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Architecture - GitHub App Playground</title>
+        <title>PR shepherding (`bot:ship`) - GitHub App Playground</title>
       
     
     
@@ -63,17 +63,17 @@
     
   
 <meta property="og:type" content="website" />
-<meta property="og:title" content="Architecture - GitHub App Playground" />
+<meta property="og:title" content="PR shepherding (`bot:ship`) - GitHub App Playground" />
 <meta property="og:description" content="A GitHub App webhook server powered by the Claude Agent SDK." />
-<meta property="og:image" content="https://chrisleekr.github.io/github-app-playground/assets/images/social/ARCHITECTURE.png" />
+<meta property="og:image" content="https://chrisleekr.github.io/github-app-playground/assets/images/social/SHIP.png" />
 <meta property="og:image:type" content="image/png" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
-<meta property="og:url" content="https://chrisleekr.github.io/github-app-playground/ARCHITECTURE/" />
+<meta property="og:url" content="https://chrisleekr.github.io/github-app-playground/SHIP/" />
 <meta property="twitter:card" content="summary_large_image" />
-<meta property="twitter:title" content="Architecture - GitHub App Playground" />
+<meta property="twitter:title" content="PR shepherding (`bot:ship`) - GitHub App Playground" />
 <meta property="twitter:description" content="A GitHub App webhook server powered by the Claude Agent SDK." />
-<meta property="twitter:image" content="https://chrisleekr.github.io/github-app-playground/assets/images/social/ARCHITECTURE.png" />
+<meta property="twitter:image" content="https://chrisleekr.github.io/github-app-playground/assets/images/social/SHIP.png" />
 </head>
   
   
@@ -93,7 +93,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#architecture" class="md-skip">
+        <a href="#botship-pr-shepherding-to-merge-ready" class="md-skip">
           Skip to content
         </a>
       
@@ -127,7 +127,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Architecture
+              PR shepherding (`bot:ship`)
             
           </span>
         </div>
@@ -281,11 +281,9 @@
   
   
   
-    
   
-  
-    <li class="md-tabs__item md-tabs__item--active">
-      <a href="./" class="md-tabs__link">
+    <li class="md-tabs__item">
+      <a href="../ARCHITECTURE/" class="md-tabs__link">
         
   
   
@@ -340,9 +338,11 @@
   
   
   
+    
   
-    <li class="md-tabs__item">
-      <a href="../SHIP/" class="md-tabs__link">
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
         
   
   
@@ -554,37 +554,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Architecture
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../ARCHITECTURE/" class="md-nav__link">
         
   
   
@@ -600,131 +573,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#request-flow" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Request flow
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#key-concepts" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Key concepts
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#dispatch-flow" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Dispatch Flow
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Dispatch Flow">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#single-target-four-reasons" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Single target, four reasons
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#scale-up-model" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Scale-up model
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#why-each-request-was-routed-the-way-it-was" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Why each request was routed the way it was
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#directory-layout" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Directory layout
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#pr-shepherding-reactor-continuation-flow" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        PR shepherding reactor + continuation flow
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#further-reading" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Further reading
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -787,10 +635,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../SHIP/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PR shepherding (`bot:ship`)
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -806,6 +681,70 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-invoke" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to invoke
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-monitor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to monitor
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-abort" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to abort
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rollout-flag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rollout flag
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1088,10 +1027,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#request-flow" class="md-nav__link">
+  <a href="#how-to-invoke" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Request flow
+        How to invoke
       
     </span>
   </a>
@@ -1099,10 +1038,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#key-concepts" class="md-nav__link">
+  <a href="#how-to-monitor" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Key concepts
+        How to monitor
       
     </span>
   </a>
@@ -1110,60 +1049,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#dispatch-flow" class="md-nav__link">
+  <a href="#how-to-abort" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Dispatch Flow
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Dispatch Flow">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#single-target-four-reasons" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Single target, four reasons
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#scale-up-model" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Scale-up model
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#why-each-request-was-routed-the-way-it-was" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Why each request was routed the way it was
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#directory-layout" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Directory layout
+        How to abort
       
     </span>
   </a>
@@ -1171,21 +1060,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#pr-shepherding-reactor-continuation-flow" class="md-nav__link">
+  <a href="#rollout-flag" class="md-nav__link">
     <span class="md-ellipsis">
       
-        PR shepherding reactor + continuation flow
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#further-reading" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Further reading
+        Rollout flag
       
     </span>
   </a>
@@ -1209,7 +1087,7 @@
 
 
   
-    <a href="https://github.com/chrisleekr/github-app-playground/edit/main/docs/ARCHITECTURE.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/chrisleekr/github-app-playground/edit/main/docs/SHIP.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -1217,195 +1095,69 @@
   
 
 
-<h1 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h1>
-<p>A single HTTP server process receives GitHub webhook events, acknowledges within 10 seconds, and asynchronously hands each event to a daemon for execution. Every event walks the same path: verify → route → classify → enqueue → daemon claims the job → run the pipeline → finalise the tracking comment.</p>
-<h2 id="request-flow">Request flow<a class="headerlink" href="#request-flow" title="Permanent link">&para;</a></h2>
-<pre class="mermaid"><code>flowchart TD
-    GH["GitHub webhook&lt;br/&gt;POST /api/github/webhooks"]:::entry
-    VERIFY["Verify HMAC-SHA256"]:::guard
-    ACK["200 OK within 10 seconds"]:::ack
-    ROUTE["Router&lt;br/&gt;idempotency + allowlist + concurrency"]:::guard
-    TR["Haiku triage&lt;br/&gt;binary heavy classifier"]:::decide
-    QUEUE["Orchestrator job queue&lt;br/&gt;Valkey list"]:::store
-    SCALE{{"Scale-up decision&lt;br/&gt;heavy OR queue ≥ threshold&lt;br/&gt;AND no persistent slots?&lt;br/&gt;and cooldown elapsed?"}}:::fork
-    SPAWN["K8s API&lt;br/&gt;create bare Pod&lt;br/&gt;DAEMON_EPHEMERAL=true"]:::decide
-    FLEET["Daemon fleet&lt;br/&gt;persistent + ephemeral&lt;br/&gt;WebSocket connections"]:::target
-    PIPE["runPipeline&lt;br/&gt;clone → prompt → Claude Agent SDK"]:::work
-    FIN["Finalise tracking comment&lt;br/&gt;success, error, or cost summary"]:::done
-
-    GH --&gt; VERIFY --&gt; ACK
-    ACK -. async .-&gt; ROUTE
-    ROUTE --&gt; TR
-    TR --&gt; QUEUE
-    QUEUE --&gt; SCALE
-    SCALE --&gt;|yes| SPAWN
-    SPAWN --&gt; FLEET
-    SCALE --&gt;|no, or cooldown active| FLEET
-    QUEUE --&gt;|JobOffer| FLEET
-    FLEET --&gt; PIPE
-    PIPE --&gt; FIN
-
-    classDef entry fill:#0b5cad,stroke:#083e74,color:#ffffff
-    classDef guard fill:#164a3a,stroke:#0d2c24,color:#ffffff
-    classDef ack fill:#2a6f2a,stroke:#1a4d1a,color:#ffffff
-    classDef decide fill:#8a5a00,stroke:#5c3d00,color:#ffffff
-    classDef fork fill:#6a2080,stroke:#451454,color:#ffffff
-    classDef target fill:#114a82,stroke:#0a2f56,color:#ffffff
-    classDef work fill:#4a2e7a,stroke:#311f50,color:#ffffff
-    classDef store fill:#5c3d00,stroke:#3d2900,color:#ffffff
-    classDef done fill:#2a6f2a,stroke:#1a4d1a,color:#ffffff</code></pre>
-<h2 id="key-concepts">Key concepts<a class="headerlink" href="#key-concepts" title="Permanent link">&para;</a></h2>
-<ul>
-<li><strong>Async processing.</strong> The webhook handler must respond within 10 seconds, so the router fires <code>processRequest</code> with <code>fire-and-forget</code> semantics after the 200 OK is queued. Every box downstream of <code>ACK</code> runs after the HTTP response is already on the wire.</li>
-<li><strong>Idempotency is two-layered.</strong> The fast path is an in-memory <code>Map</code> keyed by the <code>X-GitHub-Delivery</code> header — cheap, but lost on restart. The durable path (<code>isAlreadyProcessed</code> in <code>src/core/tracking-comment.ts</code>) scans GitHub issue/PR comments for the hidden delivery marker embedded in the tracking comment, so duplicate deliveries are still detected across pod restarts, OOM kills, and crash loops — this works <strong>without</strong> <code>DATABASE_URL</code>. <code>DATABASE_URL</code> is only required to persist execution/dispatch history across restarts; it is not what provides durable idempotency.</li>
-<li><strong>One request, one clone.</strong> Each delivery clones the repo into a unique temp directory under <code>CLONE_BASE_DIR</code> <strong>on the daemon host</strong>. Claude operates on local files via <code>cwd</code>. The directory is removed after the run regardless of outcome.</li>
-<li><strong>The webhook server never runs the pipeline.</strong> Only daemons execute <code>runPipeline</code>. The webhook server is the orchestrator — it enqueues jobs and optionally spawns additional ephemeral daemons.</li>
-<li><strong>Every orchestrator runs a queue worker.</strong> <code>src/orchestrator/queue-worker.ts</code> polls <code>queue:jobs</code> via <code>LMOVE</code> into a per-instance processing list (<code>queue:processing:{instanceId}</code>), offers the job to a locally-connected daemon, and atomically re-queues it to the head when no local daemon can take it. Multi-orchestrator HA: <code>LMOVE</code> grants exactly-once claim across instances, <code>selectDaemon</code> inherently restricts to daemons whose WebSocket is held by this process, so the offer/accept round-trip stays in-process and <code>pendingOffers</code> never needs shared state. Crash recovery is handled by each orchestrator draining its own processing list at startup, and by a cross-instance reaper (<code>src/orchestrator/valkey-cleanup.ts</code>) that drains processing lists owned by instances whose <code>orchestrator:{id}:alive</code> liveness key (<code>src/orchestrator/instance-liveness.ts</code>) has expired.</li>
-<li><strong>MCP servers.</strong> Tracking-comment updates, inline PR reviews, and (optionally) Context7 library docs are exposed as MCP servers the agent can call. Git changes are made via the Bash tool against the cloned repo, not through a dedicated MCP server.</li>
-</ul>
-<h2 id="dispatch-flow">Dispatch Flow<a class="headerlink" href="#dispatch-flow" title="Permanent link">&para;</a></h2>
-<p>Dispatch collapsed to a single target: <code>daemon</code>. Every job is claimed by some daemon in the fleet over WebSocket. The only question the router answers is <strong>which reason put the job there</strong> — and whether an ephemeral daemon needs to be spawned so the fleet has capacity.</p>
-<h3 id="single-target-four-reasons">Single target, four reasons<a class="headerlink" href="#single-target-four-reasons" title="Permanent link">&para;</a></h3>
-<p>Canonical source: <code>src/shared/dispatch-types.ts</code>.</p>
-<ul>
-<li><code>DispatchTarget</code> = <code>"daemon"</code> (singleton — kept as a field for DB/log stability).</li>
-<li><code>DispatchReason</code> is one of:</li>
-</ul>
+<h1 id="botship-pr-shepherding-to-merge-ready"><code>bot:ship</code> — PR shepherding to merge-ready<a class="headerlink" href="#botship-pr-shepherding-to-merge-ready" title="Permanent link">&para;</a></h1>
+<p>The shepherding lifecycle takes an open PR from "needs work" to "ready for human merge" — driving CI fixes, replying to review threads, and resolving them, until the merge-readiness probe says the PR is clean. The bot <strong>never</strong> merges; the final merge action remains with a human (FR-008).</p>
+<h2 id="how-to-invoke">How to invoke<a class="headerlink" href="#how-to-invoke" title="Permanent link">&para;</a></h2>
+<p>There are three functionally equivalent surfaces (FR-027). All three produce the same canonical command and the same downstream behaviour; only the <code>surface</code> field on the canonical record differs (it appears in logs for observability, FR-016).</p>
 <table>
 <thead>
 <tr>
-<th>Reason</th>
-<th>When the router sets it</th>
+<th>Surface</th>
+<th>Example</th>
+<th>Notes</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>persistent-daemon</code></td>
-<td>Routed to an existing persistent daemon. The default, hot path.</td>
+<td>Literal</td>
+<td><code>bot:ship</code> <em>(or <code>bot:ship --deadline 2h</code>)</em></td>
+<td>Deterministic regex parser. The legacy surface; available without any feature flag.</td>
 </tr>
 <tr>
-<td><code>ephemeral-daemon-triage</code></td>
-<td>Triage flagged the job as heavy → orchestrator spawned an ephemeral daemon Pod to claim it.</td>
+<td>Natural</td>
+<td><code>@chrisleekr-bot ship this please</code></td>
+<td>Mention-prefix-gated NL classifier (FR-025a). Zero LLM cost on comments without the mention.</td>
 </tr>
 <tr>
-<td><code>ephemeral-daemon-overflow</code></td>
-<td>Queue length ≥ <code>EPHEMERAL_DAEMON_SPAWN_QUEUE_THRESHOLD</code> → orchestrator spawned an ephemeral daemon Pod to drain overflow.</td>
-</tr>
-<tr>
-<td><code>ephemeral-spawn-failed</code></td>
-<td>Spawn was required but the K8s API call failed. Job is rejected with a tracking-comment infra error.</td>
+<td>Label</td>
+<td>Apply the <code>bot:ship</code> label <em>(or <code>bot:ship/deadline=2h</code>)</em></td>
+<td>Bot self-removes the label after acting (FR-026a). Re-application is the supported re-trigger mechanism.</td>
 </tr>
 </tbody>
 </table>
-<h3 id="scale-up-model">Scale-up model<a class="headerlink" href="#scale-up-model" title="Permanent link">&para;</a></h3>
-<p>The fleet is two-tiered:</p>
-<ul>
-<li><strong>Persistent daemons</strong> are long-lived and deployed out-of-band (Helm, kubectl, plain <code>docker run</code>). They set <code>DAEMON_EPHEMERAL</code> unset or <code>false</code> and stay connected to the orchestrator indefinitely.</li>
-<li><strong>Ephemeral daemons</strong> are bare Pods spawned on demand by the orchestrator via the Kubernetes API. They run the same daemon image with <code>DAEMON_EPHEMERAL=true</code>, connect over WebSocket, claim one or more jobs, and exit after <code>EPHEMERAL_DAEMON_IDLE_TIMEOUT_MS</code> of idle.</li>
-</ul>
-<p>On every event, the orchestrator evaluates a scale-up rule:</p>
-<ol>
-<li><strong>Triage.</strong> A single-turn Haiku call returns <code>{ heavy, confidence, rationale }</code>. <code>heavy = true</code> is one scale-up trigger.</li>
-<li><strong>Overflow.</strong> If the job queue length is <code>≥ EPHEMERAL_DAEMON_SPAWN_QUEUE_THRESHOLD</code> and the persistent pool has no free slots, that's the other trigger.</li>
-<li><strong>Cooldown.</strong> Scale-ups are rate-limited by <code>EPHEMERAL_DAEMON_SPAWN_COOLDOWN_MS</code>. During cooldown, heavy/overflow signals do <strong>not</strong> spawn — the job falls back to <code>persistent-daemon</code> routing and waits for persistent capacity.</li>
-<li><strong>Spawn.</strong> When both a trigger fires and cooldown has elapsed, the orchestrator calls the K8s API to create a bare Pod running the daemon image with <code>DAEMON_EPHEMERAL=true</code>. Only a true K8s API failure yields <code>ephemeral-spawn-failed</code>; the job is then rejected with a tracking-comment infra error.</li>
-</ol>
-<p>The newly-spawned ephemeral daemon connects via WebSocket, is registered into the fleet with <code>isEphemeral: true</code>, claims the job from the queue, runs it, then drains and exits after the idle timeout.</p>
-<h3 id="why-each-request-was-routed-the-way-it-was">Why each request was routed the way it was<a class="headerlink" href="#why-each-request-was-routed-the-way-it-was" title="Permanent link">&para;</a></h3>
-<p>Every dispatch decision writes a <code>dispatch_reason</code> log field and, when <code>DATABASE_URL</code> is configured, an <code>executions</code> row. The four canonical values are listed above and in <a href="../OBSERVABILITY/">Observability</a>.</p>
-<h2 id="directory-layout">Directory layout<a class="headerlink" href="#directory-layout" title="Permanent link">&para;</a></h2>
+<p>The natural-language and label surfaces are gated on <code>SHIP_USE_TRIGGER_SURFACES_V2=true</code>. The literal <code>bot:ship</code> surface works regardless.</p>
+<p>The four recognised verbs (each available across all three surfaces): <code>ship</code>, <code>stop</code>, <code>resume</code>, <code>abort-ship</code>. See <code>contracts/bot-commands.md</code> for full syntax.</p>
+<h2 id="how-to-monitor">How to monitor<a class="headerlink" href="#how-to-monitor" title="Permanent link">&para;</a></h2>
+<p>Each session writes a single canonical tracking comment marked with <code>&lt;!-- ship-intent:{intent_id} --&gt;</code>. The body shows current phase, last action, next queued action, iteration count, USD spent, deadline, and (on terminal) the blocker category. A maintainer glancing at the PR sees exactly where the bot is and whether they need to act.</p>
+<p>For Day-2 SQL queries (active sessions, terminal-state distribution, USD spend by intent), see the in-repo file <code>specs/20260427-201332-pr-shepherding-merge-ready/quickstart.md</code> §"Day-2 ops".</p>
+<h2 id="how-to-abort">How to abort<a class="headerlink" href="#how-to-abort" title="Permanent link">&para;</a></h2>
+<p>Three ways, all equivalent:</p>
 <table>
 <thead>
 <tr>
-<th>Directory</th>
-<th>Responsibility</th>
+<th>Surface</th>
+<th>Example</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>src/webhook/</code></td>
-<td>Event routing (<code>router.ts</code>) and per-event handlers (<code>events/</code>, one file per event type).</td>
+<td>Literal</td>
+<td><code>bot:abort-ship</code></td>
 </tr>
 <tr>
-<td><code>src/core/</code></td>
-<td>The pipeline: context → fetch → format → prompt → checkout → execute → finalise. <code>pipeline.ts</code> is the single execution path (daemon-side).</td>
+<td>Natural</td>
+<td><code>@chrisleekr-bot abort the bot</code></td>
 </tr>
 <tr>
-<td><code>src/ai/</code></td>
-<td>Provider-agnostic LLM client (Anthropic + Bedrock) used by triage.</td>
-</tr>
-<tr>
-<td><code>src/orchestrator/</code></td>
-<td>WebSocket server, daemon registry, job queue, job dispatcher, triage, ephemeral-daemon scaler. Embedded in the webhook server process.</td>
-</tr>
-<tr>
-<td><code>src/daemon/</code></td>
-<td>Standalone worker process (persistent or ephemeral). WebSocket client that accepts job offers and runs <code>src/core/pipeline.ts</code>.</td>
-</tr>
-<tr>
-<td><code>src/k8s/</code></td>
-<td>Ephemeral daemon Pod spawner (<code>ephemeral-daemon-spawner.ts</code>).</td>
-</tr>
-<tr>
-<td><code>src/mcp/</code></td>
-<td>MCP server registry. Add new servers here.</td>
-</tr>
-<tr>
-<td><code>src/db/</code></td>
-<td>Postgres layer. Migration runner, connection singleton, observability queries. Active only when <code>DATABASE_URL</code> is set.</td>
-</tr>
-<tr>
-<td><code>src/shared/</code></td>
-<td>Types shared between server and daemon (WebSocket messages, dispatch enums).</td>
-</tr>
-<tr>
-<td><code>src/utils/</code></td>
-<td>Retry, sanitisation, circuit breaker.</td>
+<td>Label</td>
+<td>Apply the <code>bot:abort-ship</code> label</td>
 </tr>
 </tbody>
 </table>
-<h2 id="pr-shepherding-reactor-continuation-flow">PR shepherding reactor + continuation flow<a class="headerlink" href="#pr-shepherding-reactor-continuation-flow" title="Permanent link">&para;</a></h2>
-<p>The new <code>bot:ship</code> lifecycle (flag-gated; see <a href="../SHIP/">SHIP.md</a>) is event-driven rather than long-running. A trigger creates a <code>ship_intents</code> row and persists a <code>ship_continuations</code> row with <code>wake_at</code>. Two paths advance the session:</p>
-<pre class="mermaid"><code>flowchart LR
-    Trigger["bot:ship trigger&lt;br/&gt;literal / NL / label"]:::input
-    SessRunner["session-runner.ts"]:::core
-    Intent["ship_intents row"]:::store
-    Cont["ship_continuations row&lt;br/&gt;wake_at"]:::store
-
-    WebhookEvt["PR/check/review&lt;br/&gt;webhook event"]:::input
-    Reactor["webhook-reactor.fanOut"]:::core
-    TickleSet["Valkey ship:tickle&lt;br/&gt;sorted set"]:::store
-
-    Cron["tickle-scheduler&lt;br/&gt;polls every CRON_TICKLE_INTERVAL_MS"]:::core
-    Reentry["session-runner re-entry&lt;br/&gt;continuation loop"]:::core
-    Terminal["terminal status&lt;br/&gt;+ tracking comment"]:::output
-
-    Trigger --&gt; SessRunner
-    SessRunner --&gt; Intent
-    SessRunner --&gt; Cont
-
-    WebhookEvt --&gt; Reactor
-    Reactor --&gt; Cont
-    Reactor --&gt; TickleSet
-
-    Cron --&gt; TickleSet
-    TickleSet --&gt; Reentry
-    Reentry --&gt; Intent
-    Reentry --&gt; Terminal
-
-    classDef input fill:#1f6feb,stroke:#0b3d99,color:#ffffff
-    classDef core fill:#8957e5,stroke:#4c2889,color:#ffffff
-    classDef store fill:#0e8a16,stroke:#063d09,color:#ffffff
-    classDef output fill:#cf222e,stroke:#85090e,color:#ffffff</code></pre>
-<p>The reactor (<code>fanOut</code>) writes <code>wake_at = now()</code> and <code>ZADD ship:tickle 0 &lt;intent_id&gt;</code> so the next cron tick (typically under 30s) re-enters the runner. This keeps daemon slots free between iterations and gives the bot crash-restart safety: on boot, <code>tickle-scheduler</code> reconciles missed wakes from Postgres into Valkey before the periodic timer's first tick.</p>
-<h2 id="further-reading">Further reading<a class="headerlink" href="#further-reading" title="Permanent link">&para;</a></h2>
-<ul>
-<li><a href="../BOT-WORKFLOWS/">Bot Workflows</a> — registry-driven <code>bot:*</code> label + <code>@chrisleekr-bot</code> comment dispatch, the composite ship cascade, and how to add a new workflow. Source of truth: <code>src/workflows/registry.ts</code>.</li>
-<li><a href="../CONFIGURATION/">Configuration</a> — every environment variable the app reads.</li>
-<li><a href="../DAEMON/">Daemon</a> — persistent vs ephemeral daemon lifecycle and K8s deployment.</li>
-<li><a href="../DEPLOYMENT/">Deployment</a> — Docker build args, health probes, resource sizing.</li>
-<li><a href="../EXTENDING/">Extending</a> — add webhook handlers and MCP servers.</li>
-</ul>
+<p>Abort sets a Valkey cancellation flag, waits ≤2 s for the next cooperative checkpoint, then force-transitions the intent to <code>aborted_by_user</code>. After abort, the bot performs zero further mutating actions on the PR (FR-009 / SC-005).</p>
+<p>For a recoverable pause, use <code>bot:stop</code> (and later <code>bot:resume</code>) instead. A stopped session preserves its continuation row; the deadline keeps counting down while paused.</p>
+<h2 id="rollout-flag">Rollout flag<a class="headerlink" href="#rollout-flag" title="Permanent link">&para;</a></h2>
+<p><code>SHIP_USE_TRIGGER_SURFACES_V2=true</code> activates the NL + label surfaces. After one week of clean soak, a follow-up PR removes the flag (research.md R8). Set this in the orchestrator's environment, not the daemon's — the trigger surfaces are dispatched from the webhook server.</p>
 
 
 
@@ -1441,7 +1193,7 @@
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../SETUP/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Setup">
+          <a href="../BOT-WORKFLOWS/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Bot workflows">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1451,20 +1203,20 @@
                 Previous
               </span>
               <div class="md-ellipsis">
-                Setup
+                Bot workflows
               </div>
             </div>
           </a>
         
         
           
-          <a href="../CONFIGURATION/" class="md-footer__link md-footer__link--next" aria-label="Next: Configuration">
+          <a href="../OBSERVABILITY/" class="md-footer__link md-footer__link--next" aria-label="Next: Observability">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Configuration
+                Observability
               </div>
             </div>
             <div class="md-footer__button md-icon">

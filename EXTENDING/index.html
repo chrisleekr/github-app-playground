@@ -339,6 +339,25 @@
   
   
   
+    <li class="md-tabs__item">
+      <a href="../SHIP/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  PR shepherding (`bot:ship`)
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
     
     
       <li class="md-tabs__item">
@@ -618,6 +637,33 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="../SHIP/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PR shepherding (`bot:ship`)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
     
     
     
@@ -632,10 +678,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
         
           
-          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
             
   
   
@@ -653,8 +699,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_6">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1071,6 +1117,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#existing-servers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Existing servers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#reference-key-interfaces" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1392,6 +1449,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#existing-servers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Existing servers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#reference-key-interfaces" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1614,6 +1682,50 @@ directly. Use this for external services like Context7.</p>
 <h4 id="3-add-the-env-var-to-srcconfigts">3. Add the env var to <code>src/config.ts</code><a class="headerlink" href="#3-add-the-env-var-to-srcconfigts" title="Permanent link">&para;</a></h4>
 <p>Follow the existing <code>context7ApiKey</code> pattern: add an optional Zod field, read the
 environment variable in <code>loadConfig()</code>, and document it in <code>docs/SETUP.md</code>.</p>
+<hr />
+<h2 id="existing-servers">Existing servers<a class="headerlink" href="#existing-servers" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Server name</th>
+<th>Transport</th>
+<th>Purpose</th>
+<th>Opt-in</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>comment_update</code></td>
+<td>stdio</td>
+<td>Writes/updates GitHub PR/issue comments owned by the bot.</td>
+<td>Always on.</td>
+</tr>
+<tr>
+<td><code>inline_comments</code></td>
+<td>stdio</td>
+<td>Posts inline review comments and replies on PR diffs.</td>
+<td>Always on.</td>
+</tr>
+<tr>
+<td><code>resolve_review_thread</code></td>
+<td>stdio</td>
+<td>Resolves a single PR review thread the bot has just replied to. Bound to one <code>(owner, repo, pullNumber)</code> per server instance.</td>
+<td>Wired by <code>src/workflows/handlers/resolve.ts</code> for the resolve iteration only — not added to a session's allowed-tools by default.</td>
+</tr>
+<tr>
+<td><code>daemon_capabilities</code></td>
+<td>stdio</td>
+<td>Reports the executing daemon's local environment (CPU, memory, language toolchain) to the agent.</td>
+<td>Always on for daemon-run workflows.</td>
+</tr>
+<tr>
+<td><code>context7</code> (HTTP)</td>
+<td>http</td>
+<td>Fetches library documentation snippets via Upstash Context7. Requires <code>CONTEXT7_API_KEY</code>.</td>
+<td>Auto-skipped when API key absent.</td>
+</tr>
+</tbody>
+</table>
 <hr />
 <h2 id="reference-key-interfaces">Reference — Key Interfaces<a class="headerlink" href="#reference-key-interfaces" title="Permanent link">&para;</a></h2>
 <p>The <code>McpServerDef</code> type in <code>src/types.ts</code> defines both transport shapes:</p>
