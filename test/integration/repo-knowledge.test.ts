@@ -50,6 +50,10 @@ describe.skipIf(sql === null)("repo-knowledge ANY() array binding regression", (
     const db = requireSql();
     await db.unsafe(`
       DROP TABLE IF EXISTS _migrations CASCADE;
+      DROP TABLE IF EXISTS ship_fix_attempts CASCADE;
+      DROP TABLE IF EXISTS ship_continuations CASCADE;
+      DROP TABLE IF EXISTS ship_iterations CASCADE;
+      DROP TABLE IF EXISTS ship_intents CASCADE;
       DROP TABLE IF EXISTS workflow_runs CASCADE;
       DROP TABLE IF EXISTS repo_memory CASCADE;
       DROP TABLE IF EXISTS triage_results CASCADE;
