@@ -1,0 +1,103 @@
+/**
+ * T046b: static guard for FR-009 — refuses to ship code that could
+ * push --force, reset --hard, delete branches, rewrite history, or
+ * call any merge API from inside the ship workflow.
+ *
+ * Wired into `bun run check`. Greps every `.ts` file under the
+ * ship-relevant subtrees for forbidden literal strings. False positives
+ * (test fixtures, JSDoc that mentions the prohibition) are addressed by
+ * keeping the patterns specific.
+ */
+
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
+
+// T046b scope: the NEW ship_intents lifecycle code under
+// `src/workflows/ship/`. Legacy handlers under `src/workflows/handlers/`
+// embed agent prompt strings that DOCUMENT what the agent must not do
+// (e.g., "NEVER call `gh pr merge`"); those documentation lines must
+// not trigger the guard. The runtime test in T046a covers the legacy
+// handlers via mocked tool-call recorders.
+const SCAN_ROOTS = ["src/workflows/ship"];
+
+const FORBIDDEN: { readonly pattern: RegExp; readonly description: string }[] = [
+  { pattern: /git\s+push\s+--force(?!-with-lease-if)/i, description: "git push --force" },
+  { pattern: /git\s+push\s+--force-with-lease/i, description: "git push --force-with-lease" },
+  { pattern: /git\s+push\s+-f\b/i, description: "git push -f" },
+  { pattern: /git\s+push\s+\+/, description: "git push with + force-refspec" },
+  { pattern: /git\s+push\s+--mirror/i, description: "git push --mirror" },
+  { pattern: /git\s+reset\s+--hard\s+origin/i, description: "git reset --hard origin/<branch>" },
+  { pattern: /git\s+branch\s+-D\b/, description: "git branch -D" },
+  { pattern: /git\s+filter-branch/i, description: "git filter-branch" },
+  { pattern: /git\s+filter-repo/i, description: "git filter-repo" },
+  { pattern: /git\s+replace\b/i, description: "git replace" },
+  { pattern: /\bgh\s+pr\s+merge/i, description: "gh pr merge" },
+  { pattern: /mergePullRequest\s*\(/, description: "mergePullRequest GraphQL mutation" },
+  { pattern: /mergeBranch\s*\(/, description: "mergeBranch GraphQL mutation" },
+];
+
+function* walk(dir: string): Generator<string> {
+  let entries: string[];
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const full = join(dir, entry);
+    let stat;
+    try {
+      stat = statSync(full);
+    } catch {
+      continue;
+    }
+    if (stat.isDirectory()) {
+      yield* walk(full);
+    } else if (stat.isFile() && (full.endsWith(".ts") || full.endsWith(".tsx"))) {
+      yield full;
+    }
+  }
+}
+
+function scan(): { file: string; line: number; description: string; text: string }[] {
+  const violations: { file: string; line: number; description: string; text: string }[] = [];
+  const visited = new Set<string>();
+  for (const root of SCAN_ROOTS) {
+    for (const file of walk(root)) {
+      if (visited.has(file)) continue;
+      visited.add(file);
+      // Skip self — this guard file documents the patterns it checks for.
+      if (file.endsWith("check-no-destructive-actions.ts")) continue;
+      const text = readFileSync(file, "utf8");
+      const lines = text.split(/\r?\n/);
+      for (let i = 0; i < lines.length; i += 1) {
+        const line = lines[i] ?? "";
+        // Skip pure JSDoc/comment lines that document the prohibition.
+        const stripped = line.trim();
+        if (stripped.startsWith("//") || stripped.startsWith("*")) continue;
+        for (const rule of FORBIDDEN) {
+          if (rule.pattern.test(line)) {
+            violations.push({
+              file,
+              line: i + 1,
+              description: rule.description,
+              text: line.trim(),
+            });
+          }
+        }
+      }
+    }
+  }
+  return violations;
+}
+
+const violations = scan();
+if (violations.length > 0) {
+  console.error("FR-009 destructive-action guard: violations found");
+  for (const v of violations) {
+    console.error(`  ${v.file}:${v.line}  ${v.description}`);
+    console.error(`    ${v.text}`);
+  }
+  process.exit(1);
+}
+console.log(`FR-009 destructive-action guard: clean (${SCAN_ROOTS.length} roots scanned)`);

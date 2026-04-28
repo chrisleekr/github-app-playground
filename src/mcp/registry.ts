@@ -21,6 +21,13 @@ export interface ResolveMcpServersOptions {
   daemonCapabilities?: DaemonCapabilities;
   workDir?: string;
   repoMemory?: RepoMemoryEntry[];
+  /**
+   * Opt-in for the resolve-review-thread MCP server (T029/T030). Set
+   * `true` when the agent is running the `resolve` step and the PR has
+   * open review threads — keeps the tool out of contexts where it isn't
+   * relevant per Constitution VII single-responsibility.
+   */
+  enableResolveReviewThread?: boolean;
 }
 
 export function resolveMcpServers(
@@ -43,6 +50,9 @@ export function resolveMcpServers(
 
   if (ctx.isPR) {
     servers["github_inline_comment"] = inlineCommentServerDef(sharedEnv, ctx.entityNumber);
+    if (opts?.enableResolveReviewThread === true) {
+      servers["resolve_review_thread"] = resolveReviewThreadServerDef(sharedEnv, ctx.entityNumber);
+    }
   }
 
   if (config.context7ApiKey !== undefined && config.context7ApiKey !== "") {
@@ -92,6 +102,31 @@ function inlineCommentServerDef(sharedEnv: Record<string, string>, prNumber: num
     type: "stdio",
     command: "bun",
     args: ["run", "dist/mcp/servers/inline-comment.js"],
+    env: {
+      ...sharedEnv,
+      PR_NUMBER: prNumber.toString(),
+    },
+  };
+}
+
+/**
+ * Resolve-review-thread server definition (stdio transport, PRs only,
+ * opt-in via `enableResolveReviewThread`). Bound to a single PR at
+ * construction; the server refuses to resolve threads on other PRs
+ * (T029 contract §Security).
+ */
+function resolveReviewThreadServerDef(
+  sharedEnv: Record<string, string>,
+  prNumber: number,
+): McpServerDef {
+  const isDev = import.meta.url.includes("/src/");
+  const serverPath = isDev
+    ? new URL("./servers/resolve-review-thread.ts", import.meta.url).pathname
+    : "dist/mcp/servers/resolve-review-thread.js";
+  return {
+    type: "stdio",
+    command: "bun",
+    args: ["run", serverPath],
     env: {
       ...sharedEnv,
       PR_NUMBER: prNumber.toString(),

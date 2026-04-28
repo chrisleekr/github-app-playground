@@ -2,13 +2,14 @@ import type { PullRequestReviewEvent } from "@octokit/webhooks-types";
 import type { Octokit } from "octokit";
 
 import { logger } from "../../logger";
+import { fireReactor } from "../../workflows/ship/reactor-bridge";
 
 /**
  * Handler for pull_request_review.submitted events.
  * Registered in src/app.ts via app.webhooks.on("pull_request_review.submitted", ...).
  *
- * Placeholder — no processing implemented yet.
- * Add trigger detection + processRequest() here when ready.
+ * Fires the ship reactor (T024) so any active intent on this PR wakes early
+ * to inspect the new review state.
  */
 export function handleReview(
   _octokit: Octokit,
@@ -17,13 +18,23 @@ export function handleReview(
 ): void {
   if (payload.action !== "submitted") return;
 
-  logger.info(
+  if (payload.installation !== undefined) {
+    fireReactor({
+      type: "pull_request_review.submitted",
+      installation_id: payload.installation.id,
+      owner: payload.repository.owner.login,
+      repo: payload.repository.name,
+      pr_number: payload.pull_request.number,
+    });
+  }
+
+  logger.debug(
     {
       deliveryId,
       action: payload.action,
       owner: payload.repository.owner.login,
       repo: payload.repository.name,
     },
-    "pull_request_review.submitted received (no action configured)",
+    "pull_request_review.submitted received → ship reactor fired",
   );
 }

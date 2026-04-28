@@ -1,0 +1,59 @@
+{
+  "repository": {
+    "pullRequest": {
+      "number": 100,
+      "isDraft": false,
+      "state": "OPEN",
+      "merged": false,
+      "mergeable": "MERGEABLE",
+      "mergeStateStatus": "CLEAN",
+      "reviewDecision": "APPROVED",
+      "baseRefName": "main",
+      "baseRefOid": "base-sha-1",
+      "headRefName": "feat/x",
+      "headRefOid": "head-sha-1",
+      "author": { "login": "alice" },
+      "reviewThreads": { "totalCount": 0, "nodes": [] },
+      "commits": {
+        "nodes": [
+          {
+            "commit": {
+              "oid": "head-sha-1",
+              "committedDate": "2026-04-28T00:00:00Z",
+              "author": {
+                "user": { "login": "chrisleekr-bot[bot]" },
+                "email": "bot@example.com"
+              },
+              "statusCheckRollup": {
+                "state": "SUCCESS",
+                "contexts": {
+                  "nodes": [
+                    {
+                      "__typename": "CheckRun",
+                      "name": "ci",
+                      "conclusion": "SUCCESS",
+                      "status": "COMPLETED",
+                      "completedAt": "2026-04-28T00:05:00Z",
+                      "isRequired": true
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "reviews": {
+        "nodes": [
+          {
+            "id": "rev-1",
+            "author": { "login": "alice" },
+            "state": "APPROVED",
+            "submittedAt": "2026-04-28T00:10:00Z",
+            "commit": { "oid": "head-sha-1" }
+          }
+        ]
+      }
+    }
+  }
+}

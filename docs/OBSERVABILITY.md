@@ -23,6 +23,36 @@ Structured JSON logs via [pino](https://getpino.io) are the primary signal. Ever
 | `intentWorkflow`         | Intent-classifier verdict for comment triggers (includes `clarify`/`unsupported`).                    |
 | `intentConfidence`       | Intent-classifier confidence (0–1). Dispatcher compares to `INTENT_CONFIDENCE_THRESHOLD`.             |
 
+## Ship-workflow log fields (FR-016)
+
+The `bot:ship` lifecycle emits structured pino log lines validated against the canonical Zod schema in `src/workflows/ship/log-fields.ts`. The schema is consumed by every emitter (probe, intent transitions, reactor fan-out) so field names and types do not drift between modules.
+
+| Field                       | Type                                                                            | When present                                                                                   |
+| --------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `event`                     | string (e.g. `ship.intent.transition`, `ship.probe.run`, `ship.reactor.fanout`) | Always                                                                                         |
+| `intent_id`                 | UUID                                                                            | Always                                                                                         |
+| `pr`                        | `{owner, repo, number, installation_id}`                                        | Always                                                                                         |
+| `iteration_n`               | non-negative int                                                                | Always (0 on pre-iteration events)                                                             |
+| `phase`                     | `probe` \| `fix` \| `reply` \| `wait` \| `terminal`                             | Iteration events                                                                               |
+| `from_status` / `to_status` | `SessionStatus`                                                                 | Transition events only                                                                         |
+| `terminal_blocker_category` | `BlockerCategory`                                                               | Terminal `human_took_over` transitions                                                         |
+| `non_readiness_reason`      | `NonReadinessReason`                                                            | Probe events with non-ready verdict                                                            |
+| `trigger_surface`           | `literal` \| `nl` \| `label`                                                    | Session-start events only (FR-027)                                                             |
+| `principal_login`           | string                                                                          | Session-start events only                                                                      |
+| `spent_usd_cents`           | non-negative integer                                                            | Always — cumulative session spend (cents, NOT float, to avoid binary-fp drift in aggregations) |
+| `wall_clock_ms`             | non-negative integer                                                            | Always — cumulative session wall-clock                                                         |
+| `delta_usd_cents`           | non-negative integer                                                            | Per-event spend (iteration events only)                                                        |
+| `delta_ms`                  | non-negative integer                                                            | Per-event wall-clock duration                                                                  |
+
+**Querying example** (Datadog / Loki):
+
+```
+event:"ship.intent.transition" to_status:"human_took_over" terminal_blocker_category:"flake-cap"
+| count by pr.repo
+```
+
+The schema is the **source of truth**. Adding or renaming a field requires updating `src/workflows/ship/log-fields.ts`; the co-located `log-fields.test.ts` round-trips a sample through the schema and rejects unknown / mistyped fields, so silent drift fails CI.
+
 ## Dispatch reasons
 
 Canonical source: `src/shared/dispatch-types.ts`. Four values, all landing on `dispatch_target=daemon`.

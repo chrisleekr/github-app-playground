@@ -1,10 +1,12 @@
 import type { IssueCommentEvent } from "@octokit/webhooks-types";
 import type { Octokit } from "octokit";
 
+import { config } from "../../config";
 import { containsTrigger } from "../../core/trigger";
 import { logger } from "../../logger";
 import { addReaction } from "../../utils/reactions";
 import { dispatchByIntent } from "../../workflows/dispatcher";
+import { dispatchCommentSurface } from "../../workflows/ship/command-dispatch";
 import { isOwnerAllowed } from "../authorize";
 
 /**
@@ -23,6 +25,33 @@ export function handleIssueComment(
 ): void {
   if (payload.action !== "created") return;
   if (payload.comment.user.type === "Bot") return;
+
+  // T028e: ship trigger-surface dispatch (flag-gated). Only dispatch for
+  // PR comments (issue.pull_request !== undefined). The legacy
+  // intent-classifier dispatch below is preserved.
+  if (
+    config.shipUseTriggerSurfacesV2 &&
+    payload.installation !== undefined &&
+    payload.issue.pull_request !== undefined
+  ) {
+    const installationId = payload.installation.id;
+    const owner = payload.repository.owner.login;
+    const repo = payload.repository.name;
+    const prNumber = payload.issue.number;
+    const principalLogin = payload.comment.user.login;
+    const commentBody = payload.comment.body;
+    const dispatchLog = logger.child({ deliveryId, owner, repo, prNumber });
+    void dispatchCommentSurface({
+      commentBody,
+      principal_login: principalLogin,
+      pr: { owner, repo, number: prNumber, installation_id: installationId },
+      octokit,
+      log: dispatchLog,
+    }).catch((err: unknown) => {
+      dispatchLog.error({ err }, "ship dispatchCommentSurface threw for issue_comment");
+    });
+  }
+
   if (!containsTrigger(payload.comment.body)) return;
 
   const senderLogin = payload.comment.user.login;

@@ -268,3 +268,198 @@ describe("assertOauthRequiresAllowlist", () => {
     }).not.toThrow();
   });
 });
+
+describe("configSchema — ship workflow defaults", () => {
+  it("populates every ship env var with its documented default", () => {
+    const result = configSchema.safeParse({ ...ANTHROPIC_BASE });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.maxWallClockPerShipRun).toBe(14_400_000);
+      expect(result.data.maxShipIterations).toBe(50);
+      expect(result.data.cronTickleIntervalMs).toBe(15_000);
+      expect(result.data.mergeableNullBackoffMsList).toEqual([
+        5_000, 10_000, 30_000, 60_000, 60_000,
+      ]);
+      expect(result.data.reviewBarrierSafetyMarginMs).toBe(1_200_000);
+      expect(result.data.fixAttemptsPerSignatureCap).toBe(3);
+      expect(result.data.shipForbiddenTargetBranches).toEqual([]);
+      expect(result.data.shipUseProbeVerdict).toBe(false);
+      expect(result.data.shipUseContinuationLoop).toBe(false);
+      expect(result.data.shipUseTriggerSurfacesV2).toBe(false);
+    }
+  });
+
+  it("accepts explicit overrides for the numeric ship envs", () => {
+    const result = configSchema.safeParse({
+      ...ANTHROPIC_BASE,
+      maxShipIterations: 10,
+      cronTickleIntervalMs: 5_000,
+      reviewBarrierSafetyMarginMs: 60_000,
+      fixAttemptsPerSignatureCap: 2,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.maxShipIterations).toBe(10);
+      expect(result.data.cronTickleIntervalMs).toBe(5_000);
+      expect(result.data.reviewBarrierSafetyMarginMs).toBe(60_000);
+      expect(result.data.fixAttemptsPerSignatureCap).toBe(2);
+    }
+  });
+});
+
+describe("configSchema — MAX_WALL_CLOCK_PER_SHIP_RUN duration parsing", () => {
+  it("accepts a plain integer (ms)", () => {
+    const result = configSchema.safeParse({ ...ANTHROPIC_BASE, maxWallClockPerShipRun: "60000" });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.maxWallClockPerShipRun).toBe(60_000);
+  });
+
+  it("accepts a numeric ms value as a JS number", () => {
+    const result = configSchema.safeParse({ ...ANTHROPIC_BASE, maxWallClockPerShipRun: 60_000 });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.maxWallClockPerShipRun).toBe(60_000);
+  });
+
+  it("parses h/m/s suffixes", () => {
+    const cases: [string, number][] = [
+      ["4h", 14_400_000],
+      ["30m", 1_800_000],
+      ["90s", 90_000],
+      ["1.5h", 5_400_000],
+    ];
+    for (const [input, expected] of cases) {
+      const result = configSchema.safeParse({ ...ANTHROPIC_BASE, maxWallClockPerShipRun: input });
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.maxWallClockPerShipRun).toBe(expected);
+    }
+  });
+
+  it("rejects malformed duration strings", () => {
+    for (const bad of ["4hours", "abc", "-1h", "0", "0h"]) {
+      const result = configSchema.safeParse({ ...ANTHROPIC_BASE, maxWallClockPerShipRun: bad });
+      expect(result.success).toBe(false);
+    }
+  });
+
+  it("rejects zero and negative integers", () => {
+    expect(configSchema.safeParse({ ...ANTHROPIC_BASE, maxWallClockPerShipRun: 0 }).success).toBe(
+      false,
+    );
+    expect(configSchema.safeParse({ ...ANTHROPIC_BASE, maxWallClockPerShipRun: -1 }).success).toBe(
+      false,
+    );
+  });
+});
+
+describe("configSchema — MAX_SHIP_ITERATIONS validation", () => {
+  it("rejects zero", () => {
+    expect(configSchema.safeParse({ ...ANTHROPIC_BASE, maxShipIterations: 0 }).success).toBe(false);
+  });
+  it("rejects non-integer", () => {
+    expect(configSchema.safeParse({ ...ANTHROPIC_BASE, maxShipIterations: 1.5 }).success).toBe(
+      false,
+    );
+  });
+});
+
+describe("configSchema — MERGEABLE_NULL_BACKOFF_MS_LIST parsing", () => {
+  it("parses a comma-separated list of positive integers", () => {
+    const result = configSchema.safeParse({
+      ...ANTHROPIC_BASE,
+      mergeableNullBackoffMsList: "1000,2000,3000",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.mergeableNullBackoffMsList).toEqual([1000, 2000, 3000]);
+  });
+
+  it("trims whitespace inside entries", () => {
+    const result = configSchema.safeParse({
+      ...ANTHROPIC_BASE,
+      mergeableNullBackoffMsList: " 1000 , 2000 ",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.mergeableNullBackoffMsList).toEqual([1000, 2000]);
+  });
+
+  it("rejects an empty string", () => {
+    expect(
+      configSchema.safeParse({ ...ANTHROPIC_BASE, mergeableNullBackoffMsList: "" }).success,
+    ).toBe(false);
+  });
+
+  it("rejects non-positive entries", () => {
+    expect(
+      configSchema.safeParse({ ...ANTHROPIC_BASE, mergeableNullBackoffMsList: "1000,0,2000" })
+        .success,
+    ).toBe(false);
+    expect(
+      configSchema.safeParse({ ...ANTHROPIC_BASE, mergeableNullBackoffMsList: "1000,-5,2000" })
+        .success,
+    ).toBe(false);
+  });
+
+  it("rejects non-integer entries", () => {
+    expect(
+      configSchema.safeParse({ ...ANTHROPIC_BASE, mergeableNullBackoffMsList: "1000,abc,2000" })
+        .success,
+    ).toBe(false);
+    expect(
+      configSchema.safeParse({ ...ANTHROPIC_BASE, mergeableNullBackoffMsList: "1.5,2,3" }).success,
+    ).toBe(false);
+  });
+});
+
+describe("configSchema — SHIP_FORBIDDEN_TARGET_BRANCHES parsing", () => {
+  it("defaults to empty array when unset", () => {
+    const result = configSchema.safeParse({ ...ANTHROPIC_BASE });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.shipForbiddenTargetBranches).toEqual([]);
+  });
+
+  it("parses a comma-separated list with whitespace tolerance", () => {
+    const result = configSchema.safeParse({
+      ...ANTHROPIC_BASE,
+      shipForbiddenTargetBranches: " main, master ,release/* ",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.shipForbiddenTargetBranches).toEqual(["main", "master", "release/*"]);
+    }
+  });
+
+  it("treats empty string as empty list", () => {
+    const result = configSchema.safeParse({
+      ...ANTHROPIC_BASE,
+      shipForbiddenTargetBranches: "",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.shipForbiddenTargetBranches).toEqual([]);
+  });
+});
+
+describe("configSchema — SHIP_USE_* feature flags", () => {
+  it("defaults all three rollout flags to false", () => {
+    const result = configSchema.safeParse({ ...ANTHROPIC_BASE });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.shipUseProbeVerdict).toBe(false);
+      expect(result.data.shipUseContinuationLoop).toBe(false);
+      expect(result.data.shipUseTriggerSurfacesV2).toBe(false);
+    }
+  });
+
+  it("accepts boolean true overrides", () => {
+    const result = configSchema.safeParse({
+      ...ANTHROPIC_BASE,
+      shipUseProbeVerdict: true,
+      shipUseContinuationLoop: true,
+      shipUseTriggerSurfacesV2: true,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.shipUseProbeVerdict).toBe(true);
+      expect(result.data.shipUseContinuationLoop).toBe(true);
+      expect(result.data.shipUseTriggerSurfacesV2).toBe(true);
+    }
+  });
+});

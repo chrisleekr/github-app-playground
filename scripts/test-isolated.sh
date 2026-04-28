@@ -3,6 +3,7 @@
 # Bun's mock.module() is process-global — mocks from one file bleed into others
 # when all files run in a single process, causing import failures and segfaults.
 set -uo pipefail
+shopt -s globstar nullglob
 
 passed=0
 failed=0

@@ -213,15 +213,22 @@ Under **Permissions & events**, expand the **Repository permissions** section an
 
 ### 1.7 Subscribe to Events
 
-After you set permissions, the **Subscribe to events** section becomes available and lists only events that match the permissions you granted. Check all five:
+After you set permissions, the **Subscribe to events** section becomes available and lists only events that match the permissions you granted. Check all of these:
 
-| Event checkbox in GitHub UI      | Action(s) handled                                                               | Handler file                           |
-| -------------------------------- | ------------------------------------------------------------------------------- | -------------------------------------- |
-| **Issue comments**               | `issue_comment.created`                                                         | `src/webhook/events/issue-comment.ts`  |
-| **Pull requests**                | `pull_request.opened`                                                           | `src/webhook/events/pull-request.ts`   |
-| **Pull request reviews**         | `pull_request_review.submitted`                                                 | `src/webhook/events/review.ts`         |
-| **Pull request review comments** | `pull_request_review_comment.created`                                           | `src/webhook/events/review-comment.ts` |
-| **Pull request review threads**  | `pull_request_review_thread.resolved` / `pull_request_review_thread.unresolved` | `src/webhook/events/review-thread.ts`  |
+| Event checkbox in GitHub UI      | Action(s) handled                                                                                   | Handler file                           |
+| -------------------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| **Issue comments**               | `issue_comment.created`                                                                             | `src/webhook/events/issue-comment.ts`  |
+| **Issues**                       | `issues.labeled` / `issues.unlabeled`                                                               | `src/webhook/events/issues.ts`         |
+| **Pull requests**                | `pull_request.opened` / `.labeled` / `.synchronize` / `.closed`                                     | `src/webhook/events/pull-request.ts`   |
+| **Pull request reviews**         | `pull_request_review.submitted`                                                                     | `src/webhook/events/review.ts`         |
+| **Pull request review comments** | `pull_request_review_comment.created` / `.edited` / `.deleted`                                      | `src/webhook/events/review-comment.ts` |
+| **Pull request review threads**  | `pull_request_review_thread.resolved` / `.unresolved`                                               | `src/webhook/events/review-thread.ts`  |
+| **Check runs**                   | `check_run.completed` (powers the `bot:ship` reactor — early-wakes active intents on CI completion) | `src/webhook/events/check-run.ts`      |
+| **Check suites**                 | `check_suite.completed`                                                                             | `src/webhook/events/check-suite.ts`    |
+
+The PR shepherding reactor (`bot:ship` lifecycle, gated on `SHIP_USE_TRIGGER_SURFACES_V2=true`) needs the new `synchronize`, `closed`, `edited`, `deleted`, `check_run`, and `check_suite` subscriptions to early-wake active sessions. Existing `bot:ship` (composite) operation does not require them.
+
+The bot also recognises four GitHub labels on PRs (FR-026): `bot:ship`, `bot:stop`, `bot:resume`, `bot:abort-ship`, plus the suffix-overridden variants `bot:ship/deadline=2h` etc. The bot self-removes the label after acting (FR-026a) — re-application is the supported re-trigger mechanism.
 
 > **Note:** GitHub does **not** emit a `pull_request_review_thread.created` action. The only valid actions for this event are `resolved` and `unresolved`, confirmed by `PullRequestReviewThreadResolvedEvent` and `PullRequestReviewThreadUnresolvedEvent` in `@octokit/webhooks-types`. Both actions route to the same handler.
 >
