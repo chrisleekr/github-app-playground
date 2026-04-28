@@ -9,7 +9,13 @@ passed=0
 failed=0
 failures=()
 
-for f in test/**/*.test.ts; do
+tests=(test/**/*.test.ts)
+if (( ${#tests[@]} == 0 )); then
+  echo "No test files matched test/**/*.test.ts" >&2
+  exit 1
+fi
+
+for f in "${tests[@]}"; do
   output=$(bun test "$f" 2>&1)
   has_zero_fail=false
   has_skip=false

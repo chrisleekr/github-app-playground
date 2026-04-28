@@ -75,9 +75,12 @@ export function createTickleScheduler(deps: TickleSchedulerDeps): TickleSchedule
       try {
         await deps.onDue(intent_id);
       } catch (err) {
+        // Re-arm so a transient dispatch failure doesn't strand the
+        // session until startup reconciliation runs again.
+        await deps.valkey.send("ZADD", [TICKLE_KEY, String(Date.now() + intervalMs), intent_id]);
         logger.error(
           { event: "ship.tickle.dispatch_failed", intent_id, err: String(err) },
-          "ship tickle dispatch failed",
+          "ship tickle dispatch failed; requeued",
         );
       }
     }

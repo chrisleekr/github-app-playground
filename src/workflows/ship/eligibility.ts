@@ -69,8 +69,7 @@ export async function checkEligibility(input: EligibilityInput): Promise<Eligibi
     const triggerOk = allowedOwners.some(
       (o) => o.toLowerCase() === input.triggeringUserLogin.toLowerCase(),
     );
-    const ownerOk = allowedOwners.some((o) => o.toLowerCase() === input.owner.toLowerCase());
-    if (!triggerOk && !ownerOk) {
+    if (!triggerOk) {
       return {
         eligible: false,
         reason: "unauthorized",

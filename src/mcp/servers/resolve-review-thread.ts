@@ -51,6 +51,19 @@ const server = new McpServer({
   version: "1.0.0",
 });
 
+const GET_THREAD_QUERY = `
+  query GetReviewThread($threadId: ID!) {
+    node(id: $threadId) {
+      ... on PullRequestReviewThread {
+        id
+        pullRequest {
+          number
+        }
+      }
+    }
+  }
+`;
+
 const RESOLVE_MUTATION = `
   mutation ResolveReviewThread($threadId: ID!) {
     resolveReviewThread(input: { threadId: $threadId }) {
@@ -64,6 +77,13 @@ const RESOLVE_MUTATION = `
     }
   }
 `;
+
+interface PreflightResponse {
+  node: {
+    id: string;
+    pullRequest: { number: number };
+  } | null;
+}
 
 interface ResolveResponse {
   resolveReviewThread: {
@@ -117,19 +137,21 @@ server.tool(
   },
   async ({ thread_id }) => {
     try {
-      const result = await octokit.graphql<ResolveResponse>(RESOLVE_MUTATION, {
+      const preflight = await octokit.graphql<PreflightResponse>(GET_THREAD_QUERY, {
         threadId: thread_id,
       });
-      const thread = result.resolveReviewThread.thread;
-
-      if (thread.pullRequest.number !== BOUND_PR_NUMBER) {
+      const preflightPr = preflight.node?.pullRequest.number;
+      if (preflightPr !== BOUND_PR_NUMBER) {
         return {
           content: [
             {
               type: "text" as const,
               text: JSON.stringify({
                 code: "graphql_error",
-                message: `thread belongs to PR #${String(thread.pullRequest.number)} but this server is bound to PR #${String(BOUND_PR_NUMBER)}`,
+                message:
+                  preflightPr === undefined
+                    ? `thread ${thread_id} not found or not a PullRequestReviewThread`
+                    : `thread belongs to PR #${String(preflightPr)} but this server is bound to PR #${String(BOUND_PR_NUMBER)}`,
                 thread_id,
               }),
             },
@@ -137,6 +159,11 @@ server.tool(
           isError: true,
         };
       }
+
+      const result = await octokit.graphql<ResolveResponse>(RESOLVE_MUTATION, {
+        threadId: thread_id,
+      });
+      const thread = result.resolveReviewThread.thread;
 
       return {
         content: [
