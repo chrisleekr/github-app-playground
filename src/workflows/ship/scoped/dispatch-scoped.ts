@@ -160,10 +160,7 @@ export async function dispatchScopedCommand(
       // check.
       const _exhaustive: never = command.intent as never;
       void _exhaustive;
-      (deps.log ?? undefined)?.warn(
-        { intent: command.intent },
-        "dispatchScopedCommand: unhandled scoped intent",
-      );
+      deps.log?.warn({ intent: command.intent }, "dispatchScopedCommand: unhandled scoped intent");
     }
   }
 }

@@ -30,6 +30,11 @@ function buildOctokit(opts: {
   );
   const createComment = mock(() => Promise.resolve({ data: { id: 8001 } }));
 
+  // Investigate uses `octokit.paginate(method, opts)` — a function call,
+  // not the iterator factory. Returns a flat array of every page's data.
+  const paginate = mock(() => Promise.resolve(opts.comments));
+
+  // upsertMarkerComment still uses `octokit.paginate.iterator(...)`.
   const paginateIterator = mock(() => ({
     [Symbol.asyncIterator]() {
       let yielded = false;
@@ -38,7 +43,21 @@ function buildOctokit(opts: {
           Promise.resolve(
             yielded
               ? { value: undefined, done: true }
-              : ((yielded = true), { value: { data: opts.comments }, done: false }),
+              : ((yielded = true),
+                {
+                  value: {
+                    data:
+                      opts.existingMarkerCommentId !== undefined
+                        ? [
+                            {
+                              id: opts.existingMarkerCommentId,
+                              body: `<!-- bot:investigate:${String(13)} -->`,
+                            },
+                          ]
+                        : [],
+                  },
+                  done: false,
+                }),
           ),
         [Symbol.asyncIterator]() {
           return this;
@@ -47,17 +66,23 @@ function buildOctokit(opts: {
     },
   }));
 
+  // Bun's mock helpers are not callable themselves — the function we
+  // need is `paginate`, with `.iterator` attached as a property. Wrap
+  // it as a single object whose call signature uses `paginate` directly.
+  const paginateFn = Object.assign(paginate, { iterator: paginateIterator });
+
   return {
     octokit: {
       rest: {
         issues: { get: issuesGet, listComments, updateComment, createComment },
       },
-      paginate: { iterator: paginateIterator },
+      paginate: paginateFn,
     } as never,
     issuesGet,
     listComments,
     updateComment,
     createComment,
+    paginate,
   };
 }
 

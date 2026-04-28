@@ -13,16 +13,31 @@ interface FakeIssue {
   readonly body: string | null;
 }
 
-function buildOctokit(opts: { issue: FakeIssue; existingBackLinkBody?: string }) {
+interface FakeBackLink {
+  readonly id: number;
+  readonly body: string | null;
+  /** Spoofing-guard: only Bot-authored markers are honoured for dup detection. */
+  readonly user_type: "Bot" | "User";
+}
+
+function buildOctokit(opts: { issue: FakeIssue; existingBackLink?: FakeBackLink }) {
   const issuesGet = mock(() => Promise.resolve({ data: opts.issue }));
   const createComment = mock(() =>
     Promise.resolve({ data: { id: Math.floor(Math.random() * 100_000) + 1 } }),
   );
 
-  const pages: { id: number; body: string | null }[][] =
-    opts.existingBackLinkBody === undefined
+  const pages: { id: number; body: string | null; user: { type: string } }[][] =
+    opts.existingBackLink === undefined
       ? [[]]
-      : [[{ id: 5050, body: opts.existingBackLinkBody }]];
+      : [
+          [
+            {
+              id: opts.existingBackLink.id,
+              body: opts.existingBackLink.body,
+              user: { type: opts.existingBackLink.user_type },
+            },
+          ],
+        ];
 
   const paginateIterator = mock(() => ({
     [Symbol.asyncIterator]() {
@@ -113,7 +128,11 @@ describe("runOpenPr", () => {
   it("detects an existing back-link marker and refuses to create a duplicate", async () => {
     const fake = buildOctokit({
       issue: { title: "Already opened", body: "..." },
-      existingBackLinkBody: "Opened draft PR #44 ...\n\n<!-- bot:open-pr:44 -->",
+      existingBackLink: {
+        id: 5050,
+        body: "Opened draft PR #44 ...\n\n<!-- bot:open-pr:44 -->",
+        user_type: "Bot",
+      },
     });
     const callLlm = mock(() => Promise.reject(new Error("classifier must not run")));
     const createBranchAndPr = mock(() => Promise.reject(new Error("must not be called")));
@@ -129,6 +148,55 @@ describe("runOpenPr", () => {
     expect(out.existing_marker_comment_id).toBe(5050);
     expect(callLlm).not.toHaveBeenCalled();
     expect(createBranchAndPr).not.toHaveBeenCalled();
+  });
+
+  it("ignores a back-link marker posted by a human (spoofing guard)", async () => {
+    // A non-Bot author can paste the marker verbatim; that MUST NOT
+    // permanently block bot:open-pr re-triggers.
+    const fake = buildOctokit({
+      issue: { title: "Spoofed", body: "..." },
+      existingBackLink: {
+        id: 6060,
+        body: "I think we already have one — <!-- bot:open-pr:99 -->",
+        user_type: "User",
+      },
+    });
+    const callLlm = mock(() =>
+      Promise.resolve(JSON.stringify({ actionable: true, kind: "bug", reason: "real bug" })),
+    );
+    const createBranchAndPr = mock(() =>
+      Promise.resolve({ pr_number: 100, branch_name: "b", pr_url: "u" }),
+    );
+    const out = await runOpenPr({
+      octokit: fake.octokit,
+      owner: "o",
+      repo: "r",
+      issue_number: 14,
+      callLlm,
+      createBranchAndPr,
+    });
+    expect(out.kind).toBe("opened");
+    expect(createBranchAndPr).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces a maintainer-facing reply when createBranchAndPr throws (FR-017)", async () => {
+    const fake = buildOctokit({ issue: { title: "Real bug", body: "stack" } });
+    const callLlm = mock(() =>
+      Promise.resolve(JSON.stringify({ actionable: true, kind: "bug", reason: "ok" })),
+    );
+    const createBranchAndPr = mock(() => Promise.reject(new Error("git: permission denied")));
+    const out = await runOpenPr({
+      octokit: fake.octokit,
+      owner: "o",
+      repo: "r",
+      issue_number: 17,
+      callLlm,
+      createBranchAndPr,
+    });
+    if (out.kind !== "classifier-failed") throw new Error("expected classifier-failed");
+    expect(out.error_message).toContain("permission denied");
+    const body = (fake.createComment.mock.calls[0]?.[0] as { body: string }).body;
+    expect(body).toContain("classified this issue as actionable but couldn");
   });
 
   it("surfaces a maintainer-facing error when classifier fails (FR-017)", async () => {

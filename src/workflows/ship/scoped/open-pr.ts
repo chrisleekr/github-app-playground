@@ -102,6 +102,11 @@ async function findExistingBackLink(input: {
   });
   for await (const page of iter) {
     for (const comment of page.data) {
+      // Spoofing guard: a human commenter can post a back-link marker
+      // verbatim to permanently block `bot:open-pr` re-triggers. Only
+      // markers authored by a Bot account count toward the dup check —
+      // marker on a human comment is treated as conversation, not state.
+      if (comment.user?.type !== "Bot") continue;
       const body = comment.body ?? "";
       if (body.includes(ANY_OPEN_PR_MARKER_PREFIX)) return comment.id;
     }
@@ -176,11 +181,29 @@ export async function runOpenPr(input: RunOpenPrInput): Promise<OpenPrOutcome> {
     return { kind: "non-actionable", comment_id: reply.data.id, verdict };
   }
 
-  const created = await input.createBranchAndPr({
-    issue_number: input.issue_number,
-    issue_title: issue.data.title,
-    verdict,
-  });
+  let created: CreateBranchAndPrResult;
+  try {
+    created = await input.createBranchAndPr({
+      issue_number: input.issue_number,
+      issue_title: issue.data.title,
+      verdict,
+    });
+  } catch (err) {
+    // Without this guard, a thrown rejection from createBranchAndPr
+    // exits runOpenPr with no maintainer-visible outcome — the issue
+    // looks like the trigger was ignored. Surface the failure with the
+    // same shape as the classifier-failed path so downstream handlers
+    // (logs, dashboards) treat them uniformly.
+    const error_message = err instanceof Error ? err.message : String(err);
+    const reply = await input.octokit.rest.issues.createComment({
+      owner: input.owner,
+      repo: input.repo,
+      issue_number: input.issue_number,
+      body: `I classified this issue as actionable but couldn't create the draft PR (\`${error_message}\`). No PR opened.`,
+    });
+    log.warn({ err, comment_id: reply.data.id }, "open_pr branch/PR creation failed");
+    return { kind: "classifier-failed", comment_id: reply.data.id, error_message };
+  }
 
   // Post the back-link comment with the marker so future re-triggers
   // detect this PR via the marker scan.

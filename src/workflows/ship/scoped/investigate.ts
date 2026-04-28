@@ -29,12 +29,6 @@ comments add detail, return: "**Insufficient context** — the issue lacks
 a description, repro steps, and supporting comments. Ask the reporter
 for more detail before investing in this issue."`;
 
-export interface InvestigateContext {
-  readonly title: string;
-  readonly body: string;
-  readonly comments: readonly { readonly author: string; readonly body: string }[];
-}
-
 export interface RunInvestigateInput {
   readonly octokit: Pick<Octokit, "rest" | "paginate">;
   readonly owner: string;
@@ -58,13 +52,6 @@ export async function runInvestigate(input: RunInvestigateInput): Promise<{ comm
     issue_number: input.issue_number,
   });
 
-  const commentsResp = await input.octokit.rest.issues.listComments({
-    owner: input.owner,
-    repo: input.repo,
-    issue_number: input.issue_number,
-    per_page: 100,
-  });
-
   // Skip our own marker comments to avoid feeding prior bot output back
   // into the classifier on re-trigger.
   const ourPriorMarker = buildScopedMarker({
@@ -72,7 +59,17 @@ export async function runInvestigate(input: RunInvestigateInput): Promise<{ comm
     number: input.issue_number,
   });
 
-  const comments = commentsResp.data
+  // Paginate through all comment pages — a bare `listComments` capped at
+  // 100/page would silently truncate context on issues with extensive
+  // discussion. The classifier then runs on a half-snapshot.
+  const allCommentRows = await input.octokit.paginate(input.octokit.rest.issues.listComments, {
+    owner: input.owner,
+    repo: input.repo,
+    issue_number: input.issue_number,
+    per_page: 100,
+  });
+
+  const comments = allCommentRows
     .filter((c) => !(c.body ?? "").includes(ourPriorMarker))
     .map((c) => ({ author: c.user?.login ?? "(unknown)", body: c.body ?? "" }));
 
