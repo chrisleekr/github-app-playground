@@ -303,4 +303,68 @@ All three enumerations are SQL `CHECK` constraints AND TS literal-union types AN
 | Q4 round1 | Targeted re-run + flake annotation handled by `flake-tracker.ts`; flake state recorded in `state_blob.flake_history`.                               |
 | Q5 round1 | Draft → ready flip happens in the terminal-action code path immediately before transitioning `ship_intents.status` to `ready_awaiting_human_merge`. |
 
+## Scoped commands (FR-029..FR-035) — no schema change
+
+The seven scoped commands defined in FR-029..FR-035 (`bot:fix-thread`, `bot:explain-thread`, `bot:summarize`, `bot:rebase`, `bot:investigate`, `bot:triage`, `bot:open-pr`) deliberately write **no rows** to any `ship_*` table:
+
+- They do not create a `ship_intents` row — they are not sessions and do not consume the FR-007a one-active-per-PR slot.
+- They do not append to `ship_iterations` — they have no iteration concept.
+- They do not write `ship_continuations` — they hold no daemon slot beyond their own short execution.
+- They do not write `ship_fix_attempts` — they have no signature-keyed retry ledger.
+
+The only durable artefacts a scoped command produces are GitHub-side: a comment, a commit, a PR creation, or a label self-removal. This is intentional — adding tables for the scoped commands would replicate session-level bookkeeping that the one-shot lifecycle does not need.
+
+Idempotency for read-only / advisory commands (`bot:summarize`, `bot:investigate`, `bot:triage`, `bot:open-pr`) is enforced via stable HTML-comment markers embedded in their output, distinct from the FR-006 shepherding tracking-comment marker:
+
+| Command           | Marker                                                      | Scope                                          |
+| ----------------- | ----------------------------------------------------------- | ---------------------------------------------- |
+| `bot:summarize`   | `<!-- bot:summarize:{pr_number} -->`                        | one per PR                                     |
+| `bot:investigate` | `<!-- bot:investigate:{issue_number} -->`                   | one per issue                                  |
+| `bot:triage`      | `<!-- bot:triage:{issue_number} -->`                        | one per issue                                  |
+| `bot:open-pr`     | `<!-- bot:open-pr:{pr_number} -->` left on the source issue | one per source issue (back-link to created PR) |
+
+Re-triggering any of these commands updates the existing marked comment in place rather than posting a duplicate. The marker scheme is read by a GraphQL search of the target's comment list at the start of each invocation.
+
+---
+
+## NL classifier intent enum — widened in P8
+
+The `intent` enum returned by the NL classifier (`src/workflows/ship/nl-classifier.ts`, T028b/T080) widens from 5 entries (`'ship' | 'stop' | 'resume' | 'abort' | 'none'`) to **12 entries** in P8:
+
+```typescript
+// post-P8
+export type CommandIntent =
+  | "ship"
+  | "stop"
+  | "resume"
+  | "abort"
+  | "fix-thread"
+  | "explain-thread"
+  | "summarize"
+  | "rebase"
+  | "investigate"
+  | "triage"
+  | "open-pr"
+  | "none";
+```
+
+Per-event-surface eligibility is enforced inside the classifier — `intent: 'none'` MUST be returned when the source event surface does not match the intent's declared eligibility (per FR-029..FR-035 trigger-surface rules). The event-surface descriptor (`'pull_request_review_comment' | 'issue_comment_pr' | 'issue_comment_issue' | 'pull_request_label' | 'issues_label'`) is part of the classifier input prompt, never inferred by the classifier itself. The Zod schema for the classifier response is updated in lockstep.
+
+---
+
+## `bot:open-pr` meta-issue classifier (FR-035) — separate single-turn call
+
+Distinct from the NL intent classifier above. `bot:open-pr` issues a **second** single-turn Bedrock call (after intent classification confirms `intent: 'open-pr'`) to determine whether the source issue is actionable:
+
+```typescript
+// src/workflows/ship/scoped/meta-issue-classifier.ts
+export type IssueActionabilityVerdict = {
+  actionable: boolean;
+  kind: "bug" | "feature" | "tracking" | "meta" | "roadmap" | "discussion" | "unclear";
+  reason: string; // one sentence; surfaced to maintainer in non-actionable replies
+};
+```
+
+When `actionable === false`, the bot replies in the issue with the verdict + `reason` and exits without creating a branch. There is no `--force` override in v1 — the classifier's verdict is final. The classifier reuses `src/ai/llm-client.ts` and is mocked in tests per Constitution V.
+
 End of data model.

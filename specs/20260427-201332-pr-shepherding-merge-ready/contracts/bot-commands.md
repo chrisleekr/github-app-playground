@@ -266,3 +266,257 @@ No arguments.
 8. Pause then immediate stop again (idempotency) → second stop is a no-op.
 9. Pause does NOT extend `deadline_at`; if deadline fires while paused, intent transitions to `deadline_exceeded` per the state machine in `data-model.md`.
 10. Reactor on paused intent: `check_run.completed` is a no-op; `pull_request.closed merged=true` still transitions to `merged_externally`.
+
+---
+
+## Scoped commands (FR-029..FR-035) — common conventions
+
+The seven commands below are **scoped one-shot operations** that share the three-surface trigger plumbing (literal / NL / label) and the FR-028 uniform `ALLOWED_OWNERS` gate, but are distinct from the shepherding session commands above:
+
+- **No session row.** A scoped command does NOT create a `ship_intents` row, does NOT consume the FR-007a one-active-session-per-PR slot, and may run concurrently with an active ship session on the same PR (and with each other).
+- **No tracking comment.** Scoped commands do not create the FR-006 shepherding tracking comment. Read-only commands (`bot:summarize`, `bot:investigate`, `bot:triage`) instead post their own marked comment whose marker is distinct from the shepherding marker.
+- **No iteration loop.** Each command is a single execution; there is no probe, no `MergeReadiness` computation, no continuation, no daemon-slot handoff.
+- **Per-event-surface eligibility.** Each command declares which webhook event surfaces are eligible (declared per-command below). On a non-matching surface, the NL classifier returns `'none'` and the label dispatcher is a no-op — no handler is invoked, no reply is posted.
+- **Authorisation parity.** `ALLOWED_OWNERS` is evaluated against `comment.user.login` for `issue_comment` / `pull_request_review_comment` events and against `sender.login` for `labeled` events, identical to FR-028.
+- **Label self-removal.** When triggered via the label surface, the command removes its own label from the PR or issue after acting (success, ineligible-rejection, unauthorised-rejection, or duplicate-detection), per FR-026a.
+- **Test bar.** ≥90% line coverage on each scoped command's handler module, matching the bar applied to shepherding modules per Constitution V.
+- **Forbidden actions.** Force-push, history rewrite, and any destructive git operation listed in T046a remain forbidden across all scoped commands (FR-009).
+
+---
+
+## `bot:fix-thread` — Mechanically fix a single review thread (FR-029)
+
+### Syntax
+
+| Surface | Trigger                                                                                                                                                 |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Literal | `bot:fix-thread` posted as a body of a PR review-comment reply on the thread to act on                                                                  |
+| NL      | `@chrisleekr-bot can you fix this issue` (or any phrasing classified as `intent: 'fix-thread'`) on a PR review-comment                                  |
+| Label   | `bot:fix-thread` applied to the PR (the bot picks the most recently created unresolved thread by the maintainer; if none exists, it replies with no-op) |
+
+### Trigger surface eligibility
+
+`pull_request_review_comment.created` only. On `issue_comment` (top-level PR comment) or any `issues.*` event, the classifier returns `'none'` and the label dispatcher is a no-op.
+
+### Behavior
+
+1. GraphQL-fetch the thread (`pullRequestReviewThread` node by id).
+2. Apply FR-004 mechanical-fix conservatism: if the thread requests anything architectural, design-debate-y, or judgmental, halt with a reply citing FR-004 and exit.
+3. If mechanical: clone the repo, apply the fix, push the commit, reply in the thread with the SHA and a one-sentence summary (FR-005), resolve the thread via the MCP `resolve-review-thread` server (T029).
+4. Exit. No tracking comment, no session row.
+
+### Response artifact
+
+A single reply in the thread + (if mechanical) one commit pushed + (if mechanical) the thread resolved. No PR-level comment, no issue-level comment.
+
+---
+
+## `bot:explain-thread` — Explain code in a single review thread (FR-030)
+
+### Syntax
+
+| Surface | Trigger                                                            |
+| ------- | ------------------------------------------------------------------ |
+| Literal | `bot:explain-thread`                                               |
+| NL      | classified `intent: 'explain-thread'` (e.g., "what does this do?") |
+| Label   | `bot:explain-thread`                                               |
+
+### Trigger surface eligibility
+
+`pull_request_review_comment.created` only.
+
+### Behavior
+
+1. Read the code at the thread's selection range from the cloned repo.
+2. Generate a concise explanation (single Bedrock call).
+3. Post a single reply in the thread.
+4. Exit. NEVER pushes a commit. NEVER resolves the thread.
+
+### Response artifact
+
+A single reply in the thread.
+
+---
+
+## `bot:summarize` — Post or update a canonical PR summary (FR-031)
+
+### Syntax
+
+| Surface | Trigger                                          |
+| ------- | ------------------------------------------------ |
+| Literal | `bot:summarize` posted as a top-level PR comment |
+| NL      | classified `intent: 'summarize'` on a PR comment |
+| Label   | `bot:summarize` applied to the PR                |
+
+### Trigger surface eligibility
+
+`issue_comment.created` where `issue.pull_request !== undefined`, AND `pull_request.labeled`. Triggering on an issue (where `issue.pull_request === undefined`) returns `'none'`.
+
+### Behavior
+
+1. Fetch the PR's diff + commit list + (existing) review comments.
+2. Generate a structured change summary (single Bedrock call).
+3. Search the PR's comment list for the marker `<!-- bot:summarize:{pr_number} -->`. If found, edit the comment in place. If not found, post a new comment carrying the marker.
+4. Exit. NEVER pushes a commit, NEVER modifies code.
+
+### Response artifact
+
+Exactly one PR-level comment per PR, identified by the stable marker `<!-- bot:summarize:{pr_number} -->`. Re-triggering updates the comment in place — no duplicates.
+
+---
+
+## `bot:rebase` — Sync a PR with its base (FR-032)
+
+### Syntax
+
+| Surface | Trigger                                                       |
+| ------- | ------------------------------------------------------------- |
+| Literal | `bot:rebase`                                                  |
+| NL      | classified `intent: 'rebase'` (e.g., "sync with main please") |
+| Label   | `bot:rebase`                                                  |
+
+### Trigger surface eligibility
+
+`issue_comment.created` where `issue.pull_request !== undefined`, AND `pull_request.labeled`.
+
+### Behavior
+
+1. Clone the repo at the PR head.
+2. Fetch the latest base.
+3. `git merge origin/<base>` into the head branch — **never** `git rebase --onto`, **never** `git push --force`, **never** `git push +<refspec>`, **never** `git filter-branch` / `git filter-repo` / `git replace`.
+4. On clean merge: push the merge commit forward.
+5. On merge conflicts: halt without pushing; reply with the list of conflicting paths and a brief instruction to resolve manually.
+6. On already-up-to-date: post a friendly no-op reply.
+7. Exit.
+
+### Safety guarantee
+
+The destructive-action guard pattern from T046a applies (asserted at both static-grep and runtime-mock layers). Any deviation from forward-only merge into the head branch is a test failure.
+
+### Response artifact
+
+A single PR-level comment summarising the action: "merged origin/main → branch (3 files changed)" or "conflicts in path/a, path/b — please resolve manually" or "already up to date with origin/main."
+
+---
+
+## `bot:investigate` — Structured analysis of an issue (FR-033)
+
+### Syntax
+
+| Surface | Trigger                                                            |
+| ------- | ------------------------------------------------------------------ |
+| Literal | `bot:investigate` posted as an issue comment                       |
+| NL      | classified `intent: 'investigate'` (e.g., "what's going on here?") |
+| Label   | `bot:investigate` applied to the issue                             |
+
+### Trigger surface eligibility
+
+`issue_comment.created` where `issue.pull_request === undefined`, AND `issues.labeled`. Triggering on a PR comment returns `'none'`.
+
+### Behavior
+
+1. Read the issue body, all existing comments on the issue, and any inline-linked artefacts (URLs, file paths) referenced by the body or comments.
+2. Generate a structured analysis (single Bedrock call) containing at minimum: suspected root-cause hypothesis, files of interest, repro confidence rating.
+3. Search for the marker `<!-- bot:investigate:{issue_number} -->`. Update in place if present; post new with marker if absent.
+4. If the issue body and all comments are empty / contain no actionable artefacts: still post a comment, explicitly noting insufficient context (consistent with FR-017).
+5. Exit. NEVER modifies labels. NEVER creates a PR. NEVER closes / locks / assigns the issue.
+
+### Response artifact
+
+Exactly one issue comment per issue, identified by the stable marker.
+
+---
+
+## `bot:triage` — Suggest-only triage proposal (FR-034)
+
+### Syntax
+
+| Surface | Trigger                       |
+| ------- | ----------------------------- |
+| Literal | `bot:triage`                  |
+| NL      | classified `intent: 'triage'` |
+| Label   | `bot:triage`                  |
+
+### Trigger surface eligibility
+
+Same as `bot:investigate` (issue-surface only).
+
+### Behavior
+
+1. Read the issue body, comments, and the repo's existing label vocabulary (via GraphQL `Repository.labels`).
+2. Generate a triage proposal (single Bedrock call) containing: proposed labels (drawn from the repo's vocabulary where possible), proposed severity, duplicate-issue candidates with one-sentence justification each.
+3. Search for the marker `<!-- bot:triage:{issue_number} -->`. Update in place if present; post new with marker if absent.
+
+### Suggest-only safety guarantee (v1)
+
+The handler module MUST NOT import or invoke any of the following GraphQL mutations:
+
+- `addLabelsToLabelable`
+- `removeLabelsFromLabelable`
+- `closeIssue`
+- `lockLockable`
+- `addAssigneesToAssignable`
+- `pinIssue`
+
+This is enforced via an ESLint `no-restricted-syntax` / `no-restricted-imports` rule scoped to `src/workflows/ship/scoped/triage.ts`, AND verified at runtime by mocked octokit assertions in T078. Two layers because either alone leaves a hole.
+
+Apply-mode (where the bot actually applies suggested labels and severity) is a deliberate v2 follow-up gated on a feedback-loop dataset (proposed-vs-applied agreement rate over ≥1 month). Building apply-mode in v1 is forbidden.
+
+### Response artifact
+
+Exactly one issue comment per issue, identified by the stable marker. The comment is human-readable text — no GraphQL mutations are invoked.
+
+---
+
+## `bot:open-pr` — Create a draft PR from an actionable issue (FR-035)
+
+### Syntax
+
+| Surface | Trigger                                                     |
+| ------- | ----------------------------------------------------------- |
+| Literal | `bot:open-pr`                                               |
+| NL      | classified `intent: 'open-pr'` (e.g., "open a PR for this") |
+| Label   | `bot:open-pr`                                               |
+
+### Trigger surface eligibility
+
+Same as `bot:investigate` and `bot:triage` (issue-surface only).
+
+### Behavior
+
+1. **Meta-issue classification.** Issue a single-turn Bedrock call (reusing `src/ai/llm-client.ts` per FR-025) to determine whether the issue is actionable. Schema:
+
+   ```json
+   { "actionable": true | false, "kind": "bug" | "feature" | "tracking" | "meta" | "roadmap" | "discussion" | "unclear", "reason": "<one sentence>" }
+   ```
+
+2. If `actionable === false`: post a reply on the issue containing the verdict (`kind`) and `reason`. Exit. No branch, no PR, no other side effect.
+3. If `actionable === true`: search the issue's comment list for the marker `<!-- bot:open-pr:{pr_number} -->`. If found AND the referenced PR is still open, refuse with a reply linking to the existing PR. Exit.
+4. Otherwise: clone the repo, create a new branch (named after the issue number, e.g., `bot/open-pr-issue-{number}`), attempt a minimal fix, commit, push (NEVER `--force`), open a draft PR back-linking the source issue, and post a single back-link comment on the issue carrying the marker.
+5. Exit. The created PR is in `draft` state and does NOT auto-trigger `bot:ship` (FR-018 unchanged — passive events do not start sessions).
+
+### No `--force` override
+
+There is no `bot:open-pr --force` or any opt-out for the meta-issue classifier in v1. If the classifier mislabels an actionable issue as non-actionable, the maintainer either (a) clarifies the issue body and re-triggers, or (b) opens the PR manually. This is a deliberate constraint to keep the v1 classifier accountable; reconsider once a corpus of misclassifications exists.
+
+### Classifier failure handling
+
+If the meta-issue classifier call fails (network error, rate limit, malformed response), the bot replies in the issue with a maintainer-facing error message and exits. It MUST NOT proceed to create a branch or PR on classifier failure (FR-017).
+
+### Response artifact
+
+On success: one new branch + one new draft PR + one issue comment with the back-link marker. On non-actionable verdict: one issue comment with the verdict + reason. On duplicate detection: one issue comment with the existing PR link. On failure: one issue comment with the error.
+
+---
+
+## Scoped command tests (FR-029..FR-035)
+
+Each command's per-FR test file (T073–T079 in tasks.md Phase 8) MUST cover:
+
+1. **Trigger-surface parity**: the command runs identically when invoked via literal, NL, and label surfaces — same artefacts produced, same authorization gate, same self-removal behaviour.
+2. **Event-surface ineligibility**: triggering the command on a non-matching event surface (e.g., `bot:investigate` on a PR comment) MUST result in zero handler invocations and zero replies.
+3. **Authorization gate (FR-028)**: an unauthorized principal MUST receive the same rejection reply across all three surfaces; on the label surface, the label MUST also self-remove (FR-026a).
+4. **Idempotency** (where applicable): re-triggering the same command on the same target updates the existing marked comment in place — zero duplicates.
+5. **Concurrency with active ship session**: scoped command runs without writing to any `ship_*` table, without acquiring a session slot, and without affecting the in-flight session's state.
+6. **Mocked external calls** (Constitution V): no real Bedrock calls, no real GitHub API calls in unit tests.
+7. **Coverage**: ≥90% line coverage on each scoped command's handler module.
