@@ -26,15 +26,14 @@ export function handleReview(
       repo: payload.repository.name,
       pr_number: payload.pull_request.number,
     });
+    logger.debug(
+      {
+        deliveryId,
+        action: payload.action,
+        owner: payload.repository.owner.login,
+        repo: payload.repository.name,
+      },
+      "pull_request_review.submitted received → ship reactor fired",
+    );
   }
-
-  logger.debug(
-    {
-      deliveryId,
-      action: payload.action,
-      owner: payload.repository.owner.login,
-      repo: payload.repository.name,
-    },
-    "pull_request_review.submitted received → ship reactor fired",
-  );
 }

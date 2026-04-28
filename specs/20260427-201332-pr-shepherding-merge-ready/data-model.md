@@ -214,8 +214,8 @@ The actual migration file is delivered in P2 implementation (per phased delivery
 -- See specs/20260427-201332-pr-shepherding-merge-ready/
 
 CREATE TABLE ship_intents (...);
-CREATE UNIQUE INDEX ship_intents_one_active_per_pr ON ship_intents (...) WHERE status = 'active';
-CREATE INDEX idx_ship_intents_active ON ship_intents (...) WHERE status = 'active';
+CREATE UNIQUE INDEX ship_intents_one_active_per_pr ON ship_intents (...) WHERE status IN ('active', 'paused');
+CREATE INDEX idx_ship_intents_active ON ship_intents (...) WHERE status IN ('active', 'paused');
 CREATE INDEX idx_ship_intents_pr ON ship_intents (...);
 
 CREATE TABLE ship_iterations (...);
@@ -293,7 +293,7 @@ All three enumerations are SQL `CHECK` constraints AND TS literal-union types AN
 
 | FR        | Validation                                                                                                                                          |
 | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| FR-007a   | Partial unique index on `ship_intents (owner, repo, pr_number) WHERE status = 'active'`.                                                            |
+| FR-007a   | Partial unique index on `ship_intents (owner, repo, pr_number) WHERE status IN ('active', 'paused')`.                                               |
 | FR-024    | NOT NULL on `verdict_json` for `probe` kind enforced by application; CHECK constraint allows NULL because non-probe rows have no verdict.           |
 | FR-013    | Application enforces `attempts < FIX_ATTEMPTS_PER_SIGNATURE_CAP` before invoking another fix.                                                       |
 | FR-012a   | Wall-clock cap = `deadline_at`; cron tickle terminates intent when `now() > deadline_at`.                                                           |

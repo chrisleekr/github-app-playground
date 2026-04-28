@@ -54,7 +54,8 @@ export type ShipLogFields = z.infer<typeof ShipLogFieldsSchema>;
 
 /**
  * Convert a USD float (Anthropic billing format) to integer cents.
- * Banker's-rounded for the half-cent edge.
+ * Uses `Math.round` (half-away-from-zero); the half-cent edge is rare
+ * enough in real billing data that the small bias is acceptable.
  */
 export function usdToCents(usd: number): number {
   if (!Number.isFinite(usd) || usd < 0) return 0;

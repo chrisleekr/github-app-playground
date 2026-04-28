@@ -60,9 +60,15 @@ On failure (returned via standard MCP tool-error mechanism):
 {
   "code": "thread_not_found" | "permission_denied" | "rate_limited" | "network_error" | "graphql_error",
   "message": "<human-readable description>",
-  "thread_id": "<the input thread id>"
+  "thread_id": "<the input thread id>",
+  "pr_number": "<the server-bound PR number>"
 }
 ```
+
+`pr_number` is included on **both** the success and error payloads so the
+caller can verify the cross-PR safety story (the server is bound to a
+single PR at construction; a thread that resolves to a different PR
+returns the bound PR number and a `graphql_error` code).
 
 ---
 
@@ -77,10 +83,10 @@ This keeps the tool out of agent contexts where it isn't relevant (per Constitut
 ## Security
 
 | Concern                                      | Mitigation                                                                                                                                                                                                                                                                                      |
-| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | --------------------------------------- |
-| Resolving the wrong PR's thread              | The server is bound to a single `(owner, repo, pullNumber)` at construction; resolving a thread that belongs to a different PR returns `pr_number` mismatch in the response and the agent is instructed to abort the iteration.                                                                 |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Resolving the wrong PR's thread              | The server is bound to a single `(owner, repo, pullNumber)` at construction; resolving a thread that belongs to a different PR returns a `pr_number` mismatch in the response and the agent is instructed to abort the iteration.                                                               |
 | Resolving a thread the agent didn't reply to | The agent prompt (in `resolve.ts`) explicitly requires that a reply comment with the change summary precede the resolve call. Enforced by prompt engineering — not by the MCP server itself, since the server has no state. Verifiable by post-mortem audit of `ship_iterations.runs_store_id`. |
-| Token leak                                   | Installation token is held in-memory by the server instance only; never logged. Logger redacts any field matching `/token                                                                                                                                                                       | secret | key/i` per existing logger conventions. |
+| Token leak                                   | Installation token is held in-memory by the server instance only; never logged. Logger redacts any field matching `/token\|secret\|key/i` per existing logger conventions.                                                                                                                      |
 
 ---
 

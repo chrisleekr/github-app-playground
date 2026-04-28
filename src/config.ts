@@ -176,6 +176,14 @@ const configSchema = z
     // matcher returns no hit.
     triggerPhrase: z.string().default("@chrisleekr-bot"),
 
+    // GitHub App bot author login as it appears in commit/push payloads —
+    // distinct from `triggerPhrase` (which is the @-mention). Used by the ship
+    // workflow's foreign-push detection: pushes whose head author equals
+    // `botAppLogin` are treated as bot-authored and don't terminate active
+    // sessions. Default matches the production app login (`chrisleekr-bot[bot]`).
+    // Override per-environment via `BOT_APP_LOGIN`.
+    botAppLogin: z.string().default("chrisleekr-bot[bot]"),
+
     // HTTP port for the webhook listener. Independent of `wsPort` (orchestrator WS).
     port: z.coerce.number().int().positive().default(3000),
 
@@ -737,6 +745,7 @@ function loadConfig(): Config {
     cloneBaseDir: process.env["CLONE_BASE_DIR"],
     cloneDepth: process.env["CLONE_DEPTH"],
     triggerPhrase: process.env["TRIGGER_PHRASE"],
+    botAppLogin: process.env["BOT_APP_LOGIN"],
     port: process.env["PORT"],
     logLevel: process.env["LOG_LEVEL"],
     nodeEnv: process.env.NODE_ENV,

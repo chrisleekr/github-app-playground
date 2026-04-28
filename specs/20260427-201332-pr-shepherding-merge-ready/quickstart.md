@@ -31,6 +31,9 @@ FIX_ATTEMPTS_PER_SIGNATURE_CAP=3
 # Phase rollout flags (R8). Default false until each phase is smoke-tested.
 SHIP_USE_PROBE_VERDICT=false
 SHIP_USE_CONTINUATION_LOOP=false
+# Trigger-surface wiring (literal/NL/label dispatch through the trigger router).
+# When false, only the legacy `@chrisleekr-bot` mention dispatcher runs.
+SHIP_USE_TRIGGER_SURFACES_V2=false
 ```
 
 All new env vars are validated at startup by the Zod schema in `src/config.ts`. The server fails fast on invalid values (Constitution IV / "Code Style").
@@ -256,7 +259,7 @@ USD per session is observability-only (Q3-round1). Sustained high cost → tight
 
 ## Rollback
 
-Each phase has its own env flag (`SHIP_USE_PROBE_VERDICT`, `SHIP_USE_CONTINUATION_LOOP`, ...). Setting a flag to `false` reverts that phase's behaviour to the prior (legacy) code path without code rollback. Use this for any phase that misbehaves in production.
+Each phase has its own env flag (`SHIP_USE_PROBE_VERDICT`, `SHIP_USE_CONTINUATION_LOOP`, `SHIP_USE_TRIGGER_SURFACES_V2`, ...). Setting a flag to `false` reverts that phase's behaviour to the prior (legacy) code path without code rollback. Use this for any phase that misbehaves in production.
 
 After one full week of clean operation on a phase, the flag is removed in a follow-up PR (per R8 cutover plan) — keeps `src/config.ts` from accumulating dead flags.
 

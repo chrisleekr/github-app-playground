@@ -8,12 +8,11 @@
  * early-wake; durable state still advances on the next cron tickle.
  */
 
+import { config } from "../../config";
 import { getDb } from "../../db";
 import { logger } from "../../logger";
 import { getValkeyClient } from "../../orchestrator/valkey";
 import { fanOut, type ReactorEvent } from "./webhook-reactor";
-
-const BOT_APP_LOGIN = "chrisleekr-bot[bot]";
 
 export function fireReactor(event: ReactorEvent): void {
   const sql = getDb();
@@ -23,7 +22,7 @@ export function fireReactor(event: ReactorEvent): void {
       await fanOut(event, {
         sql,
         valkey: getValkeyClient(),
-        botAppLogin: BOT_APP_LOGIN,
+        botAppLogin: config.botAppLogin,
       });
     } catch (err) {
       logger.warn(

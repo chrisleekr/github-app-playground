@@ -43,9 +43,12 @@ export interface ClassifyInput {
 }
 
 export async function classifyComment(input: ClassifyInput): Promise<NlClassifierResult | null> {
-  const idx = input.commentBody.indexOf(input.triggerPhrase);
-  if (idx === -1) return null;
-  const post = input.commentBody.slice(idx + input.triggerPhrase.length).trim();
+  // FR-025a: only fire when the trigger phrase is the mention prefix.
+  // `indexOf` would also match quoted/log-pasted text, which we explicitly
+  // do not want to classify (and pay LLM tokens for).
+  const trimmed = input.commentBody.trimStart();
+  if (!trimmed.startsWith(input.triggerPhrase)) return null;
+  const post = trimmed.slice(input.triggerPhrase.length).trim();
   if (post === "") return null;
 
   let raw: string;
@@ -56,10 +59,10 @@ export async function classifyComment(input: ClassifyInput): Promise<NlClassifie
     return { intent: "none" };
   }
 
-  const trimmed = raw.trim();
+  const trimmedJson = raw.trim();
   let parsed: unknown;
   try {
-    parsed = JSON.parse(trimmed);
+    parsed = JSON.parse(trimmedJson);
   } catch {
     return { intent: "none" };
   }

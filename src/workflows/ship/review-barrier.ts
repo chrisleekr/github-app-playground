@@ -31,7 +31,11 @@ export interface BarrierProbeShape {
       };
       readonly reviews?: {
         readonly nodes: readonly {
-          readonly author: { readonly login: string } | null;
+          readonly author: {
+            readonly login: string;
+            // GraphQL Actor union — "User" | "Bot" | "Mannequin" | "Organization" | "EnterpriseUserAccount"
+            readonly __typename?: string;
+          } | null;
           readonly commit: { readonly oid: string } | null;
         }[];
       };
@@ -63,10 +67,12 @@ export function shouldDeferOnReviewLatency(input: ShouldDeferInput): boolean {
     const authorLogin = r.author?.login ?? null;
     if (authorLogin === null) return false;
     if (authorLogin === input.ourAppLogin) return false;
-    // The probe response's `review.author` shape doesn't carry
-    // `__typename` today; if it ever does, also exclude `Bot`. Until
-    // then the App-login self-exclusion above filters the most common
-    // bot-self case.
+    // Exclude any non-User actor — automation reviews (other bots, GitHub
+    // Apps, deploy keys) must not satisfy the human-review barrier.
+    // `__typename` is requested in the probe GraphQL query; older fixtures
+    // without it fall back to the App-login self-exclusion above.
+    const typename = r.author?.__typename;
+    if (typename !== undefined && typename !== "User") return false;
     return true;
   });
   if (hasQualifyingReview) return false;

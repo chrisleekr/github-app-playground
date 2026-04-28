@@ -98,7 +98,7 @@ describe("checkEligibility", () => {
 
   it("rejects merged PRs", async () => {
     const v = await checkEligibility({
-      octokit: makeOctokit({ ...okPr, merged: true }),
+      octokit: makeOctokit({ ...okPr, state: "MERGED", merged: true }),
       owner: "chrisleekr",
       repo: "github-app-playground",
       pr_number: 1,

@@ -295,10 +295,11 @@ export async function upsertContinuation(
 }
 
 /**
- * Return continuations whose `wake_at <= ${now}`. Joined to `ship_intents`
- * so the caller has the installation/owner/repo/pr_number tuple needed to
- * dispatch the daemon job — and so terminated intents (whose continuation
- * was deleted by FK cascade) never appear.
+ * Return continuations whose `wake_at <= ${now}`. The query joins
+ * `ship_intents` purely as a filter (so terminated intents whose
+ * continuation rows linger never appear) — the SELECT projects only
+ * `c.*`, so callers needing the installation/owner/repo/pr_number tuple
+ * must look it up separately via `getActiveIntent` / `findIntentsForPr`.
  */
 export async function findDueContinuations(
   now: Date,

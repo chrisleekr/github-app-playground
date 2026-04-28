@@ -12,6 +12,7 @@
 import type { SQL } from "bun";
 import type { Octokit } from "octokit";
 
+import { config } from "../../config";
 import { requireDb } from "../../db";
 
 export const SHIP_INTENT_MARKER_PREFIX = "<!-- ship-intent:";
@@ -151,7 +152,7 @@ export function renderTrackingComment(input: TrackingCommentRender): string {
   }
   lines.push("");
   lines.push(
-    "_To stop: comment `@chrisleekr-bot bot:abort-ship` (terminal) or `@chrisleekr-bot bot:stop` (resumable)._",
+    `_To stop: comment \`${config.triggerPhrase} bot:abort-ship\` (terminal) or \`${config.triggerPhrase} bot:stop\` (resumable)._`,
   );
   return lines.join("\n");
 }

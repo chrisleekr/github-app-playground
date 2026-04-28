@@ -141,51 +141,86 @@ export async function fanOut(event: ReactorEvent, deps: ReactorDeps): Promise<vo
     if (intents.length === 0) continue;
 
     for (const intent of intents) {
-      switch (event.type) {
-        case "pull_request.synchronize": {
-          const isBot = event.head_author_login === deps.botAppLogin;
-          if (!isBot && event.head_sha !== intent.target_head_sha) {
-            await transitionToTerminal(intent.id, "human_took_over", "manual-push-detected", sql);
-            logger.info(
-              {
-                event: "ship.reactor.fanout",
-                intent_id: intent.id,
-                trigger: event.type,
-                outcome: "human_took_over",
-              },
-              "ship reactor terminated intent on foreign push",
-            );
-          } else {
-            await sql`UPDATE ship_intents SET target_head_sha = ${event.head_sha}, updated_at = now() WHERE id = ${intent.id}`;
-            await earlyWake(intent.id, sql, valkey);
-          }
-          break;
-        }
-        case "pull_request.closed": {
-          const terminal = event.merged ? "merged_externally" : "pr_closed";
-          await transitionToTerminal(intent.id, terminal, null, sql);
-          logger.info(
-            {
-              event: "ship.reactor.fanout",
-              intent_id: intent.id,
-              trigger: event.type,
-              outcome: terminal,
-            },
-            "ship reactor terminated intent on PR close",
-          );
-          break;
-        }
-        case "pull_request_review.submitted":
-        case "pull_request_review_comment":
-        case "check_run.completed":
-        case "check_suite.completed": {
-          // Signal-only events on a paused intent are no-ops per
-          // bot-commands.md §"Reactor behaviour while paused".
-          if (intent.status === "paused") break;
-          await earlyWake(intent.id, sql, valkey);
-          break;
-        }
+      try {
+        await processIntentEvent(event, intent, { sql, valkey, botAppLogin: deps.botAppLogin });
+      } catch (err) {
+        // Isolate per-intent failures — one error must not abort the rest
+        // of the fan-out batch (could be many intents across many PRs).
+        logger.error(
+          {
+            event: "ship.reactor.fanout_error",
+            intent_id: intent.id,
+            pr_number,
+            trigger: event.type,
+            err: String(err),
+          },
+          "ship reactor failed for intent — continuing with remaining intents",
+        );
       }
     }
   }
+}
+
+interface ProcessDeps {
+  readonly sql: SQL;
+  readonly valkey: Pick<RedisClient, "send"> | null;
+  readonly botAppLogin: string;
+}
+
+async function processIntentEvent(
+  event: ReactorEvent,
+  intent: { readonly id: string; readonly target_head_sha: string; readonly status: string },
+  { sql, valkey, botAppLogin }: ProcessDeps,
+): Promise<void> {
+  switch (event.type) {
+    case "pull_request.synchronize":
+      await handleSynchronize(event, intent, { sql, valkey, botAppLogin });
+      return;
+    case "pull_request.closed": {
+      const terminal = event.merged ? "merged_externally" : "pr_closed";
+      await transitionToTerminal(intent.id, terminal, null, sql);
+      logger.info(
+        {
+          event: "ship.reactor.fanout",
+          intent_id: intent.id,
+          trigger: event.type,
+          outcome: terminal,
+        },
+        "ship reactor terminated intent on PR close",
+      );
+      return;
+    }
+    case "pull_request_review.submitted":
+    case "pull_request_review_comment":
+    case "check_run.completed":
+    case "check_suite.completed":
+      // Signal-only events on a paused intent are no-ops per
+      // bot-commands.md §"Reactor behaviour while paused".
+      if (intent.status === "paused") return;
+      await earlyWake(intent.id, sql, valkey);
+      return;
+  }
+}
+
+async function handleSynchronize(
+  event: PullRequestSynchronizeEvent,
+  intent: { readonly id: string; readonly target_head_sha: string },
+  { sql, valkey, botAppLogin }: ProcessDeps,
+): Promise<void> {
+  const isBot = event.head_author_login === botAppLogin;
+  if (!isBot && event.head_sha !== intent.target_head_sha) {
+    await transitionToTerminal(intent.id, "human_took_over", "manual-push-detected", sql);
+    logger.info(
+      {
+        event: "ship.reactor.fanout",
+        intent_id: intent.id,
+        trigger: event.type,
+        outcome: "human_took_over",
+      },
+      "ship reactor terminated intent on foreign push",
+    );
+    return;
+  }
+  await sql`UPDATE ship_intents SET target_head_sha = ${event.head_sha}, updated_at = now() WHERE id = ${intent.id}`;
+  await earlyWake(intent.id, sql, valkey);
 }

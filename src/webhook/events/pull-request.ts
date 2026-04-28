@@ -9,7 +9,10 @@ import { fireReactor } from "../../workflows/ship/reactor-bridge";
 import { routeTrigger } from "../../workflows/ship/trigger-router";
 import { isOwnerAllowed } from "../authorize";
 
-const BOT_LABEL_PATTERN = /^bot:[a-z]+$/;
+// Permits the documented label shapes:
+//   bot:ship, bot:abort-ship, bot:fix-thread, bot:investigate, ...
+//   bot:ship/deadline=2h (parameterised ship)
+const BOT_LABEL_PATTERN = /^bot:[a-z][a-z-]*(?:\/deadline=\d+(?:\.\d+)?[hms])?$/;
 
 /**
  * Handler for `pull_request.*` events. Currently covers four actions:

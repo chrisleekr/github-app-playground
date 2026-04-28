@@ -30,7 +30,8 @@ export interface DerivedSignature {
   readonly tier: 1 | 2;
 }
 
-const ANSI_ESCAPE = /\[[0-9;]*[A-Za-z]/g;
+// eslint-disable-next-line no-control-regex -- intentional ESC byte match
+const ANSI_ESCAPE = /\x1b\[[0-9;]*[A-Za-z]/g;
 const LINE_COL = /:\d+:\d+(?::\d+)?/g;
 const ABSOLUTE_PATH = /\/[A-Za-z0-9_./@-]+\.[A-Za-z]+/g;
 const TIMESTAMP = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?/g;

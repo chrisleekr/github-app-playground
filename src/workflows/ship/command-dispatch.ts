@@ -67,43 +67,58 @@ export async function dispatchCommentSurface(input: {
   readonly log?: Logger;
 }): Promise<void> {
   const deps: DispatchDeps = { octokit: input.octokit, ...(input.log ? { log: input.log } : {}) };
-  // 1. Literal-first.
-  const literal = await routeTrigger({
-    surface: "literal",
-    payload: {
-      commentBody: input.commentBody,
-      principal_login: input.principal_login,
-      pr: input.pr,
-    },
-  });
-  if (literal !== null) {
-    dispatchCanonicalCommand(literal, deps);
-    return;
-  }
-
-  // 2. NL fallback. Mention-prefix gate (FR-025a) lives in classifier.
-  const llm = getTriageLLMClient();
-  const modelId = resolveModelId(config.triageModel, llm.provider);
-  const callLlm = async (params: { systemPrompt: string; userPrompt: string }): Promise<string> => {
-    const res = await llm.create({
-      model: modelId,
-      system: params.systemPrompt,
-      messages: [{ role: "user", content: params.userPrompt }],
-      maxTokens: 256,
-      temperature: 0,
+  // Wrap parser + classifier in a single guard. The literal parser is
+  // synchronous-ish, but `routeTrigger("nl")` makes a remote LLM call which
+  // can throw on Bedrock outages. Letting that bubble out of the webhook
+  // handler causes 5xx + delivery retries; we log and swallow instead so
+  // a transient classifier outage doesn't double-deliver work.
+  try {
+    // 1. Literal-first.
+    const literal = await routeTrigger({
+      surface: "literal",
+      payload: {
+        commentBody: input.commentBody,
+        principal_login: input.principal_login,
+        pr: input.pr,
+      },
     });
-    return res.text;
-  };
+    if (literal !== null) {
+      dispatchCanonicalCommand(literal, deps);
+      return;
+    }
 
-  const nl = await routeTrigger({
-    surface: "nl",
-    payload: {
-      commentBody: input.commentBody,
-      triggerPhrase: config.triggerPhrase,
-      principal_login: input.principal_login,
-      pr: input.pr,
-      callLlm,
-    },
-  });
-  if (nl !== null) dispatchCanonicalCommand(nl, deps);
+    // 2. NL fallback. Mention-prefix gate (FR-025a) lives in classifier.
+    const llm = getTriageLLMClient();
+    const modelId = resolveModelId(config.triageModel, llm.provider);
+    const callLlm = async (params: {
+      systemPrompt: string;
+      userPrompt: string;
+    }): Promise<string> => {
+      const res = await llm.create({
+        model: modelId,
+        system: params.systemPrompt,
+        messages: [{ role: "user", content: params.userPrompt }],
+        maxTokens: 256,
+        temperature: 0,
+      });
+      return res.text;
+    };
+
+    const nl = await routeTrigger({
+      surface: "nl",
+      payload: {
+        commentBody: input.commentBody,
+        triggerPhrase: config.triggerPhrase,
+        principal_login: input.principal_login,
+        pr: input.pr,
+        callLlm,
+      },
+    });
+    if (nl !== null) dispatchCanonicalCommand(nl, deps);
+  } catch (err) {
+    (input.log ?? rootLogger).error(
+      { event: "ship.dispatch_comment_surface_failed", err: String(err) },
+      "ship dispatchCommentSurface threw — swallowed",
+    );
+  }
 }

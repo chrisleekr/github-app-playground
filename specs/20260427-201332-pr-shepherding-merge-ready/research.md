@@ -153,7 +153,7 @@ Reactor matches by `(installation_id, owner, repo, pr_number)` against active in
 
 - These are exactly the 5 events that change one of the inputs to `MergeReadiness`. Other events (label, review_request, assigned, etc.) don't change the verdict and would be noise.
 - `check_suite.completed` is included alongside `check_run.completed` because some CI providers emit only suite-level signals on aggregate completion.
-- `pull_request.closed` is the reactor's signal to terminate active intents with `SessionTerminalState = pr_closed` (merged externally) or `pr_closed` (just closed) — distinguishable by `merged: true/false` in the payload.
+- `pull_request.closed` is the reactor's signal to terminate active intents with `SessionTerminalState = merged_externally` (when `merged: true` in the payload) or `pr_closed` (when `merged: false`).
 - Restricting to specific actions per event type cuts webhook volume and reactor work.
 
 **Alternatives considered**:

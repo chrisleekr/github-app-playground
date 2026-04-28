@@ -41,7 +41,6 @@ import { TICKLE_KEY } from "./webhook-reactor";
  * safe; the wait just makes the user-visible state quieter.
  */
 const POST_FLAG_WAIT_MS = 2000;
-const BOT_APP_LOGIN = "chrisleekr-bot[bot]";
 
 export interface RunLifecycleInput {
   readonly command: CanonicalCommand;
@@ -127,12 +126,14 @@ export async function runLifecycleCommand(input: RunLifecycleInput): Promise<voi
       { event: "ship.lifecycle.stop", intent_id: intent.id, paused: paused !== null },
       "ship session paused",
     );
-    await postReply(
-      octokit,
-      command,
-      `\`bot:ship\` paused — comment \`bot:resume\` to continue.`,
-      log,
-    );
+    // Guarded UPDATE returns null when the row was no longer `active` at
+    // the moment of the UPDATE (race with the worker terminating the
+    // intent). Don't claim success in that case.
+    const pauseReply =
+      paused !== null
+        ? "`bot:ship` paused — comment `bot:resume` to continue."
+        : "`bot:stop` had no effect — session was no longer active.";
+    await postReply(octokit, command, pauseReply, log);
     return;
   }
 
@@ -158,7 +159,7 @@ export async function runLifecycleCommand(input: RunLifecycleInput): Promise<voi
       });
       if (pr.head.sha !== intent.target_head_sha) {
         const author = pr.head.user?.login ?? null;
-        if (author !== BOT_APP_LOGIN) {
+        if (author !== config.botAppLogin) {
           await transitionToTerminal(intent.id, "human_took_over", "manual-push-detected", sql);
           log.info(
             { event: "ship.lifecycle.resume_aborted_foreign_push", intent_id: intent.id },
@@ -175,7 +176,20 @@ export async function runLifecycleCommand(input: RunLifecycleInput): Promise<voi
         }
       }
     } catch (err) {
-      log.warn({ err }, "resume foreign-push check failed — proceeding cautiously");
+      // Fail-closed: the foreign-push check is the resume safety gate. If
+      // we can't verify the head author, do not silently bypass — defer
+      // and let the user retry.
+      log.warn(
+        { err, intent_id: intent.id },
+        "resume foreign-push check failed — declining resume",
+      );
+      await postReply(
+        octokit,
+        command,
+        "`bot:resume` declined — unable to verify head push author right now. Please retry shortly.",
+        log,
+      );
+      return;
     }
     if (valkey !== null) {
       await clearAbort(intent.id, valkey);
@@ -186,7 +200,13 @@ export async function runLifecycleCommand(input: RunLifecycleInput): Promise<voi
       { event: "ship.lifecycle.resume", intent_id: intent.id, resumed: resumed !== null },
       "ship session resumed",
     );
-    await postReply(octokit, command, `\`bot:ship\` resumed.`, log);
+    // Same race window as `pauseIntent` — guarded UPDATE returns null if
+    // the intent was no longer `paused` (e.g. terminated meanwhile).
+    const resumeReply =
+      resumed !== null
+        ? "`bot:ship` resumed."
+        : "`bot:resume` had no effect — session was no longer paused.";
+    await postReply(octokit, command, resumeReply, log);
     return;
   }
 

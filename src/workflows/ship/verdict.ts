@@ -28,6 +28,11 @@ export const NON_READINESS_REASONS = [
   "mergeable_pending",
   "pending_checks",
   "human_took_over",
+  // Transient: review-latency barrier defers a ready verdict until either
+  // a non-bot review lands on the head SHA or the safety margin elapses.
+  // Distinct from `human_took_over` so downstream lifecycle code does not
+  // mistake the deferral for an actual takeover.
+  "review_barrier_deferred",
 ] as const;
 
 export type NonReadinessReason = (typeof NON_READINESS_REASONS)[number];
@@ -54,6 +59,8 @@ interface CheckRollupContext {
   readonly status?: string | null;
   readonly state?: string | null;
   readonly isRequired: boolean;
+  /** Numeric REST id; only populated for CheckRun nodes. */
+  readonly databaseId?: number | null;
 }
 
 export interface ProbeResponseShape {

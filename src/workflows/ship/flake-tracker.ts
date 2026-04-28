@@ -11,6 +11,7 @@
 
 import type { Octokit } from "octokit";
 
+import { logger } from "../../logger";
 import type { ProbeResponseShape } from "./verdict";
 
 export interface CheckHistoryEntry {
@@ -88,8 +89,18 @@ export async function triggerTargetedRerun(input: TriggerTargetedRerunInput): Pr
         repo: input.repo,
         check_run_id: check.check_run_id,
       });
-    } catch {
-      // Swallowed — see fn JSDoc.
+    } catch (err) {
+      // Best-effort — log but do not halt. Caller's iteration loop
+      // re-probes the check state regardless of rerun outcome.
+      logger.warn(
+        {
+          event: "ship.flake.rerun_failed",
+          check_name: check.check_name,
+          check_run_id: check.check_run_id,
+          err: String(err),
+        },
+        "ship flake rerun failed",
+      );
     }
   }
 }
@@ -128,7 +139,9 @@ export function projectHistoryFromProbe(probeResponse: ProbeResponseShape): Chec
         check_name: c.name ?? "<unknown>",
         conclusion: c.conclusion ?? null,
         is_required: c.isRequired,
-        check_run_id: null,
+        // databaseId is the numeric REST id used by the rerequest endpoint.
+        // StatusContext entries have no equivalent — they remain null.
+        check_run_id: c.databaseId ?? null,
       });
     } else {
       out.push({

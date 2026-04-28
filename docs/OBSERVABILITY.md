@@ -46,7 +46,7 @@ The `bot:ship` lifecycle emits structured pino log lines validated against the c
 
 **Querying example** (Datadog / Loki):
 
-```
+```text
 event:"ship.intent.transition" to_status:"human_took_over" terminal_blocker_category:"flake-cap"
 | count by pr.repo
 ```

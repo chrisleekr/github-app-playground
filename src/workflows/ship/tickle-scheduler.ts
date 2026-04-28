@@ -43,6 +43,10 @@ export function createTickleScheduler(deps: TickleSchedulerDeps): TickleSchedule
   const sql = deps.sql ?? requireDb();
   const intervalMs = deps.intervalMs ?? config.cronTickleIntervalMs;
   let timer: ReturnType<typeof setInterval> | null = null;
+  // Reentrancy guard: setInterval does not await the previous tick, so a
+  // slow Valkey/onDue call could otherwise let two ticks process the same
+  // due window concurrently and dispatch the same intent twice.
+  let ticking = false;
 
   async function reconcileFromPostgres(): Promise<void> {
     const rows: { intent_id: string; wake_at: Date }[] = await sql`
@@ -59,32 +63,49 @@ export function createTickleScheduler(deps: TickleSchedulerDeps): TickleSchedule
     );
   }
 
+  /*
+   * Reentrancy guard against overlapping `setInterval` invocations.
+   * The check-then-set pair below is safe because JS is single-threaded
+   * and no `await` separates the read from the write — `setInterval`
+   * can only re-enter `tick` on a separate event-loop turn, by which
+   * point `ticking` is already `true`. ESLint's `require-atomic-updates`
+   * conservatively flags any cross-async read/write of a closure
+   * variable; disabled inline because the guarantee is structural.
+   */
+  /* eslint-disable require-atomic-updates */
   async function tick(): Promise<void> {
-    const nowMs = String(Date.now());
-    const due = (await deps.valkey.send("ZRANGEBYSCORE", [
-      TICKLE_KEY,
-      "0",
-      nowMs,
-      "LIMIT",
-      "0",
-      "100",
-    ])) as string[] | null;
-    if (due === null || due.length === 0) return;
-    for (const intent_id of due) {
-      await deps.valkey.send("ZREM", [TICKLE_KEY, intent_id]);
-      try {
-        await deps.onDue(intent_id);
-      } catch (err) {
-        // Re-arm so a transient dispatch failure doesn't strand the
-        // session until startup reconciliation runs again.
-        await deps.valkey.send("ZADD", [TICKLE_KEY, String(Date.now() + intervalMs), intent_id]);
-        logger.error(
-          { event: "ship.tickle.dispatch_failed", intent_id, err: String(err) },
-          "ship tickle dispatch failed; requeued",
-        );
+    if (ticking) return;
+    ticking = true;
+    try {
+      const nowMs = String(Date.now());
+      const due = (await deps.valkey.send("ZRANGEBYSCORE", [
+        TICKLE_KEY,
+        "0",
+        nowMs,
+        "LIMIT",
+        "0",
+        "100",
+      ])) as string[] | null;
+      if (due === null || due.length === 0) return;
+      for (const intent_id of due) {
+        await deps.valkey.send("ZREM", [TICKLE_KEY, intent_id]);
+        try {
+          await deps.onDue(intent_id);
+        } catch (err) {
+          // Re-arm so a transient dispatch failure doesn't strand the
+          // session until startup reconciliation runs again.
+          await deps.valkey.send("ZADD", [TICKLE_KEY, String(Date.now() + intervalMs), intent_id]);
+          logger.error(
+            { event: "ship.tickle.dispatch_failed", intent_id, err: String(err) },
+            "ship tickle dispatch failed; requeued",
+          );
+        }
       }
+    } finally {
+      ticking = false;
     }
   }
+  /* eslint-enable require-atomic-updates */
 
   return {
     start: async (): Promise<void> => {

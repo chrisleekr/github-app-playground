@@ -84,6 +84,7 @@ query MergeReadinessProbe($owner: String!, $repo: String!, $number: Int!) {
         nodes {
           id
           author {
+            __typename
             login
           }
           state

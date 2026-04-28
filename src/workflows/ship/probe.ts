@@ -58,6 +58,7 @@ const PROBE_QUERY = `
                     __typename
                     ... on CheckRun {
                       name
+                      databaseId
                       conclusion
                       status
                       completedAt
@@ -77,7 +78,7 @@ const PROBE_QUERY = `
         reviews(last: 20) {
           nodes {
             id
-            author { login }
+            author { __typename login }
             state
             submittedAt
             commit { oid }
@@ -216,7 +217,7 @@ export async function runProbeIntegrated(
     if (defer) {
       verdict = {
         ready: false,
-        reason: "human_took_over",
+        reason: "review_barrier_deferred",
         detail:
           "review-barrier deferring: no non-bot review on current head SHA and safety margin not yet elapsed",
         checked_at: verdict.checked_at,

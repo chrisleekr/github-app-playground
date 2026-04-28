@@ -43,8 +43,6 @@ import {
   updateTrackingComment,
 } from "./tracking-comment";
 
-const BOT_APP_LOGIN = "chrisleekr-bot[bot]";
-
 const MARK_READY_FOR_REVIEW_MUTATION = `
   mutation MarkReady($pullRequestId: ID!) {
     markPullRequestReadyForReview(input: { pullRequestId: $pullRequestId }) {
@@ -103,7 +101,7 @@ export async function runShipFromCommand(input: RunShipFromCommandInput): Promis
     owner: command.pr.owner,
     repo: command.pr.repo,
     pr_number: command.pr.number,
-    botAppLogin: BOT_APP_LOGIN,
+    botAppLogin: config.botAppLogin,
     botPushedShas: new Set<string>(),
   });
   const pr = probe.response.repository?.pullRequest;
@@ -139,7 +137,7 @@ export async function runShipFromCommand(input: RunShipFromCommandInput): Promis
       octokit,
       command,
       `\`bot:ship\` is already in progress for this PR (intent \`${result.existing.id}\`). ` +
-        `To stop it, comment \`@${config.triggerPhrase} bot:abort-ship\`.`,
+        `To stop it, comment \`${config.triggerPhrase} bot:abort-ship\`.`,
       log,
     );
     return;
@@ -147,6 +145,13 @@ export async function runShipFromCommand(input: RunShipFromCommandInput): Promis
 
   const intent = result.intent;
   const sql = requireDb();
+
+  // Patch the marker now that the intent_id is known. The placeholder is
+  // never consumed by code in-flight (it only matters for marker-based
+  // recovery scans), but persisting the canonical value keeps the row
+  // schema-honest for any future re-discovery logic.
+  const canonicalMarker = buildIntentMarker(intent.id);
+  await sql`UPDATE ship_intents SET tracking_comment_marker = ${canonicalMarker}, updated_at = now() WHERE id = ${intent.id}`;
 
   // T059 checkpoint: between intent creation and the first user-visible
   // mutation. If the maintainer issued bot:abort/stop in the milliseconds

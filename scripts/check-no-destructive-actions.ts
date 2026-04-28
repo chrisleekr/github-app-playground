@@ -37,20 +37,13 @@ const FORBIDDEN: { readonly pattern: RegExp; readonly description: string }[] = 
 ];
 
 function* walk(dir: string): Generator<string> {
-  let entries: string[];
-  try {
-    entries = readdirSync(dir);
-  } catch {
-    return;
-  }
+  // Fail-closed: this is a CI safety guard. Swallowing readdir/stat errors
+  // would let a missing or unreadable scan root report `clean` and silently
+  // disable the check.
+  const entries = readdirSync(dir);
   for (const entry of entries) {
     const full = join(dir, entry);
-    let stat;
-    try {
-      stat = statSync(full);
-    } catch {
-      continue;
-    }
+    const stat = statSync(full);
     if (stat.isDirectory()) {
       yield* walk(full);
     } else if (stat.isFile() && (full.endsWith(".ts") || full.endsWith(".tsx"))) {
