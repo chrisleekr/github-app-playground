@@ -507,15 +507,6 @@ const configSchema = z
     // Defaults off for safe rollout; flipped on after the probe verdict
     // path is validated.
     shipUseContinuationLoop: z.boolean().default(false),
-
-    // Feature flag — when true, enables the natural-language classifier
-    // (FR-025/025a) and label-trigger (FR-026/026a) surfaces alongside
-    // the literal `bot:<verb>` comment surface. When false, only the
-    // literal surface is active (matches legacy behaviour). Defaults off
-    // so the cost of the NL classifier is not paid until operators opt
-    // in. The mention-prefix gate (FR-025a) reuses the existing
-    // `TRIGGER_PHRASE` env var; no separate trigger-phrase env is added.
-    shipUseTriggerSurfacesV2: z.boolean().default(false),
   })
   .superRefine((data, ctx) => {
     validateServerModeCredentials(data, ctx);
@@ -816,10 +807,6 @@ function loadConfig(): Config {
     shipUseContinuationLoop: parseBooleanEnv(
       "SHIP_USE_CONTINUATION_LOOP",
       process.env["SHIP_USE_CONTINUATION_LOOP"],
-    ),
-    shipUseTriggerSurfacesV2: parseBooleanEnv(
-      "SHIP_USE_TRIGGER_SURFACES_V2",
-      process.env["SHIP_USE_TRIGGER_SURFACES_V2"],
     ),
   });
 

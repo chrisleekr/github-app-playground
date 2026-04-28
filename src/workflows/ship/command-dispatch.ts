@@ -11,9 +11,15 @@ import type { Logger } from "pino";
 import { resolveModelId } from "../../ai/llm-client";
 import { config } from "../../config";
 import { logger as rootLogger } from "../../logger";
-import type { CanonicalCommand, CanonicalCommandPr } from "../../shared/ship-types";
+import {
+  type CanonicalCommand,
+  type CanonicalCommandPr,
+  isScopedCommandIntent,
+  isShipCommandIntent,
+} from "../../shared/ship-types";
 import { getTriageLLMClient } from "../../webhook/triage-client-factory";
 import { runLifecycleCommand } from "./lifecycle-commands";
+import { dispatchScopedCommand, type ScopedCommandDeps } from "./scoped/dispatch-scoped";
 import { runShipFromCommand } from "./session-runner";
 import { routeTrigger } from "./trigger-router";
 
@@ -42,10 +48,26 @@ export function dispatchCanonicalCommand(command: CanonicalCommand, deps: Dispat
     return;
   }
 
-  // stop / resume / abort (T058, T058b).
-  void runLifecycleCommand({ command, octokit: deps.octokit, log }).catch((err: unknown) => {
-    log.error({ err }, "runLifecycleCommand threw");
-  });
+  if (isShipCommandIntent(command.intent)) {
+    // stop / resume / abort (T058, T058b).
+    void runLifecycleCommand({ command, octokit: deps.octokit, log }).catch((err: unknown) => {
+      log.error({ err }, "runLifecycleCommand threw");
+    });
+    return;
+  }
+
+  if (isScopedCommandIntent(command.intent)) {
+    // US5 — fan out to the right scoped handler. Each scoped handler
+    // is stateless (no `ship_intents` row) and runs to completion in a
+    // single agent invocation.
+    const scopedDeps: ScopedCommandDeps = { octokit: deps.octokit, log };
+    void dispatchScopedCommand(command, scopedDeps).catch((err: unknown) => {
+      log.error({ err }, "dispatchScopedCommand threw");
+    });
+    return;
+  }
+
+  log.warn("dispatchCanonicalCommand: unrecognised intent (no handler)");
 }
 
 /**
@@ -55,14 +77,20 @@ export function dispatchCanonicalCommand(command: CanonicalCommand, deps: Dispat
  * mention-prefix per FR-025a). Both paths produce a `CanonicalCommand`
  * via `routeTrigger(...)` — the NL classifier MUST NOT run when the
  * literal parser already matched (no double-fire).
- *
- * Caller must check `config.shipUseTriggerSurfacesV2` before invoking;
- * this function trusts the flag was on.
  */
 export async function dispatchCommentSurface(input: {
   readonly commentBody: string;
   readonly principal_login: string;
   readonly pr: CanonicalCommandPr;
+  /**
+   * Per-event-surface eligibility carrier (FR-029..FR-035). When present,
+   * it is forwarded verbatim into the canonical command. When absent
+   * (legacy callers), per-intent eligibility is not enforced — every
+   * 11-verb intent reaches its handler.
+   */
+  readonly event_surface?: "pr-comment" | "review-comment" | "issue-comment";
+  /** Set when the comment originates from a `pull_request_review_comment`. */
+  readonly thread_id?: string;
   readonly octokit: Octokit;
   readonly log?: Logger;
 }): Promise<void> {
@@ -80,6 +108,8 @@ export async function dispatchCommentSurface(input: {
         commentBody: input.commentBody,
         principal_login: input.principal_login,
         pr: input.pr,
+        ...(input.event_surface !== undefined ? { event_surface: input.event_surface } : {}),
+        ...(input.thread_id !== undefined ? { thread_id: input.thread_id } : {}),
       },
     });
     if (literal !== null) {
@@ -112,6 +142,8 @@ export async function dispatchCommentSurface(input: {
         principal_login: input.principal_login,
         pr: input.pr,
         callLlm,
+        ...(input.event_surface !== undefined ? { event_surface: input.event_surface } : {}),
+        ...(input.thread_id !== undefined ? { thread_id: input.thread_id } : {}),
       },
     });
     if (nl !== null) dispatchCanonicalCommand(nl, deps);

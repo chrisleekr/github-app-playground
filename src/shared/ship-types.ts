@@ -75,9 +75,77 @@ export const TRIGGER_SURFACES = ["literal", "nl", "label"] as const;
 export type TriggerSurface = (typeof TRIGGER_SURFACES)[number];
 export const TriggerSurfaceSchema = z.enum(TRIGGER_SURFACES);
 
-export const COMMAND_INTENTS = ["ship", "stop", "resume", "abort"] as const;
+/**
+ * The four ship-lifecycle verbs (FR-018, FR-027) — these write a
+ * `ship_intents` session row and drive the long-running shepherding
+ * pipeline.
+ */
+export const SHIP_COMMAND_INTENTS = ["ship", "stop", "resume", "abort"] as const;
+export type ShipCommandIntent = (typeof SHIP_COMMAND_INTENTS)[number];
+
+/**
+ * The seven scoped verbs (FR-029..FR-035) — stateless one-shot actions
+ * that do NOT consume a `ship_intents` session row. Each runs to
+ * completion in a single agent invocation and exits.
+ */
+export const SCOPED_COMMAND_INTENTS = [
+  "fix-thread",
+  "explain-thread",
+  "summarize",
+  "rebase",
+  "investigate",
+  "triage",
+  "open-pr",
+] as const;
+export type ScopedCommandIntent = (typeof SCOPED_COMMAND_INTENTS)[number];
+
+/** Union of all 11 verbs the bot recognises. */
+export const COMMAND_INTENTS = [...SHIP_COMMAND_INTENTS, ...SCOPED_COMMAND_INTENTS] as const;
 export type CommandIntent = (typeof COMMAND_INTENTS)[number];
 export const CommandIntentSchema = z.enum(COMMAND_INTENTS);
+
+export function isShipCommandIntent(value: CommandIntent): value is ShipCommandIntent {
+  return (SHIP_COMMAND_INTENTS as readonly string[]).includes(value);
+}
+
+export function isScopedCommandIntent(value: CommandIntent): value is ScopedCommandIntent {
+  return (SCOPED_COMMAND_INTENTS as readonly string[]).includes(value);
+}
+
+/**
+ * Webhook event surface where the trigger fired. Each scoped command
+ * declares which surfaces it accepts (FR-029..FR-035); the classifier
+ * MUST return `'none'` when the actual event surface does not match
+ * the intent's declared eligibility.
+ */
+export const EVENT_SURFACES = [
+  "pr-comment",
+  "review-comment",
+  "issue-comment",
+  "pr-label",
+  "issue-label",
+] as const;
+export type EventSurface = (typeof EVENT_SURFACES)[number];
+export const EventSurfaceSchema = z.enum(EVENT_SURFACES);
+
+/** Per-intent eligibility: which event surfaces may trigger each intent. */
+export const INTENT_ELIGIBLE_SURFACES: Record<CommandIntent, readonly EventSurface[]> = {
+  ship: ["pr-comment", "review-comment", "pr-label"],
+  stop: ["pr-comment", "review-comment", "pr-label"],
+  resume: ["pr-comment", "review-comment", "pr-label"],
+  abort: ["pr-comment", "review-comment", "pr-label"],
+  "fix-thread": ["review-comment"],
+  "explain-thread": ["review-comment"],
+  summarize: ["pr-comment", "review-comment", "pr-label"],
+  rebase: ["pr-comment", "review-comment", "pr-label"],
+  investigate: ["issue-comment", "issue-label"],
+  triage: ["issue-comment", "issue-label"],
+  "open-pr": ["issue-comment", "issue-label"],
+};
+
+export function isIntentEligibleOnSurface(intent: CommandIntent, surface: EventSurface): boolean {
+  return INTENT_ELIGIBLE_SURFACES[intent].includes(surface);
+}
 
 export interface CanonicalCommandPr {
   readonly owner: string;
@@ -92,11 +160,24 @@ export interface CanonicalCommandPr {
  * which surface (literal comment, natural-language, or GitHub label) the
  * maintainer used. The `surface` field exists for observability (FR-016)
  * only and MUST NOT influence eligibility, authorisation, or routing.
+ *
+ * For issue-targeted scoped commands (`investigate`, `triage`, `open-pr`),
+ * `pr.number` carries the issue number — the `pr` field is the
+ * conversation-context target regardless of GitHub's PR-vs-Issue
+ * distinction, mirroring the unified `issue_comment` event surface.
+ *
+ * `event_surface` carries the per-event-type origin so per-intent
+ * eligibility (FR-029..FR-035) can be enforced downstream;
+ * `thread_id` is set only when the trigger originated from a
+ * `pull_request_review_comment` event and refers to a specific
+ * review thread.
  */
 export interface CanonicalCommand {
   readonly intent: CommandIntent;
   readonly deadline_ms?: number;
   readonly surface: TriggerSurface;
+  readonly event_surface?: EventSurface;
+  readonly thread_id?: string;
   readonly principal_login: string;
   readonly pr: CanonicalCommandPr;
 }

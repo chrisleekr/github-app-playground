@@ -1,7 +1,6 @@
 import type { PullRequestReviewCommentEvent } from "@octokit/webhooks-types";
 import type { Octokit } from "octokit";
 
-import { config } from "../../config";
 import { containsTrigger } from "../../core/trigger";
 import { logger } from "../../logger";
 import { addReaction } from "../../utils/reactions";
@@ -39,21 +38,34 @@ export function handleReviewComment(
   if (payload.action !== "created") return;
   if (payload.comment.user.type === "Bot") return;
 
-  // T028e: ship trigger-surface dispatch (flag-gated). Review comments
-  // always target a PR. The legacy intent-classifier dispatch below is
-  // preserved.
-  if (config.shipUseTriggerSurfacesV2 && payload.installation !== undefined) {
+  // T028e + T089: ship trigger-surface dispatch. Review comments always
+  // target a PR; carry the `event_surface: 'review-comment'` tag and
+  // the originating comment's `id` as `thread_id` so scoped commands
+  // that act on a specific thread (`bot:fix-thread`, `bot:explain-thread`)
+  // can resolve the target. The legacy intent-classifier dispatch below
+  // is preserved.
+  if (payload.installation !== undefined) {
     const installationId = payload.installation.id;
     const owner = payload.repository.owner.login;
     const repo = payload.repository.name;
     const prNumber = payload.pull_request.number;
     const principalLogin = payload.comment.user.login;
     const commentBody = payload.comment.body;
-    const dispatchLog = logger.child({ deliveryId, owner, repo, prNumber });
+    const threadId = String(payload.comment.id);
+    const dispatchLog = logger.child({
+      deliveryId,
+      owner,
+      repo,
+      prNumber,
+      thread_id: threadId,
+      event_surface: "review-comment",
+    });
     void dispatchCommentSurface({
       commentBody,
       principal_login: principalLogin,
       pr: { owner, repo, number: prNumber, installation_id: installationId },
+      event_surface: "review-comment",
+      thread_id: threadId,
       octokit,
       log: dispatchLog,
     }).catch((err: unknown) => {

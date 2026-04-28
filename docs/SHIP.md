@@ -12,7 +12,7 @@ There are three functionally equivalent surfaces (FR-027). All three produce the
 | Natural | `@chrisleekr-bot ship this please`                       | Mention-prefix-gated NL classifier (FR-025a). Zero LLM cost on comments without the mention.             |
 | Label   | Apply the `bot:ship` label _(or `bot:ship/deadline=2h`)_ | Bot self-removes the label after acting (FR-026a). Re-application is the supported re-trigger mechanism. |
 
-The natural-language and label surfaces are gated on `SHIP_USE_TRIGGER_SURFACES_V2=true`. The literal `bot:ship` surface works regardless.
+All three surfaces — literal, natural-language, and label — are permanent v1 features. The natural-language path costs nothing on comments without the `TRIGGER_PHRASE` mention (FR-025a gate runs before the LLM call).
 
 The four recognised verbs (each available across all three surfaces): `ship`, `stop`, `resume`, `abort-ship`. See `contracts/bot-commands.md` for full syntax.
 
@@ -36,6 +36,6 @@ Abort sets a Valkey cancellation flag, waits ≤2 s for the next cooperative che
 
 For a recoverable pause, use `bot:stop` (and later `bot:resume`) instead. A stopped session preserves its continuation row; the deadline keeps counting down while paused.
 
-## Rollout flag
+## Rollout flags
 
-`SHIP_USE_TRIGGER_SURFACES_V2=true` activates the NL + label surfaces. After one week of clean soak, a follow-up PR removes the flag (research.md R8). Set this in the orchestrator's environment, not the daemon's — the trigger surfaces are dispatched from the webhook server.
+The remaining v1 rollout flags are `SHIP_USE_PROBE_VERDICT` (probe-verdict ladder vs. legacy in-process review/resolve loop) and `SHIP_USE_CONTINUATION_LOOP` (cron-tickle re-entry vs. in-process loop). Both default off; flip on after the corresponding soak per research.md R8.

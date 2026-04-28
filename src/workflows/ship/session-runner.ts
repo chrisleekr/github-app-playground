@@ -217,8 +217,7 @@ export async function runShipFromCommand(input: RunShipFromCommandInput): Promis
   // For now: leave the intent active with the probing tracking-comment
   // body. The webhook reactor (T023-T027) will early-wake on PR/check
   // events and the cron tickle will re-enter — both no-ops until US2
-  // wires the iteration. Soak-safe under the SHIP_USE_TRIGGER_SURFACES_V2
-  // flag default-off.
+  // wires the iteration.
   log.info(
     { event: "ship.session_started", intent_id: intent.id, verdict: verdictLabel(probe.verdict) },
     "ship session created — iteration loop pending US2",

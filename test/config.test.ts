@@ -285,7 +285,6 @@ describe("configSchema — ship workflow defaults", () => {
       expect(result.data.shipForbiddenTargetBranches).toEqual([]);
       expect(result.data.shipUseProbeVerdict).toBe(false);
       expect(result.data.shipUseContinuationLoop).toBe(false);
-      expect(result.data.shipUseTriggerSurfacesV2).toBe(false);
     }
   });
 
@@ -444,7 +443,6 @@ describe("configSchema — SHIP_USE_* feature flags", () => {
     if (result.success) {
       expect(result.data.shipUseProbeVerdict).toBe(false);
       expect(result.data.shipUseContinuationLoop).toBe(false);
-      expect(result.data.shipUseTriggerSurfacesV2).toBe(false);
     }
   });
 
@@ -453,13 +451,11 @@ describe("configSchema — SHIP_USE_* feature flags", () => {
       ...ANTHROPIC_BASE,
       shipUseProbeVerdict: true,
       shipUseContinuationLoop: true,
-      shipUseTriggerSurfacesV2: true,
     });
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.shipUseProbeVerdict).toBe(true);
       expect(result.data.shipUseContinuationLoop).toBe(true);
-      expect(result.data.shipUseTriggerSurfacesV2).toBe(true);
     }
   });
 });

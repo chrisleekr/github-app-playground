@@ -1,7 +1,6 @@
 import type { PullRequestEvent } from "@octokit/webhooks-types";
 import type { Octokit } from "octokit";
 
-import { config } from "../../config";
 import { logger } from "../../logger";
 import { dispatchByLabel } from "../../workflows/dispatcher";
 import { dispatchCanonicalCommand } from "../../workflows/ship/command-dispatch";
@@ -158,10 +157,13 @@ function handlePullRequestLabeled(
     log.error({ err }, "dispatchByLabel threw for pull_request.labeled");
   });
 
-  // T028d: ship trigger-surface dispatch (flag-gated). The legacy
-  // dispatchByLabel path above is preserved; this adds the new normalised
-  // CanonicalCommand path for ship/stop/resume/abort labels.
-  if (config.shipUseTriggerSurfacesV2 && payload.installation !== undefined) {
+  // T028d: ship trigger-surface dispatch. The legacy dispatchByLabel path
+  // above is preserved; this adds the normalised CanonicalCommand path
+  // for the 11 recognised labels (4 ship + 7 scoped). The
+  // `event_surface: 'pr-label'` tag enforces FR-029..FR-035 per-intent
+  // eligibility (e.g., `bot:investigate` is rejected on PRs because
+  // its eligibility set is `issue-label` only).
+  if (payload.installation !== undefined) {
     const installationId = payload.installation.id;
     const owner = payload.repository.owner.login;
     const repo = payload.repository.name;
@@ -174,6 +176,7 @@ function handlePullRequestLabeled(
             label_name: labelName,
             principal_login: senderLogin,
             pr: { owner, repo, number: prNumber, installation_id: installationId },
+            event_surface: "pr-label",
           },
         });
         if (command !== null) dispatchCanonicalCommand(command, { octokit, log });

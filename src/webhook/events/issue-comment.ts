@@ -1,7 +1,6 @@
 import type { IssueCommentEvent } from "@octokit/webhooks-types";
 import type { Octokit } from "octokit";
 
-import { config } from "../../config";
 import { containsTrigger } from "../../core/trigger";
 import { logger } from "../../logger";
 import { addReaction } from "../../utils/reactions";
@@ -26,25 +25,33 @@ export function handleIssueComment(
   if (payload.action !== "created") return;
   if (payload.comment.user.type === "Bot") return;
 
-  // T028e: ship trigger-surface dispatch (flag-gated). Only dispatch for
-  // PR comments (issue.pull_request !== undefined). The legacy
-  // intent-classifier dispatch below is preserved.
-  if (
-    config.shipUseTriggerSurfacesV2 &&
-    payload.installation !== undefined &&
-    payload.issue.pull_request !== undefined
-  ) {
+  // Trigger-surface dispatch (T028e + T090). PR comments and Issue
+  // comments share the same `issue_comment` event; the
+  // `payload.issue.pull_request` flag distinguishes them. Both
+  // surfaces flow through `dispatchCommentSurface` with the
+  // appropriate `event_surface` tag so per-intent eligibility
+  // (FR-029..FR-035) is enforced — e.g., `bot:investigate` only fires
+  // on Issue comments and `bot:summarize` only on PR comments.
+  if (payload.installation !== undefined) {
     const installationId = payload.installation.id;
     const owner = payload.repository.owner.login;
     const repo = payload.repository.name;
-    const prNumber = payload.issue.number;
+    const targetNumber = payload.issue.number;
     const principalLogin = payload.comment.user.login;
     const commentBody = payload.comment.body;
-    const dispatchLog = logger.child({ deliveryId, owner, repo, prNumber });
+    const eventSurface = payload.issue.pull_request === undefined ? "issue-comment" : "pr-comment";
+    const dispatchLog = logger.child({
+      deliveryId,
+      owner,
+      repo,
+      target_number: targetNumber,
+      event_surface: eventSurface,
+    });
     void dispatchCommentSurface({
       commentBody,
       principal_login: principalLogin,
-      pr: { owner, repo, number: prNumber, installation_id: installationId },
+      pr: { owner, repo, number: targetNumber, installation_id: installationId },
+      event_surface: eventSurface,
       octokit,
       log: dispatchLog,
     }).catch((err: unknown) => {
