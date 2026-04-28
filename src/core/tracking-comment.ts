@@ -90,19 +90,24 @@ export function deliveryMarker(deliveryId: string): string {
  * Per: https://docs.github.com/en/webhooks/using-webhooks/best-practices-for-using-webhooks
  */
 export async function isAlreadyProcessed(ctx: BotContext): Promise<boolean> {
-  const { octokit, owner, repo, entityNumber, deliveryId } = ctx;
+  const { octokit, owner, repo, entityNumber, deliveryId, triggerTimestamp } = ctx;
 
   const marker = deliveryMarker(deliveryId);
 
-  // Fetch with direction:"desc" so the most recent comments (including the bot's tracking
-  // comment) appear in the first page. On busy PRs with >100 comments the tracking comment
-  // is appended last, so descending order ensures it is not missed by the 100-item limit.
+  // Scope the scan with `since=triggerTimestamp` so we only see comments at-or-after the
+  // webhook trigger. The per-issue listComments endpoint orders strictly by ascending ID
+  // and accepts only `since`, `per_page`, `page` — `direction`/`sort` are silently dropped
+  // (only the repo-level sibling endpoint honours them). Without `since`, page 1 would be
+  // the OLDEST 100 comments, leaving the tracking marker stranded on page 2+ for any
+  // PR/issue with >100 prior comments and breaking the durable idempotency check on retry.
+  // The tracking comment is posted seconds after the trigger, so even ~24h of retries land
+  // inside the `since` window and the marker is guaranteed to be on page 1.
   const comments = await octokit.rest.issues.listComments({
     owner,
     repo,
     issue_number: entityNumber,
     per_page: 100,
-    direction: "desc",
+    since: triggerTimestamp,
   });
 
   return comments.data.some((c) => c.body?.includes(marker) === true);

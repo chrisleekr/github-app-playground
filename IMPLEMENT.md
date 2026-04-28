@@ -1,45 +1,124 @@
-# Issue #16 — agent timeout abort controller
+# Issue #50 — ci(testing): integration and migration tests silently skip in CI because ci.yml declares no Postgres or Valkey service
 
 ## Summary
 
-The agent's wall-clock timeout used `Promise.race(agentLoop, timeoutPromise)`, which only rejected the racing promise — the losing `agentLoop` kept streaming tokens, kept the workspace pinned, and let the SDK subprocess (and its MCP servers) outlive the request. The daemon's `handleJobCancel` had no way to terminate a runaway agent for the same reason: `executeAgent` never accepted a cancellation signal.
+Wired Postgres + Valkey service containers into `.github/workflows/ci.yml`
+so the three DB-backed suites (`test/db/migrate.test.ts`,
+`test/integration/repo-knowledge.test.ts`,
+`test/integration/telemetry-aggregates.test.ts`) actually execute on every
+PR instead of `describe.skipIf(sql === null)`-ing themselves to green.
+Hardened `scripts/test-isolated.sh` so a fully-skipped suite no longer
+slips past the `' 0 fail'` grep, and documented the DB-backed test
+contract in `CONTRIBUTING.md`. Closes #50.
 
-The fix replaces the race with an `AbortController` plumbed into the Claude Agent SDK's `query({ options: { abortController } })`. The wall-clock `setTimeout` now aborts that controller (instead of just rejecting), and the iterator tears down — closing the subprocess and MCP servers. `executeAgent` also accepts an optional caller `signal` (e.g. the daemon's per-job `AbortController.signal`) and forwards `abort` events to the SDK controller, so `handleJobCancel` actually stops in-flight work. The timer is cleared in `finally` so the happy path no longer pins the Bun event loop for up to `agentTimeoutMs` after a successful run.
+## Files changed (path · one-line rationale)
 
-## Files changed
+- `.github/workflows/ci.yml` · adds a `services:` block
+  (`pgvector/pgvector:pg17` + `valkey/valkey:9` with healthchecks
+  mirroring `docker-compose.dev.yml`), inserts a `Seed test database`
+  step that runs `scripts/init-test-db.sql` via `psql`, and exports
+  `TEST_DATABASE_URL` / `TEST_VALKEY_URL` on the `Test` step so the
+  existing default-URL fallbacks resolve to the service containers.
+- `scripts/test-isolated.sh` · success detection now requires both
+  `' 0 fail'` AND a non-skip Bun summary; a suite that produces only
+  skips is reported as `FAIL (skipped tests present): <file>` and the
+  full Bun output is preserved for debugging.
+- `CONTRIBUTING.md` · new "Database-backed integration tests"
+  subsection under `## Testing` listing the three suites, the
+  `bun run dev:deps` workflow, the `TEST_DATABASE_URL` /
+  `TEST_VALKEY_URL` defaults, and a `> [!WARNING]` callout that
+  `repo-knowledge.test.ts` is destructive (drops & recreates tables) and
+  only opts in when `TEST_DATABASE_URL` is explicitly set.
 
-- `src/core/executor.ts` — added `signal?: AbortSignal` to `ExecuteAgentParams`; created an `AbortController` linked to the caller signal and wired it into `queryOptions.abortController`; replaced `Promise.race` with `await agentLoop` inside try/finally; timer aborts via `controller.abort(<error>)` and is cleared in `finally`; caller signal listener removed in `finally`.
-- `src/core/pipeline.ts` — added `signal?: AbortSignal` to `RunPipelineOverrides` and forwards it to `executeAgent` (only when defined, to keep `exactOptionalPropertyTypes` happy).
-- `src/daemon/job-executor.ts` — passes `abortController.signal` from the existing per-job controller into `runPipeline`, so `handleJobCancel`'s `abortController.abort()` now actually terminates the SDK iterator. Updated the comment block on `agentPid` to explain the controller-based teardown.
-- `test/core/executor.test.ts` — new file. Five unit tests covering the cancellation surface; mocks `@anthropic-ai/claude-agent-sdk` at module load.
+## Commits (sha · subject)
 
-## Commits
+- `cb8ef21` · `ci(testing): wire Postgres + Valkey services into ci.yml (closes #50)`
 
-- `695475d` — `fix(pipeline): abort SDK query on timeout and daemon cancel`
+## Tests run (command · result)
 
-## Tests run
-
-- `bun run typecheck` — pass
-- `bun run lint` — 0 errors in changed files
-- `bun test test/core/executor.test.ts` — 5 pass / 0 fail (113 ms; process exits promptly, validating the `clearTimeout` fix)
-- `bun test test/core/ test/workflows/handlers/` — 140 pass / 0 fail
-- Full `bun test` — no regressions vs `main`; pre-existing failures are infrastructure-dependent (Postgres/Valkey not running) and cross-file `mock.module` interactions unrelated to this change.
+- `bun run typecheck` · clean (`tsc --noEmit` exited 0).
+- `bun run lint` · 0 errors / 139 pre-existing warnings — same baseline
+  as `main`; no new diagnostics introduced.
+- `bun run format` · `All matched files use Prettier code style!` after
+  `bun run format:fix` normalised a CONTRIBUTING.md table column width.
+- `bun run build` · `Build completed successfully`.
+- `bun run check:dockerfile-base-sync` · `OK: SHARED-BASE blocks match`.
+- `shellcheck scripts/test-isolated.sh` · clean.
+- Hardened-detection regression on `test/db/migrate.test.ts`
+  (a fully-skipped suite without a DB) · `has_zero_fail=true
+has_skip=true → RESULT: fail` — script now correctly rejects what it
+  previously called green.
+- Hardened-detection sanity on `test/utils/circuit-breaker.test.ts`
+  (a normal passing non-DB suite) · `has_zero_fail=true has_skip=false
+→ RESULT: pass` — confirms no false positives on regular passing files
+  (Bun omits the `0 skip` line entirely when no tests skip).
+- `bun run test` (full suite) · NOT run end-to-end locally because the
+  sandbox has no Postgres on `localhost:5432` and no `github_app_test`
+  database. The CI run on this PR is the canonical verification surface
+  for that — that's exactly the gap this PR closes.
 
 ## Verification
 
-1. **Unit (test/core/executor.test.ts)**
-   - `lastQueryCall.options.abortController` is the controller `executeAgent` constructed (forwards correctly).
-   - With `config.agentTimeoutMs = 25` and an iterator that resolves on abort, the iterator's `signal.reason` is an `Error("Agent execution timed out after 25ms")` — confirming the timer reaches the SDK.
-   - On the happy path, `clearTimeout` is called with the same handle that `setTimeout(..., 60_000)` returned — proving the wall-clock timer no longer pins the event loop.
-   - Pre-aborted caller signal: `result.success === false` and `lastQueryCall.options.abortController.signal.aborted === true` — the abort short-circuits and propagates.
-   - Mid-execution caller abort: a `queueMicrotask` triggers `controller.abort()` after the iterator starts; the SDK controller observes `aborted === true` and `executeAgent` resolves with `success: false`.
+- **T1 (services block)** — `.github/workflows/ci.yml:34-62` declares
+  `postgres: pgvector/pgvector:pg17` (env `POSTGRES_USER=bot` /
+  `POSTGRES_PASSWORD=bot` / `POSTGRES_DB=github_app`, port `5432:5432`,
+  `--health-cmd "pg_isready -U bot -d github_app"` with the same 5s/3s/5
+  cadence as `docker-compose.dev.yml:19-23`) and `valkey: valkey/valkey:9`
+  (port `6379:6379`, `--health-cmd "valkey-cli ping"`, same cadence).
+  Image tags match `docker-compose.dev.yml:9,26`.
+- **T2 (seed step)** — `.github/workflows/ci.yml:114-129` installs
+  `postgresql-client` only when `psql` is missing (`ubuntu-latest`
+  already ships with it; the `apt-get install` is a defensive fallback
+  in case the runner image changes upstream) and runs
+  `psql -h localhost -U bot -d github_app -v ON_ERROR_STOP=1 -f scripts/init-test-db.sql`,
+  creating `github_app_test`. Necessary because GitHub Actions
+  `services:` containers do not execute `/docker-entrypoint-initdb.d/`,
+  which is the path `docker-compose.dev.yml:18` relies on locally.
+- **T3 (Test-step env vars)** — `.github/workflows/ci.yml:131-135` sets
+  `TEST_DATABASE_URL=postgres://bot:bot@localhost:5432/github_app_test`
+  and `TEST_VALKEY_URL=redis://localhost:6379` on the `Test` step.
+  These match the defaults at `test/db/migrate.test.ts:15-16` and
+  `test/integration/telemetry-aggregates.test.ts:14-15`, and they
+  satisfy the explicit-set requirement at
+  `test/integration/repo-knowledge.test.ts:27-30`. No test-source diff
+  was required.
+- **T4 (hardened skip detection)** —
+  `scripts/test-isolated.sh:11-40` now requires both `has_zero_fail`
+  AND `! has_skip` for a file to count as passed. The skip check uses
+  `grep -qE '^[[:space:]]+[1-9][0-9]* skip'`, which only matches Bun's
+  summary line when the count is ≥ 1 (Bun omits the `0 skip` line when
+  no tests skip, so a normal pass still resolves correctly). The
+  failure label discriminates: `FAIL (skipped tests present): <file>`
+  vs. `FAIL: <file>`, so CI logs make the rejection reason obvious.
+  End-to-end verified: a single fully-skipped run of
+  `test/db/migrate.test.ts` now reports
+  `has_zero_fail=true has_skip=true → RESULT: fail`, where it would
+  previously have passed.
+- **T5 (CONTRIBUTING.md)** — adds a "Database-backed integration
+  tests" subsection under `## Testing` listing the three suites with
+  one-line descriptions, the `bun run dev:deps` path, the two default
+  URLs, and a `> [!WARNING]` callout that
+  `test/integration/repo-knowledge.test.ts` is destructive — its
+  `beforeAll` hook drops `repo_memory`, `triage_results`, `executions`,
+  and `daemons` — and is therefore opt-in via explicit
+  `TEST_DATABASE_URL`.
+- **T6 (CI sanity check)** — left for the PR run: the
+  `lint-and-test` job on this PR will surface (a) the `Initialize
+containers` step provisioning both services, (b) the seed step
+  creating `github_app_test`, and (c) the `Test` step's Bun output
+  showing non-zero `it` counts on `migrate.test.ts`,
+  `repo-knowledge.test.ts`, and `telemetry-aggregates.test.ts`.
 
-2. **Integration boundary**
-   - `runPipeline` only forwards the signal when defined (`...(overrides.signal !== undefined ? { signal: overrides.signal } : {})`), preserving `exactOptionalPropertyTypes`.
-   - `executeJob` already creates a `jobAbortControllers` per offerId and aborts it in `handleJobCancel`; this PR closes the gap by piping `abortController.signal` into `runPipeline`. The existing duplicate-`job:result` guard (`if (!abortController.signal.aborted)`) keeps cancel-vs-success races correct.
+**Intentionally NOT done**
 
-3. **Static checks**
-   - `bun run typecheck` covers the new `signal` field on `ExecuteAgentParams` and `RunPipelineOverrides`.
-   - `bun run lint` clean for the new file.
-
-Closes #16.
+- Did not run the full `bun run test` locally — the sandbox does not
+  have a `bot:bot@localhost:5432` Postgres with a `github_app_test`
+  database. The CI run on this PR is the canonical verification surface,
+  which is exactly the gap this PR closes.
+- Did not change any test code. The plan called out that the existing
+  default-URL fallbacks already match the values exported by the new
+  `Test` step, so this PR is a CI-wiring change with zero test-source
+  diff.
+- Did not add `actionlint` to local tooling — no
+  `actionlint`/`shellcheck` config exists in this repo and adding one
+  would expand scope past the bug.
