@@ -30,7 +30,12 @@ import {
   stopLivenessReaper,
 } from "./orchestrator/liveness-reaper";
 import { startQueueWorker, stopQueueWorker } from "./orchestrator/queue-worker";
-import { closeValkey, connectValkey, isValkeyHealthy } from "./orchestrator/valkey";
+import {
+  closeValkey,
+  connectValkey,
+  isValkeyHealthy,
+  requireValkeyClient,
+} from "./orchestrator/valkey";
 import { sweepValkeyOrphans } from "./orchestrator/valkey-cleanup";
 import { startWebSocketServer, stopWebSocketServer } from "./orchestrator/ws-server";
 import type { BotContext } from "./types";
@@ -42,6 +47,8 @@ import { handlePullRequest } from "./webhook/events/pull-request";
 import { handleReview } from "./webhook/events/review";
 import { handleReviewComment } from "./webhook/events/review-comment";
 import { handleReviewThread } from "./webhook/events/review-thread";
+import { resumeShipIntent } from "./workflows/ship/session-runner";
+import { createTickleScheduler, type TickleScheduler } from "./workflows/ship/tickle-scheduler";
 
 /**
  * Main HTTP server entry point.
@@ -387,9 +394,22 @@ async function runStartupChecks(): Promise<void> {
   // offers have a listening server to receive the eventual job:accept reply.
   startQueueWorker();
 
+  // Ship-intent tickle scheduler. start() performs the boot reconciliation
+  // against ship_continuations AND begins the periodic scan in a single
+  // call (verified in src/workflows/ship/tickle-scheduler.ts) — there is
+  // no separate reconcile method to invoke.
+  shipTickleScheduler = createTickleScheduler({
+    valkey: requireValkeyClient(),
+    onDue: (intent_id) => resumeShipIntent({ intentId: intent_id }),
+  });
+  await shipTickleScheduler.start();
+  logger.info({ event: "ship.tickle.started" }, "Ship-intent tickle scheduler started");
+
   isReady = true;
   logger.info({ valkeyHealthy: isValkeyHealthy() }, "Startup checks passed, server is ready");
 }
+
+let shipTickleScheduler: TickleScheduler | null = null;
 
 void runStartupChecks().catch((err: unknown) => {
   logger.error({ err }, "Startup checks failed unexpectedly");
@@ -408,11 +428,17 @@ function shutdown(signal: string): void {
   server.close(() => {
     void (async (): Promise<void> => {
       try {
-        // Stop the queue worker FIRST so no new offers go out during WS
-        // shutdown. Then drain the WebSocket server (daemon disconnect cleanup
-        // still uses Valkey). Then release this instance's liveness key so
-        // peers immediately pick up our leased jobs via the reaper. Close
-        // Valkey + DB last, once nothing else needs them.
+        // Stop the tickle scheduler FIRST so no resume callbacks fire
+        // mid-drain. Then stop the queue worker so no new offers go out
+        // during WS shutdown. Then drain the WebSocket server (daemon
+        // disconnect cleanup still uses Valkey). Then release this
+        // instance's liveness key so peers immediately pick up our leased
+        // jobs via the reaper. Close Valkey + DB last, once nothing else
+        // needs them.
+        if (shipTickleScheduler !== null) {
+          shipTickleScheduler.stop();
+          shipTickleScheduler = null;
+        }
         await stopQueueWorker();
         stopLivenessReaper();
         await stopWebSocketServer();
