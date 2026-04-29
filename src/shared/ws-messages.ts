@@ -65,6 +65,69 @@ const workflowRunRefSchema = z.object({
   parentStepIndex: z.number().int().nonnegative().optional(),
 });
 
+/**
+ * Per-kind context passed alongside `job:payload` for scoped jobs. Mirrors
+ * the discriminator in `scoped-job-offer` so the daemon's executor can route
+ * via the same Zod parse — discriminator at the schema level, not via runtime
+ * presence checks (per contracts/ws-messages.md validation requirement).
+ */
+const scopedThreadRefSchema = z.object({
+  threadId: z.string().min(1),
+  commentId: z.number().int().positive(),
+  filePath: z.string().min(1),
+  startLine: z.number().int().positive(),
+  endLine: z.number().int().positive(),
+});
+
+const scopedJobContextSchema = z.discriminatedUnion("jobKind", [
+  z.object({
+    jobKind: z.literal("scoped-rebase"),
+    deliveryId: z.string().min(1),
+    installationId: z.number().int().positive(),
+    owner: z.string().min(1),
+    repo: z.string().min(1),
+    prNumber: z.number().int().positive(),
+    triggerCommentId: z.number().int().positive(),
+    enqueuedAt: z.number(),
+  }),
+  z.object({
+    jobKind: z.literal("scoped-fix-thread"),
+    deliveryId: z.string().min(1),
+    installationId: z.number().int().positive(),
+    owner: z.string().min(1),
+    repo: z.string().min(1),
+    prNumber: z.number().int().positive(),
+    threadRef: scopedThreadRefSchema,
+    triggerCommentId: z.number().int().positive(),
+    enqueuedAt: z.number(),
+  }),
+  z.object({
+    jobKind: z.literal("scoped-explain-thread"),
+    deliveryId: z.string().min(1),
+    installationId: z.number().int().positive(),
+    owner: z.string().min(1),
+    repo: z.string().min(1),
+    prNumber: z.number().int().positive(),
+    threadRef: scopedThreadRefSchema,
+    triggerCommentId: z.number().int().positive(),
+    enqueuedAt: z.number(),
+  }),
+  z.object({
+    jobKind: z.literal("scoped-open-pr"),
+    deliveryId: z.string().min(1),
+    installationId: z.number().int().positive(),
+    owner: z.string().min(1),
+    repo: z.string().min(1),
+    issueNumber: z.number().int().positive(),
+    triggerCommentId: z.number().int().positive(),
+    enqueuedAt: z.number(),
+    verdictSummary: z.string(),
+  }),
+]);
+
+export type ScopedJobContext = z.infer<typeof scopedJobContextSchema>;
+export type ScopedJobKind = ScopedJobContext["jobKind"];
+
 const jobPayloadSchema = z.object({
   type: z.literal("job:payload"),
   ...messageEnvelopeBase,
@@ -76,7 +139,77 @@ const jobPayloadSchema = z.object({
     envVars: z.record(z.string(), z.string()).optional(),
     memory: z.array(repoMemoryEntrySchema).optional(),
     workflowRun: workflowRunRefSchema.optional(),
+    /** Present only when the originating offer was a `scoped-job-offer`.
+     * The daemon's job-executor routes on this field's presence and on the
+     * inner `jobKind` discriminator. */
+    scoped: scopedJobContextSchema.optional(),
   }),
+});
+
+/** Server-to-daemon scoped job offer (parallel to `job:offer`). */
+const scopedJobOfferSchema = z.object({
+  type: z.literal("scoped-job-offer"),
+  ...messageEnvelopeBase,
+  payload: scopedJobContextSchema,
+});
+
+/** Daemon-to-server scoped job completion. Per-kind result fields are
+ * carried under `result` and validated by a discriminator on `jobKind`. */
+const scopedJobResultSchema = z.discriminatedUnion("jobKind", [
+  z.object({
+    jobKind: z.literal("scoped-rebase"),
+    status: z.enum(["succeeded", "failed", "halted"]),
+    rebaseOutcome: z
+      .discriminatedUnion("result", [
+        z.object({ result: z.literal("up-to-date"), commentId: z.number().int().positive() }),
+        z.object({
+          result: z.literal("merged"),
+          commentId: z.number().int().positive(),
+          mergeCommitSha: z.string().min(1),
+        }),
+        z.object({
+          result: z.literal("conflict"),
+          commentId: z.number().int().positive(),
+          conflictPaths: z.array(z.string()),
+        }),
+        z.object({ result: z.literal("closed"), commentId: z.number().int().positive() }),
+      ])
+      .optional(),
+    reason: z.string().optional(),
+  }),
+  z.object({
+    jobKind: z.literal("scoped-fix-thread"),
+    status: z.enum(["succeeded", "failed", "halted"]),
+    pushedCommitSha: z.string().optional(),
+    threadReplyId: z.number().int().positive().optional(),
+    reason: z.string().optional(),
+  }),
+  z.object({
+    jobKind: z.literal("scoped-explain-thread"),
+    status: z.enum(["succeeded", "failed", "halted"]),
+    threadReplyId: z.number().int().positive().optional(),
+    reason: z.string().optional(),
+  }),
+  z.object({
+    jobKind: z.literal("scoped-open-pr"),
+    status: z.enum(["succeeded", "failed", "halted"]),
+    pushedCommitSha: z.string().optional(),
+    newPrNumber: z.number().int().positive().optional(),
+    reason: z.string().optional(),
+  }),
+]);
+
+const scopedJobCompletionSchema = z.object({
+  type: z.literal("scoped-job-completion"),
+  ...messageEnvelopeBase,
+  payload: z
+    .object({
+      offerId: z.string().min(1),
+      deliveryId: z.string().min(1),
+      costUsd: z.number().nonnegative().optional(),
+      durationMs: z.number().int().nonnegative().optional(),
+    })
+    .and(scopedJobResultSchema),
 });
 
 const jobCancelSchema = z.object({
@@ -111,6 +244,7 @@ export const serverMessageSchema = z.discriminatedUnion("type", [
   daemonRegisteredSchema,
   heartbeatPingSchema,
   jobOfferSchema,
+  scopedJobOfferSchema,
   jobPayloadSchema,
   jobCancelSchema,
   daemonUpdateRequiredSchema,
@@ -214,6 +348,7 @@ export const daemonMessageSchema = z.discriminatedUnion("type", [
   jobRejectSchema,
   jobStatusSchema,
   jobResultSchema,
+  scopedJobCompletionSchema,
   daemonUpdateAcknowledgedSchema,
   daemonDrainingSchema,
 ]);
@@ -227,6 +362,7 @@ export type DaemonMessage = z.infer<typeof daemonMessageSchema>;
 export type DaemonRegisteredMessage = z.infer<typeof daemonRegisteredSchema>;
 export type HeartbeatPingMessage = z.infer<typeof heartbeatPingSchema>;
 export type JobOfferMessage = z.infer<typeof jobOfferSchema>;
+export type ScopedJobOfferMessage = z.infer<typeof scopedJobOfferSchema>;
 export type JobPayloadMessage = z.infer<typeof jobPayloadSchema>;
 export type JobCancelMessage = z.infer<typeof jobCancelSchema>;
 export type DaemonUpdateRequiredMessage = z.infer<typeof daemonUpdateRequiredSchema>;
@@ -238,6 +374,7 @@ export type JobAcceptMessage = z.infer<typeof jobAcceptSchema>;
 export type JobRejectMessage = z.infer<typeof jobRejectSchema>;
 export type JobStatusMessage = z.infer<typeof jobStatusSchema>;
 export type JobResultMessage = z.infer<typeof jobResultSchema>;
+export type ScopedJobCompletionMessage = z.infer<typeof scopedJobCompletionSchema>;
 export type DaemonUpdateAcknowledgedMessage = z.infer<typeof daemonUpdateAcknowledgedSchema>;
 export type DaemonDrainingMessage = z.infer<typeof daemonDrainingSchema>;
 
@@ -254,6 +391,18 @@ export const WS_CLOSE_CODES = {
   HEARTBEAT_TIMEOUT: { code: 4001, reason: "heartbeat timeout" },
   SUPERSEDED: { code: 4002, reason: "superseded by new connection" },
   INCOMPATIBLE_PROTOCOL: { code: 4003, reason: "incompatible protocol version" },
+} as const;
+
+// Reject taxonomy — canonical reason strings the daemon may emit on
+// `job:reject`. The wire-level type stays `z.string()` for forward-compat;
+// these constants are the contract for callers that branch on reason.
+export const WS_REJECT_REASONS = {
+  BUSY: "busy",
+  INCOMPATIBLE: "incompatible",
+  SHUTTING_DOWN: "shutting-down",
+  /** Daemon image does not understand this scoped `jobKind`. Allows the
+   * orchestrator to re-offer the job to a capable daemon. */
+  SCOPED_KIND_UNSUPPORTED: "scoped-kind-unsupported",
 } as const;
 
 // Error codes

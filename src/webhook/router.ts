@@ -367,6 +367,7 @@ async function dispatchDaemon(ctx: BotContext, decision: DispatchDecision): Prom
   });
 
   const queuedJob: QueuedJob = {
+    kind: "legacy",
     deliveryId: ctx.deliveryId,
     repoOwner: ctx.owner,
     repoName: ctx.repo,

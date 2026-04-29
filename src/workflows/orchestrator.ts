@@ -271,6 +271,7 @@ export async function onStepComplete(
         logger,
       });
       await enqueueJob({
+        kind: "workflow-run",
         deliveryId: childDeliveryId,
         repoOwner: job.target.owner,
         repoName: job.target.repo,

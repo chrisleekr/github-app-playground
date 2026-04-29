@@ -127,6 +127,9 @@ Validate locally with `bun run docs:build` before pushing. If no matching doc ex
 
 ## Active Technologies
 
+- TypeScript 5.9.3, strict mode (`exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `useUnknownInCatchVariables`) + `octokit`, `@anthropic-ai/claude-agent-sdk` (multi-turn agent flows for fix-thread/explain-thread/open-pr executors), `@modelcontextprotocol/sdk`, `pino`, `zod`, Bun built-in `WebSocket` + `RedisClient`. **No new npm dependencies.** (20260429-212559-ship-iteration-wiring)
+- Postgres 17 via `Bun.sql` singleton — no schema changes; reuses existing `ship_intents`, `ship_iterations`, `ship_continuations`, `workflow_runs` tables. Valkey 8 — reuses existing `ship:tickle` sorted set and `queue:jobs` list. (20260429-212559-ship-iteration-wiring)
+
 - TypeScript 5.9.3 strict mode on Bun ≥1.3.13 + `octokit` (webhook + GraphQL/REST), `@anthropic-ai/claude-agent-sdk` (multi-turn handlers), `@anthropic-ai/bedrock-sdk` (single-turn intent classification via `src/ai/llm-client.ts`), `@modelcontextprotocol/sdk`, `pino`, `zod`. No new npm dependencies. (20260421-181205-bot-workflows)
 - PostgreSQL 17 via `Bun.sql` singleton — adds one migration (`005_workflow_runs.sql`). Valkey 8 via Bun built-in `RedisClient` — existing job queue reused unchanged. (20260421-181205-bot-workflows)
 
@@ -147,7 +150,7 @@ Validate locally with `bun run docs:build` before pushing. If no matching doc ex
 
 <!-- SPECKIT START -->
 
-Active feature plan: `specs/20260427-201332-pr-shepherding-merge-ready/plan.md`
+Active feature plan: `specs/20260429-212559-ship-iteration-wiring/plan.md`
 (spec, research, data-model, contracts, and quickstart live alongside it).
 
 <!-- SPECKIT END -->

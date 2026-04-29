@@ -1,29 +1,131 @@
+import { z } from "zod";
+
 import { config } from "../config";
 import { logger } from "../logger";
-import type { WorkflowRunRef } from "../shared/workflow-types";
 import { requireValkeyClient } from "./valkey";
 
 /**
- * Job queue item — minimal metadata for routing decisions.
- * Full context is read from Postgres executions.context_json when dispatching.
+ * Queue-payload schemas. The on-the-wire JSON in `queue:jobs` is parsed via
+ * `QueuedJobSchema` at every dequeue boundary so a malformed entry surfaces
+ * at the queue edge, not deep in a consumer.
+ *
+ * Schema layout matches `specs/20260429-212559-ship-iteration-wiring/contracts/job-kinds.md`.
  */
-export interface QueuedJob {
-  deliveryId: string;
-  repoOwner: string;
-  repoName: string;
-  entityNumber: number;
-  isPR: boolean;
-  eventName: string;
-  /** Trigger metadata — carried through queue so dispatch uses correct context
-   * regardless of which webhook handler dequeues the job (Issue #4 race fix). */
-  triggerUsername: string;
-  labels: string[];
-  triggerBodyPreview: string;
-  enqueuedAt: number;
-  retryCount: number;
-  /** Present for workflow-run jobs. Daemon branches on this field's presence
-   * to route through the workflow handler path instead of the legacy pipeline. */
-  workflowRun?: WorkflowRunRef;
+
+const workflowRunRefSchema = z.object({
+  runId: z.string().min(1),
+  workflowName: z.enum(["triage", "plan", "implement", "review", "resolve", "ship"]),
+  parentRunId: z.string().min(1).optional(),
+  parentStepIndex: z.number().int().nonnegative().optional(),
+});
+
+const threadRefSchema = z.object({
+  threadId: z.string().min(1),
+  commentId: z.number().int().positive(),
+  filePath: z.string().min(1),
+  startLine: z.number().int().positive(),
+  endLine: z.number().int().positive(),
+});
+
+export type ScopedThreadRef = z.infer<typeof threadRefSchema>;
+
+const baseQueuedJobShape = {
+  deliveryId: z.string().min(1),
+  repoOwner: z.string().min(1),
+  repoName: z.string().min(1),
+  entityNumber: z.number().int().nonnegative(),
+  isPR: z.boolean(),
+  eventName: z.string().min(1),
+  triggerUsername: z.string(),
+  labels: z.array(z.string()),
+  triggerBodyPreview: z.string(),
+  enqueuedAt: z.number(),
+  retryCount: z.number().int().nonnegative(),
+};
+
+const legacyJobSchema = z.object({
+  kind: z.literal("legacy"),
+  ...baseQueuedJobShape,
+});
+
+const workflowRunJobSchema = z.object({
+  kind: z.literal("workflow-run"),
+  ...baseQueuedJobShape,
+  workflowRun: workflowRunRefSchema,
+});
+
+const scopedCommonShape = {
+  ...baseQueuedJobShape,
+  installationId: z.number().int().positive(),
+  triggerCommentId: z.number().int().positive(),
+};
+
+const scopedRebaseJobSchema = z.object({
+  kind: z.literal("scoped-rebase"),
+  ...scopedCommonShape,
+  prNumber: z.number().int().positive(),
+});
+
+const scopedFixThreadJobSchema = z.object({
+  kind: z.literal("scoped-fix-thread"),
+  ...scopedCommonShape,
+  prNumber: z.number().int().positive(),
+  threadRef: threadRefSchema,
+});
+
+const scopedExplainThreadJobSchema = z.object({
+  kind: z.literal("scoped-explain-thread"),
+  ...scopedCommonShape,
+  prNumber: z.number().int().positive(),
+  threadRef: threadRefSchema,
+});
+
+const scopedOpenPrJobSchema = z.object({
+  kind: z.literal("scoped-open-pr"),
+  ...scopedCommonShape,
+  issueNumber: z.number().int().positive(),
+  verdictSummary: z.string(),
+});
+
+/**
+ * Discriminated union of every job that can appear on `queue:jobs`. Producers
+ * MUST set `kind` explicitly; the daemon-side router and the orchestrator
+ * dispatcher both switch on `kind` to choose the execution path.
+ */
+export const QueuedJobSchema = z.discriminatedUnion("kind", [
+  legacyJobSchema,
+  workflowRunJobSchema,
+  scopedRebaseJobSchema,
+  scopedFixThreadJobSchema,
+  scopedExplainThreadJobSchema,
+  scopedOpenPrJobSchema,
+]);
+
+export type QueuedJob = z.infer<typeof QueuedJobSchema>;
+export type LegacyQueuedJob = z.infer<typeof legacyJobSchema>;
+export type WorkflowRunQueuedJob = z.infer<typeof workflowRunJobSchema>;
+export type ScopedRebaseQueuedJob = z.infer<typeof scopedRebaseJobSchema>;
+export type ScopedFixThreadQueuedJob = z.infer<typeof scopedFixThreadJobSchema>;
+export type ScopedExplainThreadQueuedJob = z.infer<typeof scopedExplainThreadJobSchema>;
+export type ScopedOpenPrQueuedJob = z.infer<typeof scopedOpenPrJobSchema>;
+export type ScopedQueuedJob =
+  | ScopedRebaseQueuedJob
+  | ScopedFixThreadQueuedJob
+  | ScopedExplainThreadQueuedJob
+  | ScopedOpenPrQueuedJob;
+
+export const SCOPED_JOB_KINDS = [
+  "scoped-rebase",
+  "scoped-fix-thread",
+  "scoped-explain-thread",
+  "scoped-open-pr",
+] as const;
+
+export type ScopedJobKind = (typeof SCOPED_JOB_KINDS)[number];
+
+/** Type-guard: true when `job` is one of the four scoped variants. */
+export function isScopedJob(job: QueuedJob): job is ScopedQueuedJob {
+  return (SCOPED_JOB_KINDS as readonly string[]).includes(job.kind);
 }
 
 const QUEUE_KEY = "queue:jobs";
@@ -37,14 +139,39 @@ export function processingListKey(instanceId: string): string {
 /** Pattern to SCAN every orchestrator's processing list (used by the reaper). */
 export const PROCESSING_KEY_PATTERN = `${PROCESSING_KEY_PREFIX}*`;
 
+function parseQueuedJob(raw: string): QueuedJob | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  const result = QueuedJobSchema.safeParse(parsed);
+  if (!result.success) {
+    logger.error(
+      { issues: result.error.issues, raw: raw.slice(0, 200) },
+      "queue:jobs payload failed schema validation",
+    );
+    return null;
+  }
+  return result.data;
+}
+
 /**
- * Enqueue a job for daemon dispatch.
+ * Enqueue a job for daemon dispatch. Validates the payload against the
+ * discriminated union before LPUSH so producers cannot ship malformed
+ * entries onto the shared queue.
+ *
  * Uses LPUSH (newest at head) — BRPOP dequeues from tail (FIFO).
  */
 export async function enqueueJob(job: QueuedJob): Promise<void> {
+  const validated = QueuedJobSchema.parse(job);
   const valkey = requireValkeyClient();
-  await valkey.send("LPUSH", [QUEUE_KEY, JSON.stringify(job)]);
-  logger.info({ deliveryId: job.deliveryId, retryCount: job.retryCount }, "Job enqueued");
+  await valkey.send("LPUSH", [QUEUE_KEY, JSON.stringify(validated)]);
+  logger.info(
+    { kind: validated.kind, deliveryId: validated.deliveryId, retryCount: validated.retryCount },
+    "Job enqueued",
+  );
 }
 
 /**
@@ -55,9 +182,6 @@ export async function enqueueJob(job: QueuedJob): Promise<void> {
  */
 export async function getQueueLength(): Promise<number> {
   try {
-    // `requireValkeyClient()` itself throws when the client isn't ready, so
-    // acquire inside the try block — otherwise the "return 0 on any read
-    // error" contract silently loses to the client acquisition throw.
     const valkey = requireValkeyClient();
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Valkey LLEN returns number
     const len: number = await valkey.send("LLEN", [QUEUE_KEY]);
@@ -79,15 +203,13 @@ export async function tryDequeueJob(): Promise<QueuedJob | null> {
   const valkey = requireValkeyClient();
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Valkey RPOP returns string | null
   const result: string | null = await valkey.send("RPOP", [QUEUE_KEY]);
-
   if (result === null) return null;
-
-  try {
-    return JSON.parse(result) as QueuedJob;
-  } catch {
-    logger.error("Failed to parse dequeued job");
+  const parsed = parseQueuedJob(result);
+  if (parsed === null) {
+    logger.error("Failed to parse dequeued job — dropping poison pill");
     return null;
   }
+  return parsed;
 }
 
 /**
@@ -99,15 +221,13 @@ export async function dequeueJob(): Promise<QueuedJob | null> {
   const valkey = requireValkeyClient();
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Valkey BRPOP returns [key, value] | null
   const result: [string, string] | null = await valkey.send("BRPOP", [QUEUE_KEY, "5"]);
-
   if (result === null) return null;
-
-  try {
-    return JSON.parse(result[1]) as QueuedJob;
-  } catch {
-    logger.error("Failed to parse dequeued job");
+  const parsed = parseQueuedJob(result[1]);
+  if (parsed === null) {
+    logger.error("Failed to parse dequeued job — dropping poison pill");
     return null;
   }
+  return parsed;
 }
 
 /**
@@ -117,12 +237,11 @@ export async function dequeueJob(): Promise<QueuedJob | null> {
 export async function requeueJob(job: QueuedJob): Promise<boolean> {
   if (job.retryCount >= config.jobMaxRetries) {
     logger.warn(
-      { deliveryId: job.deliveryId, retryCount: job.retryCount },
+      { kind: job.kind, deliveryId: job.deliveryId, retryCount: job.retryCount },
       "Job exceeded max retries — will not re-queue",
     );
     return false;
   }
-
   const updated: QueuedJob = {
     ...job,
     retryCount: job.retryCount + 1,
@@ -154,16 +273,13 @@ export async function leaseJob(
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Valkey LMOVE returns string | null
   const raw: string | null = await valkey.send("LMOVE", [QUEUE_KEY, dest, "RIGHT", "LEFT"]);
   if (raw === null) return null;
-  try {
-    const job = JSON.parse(raw) as QueuedJob;
-    return { job, raw };
-  } catch {
-    // Poison pill — drop it from the processing list so it doesn't block
-    // recovery, then bubble null so the worker logs and continues.
+  const job = parseQueuedJob(raw);
+  if (job === null) {
     logger.error({ raw: raw.slice(0, 200) }, "Failed to parse leased job — dropping poison pill");
     await valkey.send("LREM", [dest, "1", raw]);
     return null;
   }
+  return { job, raw };
 }
 
 /**
@@ -206,7 +322,7 @@ export async function requeueLeasedJob(
     processingListKey(instanceId),
     QUEUE_KEY,
     raw,
-    JSON.stringify(updated),
+    JSON.stringify(QueuedJobSchema.parse(updated)),
   ]);
   return updated.retryCount;
 }
@@ -225,8 +341,6 @@ export async function recoverProcessingList(instanceId: string): Promise<number>
   const valkey = requireValkeyClient();
   const src = processingListKey(instanceId);
   let count = 0;
-  // Bounded by the list length — LMOVE returns null when the source is empty.
-  // The 10_000 cap is paranoia: a runaway Valkey state should not loop forever.
   for (let i = 0; i < 10_000; i++) {
     // eslint-disable-next-line no-await-in-loop, @typescript-eslint/no-unsafe-assignment -- Valkey LMOVE returns string | null
     const moved: string | null = await valkey.send("LMOVE", [src, QUEUE_KEY, "LEFT", "LEFT"]);

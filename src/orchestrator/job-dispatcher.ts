@@ -7,7 +7,7 @@ import { markFailed as markWorkflowRunFailed } from "../workflows/runs-store";
 import { getConnections, getDaemonInfo, isDaemonDraining } from "./connection-handler";
 import { getActiveDaemons, getDaemonActiveJobs } from "./daemon-registry";
 import { markExecutionFailed, markExecutionOffered, requeueExecution } from "./history";
-import { type QueuedJob, requeueJob } from "./job-queue";
+import { isScopedJob, type QueuedJob, requeueJob, type ScopedQueuedJob } from "./job-queue";
 
 // In-memory pending offers (keyed by offerId)
 
@@ -130,6 +130,11 @@ export async function selectDaemon(requiredTools: string[]): Promise<string | nu
 /**
  * Dispatch a job to a daemon via the offer/accept/reject protocol.
  * Returns true if the job was offered to a daemon, false if no daemon available.
+ *
+ * Branches on `job.kind`:
+ *   - `legacy` / `workflow-run` → existing `job:offer` envelope.
+ *   - `scoped-*` → `scoped-job-offer` envelope per
+ *     `specs/.../contracts/ws-messages.md`.
  */
 export async function dispatchJob(job: QueuedJob): Promise<boolean> {
   const requiredTools = inferRequiredTools(job.labels, job.triggerBodyPreview);
@@ -138,6 +143,7 @@ export async function dispatchJob(job: QueuedJob): Promise<boolean> {
 
   logger.debug(
     {
+      kind: job.kind,
       deliveryId: job.deliveryId,
       requiredTools,
       fleetSize,
@@ -148,7 +154,7 @@ export async function dispatchJob(job: QueuedJob): Promise<boolean> {
 
   if (daemonId === null) {
     logger.info(
-      { deliveryId: job.deliveryId, fleetSize, requiredTools },
+      { kind: job.kind, deliveryId: job.deliveryId, fleetSize, requiredTools },
       "dispatchJob: no daemon available — caller should enqueue or retry",
     );
     return false; // Caller handles FM-3 fallback
@@ -165,24 +171,28 @@ export async function dispatchJob(job: QueuedJob): Promise<boolean> {
 
   await markExecutionOffered(job.deliveryId, daemonId);
 
-  ws.sendText(
-    JSON.stringify({
-      type: "job:offer",
-      ...createMessageEnvelope(offerId),
-      payload: {
-        deliveryId: job.deliveryId,
-        repoOwner: job.repoOwner,
-        repoName: job.repoName,
-        entityNumber: job.entityNumber,
-        isPR: job.isPR,
-        eventName: job.eventName,
-        triggerUsername: job.triggerUsername,
-        labels: job.labels,
-        triggerBodyPreview: job.triggerBodyPreview,
-        requiredTools,
-      },
-    }),
-  );
+  if (isScopedJob(job)) {
+    ws.sendText(JSON.stringify(buildScopedJobOfferEnvelope(offerId, job)));
+  } else {
+    ws.sendText(
+      JSON.stringify({
+        type: "job:offer",
+        ...createMessageEnvelope(offerId),
+        payload: {
+          deliveryId: job.deliveryId,
+          repoOwner: job.repoOwner,
+          repoName: job.repoName,
+          entityNumber: job.entityNumber,
+          isPR: job.isPR,
+          eventName: job.eventName,
+          triggerUsername: job.triggerUsername,
+          labels: job.labels,
+          triggerBodyPreview: job.triggerBodyPreview,
+          requiredTools,
+        },
+      }),
+    );
+  }
 
   const timer = setTimeout(() => {
     void handleOfferTimeout(offerId);
@@ -203,12 +213,104 @@ export async function dispatchJob(job: QueuedJob): Promise<boolean> {
     triggerUsername: job.triggerUsername,
     labels: job.labels,
     triggerBodyPreview: job.triggerBodyPreview,
-    ...(job.workflowRun !== undefined ? { workflowRun: job.workflowRun } : {}),
+    ...(job.kind === "workflow-run" ? { workflowRun: normalizeWorkflowRun(job.workflowRun) } : {}),
+    ...(isScopedJob(job) ? { scoped: job } : {}),
   });
 
-  logger.info({ deliveryId: job.deliveryId, daemonId, offerId }, "Job offered to daemon");
+  logger.info(
+    { kind: job.kind, deliveryId: job.deliveryId, daemonId, offerId },
+    "Job offered to daemon",
+  );
 
   return true;
+}
+
+/**
+ * `WorkflowRunRef` declares optional fields without `| undefined`; the
+ * Zod-inferred shape includes `| undefined` because Zod surfaces missing
+ * keys as `undefined`. Strip the explicit `undefined` keys so the value
+ * fits `exactOptionalPropertyTypes: true` consumers like `PendingOffer`.
+ */
+function normalizeWorkflowRun(ref: {
+  runId: string;
+  workflowName: WorkflowRunRef["workflowName"];
+  parentRunId?: string | undefined;
+  parentStepIndex?: number | undefined;
+}): WorkflowRunRef {
+  const result: WorkflowRunRef = { runId: ref.runId, workflowName: ref.workflowName };
+  if (ref.parentRunId !== undefined && ref.parentStepIndex !== undefined) {
+    return { ...result, parentRunId: ref.parentRunId, parentStepIndex: ref.parentStepIndex };
+  }
+  if (ref.parentRunId !== undefined) {
+    return { ...result, parentRunId: ref.parentRunId };
+  }
+  if (ref.parentStepIndex !== undefined) {
+    return { ...result, parentStepIndex: ref.parentStepIndex };
+  }
+  return result;
+}
+
+/**
+ * Build the `scoped-job-offer` envelope from a scoped queue payload. The
+ * shape mirrors `contracts/ws-messages.md`: only the per-kind discriminating
+ * fields are included so the daemon can route via Zod discriminated-union
+ * parse before any executor runs.
+ */
+function buildScopedJobOfferEnvelope(
+  offerId: string,
+  job: ScopedQueuedJob,
+): Record<string, unknown> {
+  const base = {
+    type: "scoped-job-offer" as const,
+    ...createMessageEnvelope(offerId),
+  };
+  switch (job.kind) {
+    case "scoped-rebase":
+      return {
+        ...base,
+        payload: {
+          jobKind: job.kind,
+          deliveryId: job.deliveryId,
+          installationId: job.installationId,
+          owner: job.repoOwner,
+          repo: job.repoName,
+          prNumber: job.prNumber,
+          triggerCommentId: job.triggerCommentId,
+          enqueuedAt: job.enqueuedAt,
+        },
+      };
+    case "scoped-fix-thread":
+    case "scoped-explain-thread":
+      return {
+        ...base,
+        payload: {
+          jobKind: job.kind,
+          deliveryId: job.deliveryId,
+          installationId: job.installationId,
+          owner: job.repoOwner,
+          repo: job.repoName,
+          prNumber: job.prNumber,
+          threadRef: job.threadRef,
+          triggerCommentId: job.triggerCommentId,
+          enqueuedAt: job.enqueuedAt,
+        },
+      };
+    case "scoped-open-pr":
+      return {
+        ...base,
+        payload: {
+          jobKind: job.kind,
+          deliveryId: job.deliveryId,
+          installationId: job.installationId,
+          owner: job.repoOwner,
+          repo: job.repoName,
+          issueNumber: job.issueNumber,
+          triggerCommentId: job.triggerCommentId,
+          enqueuedAt: job.enqueuedAt,
+          verdictSummary: job.verdictSummary,
+        },
+      };
+  }
 }
 
 /**
@@ -229,8 +331,47 @@ async function handleOfferTimeout(offerId: string): Promise<void> {
   // Re-queue the execution
   await requeueExecution(offer.deliveryId);
 
-  // Reconstruct QueuedJob from the offer metadata (single source of truth)
-  const job: QueuedJob = {
+  const job = reconstructJobFromOffer(offer);
+
+  const requeued = await requeueJob(job);
+  if (!requeued) {
+    await markJobTerminallyFailed(job, "All daemons rejected or timed out after maximum retries");
+  }
+}
+
+/**
+ * Reconstruct a `QueuedJob` from the in-memory `PendingOffer` so the same
+ * payload can be re-queued on reject/timeout. Scoped offers preserve the
+ * original scoped queue payload verbatim — every per-kind field survives the
+ * round-trip so re-dispatch keeps the same daemon contract.
+ */
+function reconstructJobFromOffer(offer: PendingOffer): QueuedJob {
+  if (offer.scoped !== undefined) {
+    // `offer.scoped` is typed `unknown` in shared/daemon-types to avoid a
+    // shared→orchestrator import cycle; the dispatcher only writes
+    // `ScopedQueuedJob` values into it, so this cast is sound.
+    const scoped = offer.scoped as ScopedQueuedJob;
+    return { ...scoped, retryCount: offer.retryCount, enqueuedAt: Date.now() };
+  }
+  if (offer.workflowRun !== undefined) {
+    return {
+      kind: "workflow-run",
+      deliveryId: offer.deliveryId,
+      repoOwner: offer.repoOwner,
+      repoName: offer.repoName,
+      entityNumber: offer.entityNumber,
+      isPR: offer.isPR,
+      eventName: offer.eventName,
+      triggerUsername: offer.triggerUsername,
+      labels: offer.labels,
+      triggerBodyPreview: offer.triggerBodyPreview,
+      enqueuedAt: Date.now(),
+      retryCount: offer.retryCount,
+      workflowRun: offer.workflowRun,
+    };
+  }
+  return {
+    kind: "legacy",
     deliveryId: offer.deliveryId,
     repoOwner: offer.repoOwner,
     repoName: offer.repoName,
@@ -242,13 +383,7 @@ async function handleOfferTimeout(offerId: string): Promise<void> {
     triggerBodyPreview: offer.triggerBodyPreview,
     enqueuedAt: Date.now(),
     retryCount: offer.retryCount,
-    ...(offer.workflowRun !== undefined ? { workflowRun: offer.workflowRun } : {}),
   };
-
-  const requeued = await requeueJob(job);
-  if (!requeued) {
-    await markJobTerminallyFailed(job, "All daemons rejected or timed out after maximum retries");
-  }
 }
 
 /**
@@ -334,21 +469,7 @@ export async function handleJobReject(offerId: string, reason: string): Promise<
   await requeueExecution(offer.deliveryId);
 
   // Re-enqueue the job with original metadata (retryCount incremented by requeueJob)
-  const job: QueuedJob = {
-    deliveryId: offer.deliveryId,
-    repoOwner: offer.repoOwner,
-    repoName: offer.repoName,
-    entityNumber: offer.entityNumber,
-    isPR: offer.isPR,
-    eventName: offer.eventName,
-    triggerUsername: offer.triggerUsername,
-    labels: offer.labels,
-    triggerBodyPreview: offer.triggerBodyPreview,
-    enqueuedAt: Date.now(),
-    retryCount: offer.retryCount,
-    ...(offer.workflowRun !== undefined ? { workflowRun: offer.workflowRun } : {}),
-  };
-
+  const job = reconstructJobFromOffer(offer);
   const requeued = await requeueJob(job);
   if (!requeued) {
     await markJobTerminallyFailed(
@@ -370,7 +491,7 @@ export async function handleJobReject(offerId: string, reason: string): Promise<
  */
 export async function markJobTerminallyFailed(job: QueuedJob, reason: string): Promise<void> {
   await markExecutionFailed(job.deliveryId, reason);
-  if (job.workflowRun !== undefined) {
+  if (job.kind === "workflow-run") {
     try {
       await markWorkflowRunFailed(job.workflowRun.runId, reason, {});
     } catch (err) {

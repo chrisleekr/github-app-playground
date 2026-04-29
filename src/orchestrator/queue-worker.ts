@@ -47,10 +47,11 @@ async function iterate(instanceId: string, abortSignal: { aborted: boolean }): P
 
   logger.debug(
     {
+      kind: job.kind,
       deliveryId: job.deliveryId,
       retryCount: job.retryCount,
       instanceId,
-      workflowRunId: job.workflowRun?.runId,
+      workflowRunId: job.kind === "workflow-run" ? job.workflowRun.runId : undefined,
     },
     "Queue worker leased a job",
   );
