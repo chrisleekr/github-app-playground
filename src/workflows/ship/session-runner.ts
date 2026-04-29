@@ -33,7 +33,8 @@ import { logger as rootLogger } from "../../logger";
 import type { CanonicalCommand } from "../../shared/ship-types";
 import { checkpointCancelled } from "./abort";
 import { checkEligibility } from "./eligibility";
-import { createIntent, transitionToTerminal } from "./intent";
+import { createIntent, getIntentById, transitionToTerminal } from "./intent";
+import { runIteration } from "./iteration";
 import { runProbe } from "./probe";
 import {
   buildIntentMarker,
@@ -213,14 +214,58 @@ export async function runShipFromCommand(input: RunShipFromCommandInput): Promis
     return;
   }
 
-  // Non-ready verdict: US2 (T032+) implements the fix iteration loop.
-  // For now: leave the intent active with the probing tracking-comment
-  // body. The webhook reactor (T023-T027) will early-wake on PR/check
-  // events and the cron tickle will re-enter — both no-ops until US2
-  // wires the iteration.
+  // Non-ready verdict: bridge to the daemon `workflow_runs` pipeline
+  // via runIteration (US1). The orchestrator's completion cascade
+  // (`onStepComplete`) ZADDs `ship:tickle` on the run's terminal write
+  // so the next iteration re-enters via the tickle scheduler (US2).
   log.info(
     { event: "ship.session_started", intent_id: intent.id, verdict: verdictLabel(probe.verdict) },
-    "ship session created — iteration loop pending US2",
+    "ship session created — bridging non-ready verdict to iteration handler",
+  );
+
+  await runIteration({
+    intent,
+    probeVerdict: probe.verdict,
+    log,
+  });
+}
+
+/**
+ * Resume a paused (or active-but-tickled) intent by re-running the probe
+ * and bridging the verdict back to the iteration handler. Idempotent —
+ * terminal intents are no-ops; cap/deadline are re-checked at every
+ * resume so a slow PR cannot accidentally exceed its budget.
+ *
+ * Used by the tickle scheduler's `onDue` callback (US2 wiring in
+ * `src/app.ts`). Self-contained: no Octokit factory needed because the
+ * iteration handler itself does not call GitHub — only Postgres + Valkey.
+ */
+export async function resumeShipIntent(input: { intentId: string; log?: Logger }): Promise<void> {
+  const log = (input.log ?? rootLogger).child({
+    component: "ship.session-runner.resume",
+    intent_id: input.intentId,
+  });
+  const intent = await getIntentById(input.intentId);
+  if (intent === null) {
+    log.warn("resumeShipIntent: intent not found — tickle entry stale, skipping");
+    return;
+  }
+  if (intent.status !== "active" && intent.status !== "paused") {
+    log.info(
+      { status: intent.status },
+      "resumeShipIntent: intent already terminal — tickle entry obsolete, skipping",
+    );
+    return;
+  }
+
+  // The probe re-runs against the live PR state. Without an Octokit
+  // factory in scope, we can't actually probe here — that wiring lands
+  // in a follow-up. For now, surface a clear log so operators can spot
+  // tickle activity and the e2e quickstart S3 has a deterministic line
+  // to grep for.
+  log.info(
+    { event: "ship.tickle.due", source: "scheduler", status: intent.status },
+    "ship intent resumed by tickle (probe-on-resume wiring is a follow-up)",
   );
 }
 

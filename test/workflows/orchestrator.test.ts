@@ -41,6 +41,13 @@ function requireSql(): SQL {
 const mockEnqueueJob = mock(() => Promise.resolve());
 void mock.module("../../src/orchestrator/job-queue", () => ({
   enqueueJob: mockEnqueueJob,
+  isScopedJob: () => false,
+  SCOPED_JOB_KINDS: [
+    "scoped-rebase",
+    "scoped-fix-thread",
+    "scoped-explain-thread",
+    "scoped-open-pr",
+  ],
 }));
 
 void mock.module("../../src/workflows/execution-row", () => ({
@@ -72,8 +79,13 @@ void mock.module("../../src/db", () => ({
 // Records ZADD calls so the cascade test can assert exactly one tickle
 // per completed run that carries `state.shipIntentId`.
 const mockValkeySend = mock((_cmd: string, _args: string[]) => Promise.resolve(1));
+const mockValkeyClient = { send: mockValkeySend };
 void mock.module("../../src/orchestrator/valkey", () => ({
-  requireValkeyClient: () => ({ send: mockValkeySend }),
+  requireValkeyClient: () => mockValkeyClient,
+  getValkeyClient: () => mockValkeyClient,
+  isValkeyHealthy: () => true,
+  connectValkey: () => Promise.resolve(),
+  closeValkey: () => Promise.resolve(),
 }));
 
 function silentLogger(): pino.Logger {
