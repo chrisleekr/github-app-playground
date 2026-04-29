@@ -1696,14 +1696,9 @@
 <td><code>false</code></td>
 <td>Rollout flag — when <code>true</code>, the iteration loop exits after each phase and re-enters via the cron tickle (Valkey <code>ship:tickle</code>). Restart-safe and slot-friendly.</td>
 </tr>
-<tr>
-<td><code>SHIP_USE_TRIGGER_SURFACES_V2</code></td>
-<td><code>false</code></td>
-<td>Rollout flag — when <code>true</code>, the natural-language and label trigger surfaces (FR-025/025a/026/026a/027) are active alongside the legacy literal-comment surface. Default off preserves today's behaviour with zero LLM cost.</td>
-</tr>
 </tbody>
 </table>
-<p>After a one-week soak with all three flags set to <code>true</code> and clean operation observed, a follow-up PR removes the flags and the legacy code paths (research.md R8 cutover plan, T071).</p>
+<p>The natural-language and label trigger surfaces (FR-025/025a/026/026a/027) are permanent — there is no flag gating them. After a one-week soak with the two probe/continuation flags set to <code>true</code> and clean operation observed, a follow-up PR removes those two flags and the legacy code paths (research.md R8 cutover plan, T071).</p>
 <h2 id="composite-ship-workflow">Composite ship workflow<a class="headerlink" href="#composite-ship-workflow" title="Permanent link">&para;</a></h2>
 <table>
 <thead>

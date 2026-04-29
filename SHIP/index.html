@@ -731,10 +731,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#rollout-flag" class="md-nav__link">
+  <a href="#rollout-flags" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Rollout flag
+        Rollout flags
       
     </span>
   </a>
@@ -1060,10 +1060,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#rollout-flag" class="md-nav__link">
+  <a href="#rollout-flags" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Rollout flag
+        Rollout flags
       
     </span>
   </a>
@@ -1125,7 +1125,7 @@
 </tr>
 </tbody>
 </table>
-<p>The natural-language and label surfaces are gated on <code>SHIP_USE_TRIGGER_SURFACES_V2=true</code>. The literal <code>bot:ship</code> surface works regardless.</p>
+<p>All three surfaces — literal, natural-language, and label — are permanent v1 features. The natural-language path costs nothing on comments without the <code>TRIGGER_PHRASE</code> mention (FR-025a gate runs before the LLM call).</p>
 <p>The four recognised verbs (each available across all three surfaces): <code>ship</code>, <code>stop</code>, <code>resume</code>, <code>abort-ship</code>. See <code>contracts/bot-commands.md</code> for full syntax.</p>
 <h2 id="how-to-monitor">How to monitor<a class="headerlink" href="#how-to-monitor" title="Permanent link">&para;</a></h2>
 <p>Each session writes a single canonical tracking comment marked with <code>&lt;!-- ship-intent:{intent_id} --&gt;</code>. The body shows current phase, last action, next queued action, iteration count, USD spent, deadline, and (on terminal) the blocker category. A maintainer glancing at the PR sees exactly where the bot is and whether they need to act.</p>
@@ -1156,8 +1156,8 @@
 </table>
 <p>Abort sets a Valkey cancellation flag, waits ≤2 s for the next cooperative checkpoint, then force-transitions the intent to <code>aborted_by_user</code>. After abort, the bot performs zero further mutating actions on the PR (FR-009 / SC-005).</p>
 <p>For a recoverable pause, use <code>bot:stop</code> (and later <code>bot:resume</code>) instead. A stopped session preserves its continuation row; the deadline keeps counting down while paused.</p>
-<h2 id="rollout-flag">Rollout flag<a class="headerlink" href="#rollout-flag" title="Permanent link">&para;</a></h2>
-<p><code>SHIP_USE_TRIGGER_SURFACES_V2=true</code> activates the NL + label surfaces. After one week of clean soak, a follow-up PR removes the flag (research.md R8). Set this in the orchestrator's environment, not the daemon's — the trigger surfaces are dispatched from the webhook server.</p>
+<h2 id="rollout-flags">Rollout flags<a class="headerlink" href="#rollout-flags" title="Permanent link">&para;</a></h2>
+<p>The remaining v1 rollout flags are <code>SHIP_USE_PROBE_VERDICT</code> (probe-verdict ladder vs. legacy in-process review/resolve loop) and <code>SHIP_USE_CONTINUATION_LOOP</code> (cron-tickle re-entry vs. in-process loop). Both default off; flip on after the corresponding soak per research.md R8.</p>
 
 
 
