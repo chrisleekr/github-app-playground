@@ -38,6 +38,26 @@ export function handleReviewComment(
   if (payload.action !== "created") return;
   if (payload.comment.user.type === "Bot") return;
 
+  // Authorize before dispatch — both the canonical (`dispatchCommentSurface`)
+  // and legacy (`dispatchByIntent`) paths share the same allowlist gate so
+  // a dropped repo can't slip through canonical routing. Mirrors the
+  // structure used in `issues.ts` and `pull-request.ts` label handlers.
+  const senderLogin = payload.comment.user.login;
+  const ownerLogin = payload.repository.owner.login;
+  const log = logger.child({
+    deliveryId,
+    owner: ownerLogin,
+    repo: payload.repository.name,
+    prNumber: payload.pull_request.number,
+    senderLogin,
+  });
+
+  const auth = isOwnerAllowed(ownerLogin, log);
+  if (!auth.allowed) {
+    log.info({ reason: auth.reason }, "review_comment dropped — owner not allowlisted");
+    return;
+  }
+
   // T028e + T089: ship trigger-surface dispatch. Review comments always
   // target a PR; carry the `event_surface: 'review-comment'` tag and
   // the originating comment's REST `id` as `thread_id` so scoped commands
@@ -54,80 +74,65 @@ export function handleReviewComment(
   // trip on every review-comment webhook — including comments that
   // never trigger a scoped command.
   //
-  // The legacy intent-classifier dispatch below is preserved.
-  if (payload.installation !== undefined) {
-    const installationId = payload.installation.id;
-    const owner = payload.repository.owner.login;
-    const repo = payload.repository.name;
-    const prNumber = payload.pull_request.number;
-    const principalLogin = payload.comment.user.login;
-    const commentBody = payload.comment.body;
-    const threadId = String(payload.comment.id);
-    const dispatchLog = logger.child({
-      deliveryId,
+  // Canonical routing is awaited; the legacy `dispatchByIntent` path
+  // below runs only when canonical routing produced no command (the
+  // body is not a recognised verb). Without this precedence, an
+  // overlapping verb (e.g. `bot:summarize`) fires both pipelines for
+  // one webhook.
+  if (payload.installation === undefined) return;
+
+  const installationId = payload.installation.id;
+  const owner = ownerLogin;
+  const repo = payload.repository.name;
+  const prNumber = payload.pull_request.number;
+  const commentBody = payload.comment.body;
+  const threadId = String(payload.comment.id);
+
+  void (async (): Promise<void> => {
+    const dispatchLog = log.child({ thread_id: threadId, event_surface: "review-comment" });
+    let canonicalHandled = false;
+    try {
+      canonicalHandled = await dispatchCommentSurface({
+        commentBody,
+        principal_login: senderLogin,
+        pr: { owner, repo, number: prNumber, installation_id: installationId },
+        event_surface: "review-comment",
+        thread_id: threadId,
+        octokit,
+        log: dispatchLog,
+      });
+    } catch (err) {
+      dispatchLog.error({ err }, "ship dispatchCommentSurface threw for review_comment");
+    }
+
+    if (canonicalHandled) return;
+    if (!containsTrigger(commentBody)) return;
+
+    log.info("Trigger detected in review_comment — routing via intent classifier");
+
+    void addReaction({
+      octokit,
+      logger: log,
       owner,
       repo,
-      prNumber,
-      thread_id: threadId,
-      event_surface: "review-comment",
+      commentId: payload.comment.id,
+      eventType: "pull_request_review_comment",
+      content: "eyes",
     });
-    void dispatchCommentSurface({
-      commentBody,
-      principal_login: principalLogin,
-      pr: { owner, repo, number: prNumber, installation_id: installationId },
-      event_surface: "review-comment",
-      thread_id: threadId,
-      octokit,
-      log: dispatchLog,
-    }).catch((err: unknown) => {
-      dispatchLog.error({ err }, "ship dispatchCommentSurface threw for review_comment");
-    });
-  }
 
-  if (!containsTrigger(payload.comment.body)) return;
-
-  const senderLogin = payload.comment.user.login;
-  const log = logger.child({
-    deliveryId,
-    owner: payload.repository.owner.login,
-    repo: payload.repository.name,
-    prNumber: payload.pull_request.number,
-    senderLogin,
-  });
-
-  log.info("Trigger detected in review_comment — routing via intent classifier");
-
-  const auth = isOwnerAllowed(payload.repository.owner.login, log);
-  if (!auth.allowed) {
-    log.info({ reason: auth.reason }, "review_comment dropped — owner not allowlisted");
-    return;
-  }
-
-  void addReaction({
-    octokit,
-    logger: log,
-    owner: payload.repository.owner.login,
-    repo: payload.repository.name,
-    commentId: payload.comment.id,
-    eventType: "pull_request_review_comment",
-    content: "eyes",
-  });
-
-  void dispatchByIntent({
-    octokit,
-    logger: log,
-    commentBody: payload.comment.body,
-    target: {
-      type: "pr",
-      owner: payload.repository.owner.login,
-      repo: payload.repository.name,
-      number: payload.pull_request.number,
-    },
-    senderLogin,
-    deliveryId,
-    triggerCommentId: payload.comment.id,
-    triggerEventType: "pull_request_review_comment",
-  }).catch((err: unknown) => {
-    log.error({ err }, "dispatchByIntent threw for review_comment");
-  });
+    try {
+      await dispatchByIntent({
+        octokit,
+        logger: log,
+        commentBody,
+        target: { type: "pr", owner, repo, number: prNumber },
+        senderLogin,
+        deliveryId,
+        triggerCommentId: payload.comment.id,
+        triggerEventType: "pull_request_review_comment",
+      });
+    } catch (err) {
+      log.error({ err }, "dispatchByIntent threw for review_comment");
+    }
+  })();
 }

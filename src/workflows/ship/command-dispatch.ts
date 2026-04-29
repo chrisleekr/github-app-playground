@@ -77,6 +77,11 @@ export function dispatchCanonicalCommand(command: CanonicalCommand, deps: Dispat
  * mention-prefix per FR-025a). Both paths produce a `CanonicalCommand`
  * via `routeTrigger(...)` — the NL classifier MUST NOT run when the
  * literal parser already matched (no double-fire).
+ *
+ * Returns `true` when canonical routing matched a verb and dispatched
+ * a handler; `false` when neither the literal parser nor the NL
+ * classifier produced an actionable intent. Callers use the return
+ * value to decide whether to fall back to legacy dispatch.
  */
 export async function dispatchCommentSurface(input: {
   readonly commentBody: string;
@@ -93,7 +98,7 @@ export async function dispatchCommentSurface(input: {
   readonly thread_id?: string;
   readonly octokit: Octokit;
   readonly log?: Logger;
-}): Promise<void> {
+}): Promise<boolean> {
   const deps: DispatchDeps = { octokit: input.octokit, ...(input.log ? { log: input.log } : {}) };
   // Wrap parser + classifier in a single guard. The literal parser is
   // synchronous-ish, but `routeTrigger("nl")` makes a remote LLM call which
@@ -114,7 +119,7 @@ export async function dispatchCommentSurface(input: {
     });
     if (literal !== null) {
       dispatchCanonicalCommand(literal, deps);
-      return;
+      return true;
     }
 
     // 2. NL fallback. Mention-prefix gate (FR-025a) lives in classifier.
@@ -146,7 +151,11 @@ export async function dispatchCommentSurface(input: {
         ...(input.thread_id !== undefined ? { thread_id: input.thread_id } : {}),
       },
     });
-    if (nl !== null) dispatchCanonicalCommand(nl, deps);
+    if (nl !== null) {
+      dispatchCanonicalCommand(nl, deps);
+      return true;
+    }
+    return false;
   } catch (err) {
     // Pass `err` directly so pino's serializer captures the stack and
     // structured properties; `String(err)` would discard both.
@@ -154,5 +163,6 @@ export async function dispatchCommentSurface(input: {
       { event: "ship.dispatch_comment_surface_failed", err },
       "ship dispatchCommentSurface threw — swallowed",
     );
+    return false;
   }
 }

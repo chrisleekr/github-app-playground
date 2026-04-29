@@ -139,29 +139,30 @@ describe("routeTrigger — FR-027 surface parity", () => {
         principal_login: PRINCIPAL,
         pr: PR,
         event_surface: "pr-label",
-        thread_id: "thread-node-id-xyz",
+        // thread_id carries REST `payload.comment.id` stringified per the
+        // CanonicalCommand contract — numeric, NOT a GraphQL node ID.
+        thread_id: "12345",
       },
     });
     expect(out?.event_surface).toBe("pr-label");
-    expect(out?.thread_id).toBe("thread-node-id-xyz");
+    expect(out?.thread_id).toBe("12345");
   });
 
   it("rejects intents whose event_surface is not in the eligibility set (FR-029..FR-035)", async () => {
-    // bot:investigate is eligible only on issue-comment / issue-label.
-    // Triggering it on a PR-comment surface MUST yield null.
+    // ship's eligibility set is [pr-comment, review-comment, pr-label];
+    // triggering it on issue-comment MUST be rejected at withSurface.
+    // Using a verb the literal parser actually understands (ship) is the
+    // only way to exercise eligibility on the literal surface — scoped
+    // verbs are not in the literal grammar.
     const out = await routeTrigger({
       surface: "literal",
       payload: {
-        commentBody: "bot:investigate",
+        commentBody: "bot:ship",
         principal_login: PRINCIPAL,
         pr: PR,
-        event_surface: "pr-comment",
+        event_surface: "issue-comment",
       },
     });
-    // The literal parser doesn't yet recognise "bot:investigate" as a
-    // verb (the literal-command grammar still tracks the original 4
-    // ship verbs). On the literal surface this returns null because
-    // the parser doesn't match — same observable outcome.
     expect(out).toBeNull();
   });
 
