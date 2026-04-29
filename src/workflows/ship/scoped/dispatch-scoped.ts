@@ -69,14 +69,32 @@ async function postNotImplemented(
 }
 
 /**
- * Stateless one-shot dispatch. Each branch swallows handler errors
- * after logging so a misbehaving scoped command never crashes the
- * webhook delivery loop.
+ * Stateless one-shot dispatch. The whole body is wrapped in a top-level
+ * try/catch so any Octokit, LLM, or callback error is logged and
+ * swallowed at the per-intent boundary — a misbehaving scoped command
+ * never rejects up to the webhook delivery loop.
  */
 export async function dispatchScopedCommand(
   command: CanonicalCommand,
   deps: ScopedCommandDeps,
 ): Promise<void> {
+  try {
+    await runScopedCommand(command, deps);
+  } catch (err) {
+    deps.log?.error(
+      {
+        err,
+        intent: command.intent,
+        owner: command.pr.owner,
+        repo: command.pr.repo,
+        pr_number: command.pr.number,
+      },
+      "dispatchScopedCommand: scoped handler threw — swallowed at per-intent boundary",
+    );
+  }
+}
+
+async function runScopedCommand(command: CanonicalCommand, deps: ScopedCommandDeps): Promise<void> {
   const callLlm = buildCallLlm();
   switch (command.intent) {
     case "summarize":

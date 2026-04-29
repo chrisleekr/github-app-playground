@@ -47,6 +47,7 @@ describe("runExplainThread", () => {
         line_range: "10-15",
         diff_hunk: "@@ -10,3 +10,4 @@\n+const x = 1;",
         code_snippet: "const x = 1;",
+        thread_body: "Why is this a const?",
       },
       callLlm,
     });
@@ -70,6 +71,7 @@ describe("runExplainThread", () => {
         line_range: "42-50",
         diff_hunk: "@@ HUNK @@",
         code_snippet: "function bar() { return 42; }",
+        thread_body: "What does this return value represent?",
       },
       callLlm,
     });
@@ -78,6 +80,7 @@ describe("runExplainThread", () => {
     expect(userPrompt).toContain("42-50");
     expect(userPrompt).toContain("@@ HUNK @@");
     expect(userPrompt).toContain("function bar() { return 42; }");
+    expect(userPrompt).toContain("What does this return value represent?");
   });
 
   it("does NOT call any thread-resolve mutation", async () => {
@@ -92,7 +95,7 @@ describe("runExplainThread", () => {
       repo: "r",
       pr_number: 7,
       comment_id: 12345,
-      thread: { path: "f", line_range: "1", diff_hunk: "", code_snippet: "" },
+      thread: { path: "f", line_range: "1", diff_hunk: "", code_snippet: "", thread_body: "" },
       callLlm,
     });
     expect(fake.createReply).toHaveBeenCalledTimes(1);

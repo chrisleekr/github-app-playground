@@ -102,7 +102,7 @@ export async function runFixThread(input: RunFixThreadInput): Promise<FixThreadO
 
   const result = await input.applyMechanicalFix(input.thread);
 
-  if (!result.applied || result.commit_sha === undefined) {
+  if (!result.applied) {
     const reason = result.skip_reason ?? "no actionable mechanical change identified";
     const reply = await input.octokit.rest.pulls.createReplyForReviewComment({
       owner: input.owner,
@@ -112,6 +112,23 @@ export async function runFixThread(input: RunFixThreadInput): Promise<FixThreadO
       body: `I couldn't apply a mechanical fix here — ${reason}.`,
     });
     log.info({ reply_id: reply.data.id, reason }, "fix_thread skipped");
+    return { kind: "skipped", reply_id: reply.data.id, reason };
+  }
+
+  if (result.commit_sha === undefined) {
+    // Partial success — callback claimed it applied a fix but withheld
+    // the SHA. Surfaced at warn so the buggy callback is discoverable
+    // in logs; behaviour matches the no-applied path otherwise.
+    const reason =
+      result.skip_reason ?? "applyMechanicalFix returned applied=true without commit_sha";
+    const reply = await input.octokit.rest.pulls.createReplyForReviewComment({
+      owner: input.owner,
+      repo: input.repo,
+      pull_number: input.pr_number,
+      comment_id: input.comment_id,
+      body: `I couldn't apply a mechanical fix here — ${reason}.`,
+    });
+    log.warn({ reply_id: reply.data.id, reason }, "fix_thread skipped (partial success)");
     return { kind: "skipped", reply_id: reply.data.id, reason };
   }
 

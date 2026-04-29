@@ -131,7 +131,7 @@ describe("T046a / FR-009 — destructive-action static guard", () => {
       "git push with + force-refspec",
       "git push --mirror",
       "git reset --hard",
-      "git branch -d",
+      "git branch -D",
       "git push --delete",
       "git filter-branch",
       "git filter-repo",
@@ -141,7 +141,8 @@ describe("T046a / FR-009 — destructive-action static guard", () => {
       "mergebranch",
     ];
     for (const cat of categories) {
-      const matched = descriptions.some((d) => d.includes(cat));
+      const needle = cat.toLowerCase();
+      const matched = descriptions.some((d) => d.includes(needle));
       expect(matched).toBe(true);
     }
   });

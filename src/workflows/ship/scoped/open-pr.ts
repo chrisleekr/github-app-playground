@@ -83,6 +83,19 @@ export type OpenPrOutcome =
       readonly branch_name: string;
     }
   | {
+      /**
+       * Draft PR was created but the back-link marker comment failed to
+       * post. The PR exists; future bot:open-pr triggers will create
+       * duplicates because the marker is the dedup key. Operator must
+       * manually post the marker on the source issue to reconcile.
+       */
+      readonly kind: "orphaned";
+      readonly pr_number: number;
+      readonly branch_name: string;
+      readonly pr_url: string;
+      readonly error_message: string;
+    }
+  | {
       readonly kind: "classifier-failed";
       readonly comment_id: number;
       readonly error_message: string;
@@ -206,14 +219,37 @@ export async function runOpenPr(input: RunOpenPrInput): Promise<OpenPrOutcome> {
   }
 
   // Post the back-link comment with the marker so future re-triggers
-  // detect this PR via the marker scan.
+  // detect this PR via the marker scan. If the comment write fails the
+  // PR is orphaned (no marker → next trigger creates a duplicate); we
+  // surface that distinct state so an operator can reconcile.
   const marker = buildBackLinkMarker(created.pr_number);
-  const reply = await input.octokit.rest.issues.createComment({
-    owner: input.owner,
-    repo: input.repo,
-    issue_number: input.issue_number,
-    body: `Opened draft PR #${created.pr_number} (\`${created.branch_name}\`): ${created.pr_url}\n\n${marker}`,
-  });
+  let reply: { data: { id: number } };
+  try {
+    reply = await input.octokit.rest.issues.createComment({
+      owner: input.owner,
+      repo: input.repo,
+      issue_number: input.issue_number,
+      body: `Opened draft PR #${created.pr_number} (\`${created.branch_name}\`): ${created.pr_url}\n\n${marker}`,
+    });
+  } catch (err) {
+    const error_message = err instanceof Error ? err.message : String(err);
+    log.error(
+      {
+        err,
+        pr_number: created.pr_number,
+        branch_name: created.branch_name,
+        pr_url: created.pr_url,
+      },
+      "open_pr orphaned — draft PR opened but back-link comment failed",
+    );
+    return {
+      kind: "orphaned",
+      pr_number: created.pr_number,
+      branch_name: created.branch_name,
+      pr_url: created.pr_url,
+      error_message,
+    };
+  }
 
   log.info(
     { comment_id: reply.data.id, pr_number: created.pr_number, branch_name: created.branch_name },

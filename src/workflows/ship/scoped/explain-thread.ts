@@ -26,6 +26,14 @@ export interface ThreadContext {
   readonly line_range: string;
   readonly diff_hunk: string;
   readonly code_snippet: string;
+  /**
+   * The reviewer's question — the body of the top-level review comment
+   * starting the thread, plus any follow-up replies, joined by blank
+   * lines. Required so the LLM has the actual ask, not just the code.
+   * Empty string is permitted for callers that have no thread text yet
+   * (e.g., explain triggered before the comment body is fetched).
+   */
+  readonly thread_body: string;
 }
 
 export interface RunExplainThreadInput {
@@ -57,12 +65,15 @@ export async function runExplainThread(
     comment_id: input.comment_id,
   });
 
-  const userPrompt = [
-    `File: ${input.thread.path}`,
-    `Lines: ${input.thread.line_range}`,
+  const promptParts = [`File: ${input.thread.path}`, `Lines: ${input.thread.line_range}`];
+  if (input.thread.thread_body !== "") {
+    promptParts.push(`Reviewer's question:\n${input.thread.thread_body}`);
+  }
+  promptParts.push(
     `Diff hunk:\n\`\`\`diff\n${input.thread.diff_hunk}\n\`\`\``,
     `Current code:\n\`\`\`\n${input.thread.code_snippet}\n\`\`\``,
-  ].join("\n\n");
+  );
+  const userPrompt = promptParts.join("\n\n");
 
   const explanation = await input.callLlm({
     systemPrompt: EXPLAIN_THREAD_SYSTEM_PROMPT,

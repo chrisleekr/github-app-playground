@@ -53,14 +53,18 @@ describe("MCP resolve-review-thread — static contract", () => {
     // `hasGithubToken`, not `GITHUB_TOKEN` directly.
     const block = /log\.error\(\s*\{[^}]*hasGithubToken[^}]*\}/.exec(SOURCE);
     expect(block).not.toBeNull();
-    // The literal `GITHUB_TOKEN` must NOT appear inside any log.X(...) call
-    // as a value — only as the presence-check variable name above.
+    // The literal `GITHUB_TOKEN` must NOT appear inside any log.X(...)
+    // call shape — covers `token: GITHUB_TOKEN`, `auth: GITHUB_TOKEN`,
+    // template interpolations `${GITHUB_TOKEN}`, and `process.env.GITHUB_TOKEN`
+    // references. The presence-check log line legitimately uses
+    // `GITHUB_TOKEN` inside the `hasGithubToken: GITHUB_TOKEN !== undefined`
+    // boolean expression — those lines are whitelisted by the
+    // `hasGithubToken` marker, leaving every other log call subject
+    // to the no-leak rule.
     const logLines = SOURCE.match(/log\.(info|warn|error|debug)\([^;]*;/g) ?? [];
     for (const line of logLines) {
-      // Permit the literal "GITHUB_TOKEN" only inside the existence-check
-      // payload key (`hasGithubToken`), not as a value.
-      const hasPlainTokenValue = /token\s*:\s*GITHUB_TOKEN/.test(line);
-      expect(hasPlainTokenValue).toBe(false);
+      if (line.includes("hasGithubToken")) continue;
+      expect(line.includes("GITHUB_TOKEN")).toBe(false);
     }
   });
 
@@ -92,8 +96,15 @@ describe("MCP resolve-review-thread — static contract", () => {
   });
 
   it("exit code 1 is used for fail-fast on env validation (never silent)", () => {
-    // The literal `process.exit(1)` MUST appear in the env validation
-    // path — silent exit is the failure mode this guards against.
-    expect(SOURCE).toContain("process.exit(1)");
+    // Tightened: the `process.exit(1)` MUST follow the env-validation
+    // log call (identified by its `hasGithubToken` payload key) before
+    // any other top-level statement. A bare `expect(SOURCE).toContain`
+    // would also match the transport-bind exit at the bottom of the
+    // file and pass even if env validation silently dropped its exit.
+    const envValidationExit =
+      /hasGithubToken[\s\S]*?"REPO_OWNER, REPO_NAME, PR_NUMBER, and GITHUB_TOKEN are required"[\s\S]*?process\.exit\(1\)/.test(
+        SOURCE,
+      );
+    expect(envValidationExit).toBe(true);
   });
 });

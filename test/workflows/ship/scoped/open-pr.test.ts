@@ -218,6 +218,62 @@ describe("runOpenPr", () => {
     expect(body).toContain("No PR opened");
   });
 
+  it("returns orphaned outcome when back-link comment write fails after PR creation", async () => {
+    // The first createComment call (the back-link write) must fail; the
+    // duplicate-check path uses paginate.iterator, not createComment, so
+    // failing every createComment call is safe.
+    const issuesGet = mock(() => Promise.resolve({ data: { title: "Real bug", body: "stack" } }));
+    const createComment = mock(() => Promise.reject(new Error("422 issue locked")));
+    const paginateIterator = mock(() => ({
+      [Symbol.asyncIterator]() {
+        let i = 0;
+        return {
+          next: () =>
+            Promise.resolve(
+              i++ === 0 ? { value: { data: [] }, done: false } : { value: undefined, done: true },
+            ),
+          [Symbol.asyncIterator]() {
+            return this;
+          },
+        };
+      },
+    }));
+    const octokit = {
+      rest: {
+        issues: {
+          get: issuesGet,
+          listComments: mock(() => Promise.resolve({ data: [] })),
+          createComment,
+        },
+      },
+      paginate: { iterator: paginateIterator },
+    } as never;
+    const callLlm = mock(() =>
+      Promise.resolve(JSON.stringify({ actionable: true, kind: "bug", reason: "ok" })),
+    );
+    const createBranchAndPr = mock(() =>
+      Promise.resolve({
+        pr_number: 555,
+        branch_name: "bot/fix-issue-99",
+        pr_url: "https://github.com/o/r/pull/555",
+      }),
+    );
+    const out = await runOpenPr({
+      octokit,
+      owner: "o",
+      repo: "r",
+      issue_number: 99,
+      callLlm,
+      createBranchAndPr,
+    });
+    if (out.kind !== "orphaned") throw new Error(`expected orphaned, got ${out.kind}`);
+    expect(out.pr_number).toBe(555);
+    expect(out.branch_name).toBe("bot/fix-issue-99");
+    expect(out.pr_url).toBe("https://github.com/o/r/pull/555");
+    expect(out.error_message).toContain("issue locked");
+    expect(createBranchAndPr).toHaveBeenCalledTimes(1);
+  });
+
   it("treats null issue body as empty for the classifier", async () => {
     const fake = buildOctokit({ issue: { title: "x", body: null } });
     const callLlm = mock(() =>

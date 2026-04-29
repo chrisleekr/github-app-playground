@@ -7,7 +7,9 @@ import { dispatchCanonicalCommand } from "../../workflows/ship/command-dispatch"
 import { routeTrigger } from "../../workflows/ship/trigger-router";
 import { isOwnerAllowed } from "../authorize";
 
-const BOT_LABEL_PATTERN = /^bot:[a-z]+$/;
+// Permits hyphenated verbs (e.g. `bot:open-pr`, `bot:fix-thread`); the verb
+// must start with a letter and may contain `-`-separated lowercase segments.
+const BOT_LABEL_PATTERN = /^bot:[a-z]+(?:-[a-z]+)*$/;
 
 /**
  * Handler for `issues.labeled` and `issues.unlabeled`. Implements the label
@@ -59,35 +61,19 @@ export function handleIssues(octokit: Octokit, payload: IssuesEvent, deliveryId:
     return;
   }
 
-  void dispatchByLabel({
-    octokit,
-    logger: log,
-    label: labelName,
-    target: {
-      type: "issue",
-      owner: payload.repository.owner.login,
-      repo: payload.repository.name,
-      number: payload.issue.number,
-    },
-    senderLogin,
-    deliveryId,
-  }).catch((err: unknown) => {
-    log.error({ err }, "dispatchByLabel threw for issues.labeled");
-  });
+  // Canonical routing wins; legacy `dispatchByLabel` runs only when
+  // `routeTrigger` returns null. Without this precedence, an overlapping
+  // label (e.g. `bot:triage`) fires both pipelines for one webhook.
+  // FR-029..FR-035 eligibility — labels declared PR-only (e.g.
+  // `bot:ship`) are rejected by the trigger-router and fall through to
+  // the legacy path, which then ignores them.
+  const owner = payload.repository.owner.login;
+  const repo = payload.repository.name;
+  const issueNumber = payload.issue.number;
+  const installationId = payload.installation?.id;
 
-  // T091: scoped trigger-surface dispatch for issue-surface labels
-  // (`bot:investigate`, `bot:triage`, `bot:open-pr`). The legacy
-  // dispatchByLabel path above is preserved for back-compat with the
-  // existing issue-comment workflow taxonomy; this adds the normalised
-  // CanonicalCommand path. `event_surface: 'issue-label'` enforces
-  // FR-029..FR-035 per-intent eligibility — labels declared
-  // PR-only (e.g., `bot:ship`) are rejected here.
-  if (payload.installation !== undefined) {
-    const installationId = payload.installation.id;
-    const owner = payload.repository.owner.login;
-    const repo = payload.repository.name;
-    const issueNumber = payload.issue.number;
-    void (async (): Promise<void> => {
+  void (async (): Promise<void> => {
+    if (installationId !== undefined) {
       try {
         const command = await routeTrigger({
           surface: "label",
@@ -98,10 +84,26 @@ export function handleIssues(octokit: Octokit, payload: IssuesEvent, deliveryId:
             event_surface: "issue-label",
           },
         });
-        if (command !== null) dispatchCanonicalCommand(command, { octokit, log });
+        if (command !== null) {
+          dispatchCanonicalCommand(command, { octokit, log });
+          return;
+        }
       } catch (err) {
         log.error({ err }, "trigger-router threw for issues.labeled");
       }
-    })();
-  }
+    }
+
+    try {
+      await dispatchByLabel({
+        octokit,
+        logger: log,
+        label: labelName,
+        target: { type: "issue", owner, repo, number: issueNumber },
+        senderLogin,
+        deliveryId,
+      });
+    } catch (err) {
+      log.error({ err }, "dispatchByLabel threw for issues.labeled");
+    }
+  })();
 }

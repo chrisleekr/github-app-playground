@@ -139,9 +139,11 @@ describe("routeTrigger — FR-027 surface parity", () => {
         principal_login: PRINCIPAL,
         pr: PR,
         event_surface: "pr-label",
+        thread_id: "thread-node-id-xyz",
       },
     });
     expect(out?.event_surface).toBe("pr-label");
+    expect(out?.thread_id).toBe("thread-node-id-xyz");
   });
 
   it("rejects intents whose event_surface is not in the eligibility set (FR-029..FR-035)", async () => {
