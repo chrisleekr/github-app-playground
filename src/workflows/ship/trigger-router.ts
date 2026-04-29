@@ -8,7 +8,13 @@
  * read it.
  */
 
-import type { CanonicalCommand, CanonicalCommandPr, TriggerSurface } from "../../shared/ship-types";
+import {
+  type CanonicalCommand,
+  type CanonicalCommandPr,
+  type EventSurface,
+  isIntentEligibleOnSurface,
+  type TriggerSurface,
+} from "../../shared/ship-types";
 import { parseLabelTrigger } from "./label-trigger";
 import { parseLiteralCommand } from "./literal-command";
 import { classifyComment, toCommandIntent } from "./nl-classifier";
@@ -16,6 +22,13 @@ import { classifyComment, toCommandIntent } from "./nl-classifier";
 interface BasePayload {
   readonly principal_login: string;
   readonly pr: CanonicalCommandPr;
+  /**
+   * Webhook event surface where the trigger fired. Required for scoped
+   * commands so per-intent eligibility (FR-029..FR-035) can be enforced.
+   */
+  readonly event_surface?: EventSurface;
+  /** Set when the trigger originated from a `pull_request_review_comment` event. */
+  readonly thread_id?: string;
 }
 
 export interface LiteralPayload extends BasePayload {
@@ -41,23 +54,33 @@ function withSurface(
   parsed: { intent: CanonicalCommand["intent"]; deadline_ms?: number },
   surface: TriggerSurface,
   payload: BasePayload,
-): CanonicalCommand {
-  const command: CanonicalCommand =
-    parsed.deadline_ms === undefined
-      ? {
-          intent: parsed.intent,
-          surface,
-          principal_login: payload.principal_login,
-          pr: payload.pr,
-        }
-      : {
-          intent: parsed.intent,
-          deadline_ms: parsed.deadline_ms,
-          surface,
-          principal_login: payload.principal_login,
-          pr: payload.pr,
-        };
-  return command;
+): CanonicalCommand | null {
+  // Per-intent eligibility (FR-029..FR-035) — scoped verbs reject events
+  // outside their declared surface set. Ship-lifecycle verbs are accepted
+  // on every PR-attached surface; the eligibility map encodes both.
+  if (
+    payload.event_surface !== undefined &&
+    !isIntentEligibleOnSurface(parsed.intent, payload.event_surface)
+  ) {
+    return null;
+  }
+  const base = {
+    intent: parsed.intent,
+    surface,
+    principal_login: payload.principal_login,
+    pr: payload.pr,
+  };
+  const withDeadline =
+    parsed.deadline_ms === undefined ? base : { ...base, deadline_ms: parsed.deadline_ms };
+  const withEventSurface =
+    payload.event_surface === undefined
+      ? withDeadline
+      : { ...withDeadline, event_surface: payload.event_surface };
+  const final =
+    payload.thread_id === undefined
+      ? withEventSurface
+      : { ...withEventSurface, thread_id: payload.thread_id };
+  return final;
 }
 
 export async function routeTrigger(input: RouteInput): Promise<CanonicalCommand | null> {
@@ -76,6 +99,9 @@ export async function routeTrigger(input: RouteInput): Promise<CanonicalCommand 
     commentBody: input.payload.commentBody,
     triggerPhrase: input.payload.triggerPhrase,
     callLlm: input.payload.callLlm,
+    ...(input.payload.event_surface !== undefined
+      ? { eventSurface: input.payload.event_surface }
+      : {}),
   });
   if (result === null) return null;
   const intent = toCommandIntent(result.intent);

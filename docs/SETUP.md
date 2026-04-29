@@ -226,7 +226,7 @@ After you set permissions, the **Subscribe to events** section becomes available
 | **Check runs**                   | `check_run.completed` (powers the `bot:ship` reactor — early-wakes active intents on CI completion) | `src/webhook/events/check-run.ts`      |
 | **Check suites**                 | `check_suite.completed`                                                                             | `src/webhook/events/check-suite.ts`    |
 
-The PR shepherding reactor uses the new `synchronize`, `closed`, `edited`, `deleted`, `check_run`, and `check_suite` subscriptions to early-wake active sessions. `SHIP_USE_TRIGGER_SURFACES_V2=true` gates the **trigger-surface** wiring (the new literal/NL/label trigger router) — **not** the reactor wake subscriptions, which must be registered regardless. Existing `bot:ship` (composite) operation does not require the new wake subscriptions.
+The PR shepherding reactor uses the new `synchronize`, `closed`, `edited`, `deleted`, `check_run`, and `check_suite` subscriptions to early-wake active sessions. The literal/NL/label trigger surfaces are all permanent v1 features and require no flag gating. Existing `bot:ship` (composite) operation does not require the new wake subscriptions.
 
 The bot also recognises four GitHub labels on PRs (FR-026): `bot:ship`, `bot:stop`, `bot:resume`, `bot:abort-ship`, plus the suffix-overridden variants `bot:ship/deadline=2h` etc. The bot self-removes the label after acting (FR-026a) — re-application is the supported re-trigger mechanism.
 

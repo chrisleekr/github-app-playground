@@ -131,6 +131,42 @@ export default tseslint.config(
     },
   },
   {
+    // T087 — `bot:triage` (FR-034) is suggest-only in v1. The handler
+    // file MUST NOT import or invoke any GitHub mutation that could
+    // change issue state. Linting backs the intent at edit time;
+    // `test/workflows/ship/scoped/triage.test.ts` backs it at runtime.
+    files: ["src/workflows/ship/scoped/triage.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          // REST: forbid the named octokit.rest.issues.* mutation methods.
+          selector:
+            "CallExpression[callee.property.name=/^(addLabels|removeLabel|removeAllLabels|setLabels|update|lock|unlock|addAssignees|removeAssignees|pin|unpin)$/]",
+          message:
+            "bot:triage v1 is suggest-only — issue mutation methods are forbidden in this file (FR-034 / T087).",
+        },
+        {
+          // GraphQL via plain string: forbid mutation names in the
+          // string-literal first arg of `octokit.graphql(...)`.
+          selector:
+            "CallExpression[callee.property.name='graphql'] Literal[value=/\\b(addLabelsToLabelable|removeLabelsFromLabelable|closeIssue|lockLockable|unlockLockable|addAssigneesToAssignable|removeAssigneesFromAssignable|pinIssue|unpinIssue)\\b/]",
+          message:
+            "bot:triage v1 is suggest-only — forbidden issue GraphQL mutations are not allowed in this file (FR-034 / T087).",
+        },
+        {
+          // GraphQL via template literal: same set of forbidden mutation
+          // names appearing in any tagged-template part of an
+          // `octokit.graphql(...)` call.
+          selector:
+            "CallExpression[callee.property.name='graphql'] TemplateElement[value.raw=/\\b(addLabelsToLabelable|removeLabelsFromLabelable|closeIssue|lockLockable|unlockLockable|addAssigneesToAssignable|removeAssigneesFromAssignable|pinIssue|unpinIssue)\\b/]",
+          message:
+            "bot:triage v1 is suggest-only — forbidden issue GraphQL mutations are not allowed in this file (FR-034 / T087).",
+        },
+      ],
+    },
+  },
+  {
     // Relaxed rules for test files
     files: ["**/*.test.ts", "**/test/**/*.ts"],
     rules: {

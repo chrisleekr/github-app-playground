@@ -1,16 +1,26 @@
 /**
- * Label-trigger surface (FR-026 + FR-026a). Deterministic parser for
- * the recognised label set + GraphQL self-removal helper. No LLM.
+ * Label-trigger surface (FR-026 + FR-026a + FR-029..FR-035). Deterministic
+ * parser for the recognised label set + REST self-removal helper. No LLM.
  *
- * Recognised labels:
- *   bot:ship                — start session (supports `/deadline=<duration>` suffix)
- *   bot:stop                — pause session
- *   bot:resume              — resume paused session
- *   bot:abort-ship          — terminal abort
+ * Recognised labels (11 total):
+ *   Ship-lifecycle (4) — write a `ship_intents` row:
+ *     bot:ship                — start session (supports `/deadline=<duration>` suffix)
+ *     bot:stop                — pause session
+ *     bot:resume              — resume paused session
+ *     bot:abort-ship          — terminal abort
+ *
+ *   Scoped one-shots (7) — stateless single-action runs:
+ *     bot:fix-thread          — mechanical fix on a review thread
+ *     bot:explain-thread      — explain code at a review thread
+ *     bot:summarize           — PR change-summary comment (idempotent marker)
+ *     bot:rebase              — merge base into head; never force-push
+ *     bot:investigate         — issue root-cause analysis (idempotent marker)
+ *     bot:triage              — propose labels/severity/duplicates (suggest-only)
+ *     bot:open-pr             — open a draft PR for an actionable issue
  *
  * The bot self-removes the triggering label after acting (success,
  * ineligible, already-in-progress, unauthorised) so re-application is
- * the supported re-trigger mechanism.
+ * the supported re-trigger mechanism. This applies to all 11 labels.
  */
 
 import type { Octokit } from "octokit";
@@ -28,10 +38,17 @@ const LABEL_TO_INTENT: Record<string, CommandIntent> = {
   "bot:stop": "stop",
   "bot:resume": "resume",
   "bot:abort-ship": "abort",
+  "bot:fix-thread": "fix-thread",
+  "bot:explain-thread": "explain-thread",
+  "bot:summarize": "summarize",
+  "bot:rebase": "rebase",
+  "bot:investigate": "investigate",
+  "bot:triage": "triage",
+  "bot:open-pr": "open-pr",
 };
 
 const LABEL_PATTERN =
-  /^(bot:(?:ship|stop|resume|abort-ship))(?:\/deadline=(\d+(?:\.\d+)?)(h|m|s))?$/;
+  /^(bot:(?:ship|stop|resume|abort-ship|fix-thread|explain-thread|summarize|rebase|investigate|triage|open-pr))(?:\/deadline=(\d+(?:\.\d+)?)(h|m|s))?$/;
 
 export function parseLabelTrigger(labelName: string): LabelCommand | null {
   const trimmed = labelName.trim();

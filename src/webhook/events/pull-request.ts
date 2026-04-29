@@ -1,7 +1,6 @@
 import type { PullRequestEvent } from "@octokit/webhooks-types";
 import type { Octokit } from "octokit";
 
-import { config } from "../../config";
 import { logger } from "../../logger";
 import { dispatchByLabel } from "../../workflows/dispatcher";
 import { dispatchCanonicalCommand } from "../../workflows/ship/command-dispatch";
@@ -142,31 +141,19 @@ function handlePullRequestLabeled(
     return;
   }
 
-  void dispatchByLabel({
-    octokit,
-    logger: log,
-    label: labelName,
-    target: {
-      type: "pr",
-      owner: payload.repository.owner.login,
-      repo: payload.repository.name,
-      number: payload.pull_request.number,
-    },
-    senderLogin,
-    deliveryId,
-  }).catch((err: unknown) => {
-    log.error({ err }, "dispatchByLabel threw for pull_request.labeled");
-  });
+  // Canonical routing wins; legacy `dispatchByLabel` runs only when
+  // `routeTrigger` returns null. Without this precedence, an overlapping
+  // label (e.g. `bot:ship`) fires both pipelines for one webhook.
+  // FR-029..FR-035 eligibility — labels declared issue-only (e.g.
+  // `bot:investigate`) are rejected here and fall through to the legacy
+  // path, which ignores them on PRs.
+  const owner = payload.repository.owner.login;
+  const repo = payload.repository.name;
+  const prNumber = payload.pull_request.number;
+  const installationId = payload.installation?.id;
 
-  // T028d: ship trigger-surface dispatch (flag-gated). The legacy
-  // dispatchByLabel path above is preserved; this adds the new normalised
-  // CanonicalCommand path for ship/stop/resume/abort labels.
-  if (config.shipUseTriggerSurfacesV2 && payload.installation !== undefined) {
-    const installationId = payload.installation.id;
-    const owner = payload.repository.owner.login;
-    const repo = payload.repository.name;
-    const prNumber = payload.pull_request.number;
-    void (async (): Promise<void> => {
+  void (async (): Promise<void> => {
+    if (installationId !== undefined) {
       try {
         const command = await routeTrigger({
           surface: "label",
@@ -174,12 +161,29 @@ function handlePullRequestLabeled(
             label_name: labelName,
             principal_login: senderLogin,
             pr: { owner, repo, number: prNumber, installation_id: installationId },
+            event_surface: "pr-label",
           },
         });
-        if (command !== null) dispatchCanonicalCommand(command, { octokit, log });
+        if (command !== null) {
+          dispatchCanonicalCommand(command, { octokit, log });
+          return;
+        }
       } catch (err) {
         log.error({ err }, "trigger-router threw for pull_request.labeled");
       }
-    })();
-  }
+    }
+
+    try {
+      await dispatchByLabel({
+        octokit,
+        logger: log,
+        label: labelName,
+        target: { type: "pr", owner, repo, number: prNumber },
+        senderLogin,
+        deliveryId,
+      });
+    } catch (err) {
+      log.error({ err }, "dispatchByLabel threw for pull_request.labeled");
+    }
+  })();
 }

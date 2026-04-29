@@ -152,12 +152,12 @@ Composite workflows like `ship` insert a child row per step. When the child comp
 
 ### ship (PR shepherding lifecycle, `ship_intents`)
 
-A separate, newer lifecycle layered on top of the composite handler — **flag-gated** behind `SHIP_USE_TRIGGER_SURFACES_V2`, `SHIP_USE_PROBE_VERDICT`, and `SHIP_USE_CONTINUATION_LOOP`. Default off; the composite path above is unchanged when these flags are unset. See [`docs/SHIP.md`](SHIP.md) for the operator-facing summary.
+A separate, newer lifecycle layered on top of the composite handler. The probe-verdict ladder and continuation-loop architecture remain **flag-gated** behind `SHIP_USE_PROBE_VERDICT` and `SHIP_USE_CONTINUATION_LOOP` (default off; the composite path above is unchanged when these flags are unset). The three trigger surfaces — literal, natural-language, and label — are permanent v1 and require no flag. See [`docs/SHIP.md`](SHIP.md) for the operator-facing summary.
 
 - **State**: rows in `ship_intents` (status: `active` | `paused` | `merged_externally` | `ready_awaiting_human_merge` | `deadline_exceeded` | `human_took_over` | `aborted_by_user` | `pr_closed`). Wake events queued in Valkey `ship:tickle`. Cancellation flag at `ship:cancel:{intent_id}`.
 - **Three trigger surfaces (FR-027)** — all functionally equivalent, normalised to a single `CanonicalCommand`:
-  1. **Literal**: `bot:ship` (or `bot:ship --deadline 2h`) PR comment. Deterministic regex parser. Available without the v2 flag.
-  2. **Natural language**: `@chrisleekr-bot ship this please`. Mention-prefix-gated NL classifier (FR-025a) — zero LLM cost on comments without the mention. Bedrock single-turn classification.
+  1. **Literal**: `bot:ship` (or `bot:ship --deadline 2h`) PR comment. Deterministic regex parser. Permanent surface.
+  2. **Natural language**: `@chrisleekr-bot ship this please`. Mention-prefix-gated NL classifier (FR-025a) — zero LLM cost on comments without the mention. Bedrock single-turn classification. Permanent surface.
   3. **Label**: apply `bot:ship` (or `bot:ship/deadline=2h`). Bot self-removes the label after acting (FR-026a). Re-application is the supported re-trigger mechanism.
 - **Lifecycle commands** (same three surfaces): `bot:stop` / `bot:resume` / `bot:abort-ship`.
 - **Reactor (T023-T027)**: `pull_request.{synchronize,closed}`, `pull_request_review.submitted`, `pull_request_review_comment.{created,edited,deleted}`, `check_run.completed`, `check_suite.completed` early-wake any active intent on the affected PR via Valkey `ZADD ship:tickle 0 <intent_id>`. Reactor on `synchronize` from a non-bot pusher transitions to terminal `human_took_over` + `manual-push-detected` (FR-010). Reactor on `pull_request.closed` transitions to `merged_externally` or `pr_closed`.
