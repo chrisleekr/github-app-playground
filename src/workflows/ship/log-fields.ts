@@ -61,3 +61,43 @@ export function usdToCents(usd: number): number {
   if (!Number.isFinite(usd) || usd < 0) return 0;
   return Math.round(usd * 100);
 }
+
+/**
+ * Canonical pino `event` keys emitted by the ship-iteration-wiring code path
+ * (FR-018). Centralised here so a typo in any emitter is a compile error,
+ * and so the quickstart S0 pre-flight check can grep for these literals.
+ */
+export const SHIP_LOG_EVENTS = {
+  iteration: {
+    enqueued: "ship.iteration.enqueued",
+    terminalCap: "ship.iteration.terminal_cap",
+    terminalDeadline: "ship.iteration.terminal_deadline",
+  },
+  tickle: {
+    started: "ship.tickle.started",
+    due: "ship.tickle.due",
+    skipTerminal: "ship.tickle.skip_terminal",
+  },
+  scoped: {
+    rebase: {
+      enqueued: "ship.scoped.rebase.enqueued",
+      daemonCompleted: "ship.scoped.rebase.daemon.completed",
+      daemonFailed: "ship.scoped.rebase.daemon.failed",
+    },
+    fixThread: {
+      enqueued: "ship.scoped.fix_thread.enqueued",
+      daemonCompleted: "ship.scoped.fix_thread.daemon.completed",
+      daemonFailed: "ship.scoped.fix_thread.daemon.failed",
+    },
+    explainThread: {
+      enqueued: "ship.scoped.explain_thread.enqueued",
+      daemonCompleted: "ship.scoped.explain_thread.daemon.completed",
+      daemonFailed: "ship.scoped.explain_thread.daemon.failed",
+    },
+    openPr: {
+      enqueued: "ship.scoped.open_pr.enqueued",
+      daemonCompleted: "ship.scoped.open_pr.daemon.completed",
+      daemonFailed: "ship.scoped.open_pr.daemon.failed",
+    },
+  },
+} as const;

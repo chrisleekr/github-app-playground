@@ -182,6 +182,14 @@ export async function executeJob(
   const offerId = payload.id;
   const context = payload.payload.context as unknown as SerializableBotContext;
 
+  // Scoped-* jobs route through their own deterministic/agent-driven
+  // executors. They do NOT go through the legacy BotContext pipeline, so
+  // dispatch BEFORE the (legacy-shaped) context validation below.
+  if (payload.payload.scoped !== undefined) {
+    await runScopedJob(payload, capabilities, send);
+    return;
+  }
+
   if (!validateJobContext(context, offerId, send)) return;
 
   // Workflow-run jobs route through a registry-driven executor instead of
@@ -331,6 +339,73 @@ export async function executeJob(
   } finally {
     activeJobs.delete(offerId);
     jobAbortControllers.delete(offerId);
+  }
+}
+
+// Scoped-job dispatch (US3 routing surface)
+
+/**
+ * Dispatch a `scoped-*` job:payload to the matching executor. The executor
+ * implementations land in US3 (T029-T032); this surface throws a structured
+ * `not implemented` error per kind so a daemon image without the executors
+ * surfaces a clean halt rather than a silent drop.
+ *
+ * Routes via the Zod-validated `payload.scoped.jobKind` discriminator —
+ * matches the `scoped-job-offer` schema at the WS boundary, so a misrouted
+ * payload is impossible by construction.
+ */
+// eslint-disable-next-line @typescript-eslint/require-await -- async surface preserved for US3 executors that will introduce real awaits
+async function runScopedJob(
+  payload: JobPayloadMessage,
+  _capabilities: DaemonCapabilities,
+  send: (msg: unknown) => void,
+): Promise<void> {
+  const scoped = payload.payload.scoped;
+  if (scoped === undefined) {
+    logger.error({ offerId: payload.id }, "runScopedJob called without scoped payload");
+    return;
+  }
+
+  const offerId = payload.id;
+  const startedAt = Date.now();
+  const installationToken = payload.payload.installationToken;
+  void installationToken; // consumed by per-kind executors landing in US3
+
+  try {
+    switch (scoped.jobKind) {
+      case "scoped-rebase":
+      case "scoped-fix-thread":
+      case "scoped-explain-thread":
+      case "scoped-open-pr":
+        // US3 executors plug in here (T033). Until then, every scoped kind
+        // reports a deterministic halt so the orchestrator-side completion
+        // bridge (T033b) can post a user-visible "not yet wired" reply
+        // without the daemon hanging.
+        throw new Error(`scoped executor not implemented: ${scoped.jobKind}`);
+    }
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    logger.error(
+      {
+        event: `ship.scoped.${scoped.jobKind}.daemon.failed`,
+        offerId,
+        deliveryId: scoped.deliveryId,
+        reason,
+      },
+      "scoped-job execution failed",
+    );
+    send({
+      type: "scoped-job-completion",
+      ...createMessageEnvelope(offerId),
+      payload: {
+        offerId,
+        deliveryId: scoped.deliveryId,
+        jobKind: scoped.jobKind,
+        status: "failed" as const,
+        durationMs: Date.now() - startedAt,
+        reason,
+      },
+    });
   }
 }
 

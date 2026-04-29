@@ -1,7 +1,9 @@
 /**
- * Schema for the `workflow_runs.context_json` payload that ship-driven
- * iterations write so the orchestrator's completion cascade can early-wake
- * the originating ship intent (research.md Q1).
+ * Schema for the JSONB `state` blob that ship-driven iterations write into
+ * `workflow_runs.state` so the orchestrator's completion cascade can
+ * early-wake the originating ship intent (research.md Q1; the column is
+ * named `state` in `005_workflow_runs.sql`, the spec calls it "context_json"
+ * generically because it carries per-run context).
  *
  * This module owns the `shipIntentId` convention end-to-end:
  *   - producers (iteration handler) call `serializeShipWorkflowContext` before
@@ -38,12 +40,13 @@ export function serializeShipWorkflowContext(intentId: string): ShipIntentContex
 
 /**
  * Best-effort lookup of `shipIntentId` from a freshly-completed
- * `workflow_runs.context_json` blob. Returns `undefined` when the field is
- * absent or malformed so the cascade can no-op cleanly without throwing on
- * legacy rows.
+ * `workflow_runs.state` blob. Returns `undefined` when the field is absent
+ * or malformed so the cascade can no-op cleanly without throwing on legacy
+ * rows.
  */
-export function extractShipIntentId(contextJson: unknown): string | undefined {
-  const result = ShipIntentContextSchema.safeParse(contextJson);
-  if (!result.success) return undefined;
-  return result.data.shipIntentId;
+export function extractShipIntentId(state: unknown): string | undefined {
+  if (state === null || typeof state !== "object") return undefined;
+  const candidate = (state as Record<string, unknown>)["shipIntentId"];
+  if (typeof candidate !== "string" || candidate.length === 0) return undefined;
+  return candidate;
 }

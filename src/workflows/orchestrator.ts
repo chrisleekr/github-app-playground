@@ -4,12 +4,17 @@ import type pino from "pino";
 
 import { config } from "../config";
 import { requireDb } from "../db";
+import { getIntentById } from "../db/queries/ship";
 import { getInstanceId } from "../orchestrator/instance-id";
 import { enqueueJob } from "../orchestrator/job-queue";
+import { requireValkeyClient } from "../orchestrator/valkey";
+import { isSessionTerminalState } from "../shared/ship-types";
 import { addReaction, type ReactionContent } from "../utils/reactions";
 import { recordWorkflowExecution } from "./execution-row";
 import { getByName, type WorkflowName } from "./registry";
 import { findById, markFailed, type WorkflowRunRow } from "./runs-store";
+import { TICKLE_KEY } from "./ship/webhook-reactor";
+import { extractShipIntentId } from "./ship/workflow-context";
 import { setState } from "./tracking-mirror";
 
 /**
@@ -47,6 +52,12 @@ export async function onStepComplete(
 ): Promise<void> {
   const db = requireDb();
   const { logger } = deps;
+
+  // Ship-iteration early-wake hook: when the just-completed child carries a
+  // `shipIntentId` in its state JSONB, ZADD `ship:tickle` so the scheduler
+  // re-enters the intent on the next tick. Runs BEFORE the parent-cascade
+  // logic because ship-iteration runs may have no `parent_run_id`.
+  await maybeEarlyWakeShipIntent(childRunId, logger);
 
   // Capture anything the transaction wants to emit AFTER commit so the DB
   // is the source of truth for enqueued jobs and GitHub API calls. The
@@ -351,6 +362,67 @@ export async function onStepComplete(
       deps,
       parentRunId,
       terminal.status === "succeeded" ? "hooray" : "confused",
+    );
+  }
+}
+
+/**
+ * Read `state.shipIntentId` from a freshly-completed `workflow_runs` row and,
+ * if present and the intent is non-terminal, push it onto the `ship:tickle`
+ * sorted set with score 0 so the scheduler picks it up on the next tick.
+ *
+ * Defensive: a Valkey blip MUST NOT propagate up — the worst outcome is a
+ * ship intent that waits for the next periodic tickle (config-driven, in
+ * minutes), not a daemon-side throw that fails the parent cascade.
+ *
+ * @param childRunId  ID of the child `workflow_runs` row that just terminated.
+ * @param log         Pino logger used by the cascade caller.
+ */
+async function maybeEarlyWakeShipIntent(childRunId: string, log: pino.Logger): Promise<void> {
+  const db = requireDb();
+  const rows: { state: Record<string, unknown> }[] = await db`
+    SELECT state FROM workflow_runs WHERE id = ${childRunId}
+  `;
+  const child = rows[0];
+  if (child === undefined) return;
+
+  const intentId = extractShipIntentId(child.state);
+  if (intentId === undefined) return;
+
+  try {
+    const intent = await getIntentById(intentId);
+    if (intent === null) {
+      log.warn(
+        { event: "ship.tickle.skip_terminal", intent_id: intentId, reason: "intent_not_found" },
+        "ship-tickle early-wake skipped — intent not found",
+      );
+      return;
+    }
+    if (isSessionTerminalState(intent.status)) {
+      log.info(
+        {
+          event: "ship.tickle.skip_terminal",
+          intent_id: intentId,
+          status: intent.status,
+        },
+        "ship-tickle early-wake skipped — intent already terminal",
+      );
+      return;
+    }
+    const valkey = requireValkeyClient();
+    await valkey.send("ZADD", [TICKLE_KEY, "0", intentId]);
+    log.info(
+      { event: "ship.tickle.due", intent_id: intentId, source: "workflow_run_completion" },
+      "ship-tickle early-wake on workflow_run completion",
+    );
+  } catch (err) {
+    log.warn(
+      {
+        err: err instanceof Error ? err.message : String(err),
+        intent_id: intentId,
+        childRunId,
+      },
+      "ship-tickle early-wake failed (non-fatal — periodic scan will catch up)",
     );
   }
 }
