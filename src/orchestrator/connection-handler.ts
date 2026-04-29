@@ -317,6 +317,9 @@ export function handleDaemonMessage(
     case "job:result":
       handleJobMessage(ws, msg);
       break;
+    case "scoped-job-completion":
+      void handleScopedJobCompletion(ws, msg);
+      break;
   }
 }
 
@@ -556,6 +559,87 @@ function handleUpdateAcknowledged(
 }
 
 // Job message handling (T032-T033)
+
+/**
+ * Server-side bridge for `scoped-job-completion` (T033b). The daemon
+ * executor reports the structured outcome here; the orchestrator releases
+ * the pending offer + capacity slot and emits a telemetry log line. The
+ * user-facing Octokit reply is posted by the daemon executor itself
+ * (using the installation token it already holds), so this handler
+ * does not need to format another comment — doing so would double-post.
+ *
+ * Validation: payload arrives via the Zod discriminated union from
+ * `serverMessageSchema` / `daemonMessageSchema` parse, so unknown
+ * `jobKind` values are rejected at the WS boundary before reaching this
+ * function.
+ */
+async function handleScopedJobCompletion(
+  ws: ServerWebSocket<WsConnectionData>,
+  msg: Extract<DaemonMessage, { type: "scoped-job-completion" }>,
+): Promise<void> {
+  const daemonId = ws.data.daemonId;
+  const offerId = msg.payload.offerId;
+  const { jobKind, status, deliveryId } = msg.payload;
+
+  // Release the pending offer if still tracked. The offer may already be
+  // gone if the daemon's earlier `job:accept` handler removed it (the
+  // legacy non-scoped flow does), so this is best-effort.
+  const offer = getPendingOffer(offerId);
+  if (offer !== undefined) {
+    removePendingOffer(offerId);
+  }
+
+  if (status === "succeeded") {
+    logger.info(
+      {
+        event: `ship.scoped.${jobKind.replace("scoped-", "").replaceAll("-", "_")}.daemon.completed`,
+        daemonId,
+        offerId,
+        deliveryId,
+        jobKind,
+      },
+      "scoped-job daemon reported success",
+    );
+    await markExecutionFinalized(deliveryId, true);
+    return;
+  }
+
+  // halted / failed paths: surface the reason as a structured log line so
+  // operators can see why an executor halted without tailing the daemon
+  // pod's stderr. Tracking-comment / thread-reply was already posted by
+  // the daemon executor with the installation token.
+  logger.warn(
+    {
+      event: `ship.scoped.${jobKind.replace("scoped-", "").replaceAll("-", "_")}.daemon.failed`,
+      daemonId,
+      offerId,
+      deliveryId,
+      jobKind,
+      status,
+      reason: msg.payload.reason ?? null,
+    },
+    "scoped-job daemon reported non-success",
+  );
+  await markExecutionFinalized(deliveryId, status === "halted");
+}
+
+/**
+ * Drop a delivery from the in-memory offer map cleanly. Wraps the
+ * existing `markExecutionFailed` / no-op for success so the scoped
+ * completion path stays single-responsibility.
+ */
+async function markExecutionFinalized(deliveryId: string, success: boolean): Promise<void> {
+  if (!success) {
+    try {
+      await markExecutionFailed(deliveryId, "scoped-job daemon halted/failed");
+    } catch (err) {
+      logger.warn(
+        { err: err instanceof Error ? err.message : String(err), deliveryId },
+        "markExecutionFailed for scoped completion failed (non-fatal)",
+      );
+    }
+  }
+}
 
 function handleJobMessage(ws: ServerWebSocket<WsConnectionData>, msg: DaemonMessage): void {
   const daemonId = ws.data.daemonId;

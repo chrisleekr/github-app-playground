@@ -354,7 +354,6 @@ export async function executeJob(
  * matches the `scoped-job-offer` schema at the WS boundary, so a misrouted
  * payload is impossible by construction.
  */
-// eslint-disable-next-line @typescript-eslint/require-await -- async surface preserved for US3 executors that will introduce real awaits
 async function runScopedJob(
   payload: JobPayloadMessage,
   _capabilities: DaemonCapabilities,
@@ -369,19 +368,132 @@ async function runScopedJob(
   const offerId = payload.id;
   const startedAt = Date.now();
   const installationToken = payload.payload.installationToken;
-  void installationToken; // consumed by per-kind executors landing in US3
 
   try {
     switch (scoped.jobKind) {
-      case "scoped-rebase":
-      case "scoped-fix-thread":
-      case "scoped-explain-thread":
-      case "scoped-open-pr":
-        // US3 executors plug in here (T033). Until then, every scoped kind
-        // reports a deterministic halt so the orchestrator-side completion
-        // bridge (T033b) can post a user-visible "not yet wired" reply
-        // without the daemon hanging.
-        throw new Error(`scoped executor not implemented: ${scoped.jobKind}`);
+      case "scoped-rebase": {
+        const { executeScopedRebase } = await import("./scoped-rebase-executor");
+        const outcome = await executeScopedRebase({
+          installationToken,
+          installationId: scoped.installationId,
+          owner: scoped.owner,
+          repo: scoped.repo,
+          prNumber: scoped.prNumber,
+        });
+        send({
+          type: "scoped-job-completion",
+          ...createMessageEnvelope(offerId),
+          payload: {
+            offerId,
+            deliveryId: scoped.deliveryId,
+            jobKind: "scoped-rebase",
+            status: "succeeded" as const,
+            durationMs: Date.now() - startedAt,
+            rebaseOutcome:
+              outcome.kind === "merged"
+                ? {
+                    result: "merged" as const,
+                    commentId: outcome.comment_id,
+                    mergeCommitSha: outcome.merge_commit_sha,
+                  }
+                : outcome.kind === "conflict"
+                  ? {
+                      result: "conflict" as const,
+                      commentId: outcome.comment_id,
+                      conflictPaths: [...outcome.conflict_paths],
+                    }
+                  : outcome.kind === "up-to-date"
+                    ? { result: "up-to-date" as const, commentId: outcome.comment_id }
+                    : { result: "closed" as const, commentId: outcome.comment_id },
+          },
+        });
+        return;
+      }
+      case "scoped-fix-thread": {
+        const { executeScopedFixThread } = await import("./scoped-fix-thread-executor");
+        const outcome = await executeScopedFixThread({
+          installationToken,
+          owner: scoped.owner,
+          repo: scoped.repo,
+          prNumber: scoped.prNumber,
+          threadRef: scoped.threadRef,
+          triggerCommentId: scoped.triggerCommentId,
+        });
+        send({
+          type: "scoped-job-completion",
+          ...createMessageEnvelope(offerId),
+          payload: {
+            offerId,
+            deliveryId: scoped.deliveryId,
+            jobKind: "scoped-fix-thread",
+            status: outcome.status,
+            durationMs: Date.now() - startedAt,
+            ...(outcome.threadReplyId !== undefined
+              ? { threadReplyId: outcome.threadReplyId }
+              : {}),
+            ...(outcome.pushedCommitSha !== undefined
+              ? { pushedCommitSha: outcome.pushedCommitSha }
+              : {}),
+            ...(outcome.reason !== undefined ? { reason: outcome.reason } : {}),
+          },
+        });
+        return;
+      }
+      case "scoped-explain-thread": {
+        const { executeScopedExplainThread } = await import("./scoped-explain-thread-executor");
+        const outcome = await executeScopedExplainThread({
+          installationToken,
+          owner: scoped.owner,
+          repo: scoped.repo,
+          prNumber: scoped.prNumber,
+          threadRef: scoped.threadRef,
+          triggerCommentId: scoped.triggerCommentId,
+        });
+        send({
+          type: "scoped-job-completion",
+          ...createMessageEnvelope(offerId),
+          payload: {
+            offerId,
+            deliveryId: scoped.deliveryId,
+            jobKind: "scoped-explain-thread",
+            status: outcome.status,
+            durationMs: Date.now() - startedAt,
+            ...(outcome.threadReplyId !== undefined
+              ? { threadReplyId: outcome.threadReplyId }
+              : {}),
+            ...(outcome.reason !== undefined ? { reason: outcome.reason } : {}),
+          },
+        });
+        return;
+      }
+      case "scoped-open-pr": {
+        const { executeScopedOpenPr } = await import("./scoped-open-pr-executor");
+        const outcome = await executeScopedOpenPr({
+          installationToken,
+          owner: scoped.owner,
+          repo: scoped.repo,
+          issueNumber: scoped.issueNumber,
+          triggerCommentId: scoped.triggerCommentId,
+          verdictSummary: scoped.verdictSummary,
+        });
+        send({
+          type: "scoped-job-completion",
+          ...createMessageEnvelope(offerId),
+          payload: {
+            offerId,
+            deliveryId: scoped.deliveryId,
+            jobKind: "scoped-open-pr",
+            status: outcome.status,
+            durationMs: Date.now() - startedAt,
+            ...(outcome.newPrNumber !== undefined ? { newPrNumber: outcome.newPrNumber } : {}),
+            ...(outcome.pushedCommitSha !== undefined
+              ? { pushedCommitSha: outcome.pushedCommitSha }
+              : {}),
+            ...(outcome.reason !== undefined ? { reason: outcome.reason } : {}),
+          },
+        });
+        return;
+      }
     }
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
