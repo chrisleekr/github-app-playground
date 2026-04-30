@@ -221,6 +221,18 @@ environment variable in `loadConfig()`, and document it in `docs/SETUP.md`.
 
 ---
 
+## Existing servers
+
+| Server name             | Transport | Purpose                                                                                                                       | Opt-in                                                                                                                           |
+| ----------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `comment_update`        | stdio     | Writes/updates GitHub PR/issue comments owned by the bot.                                                                     | Always on.                                                                                                                       |
+| `inline_comments`       | stdio     | Posts inline review comments and replies on PR diffs.                                                                         | Always on.                                                                                                                       |
+| `resolve_review_thread` | stdio     | Resolves a single PR review thread the bot has just replied to. Bound to one `(owner, repo, pullNumber)` per server instance. | Wired by `src/workflows/handlers/resolve.ts` for the resolve iteration only — not added to a session's allowed-tools by default. |
+| `daemon_capabilities`   | stdio     | Reports the executing daemon's local environment (CPU, memory, language toolchain) to the agent.                              | Always on for daemon-run workflows.                                                                                              |
+| `context7` (HTTP)       | http      | Fetches library documentation snippets via Upstash Context7. Requires `CONTEXT7_API_KEY`.                                     | Auto-skipped when API key absent.                                                                                                |
+
+---
+
 ## Reference — Key Interfaces
 
 The `McpServerDef` type in `src/types.ts` defines both transport shapes:

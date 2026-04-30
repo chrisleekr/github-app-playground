@@ -1,35 +1,103 @@
-# Resolve report — PR #54
+# Resolve report — PR #70
 
 ## Summary
 
-PR #54 (`refactor/shared-test-factories` → `main`, head now `fecd04c`) entered this iteration with 0 failing checks and 3 open `[minor]` review comments — all on the test refactor itself. All three were classified **Valid**, fixed in a single commit (`fecd04c`), and replied to inline. The branch was already up to date with `main` (0 behind, 4 ahead) so no rebase was needed. Verification suite (typecheck + lint + the documented two-shard test run) is green. Outstanding gate: human approval + merge — per FR-017 the bot must not call `gh pr merge`.
+PR #70 (`ci/wire-postgres-valkey-services-50` → `main`) had one failing
+check (`Lint & Test`) and three open review threads when this resolve
+iteration started. All three review threads were classified **Valid**
+and are now addressed in commit
+[`fddee33`](https://github.com/chrisleekr/github-app-playground/commit/fddee336).
+The CI failure was an integration-test-isolation drift — the two suites
+touched by this PR forgot to drop `workflow_runs` (added by migration
+`005_workflow_runs` after these two suites were last edited) — and is
+fixed in the same commit. PR is now waiting for CI to re-run on the new
+HEAD; provided green, all blockers are cleared.
 
 ## CI status
 
-No failing checks at the start of this iteration; nothing fetched, nothing fixed. `FIX_ATTEMPTS_CAP` unchanged.
+| Check                     | Before                                                                                                                        | What I did                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Lint & Test`             | fail (1m14s, [run 24991617907](https://github.com/chrisleekr/github-app-playground/actions/runs/24991617907/job/73178325642)) | Diagnosed: `bun test test/integration/telemetry-aggregates.test.ts` failed with `PostgresError: relation "workflow_runs" already exists` during `runMigrations` step `005_workflow_runs`. Root cause: each Bun test file runs in its own process under `scripts/test-isolated.sh`; an earlier file (one of the 6 newer DB-backed suites) creates `workflow_runs`, and the cleanup hook in `telemetry-aggregates.test.ts` / `repo-knowledge.test.ts` only drops the legacy table set (`_migrations`, `repo_memory`, `triage_results`, `executions`, `daemons`) — leaving `workflow_runs` behind. Migration 005 then fails because `CREATE TABLE workflow_runs` (no `IF NOT EXISTS`) hits the leftover. **Fix**: added `DROP TABLE IF EXISTS workflow_runs CASCADE;` to both suites' `beforeAll` (and `telemetry-aggregates.test.ts`'s `afterAll`). The other 6 DB-backed suites already drop it. Pushed in `fddee33`. |
+| `Analyze (actions)`       | pass                                                                                                                          | unchanged                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `Analyze (javascript-…)`  | pass                                                                                                                          | unchanged                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `CodeQL`                  | pass                                                                                                                          | unchanged                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `Gitleaks` (×2)           | pass                                                                                                                          | unchanged                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `Label PR based on title` | pass                                                                                                                          | unchanged                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 ## Review comments
 
-| Comment                                                                                          | Path:Line                                | Class | Action                                                                                                                                                                                                               | Reply                                                                                            |
-| ------------------------------------------------------------------------------------------------ | ---------------------------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| [3141850815](https://github.com/chrisleekr/github-app-playground/pull/54#discussion_r3141850815) | `test/factories.ts:124`                  | Valid | Removed `makeEnrichedBotContext` export and its `EnrichedBotContext` type import in `fecd04c`                                                                                                                        | [3141857868](https://github.com/chrisleekr/github-app-playground/pull/54#discussion_r3141857868) |
-| [3141851545](https://github.com/chrisleekr/github-app-playground/pull/54#discussion_r3141851545) | `test/core/tracking-comment.test.ts:166` | Valid | Replaced `let ctx: BotContext;` with `let ctx = makeBotContext({ deliveryId: DELIVERY_ID });` so the type is inferred from the factory; no stale `BotContext` import needed                                          | [3141857884](https://github.com/chrisleekr/github-app-playground/pull/54#discussion_r3141857884) |
-| [3141851672](https://github.com/chrisleekr/github-app-playground/pull/54#discussion_r3141851672) | `test/core/tracking-comment.test.ts:31`  | Valid | Dropped `octokit: {} as Octokit` from all 8 `makeBotContext` call sites in the file (lines 31, 52, 66, 87, 96, 111, 136, 166); each test still reassigns `ctx.octokit` with its bespoke double immediately afterward | [3141857899](https://github.com/chrisleekr/github-app-playground/pull/54#discussion_r3141857899) |
+### [major] `.github/workflows/ci.yml:134` — `TEST_VALKEY_URL` is dead
 
-### Verification
+- **Classification**: Valid.
+- **Evidence**: `grep -rn 'TEST_VALKEY_URL' src/ test/` returns zero
+  matches in code; only `liveness-reaper.test.ts:21` reads
+  `process.env["VALKEY_URL"]`, and the rest of the suite picks up
+  `VALKEY_URL` via `setIfEmpty("VALKEY_URL", "redis://localhost:6379")`
+  in `test/preload.ts:62`. CI worked today only because the preload
+  default coincidentally matches the service container's port.
+- **Action**: renamed `TEST_VALKEY_URL` → `VALKEY_URL` on the `Test`
+  step in `.github/workflows/ci.yml`, with an inline comment explaining
+  why the name differs from `TEST_DATABASE_URL`. Updated CONTRIBUTING.md
+  to reference `VALKEY_URL` (and to note the preload default).
+- **Reply**: <https://github.com/chrisleekr/github-app-playground/pull/70#discussion_r3147016965>
 
-- `bun run typecheck` — exit 0
-- `bun run lint` — 0 errors, 122 warnings (all pre-existing; none introduced)
-- `bun test test/utils/retry.test.ts test/webhook/authorize.test.ts test/core/prompt-builder.test.ts test/core/fetcher.test.ts test/webhook/router.test.ts` — **95 pass / 0 fail / 238 expects**
-- `bun test test/core/tracking-comment.test.ts` (isolated per the documented `mock.module` ordering caveat) — **26 pass / 0 fail / 70 expects**
+### [minor] `CONTRIBUTING.md:89` — DB-backed suite table is incomplete
+
+- **Classification**: Valid.
+- **Evidence**: `grep -rn 'TEST_DATABASE_URL' test/` finds 8 suites,
+  not 3. The 5 missing entries: `test/webhook/events/issue-comment.test.ts`,
+  `test/workflows/runs-store.test.ts`,
+  `test/workflows/handlers/ship.test.ts`,
+  `test/workflows/orchestrator.test.ts`,
+  `test/orchestrator/liveness-reaper.test.ts`.
+- **Action**: reframed the section in terms of the contract — "any suite
+  gating on `process.env["TEST_DATABASE_URL"]` is opt-in; locate the
+  current set with `grep -rn 'TEST_DATABASE_URL' test/`" — listed all 8
+  current opt-in suites for visibility, and added explicit guidance to
+  new-suite authors to drop every migration-created table in their
+  cleanup hooks. That last point is exactly the trap that broke this
+  PR's CI in the first place.
+- **Reply**: <https://github.com/chrisleekr/github-app-playground/pull/70#discussion_r3147017118>
+
+### [nit] `scripts/test-isolated.sh:15` — `' 0 fail'` is unanchored
+
+- **Classification**: Valid (low-risk false-positive surface).
+- **Evidence**: existing `grep -q ' 0 fail'` would match a stack trace,
+  test name, or echoed string containing the substring; the new skip
+  check on the same file already anchors with `^[[:space:]]+`.
+- **Action**: tightened to `grep -qE '^[[:space:]]+0 fail'` for symmetry
+  with the skip-check anchor on the same file. Updated the inline
+  comment to explain the anchor's role. `shellcheck` still clean.
+- **Reply**: <https://github.com/chrisleekr/github-app-playground/pull/70#discussion_r3147017224>
 
 ## Commits pushed
 
-- [`fecd04c`](https://github.com/chrisleekr/github-app-playground/commit/fecd04c) · refactor(testing): drop dead helper and throwaway overrides per review
-
-Net diff for the resolve commit: 2 files changed, +10 / −26.
+- `fddee33` · `fix(testing): drop workflow_runs in integration test cleanup; address review feedback`
 
 ## Outstanding
 
-- **Human approval + merge.** Per the trigger contract (FR-017) the bot must not call `gh pr merge` / `octokit.pulls.merge`, so merging stays a manual action.
-- `reviewDecision` could not be confirmed from inside this run (no GitHub token available for the `gh pr view --json reviewDecision` call against the merge-status surface), so the explicit "review complete — ready to merge" line was not posted; once a human approval lands, the next workflow iteration will see `reviewDecision = APPROVED` and post that line.
+- **Waiting on CI** — the new HEAD (`fddee33`) was pushed at
+  ~2026-04-27T11:46Z; the `Lint & Test` re-run is the canonical
+  verification surface, just like the original PR. Provided it goes
+  green:
+  - `Lint & Test` cleared by the `workflow_runs` drop.
+  - All 3 review threads cleared by the same commit.
+  - `reviewDecision` is currently **not** APPROVED (the prior review
+    raised the three findings); a re-review or explicit resolution by
+    the author is the only remaining merge gate.
+- **No human action items raised by this resolve iteration** beyond
+  the standard re-review.
+
+Local pre-push verification on `fddee33`:
+
+- `bun run typecheck` — clean.
+- `bun run lint` — 0 errors / 139 pre-existing warnings (unchanged baseline).
+- `bun run format` — `All matched files use Prettier code style!`.
+- `bun run build` — `Build completed successfully`.
+- `bun run check:dockerfile-base-sync` — `OK: SHARED-BASE blocks match`.
+- `shellcheck scripts/test-isolated.sh` — clean.
+- `bash scripts/test-isolated.sh` (full suite) — 38 files passed; 6
+  DB-backed suites correctly fail-via-skip locally because the sandbox
+  has no Postgres / Valkey. CI provisions both; that is what cleared
+  the silent-skip masking and is exactly the path the original PR was
+  designed to enable.

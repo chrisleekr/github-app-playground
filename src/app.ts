@@ -5,6 +5,8 @@ import { join } from "node:path";
 
 import { createNodeMiddleware } from "@octokit/webhooks";
 import type {
+  CheckRunEvent,
+  CheckSuiteEvent,
   IssueCommentEvent,
   IssuesEvent,
   PullRequestEvent,
@@ -32,6 +34,8 @@ import { closeValkey, connectValkey, isValkeyHealthy } from "./orchestrator/valk
 import { sweepValkeyOrphans } from "./orchestrator/valkey-cleanup";
 import { startWebSocketServer, stopWebSocketServer } from "./orchestrator/ws-server";
 import type { BotContext } from "./types";
+import { handleCheckRun } from "./webhook/events/check-run";
+import { handleCheckSuite } from "./webhook/events/check-suite";
 import { handleIssueComment } from "./webhook/events/issue-comment";
 import { handleIssues } from "./webhook/events/issues";
 import { handlePullRequest } from "./webhook/events/pull-request";
@@ -69,8 +73,24 @@ app.webhooks.on("issue_comment.created", ({ octokit, payload, id }) => {
   handleIssueComment(octokit, payload as unknown as IssueCommentEvent, id);
 });
 
-app.webhooks.on(["pull_request.opened", "pull_request.labeled"], ({ octokit, payload, id }) => {
-  handlePullRequest(octokit, payload as unknown as PullRequestEvent, id);
+app.webhooks.on(
+  [
+    "pull_request.opened",
+    "pull_request.labeled",
+    "pull_request.synchronize",
+    "pull_request.closed",
+  ],
+  ({ octokit, payload, id }) => {
+    handlePullRequest(octokit, payload as unknown as PullRequestEvent, id);
+  },
+);
+
+app.webhooks.on("check_run.completed", ({ octokit, payload, id }) => {
+  handleCheckRun(octokit, payload as unknown as CheckRunEvent, id);
+});
+
+app.webhooks.on("check_suite.completed", ({ octokit, payload, id }) => {
+  handleCheckSuite(octokit, payload as unknown as CheckSuiteEvent, id);
 });
 
 app.webhooks.on(["issues.labeled", "issues.unlabeled"], ({ octokit, payload, id }) => {
@@ -81,9 +101,16 @@ app.webhooks.on("pull_request_review.submitted", ({ octokit, payload, id }) => {
   handleReview(octokit, payload as unknown as PullRequestReviewEvent, id);
 });
 
-app.webhooks.on("pull_request_review_comment.created", ({ octokit, payload, id }) => {
-  handleReviewComment(octokit, payload as unknown as PullRequestReviewCommentEvent, id);
-});
+app.webhooks.on(
+  [
+    "pull_request_review_comment.created",
+    "pull_request_review_comment.edited",
+    "pull_request_review_comment.deleted",
+  ],
+  ({ octokit, payload, id }) => {
+    handleReviewComment(octokit, payload as unknown as PullRequestReviewCommentEvent, id);
+  },
+);
 
 // "pull_request_review_thread.created" is NOT a valid GitHub action.
 // The correct actions are "resolved" and "unresolved".

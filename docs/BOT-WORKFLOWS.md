@@ -58,14 +58,14 @@ Composite workflows like `ship` insert a child row per step. When the child comp
 - **Label**: `bot:triage`
 - **Accepted context**: `issue`
 - **Inputs**: issue title + body, plus a fresh clone of the repo (the handler runs the Claude Agent SDK with `Read`/`Grep`/`Glob`/`Bash`/`Write` against the working tree).
-- **Method**: the agent classifies the issue (bug / feature / refactor / docs / unclear). For **bug-class** issues the agent MUST attempt to actually run the failing case — there is no turn cap. Reproduction commands typically include `bun test path/to/specific.test.ts`, `bun run typecheck`, fresh tests written under `/tmp`, or CLI invocations the issue describes. The senior-dev rule is "never decide a bug is real by reading code — run it."
+- **Method**: the agent classifies the issue (bug / feature / refactor / docs / unclear). For **bug-class** issues the agent must establish either a reproduction or a structural proof before declaring valid — there is no turn cap. Three evidence paths are accepted: (1) **code inspection** with `file:line` citations for structural defects (module-scoped state, missing constraint, race window across an `await`, unguarded shared resource); (2) a **runtime test** that exercises the claim (`bun test`, `bun run typecheck`, `/tmp` scratch, CLI invocation); (3) an **invariant test** that pins down the property the fix will rely on (e.g. "N concurrent callers → exactly 1 succeeds", "operation idempotent under retry") — preferred over synthetic race repros, since it survives the fix as a regression guard. Before declaring `reproduced=null` the agent must walk the harness ladder (unit → mocked unit → integration with `bun run dev:deps` Postgres+Valkey → multi-process docker-compose) and name the highest rung tried in `details`. "Race condition we can't trigger" alone is not a valid escape hatch — races almost always have an invariant test.
 - **Outputs**:
   - `state.valid` — boolean verdict
   - `state.confidence` — 0-1 float from the agent's self-assessment
   - `state.summary` — the agent's verdict rationale; length is uncapped (the agent writes as much as the verdict honestly requires). Embedded into the failed-cascade `reason` line when `valid === false`.
   - `state.recommendedNext` ∈ {`plan`, `stop`}
   - `state.evidence` — array of `{file, line?, note?}` cites
-  - `state.reproduction` — `{ attempted: boolean, reproduced: boolean | null, details: string }`. `attempted=false` means non-bug class. `reproduced=null` with `attempted=true` means the agent honestly tried but couldn't reach a verdict (needs prod data, external service we lack). The agent never lies about reproduction status.
+  - `state.reproduction` — `{ attempted: boolean, reproduced: boolean | null, details: string }`. `attempted=false` means non-bug class. `reproduced=true` covers runtime-test pass, invariant-test pass, OR structural-defect inspection backed by `file:line` citations. `reproduced=null` with `attempted=true` is permitted only after the harness ladder has been walked AND an invariant test has been ruled out; `details` must name the highest rung tried and explain why the next rung wouldn't help. The agent never lies about reproduction status. `details` is bounded by a 50 000-char sanity cap (Zod schema) — the prompt softly asks the agent to aim for ≤2000 chars and expand only when evidence demands it, but a verdict whose `details` runs longer is accepted rather than discarded so paid SDK runs are never wasted on a length check.
   - `state.report` — full `TRIAGE.md` markdown with sections: Verdict, What was inspected, **Reproduction** (commands run + output + conclusion), Findings, Reasoning, Recommended next step. Embedded verbatim into the tracking comment.
 - **Stop conditions**:
   - Agent writes both `TRIAGE.md` and `TRIAGE_VERDICT.json`; verdict JSON validates against the Zod schema (which now requires `reproduction`).
@@ -149,6 +149,22 @@ Composite workflows like `ship` insert a child row per step. When the child comp
   - The first stale step becomes `startIndex`; prior-step run ids are carried forward in `state.stepRuns`.
 - **Cost note**: every ship pays for at least two `review` and one `resolve` agent run (the loop's lower bound). With `REVIEW_RESOLVE_MAX_ITERATIONS=2`, the worst case is 2 review + 2 resolve. Per project direction (2026-04-25), accuracy beats cost — closing the loop justifies the extra spend.
 - **Example trigger**: add label `bot:ship`, or comment "`@chrisleekr-bot ship this`"
+
+### ship (PR shepherding lifecycle, `ship_intents`)
+
+A separate, newer lifecycle layered on top of the composite handler. The probe-verdict ladder and continuation-loop architecture remain **flag-gated** behind `SHIP_USE_PROBE_VERDICT` and `SHIP_USE_CONTINUATION_LOOP` (default off; the composite path above is unchanged when these flags are unset). The three trigger surfaces — literal, natural-language, and label — are permanent v1 and require no flag. See [`docs/SHIP.md`](SHIP.md) for the operator-facing summary.
+
+- **State**: rows in `ship_intents` (status: `active` | `paused` | `merged_externally` | `ready_awaiting_human_merge` | `deadline_exceeded` | `human_took_over` | `aborted_by_user` | `pr_closed`). Wake events queued in Valkey `ship:tickle`. Cancellation flag at `ship:cancel:{intent_id}`.
+- **Three trigger surfaces (FR-027)** — all functionally equivalent, normalised to a single `CanonicalCommand`:
+  1. **Literal**: `bot:ship` (or `bot:ship --deadline 2h`) PR comment. Deterministic regex parser. Permanent surface.
+  2. **Natural language**: `@chrisleekr-bot ship this please`. Mention-prefix-gated NL classifier (FR-025a) — zero LLM cost on comments without the mention. Bedrock single-turn classification. Permanent surface.
+  3. **Label**: apply `bot:ship` (or `bot:ship/deadline=2h`). Bot self-removes the label after acting (FR-026a). Re-application is the supported re-trigger mechanism.
+- **Lifecycle commands** (same three surfaces): `bot:stop` / `bot:resume` / `bot:abort-ship`.
+- **Reactor (T023-T027)**: `pull_request.{synchronize,closed}`, `pull_request_review.submitted`, `pull_request_review_comment.{created,edited,deleted}`, `check_run.completed`, `check_suite.completed` early-wake any active intent on the affected PR via Valkey `ZADD ship:tickle 0 <intent_id>`. Reactor on `synchronize` from a non-bot pusher transitions to terminal `human_took_over` + `manual-push-detected` (FR-010). Reactor on `pull_request.closed` transitions to `merged_externally` or `pr_closed`.
+- **Probe verdict ladder** (`src/workflows/ship/verdict.ts`): `human_took_over` > `behind_base` > `failing_checks` > `pending_checks` > `mergeable_pending` > `changes_requested` > `open_threads` > `ready`. The `mergeable=null` backoff schedule is bounded by `MERGEABLE_NULL_BACKOFF_MS_LIST`.
+- **Terminal `ready` action** (FR-019): `markPullRequestReadyForReview` GraphQL mutation if PR `isDraft === true`, then update tracking comment to terminal state, then transition `ship_intents.status = 'ready_awaiting_human_merge'`. Failure of step 1 does NOT block 2 / 3 (logged + surfaced in the tracking comment). The bot **never** calls `gh pr merge` (FR-008, T046b static guard).
+- **MCP server**: `resolve-review-thread` exposes the `resolveReviewThread` GraphQL mutation as a single tool the resolve handler can call — bound to one PR at construction; refuses cross-PR thread ids.
+- **Rollout** (research.md R8): three flags default off; enable for one-week soak; follow-up PR removes flags + dead code paths.
 
 ## User-facing surfaces
 

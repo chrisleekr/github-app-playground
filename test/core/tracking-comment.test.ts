@@ -48,18 +48,66 @@ describe("isAlreadyProcessed", () => {
     expect(result).toBe(true);
   });
 
-  it("calls listComments with direction:desc and per_page:100", async () => {
-    const ctx = makeBotContext({ deliveryId: DELIVERY_ID });
+  it("calls listComments with since=triggerTimestamp and per_page:100, and does NOT pass direction/sort", async () => {
+    // The per-issue listComments REST endpoint accepts only `since`, `per_page`, `page`.
+    // `direction`/`sort` are silently dropped by GitHub (only the repo-level sibling
+    // endpoint honours them), so passing them would be a no-op that hides an idempotency
+    // bug on threads with >100 prior comments. Lock the call shape against regression.
+    const triggerTs = "2026-04-27T10:00:00Z";
+    const ctx = makeBotContext({ deliveryId: DELIVERY_ID, triggerTimestamp: triggerTs });
     const listComments = mock(() => Promise.resolve({ data: [] }));
     ctx.octokit = { rest: { issues: { listComments } } } as unknown as Octokit;
 
     await isAlreadyProcessed(ctx);
 
-    // listComments was called once; the non-null cast is safe.
-
     const callArgs = (listComments.mock.calls[0] as [Record<string, unknown>])[0];
-    expect(callArgs["direction"]).toBe("desc");
+    expect(callArgs["since"]).toBe(triggerTs);
     expect(callArgs["per_page"]).toBe(100);
+    expect(callArgs["direction"]).toBeUndefined();
+    expect(callArgs["sort"]).toBeUndefined();
+  });
+
+  it("hot PR: returns false when 100 old unrelated comments come back without the marker", async () => {
+    // Simulates the bug scenario fixed by switching from the bogus `direction:"desc"` to
+    // `since=triggerTimestamp`: a thread with >100 prior comments returns the oldest 100
+    // ascending; with `since` narrowing the window, page 1 contains zero unrelated comments
+    // and the marker-less response correctly resolves to false (no duplicate-run trigger).
+    const ctx = makeBotContext({ deliveryId: DELIVERY_ID });
+    const oldComments = Array.from({ length: 100 }, (_, i) => ({
+      body: `<!-- delivery:other-delivery-${String(i)} -->\nUnrelated old comment ${String(i)}`,
+    }));
+    ctx.octokit = {
+      rest: {
+        issues: { listComments: mock(() => Promise.resolve({ data: oldComments })) },
+      },
+    } as unknown as Octokit;
+
+    expect(await isAlreadyProcessed(ctx)).toBe(false);
+  });
+
+  it("hot PR + retry: returns true when the only comment in the since-bounded window carries the marker", async () => {
+    // Webhook-retry path: on a fresh pod the in-memory Map is empty, so the durable check
+    // is the only guard. The previously-posted tracking comment sits inside the
+    // `since=triggerTimestamp` window and must be discoverable on page 1.
+    const ctx = makeBotContext({ deliveryId: DELIVERY_ID });
+    ctx.octokit = {
+      rest: {
+        issues: {
+          listComments: mock(() =>
+            Promise.resolve({
+              data: [
+                { body: "@chrisleekr-bot trigger comment that fired this delivery" },
+                {
+                  body: `<!-- delivery:${DELIVERY_ID} -->\nWorking on this...`,
+                },
+              ],
+            }),
+          ),
+        },
+      },
+    } as unknown as Octokit;
+
+    expect(await isAlreadyProcessed(ctx)).toBe(true);
   });
 
   it("returns false when no comment contains the delivery marker", async () => {

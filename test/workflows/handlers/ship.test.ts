@@ -136,6 +136,10 @@ describe.skipIf(sql === null)("ship handler", () => {
   beforeAll(async () => {
     await requireSql().unsafe(`
       DROP TABLE IF EXISTS _migrations CASCADE;
+      DROP TABLE IF EXISTS ship_fix_attempts CASCADE;
+      DROP TABLE IF EXISTS ship_continuations CASCADE;
+      DROP TABLE IF EXISTS ship_iterations CASCADE;
+      DROP TABLE IF EXISTS ship_intents CASCADE;
       DROP TABLE IF EXISTS workflow_runs CASCADE;
       DROP TABLE IF EXISTS repo_memory CASCADE;
       DROP TABLE IF EXISTS triage_results CASCADE;
@@ -149,6 +153,10 @@ describe.skipIf(sql === null)("ship handler", () => {
   afterAll(async () => {
     await requireSql().unsafe(`
       DROP TABLE IF EXISTS _migrations CASCADE;
+      DROP TABLE IF EXISTS ship_fix_attempts CASCADE;
+      DROP TABLE IF EXISTS ship_continuations CASCADE;
+      DROP TABLE IF EXISTS ship_iterations CASCADE;
+      DROP TABLE IF EXISTS ship_intents CASCADE;
       DROP TABLE IF EXISTS workflow_runs CASCADE;
       DROP TABLE IF EXISTS repo_memory CASCADE;
       DROP TABLE IF EXISTS triage_results CASCADE;

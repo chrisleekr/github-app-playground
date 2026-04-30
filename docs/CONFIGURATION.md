@@ -97,17 +97,35 @@ Required whenever the orchestrator role is active (i.e. the webhook server proce
 
 ## Triage
 
-| Variable                      | Default     | Notes                                                                                                                                                                                                                      |
-| ----------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TRIAGE_ENABLED`              | `true`      | Kill-switch. When `false`, triage returns `heavy=false` and the job routes to `persistent-daemon`.                                                                                                                         |
-| `TRIAGE_MODEL`                | `haiku-3-5` | Alias resolved at runtime. Affects triage cost and latency only.                                                                                                                                                           |
-| `TRIAGE_CONFIDENCE_THRESHOLD` | `1.0`       | Below this, triage is treated as sub-threshold and the job routes to `persistent-daemon`.                                                                                                                                  |
-| `TRIAGE_MAX_TOKENS`           | `256`       | Cap on the JSON response. Values above ~100 are wasted budget.                                                                                                                                                             |
-| `TRIAGE_TIMEOUT_MS`           | `5000`      | Per-call wall clock. Beyond this, the circuit-breaker counter increments.                                                                                                                                                  |
-| `DEFAULT_MAXTURNS`            | unset       | Optional process-wide turn cap. Unset = no cap; agent runs end-to-end. Set only if ops needs a hard ceiling. `AGENT_MAX_TURNS` overrides when both are set.                                                                |
-| `INTENT_CONFIDENCE_THRESHOLD` | `0.75`      | Range `[0, 1]`. Below this, a `@chrisleekr-bot` comment is treated as ambiguous and the dispatcher posts a clarification request instead of dispatching a workflow. See [bot workflows](BOT-WORKFLOWS.md#comment-trigger). |
+| Variable                      | Default     | Notes                                                                                                                                                                                                                                |
+| ----------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `TRIAGE_ENABLED`              | `true`      | Kill-switch. When `false`, triage returns `heavy=false` and the job routes to `persistent-daemon`.                                                                                                                                   |
+| `TRIAGE_MODEL`                | `haiku-3-5` | Alias resolved at runtime. Affects triage cost and latency only.                                                                                                                                                                     |
+| `TRIAGE_CONFIDENCE_THRESHOLD` | `1.0`       | Below this, triage is treated as sub-threshold and the job routes to `persistent-daemon`.                                                                                                                                            |
+| `TRIAGE_MAX_TOKENS`           | `256`       | Cap on the JSON response. Values above ~100 are wasted budget.                                                                                                                                                                       |
+| `TRIAGE_TIMEOUT_MS`           | `5000`      | Per-call wall clock. Beyond this, the circuit-breaker counter increments.                                                                                                                                                            |
+| `DEFAULT_MAXTURNS`            | unset       | Optional process-wide turn cap. Unset = no cap; agent runs end-to-end. Set only if ops needs a hard ceiling. `AGENT_MAX_TURNS` overrides when both are set.                                                                          |
+| `INTENT_CONFIDENCE_THRESHOLD` | `0.75`      | Range `[0, 1]`. Below this, a `@chrisleekr-bot` comment is treated as ambiguous and the dispatcher posts a clarification request instead of dispatching a workflow. See [bot workflows](BOT-WORKFLOWS.md#comment-intent-classifier). |
 
 See [Triage](TRIAGE.md) for the binary `heavy` signal, circuit breaker, and the six fallback reasons that appear in logs.
+
+## PR Shepherding (`bot:ship` lifecycle, ship_intents)
+
+The new shepherding lifecycle (intents tracked in `ship_intents`) is gated by feature flags so it can be rolled out incrementally per `research.md` R8.
+
+| Variable                          | Default         | Notes                                                                                                                                                                             |
+| --------------------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MAX_WALL_CLOCK_PER_SHIP_RUN`     | `4h`            | Hard ceiling on a single intent's wall-clock budget. Accepts integer ms or duration suffix (`4h` / `30m` / `90s`). Per-invocation `--deadline` is clamped to this ceiling.        |
+| `MAX_SHIP_ITERATIONS`             | `50`            | Iteration cap (FR-012). Checked at the start of each iteration; firing transitions the intent to terminal `human_took_over` + `BlockerCategory='iteration-cap'`.                  |
+| `CRON_TICKLE_INTERVAL_MS`         | `30000`         | How often the cron tickle scans `ship:tickle` for due intents. Lower = faster wake but more Valkey traffic.                                                                       |
+| `MERGEABLE_NULL_BACKOFF_MS_LIST`  | `500,1500,4500` | Comma-separated bounded backoff schedule used by `runProbe` when `mergeable=null`. Per FR-021, exhaustion yields `mergeable_pending` and the session yields rather than spinning. |
+| `REVIEW_BARRIER_SAFETY_MARGIN_MS` | `1200000`       | (20 min) FR-023: minimum elapsed time since last bot push before the bot may declare `ready` without a non-bot review on the current head SHA.                                    |
+| `FIX_ATTEMPTS_PER_SIGNATURE_CAP`  | `3`             | FR-013: maximum attempts per failure signature within a single intent. Cap firing terminates the intent with `BlockerCategory='flake-cap'`.                                       |
+| `SHIP_FORBIDDEN_TARGET_BRANCHES`  | empty           | Comma-separated branch names (e.g., `main,production,release`) that the bot refuses to shepherd PRs against. Per FR-015 refusal case 4.                                           |
+| `SHIP_USE_PROBE_VERDICT`          | `false`         | Rollout flag — when `true`, terminal-readiness uses the new GraphQL probe verdict ladder. Default off keeps the legacy in-process loop in charge.                                 |
+| `SHIP_USE_CONTINUATION_LOOP`      | `false`         | Rollout flag — when `true`, the iteration loop exits after each phase and re-enters via the cron tickle (Valkey `ship:tickle`). Restart-safe and slot-friendly.                   |
+
+The natural-language and label trigger surfaces (FR-025/025a/026/026a/027) are permanent — there is no flag gating them. After a one-week soak with the two probe/continuation flags set to `true` and clean operation observed, a follow-up PR removes those two flags and the legacy code paths (research.md R8 cutover plan, T071).
 
 ## Composite ship workflow
 
