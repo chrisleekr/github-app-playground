@@ -10,7 +10,11 @@
 
 import { describe, expect, it, mock } from "bun:test";
 
-import { classifyComment, toCommandIntent } from "../../../src/workflows/ship/nl-classifier";
+import {
+  classifyComment,
+  stripJsonFence,
+  toCommandIntent,
+} from "../../../src/workflows/ship/nl-classifier";
 
 describe("classifyComment — FR-025a mention-prefix gate", () => {
   it("returns null and does NOT invoke the LLM when the comment lacks the trigger phrase", async () => {
@@ -123,6 +127,47 @@ describe("classifyComment — JSON shape + Zod validation", () => {
       callLlm,
     });
     expect(result).toEqual({ intent: "none" });
+  });
+
+  // Regression: T042 surfaced that Anthropic Haiku 4.5 wraps single-object
+  // responses in a markdown code fence even when told "Return ONLY a single
+  // JSON object". Before the fix, this caused every NL trigger to
+  // silently classify as `none` and fall through to the legacy intent
+  // classifier, which routes ship to issues only — making
+  // `@chrisleekr-bot-dev ship` on PRs silently no-op.
+  it("unwraps a fenced ```json … ``` LLM response", async () => {
+    const callLlm = mock(() => Promise.resolve('```json\n{ "intent": "ship" }\n```'));
+    const result = await classifyComment({
+      commentBody: "@bot ship",
+      triggerPhrase: "@bot",
+      callLlm,
+    });
+    expect(result).toEqual({ intent: "ship" });
+  });
+
+  it("unwraps a fenced ``` … ``` (no language tag) LLM response", async () => {
+    const callLlm = mock(() => Promise.resolve('```\n{ "intent": "stop" }\n```'));
+    const result = await classifyComment({
+      commentBody: "@bot stop",
+      triggerPhrase: "@bot",
+      callLlm,
+    });
+    expect(result).toEqual({ intent: "stop" });
+  });
+});
+
+describe("stripJsonFence", () => {
+  it("returns the inner JSON when wrapped in ```json … ```", () => {
+    expect(stripJsonFence('```json\n{"intent":"ship"}\n```')).toBe('{"intent":"ship"}');
+  });
+  it("returns the inner JSON when wrapped in ``` … ``` (no language tag)", () => {
+    expect(stripJsonFence('```\n{"intent":"ship"}\n```')).toBe('{"intent":"ship"}');
+  });
+  it("passes raw JSON through unchanged when no fence is present", () => {
+    expect(stripJsonFence('{"intent":"ship"}')).toBe('{"intent":"ship"}');
+  });
+  it("does not strip when only one side has a fence", () => {
+    expect(stripJsonFence('```json\n{"intent":"ship"}')).toBe('```json\n{"intent":"ship"}');
   });
 });
 

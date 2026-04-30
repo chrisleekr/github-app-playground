@@ -64,6 +64,13 @@ export async function executeScopedRebase(
   // eslint-disable-next-line security/detect-non-literal-fs-filename
   await mkdir(baseDir, { recursive: true });
   const workDir = await mkdtemp(join(baseDir, `${input.owner}-${input.repo}-`));
+  // `git clone` refuses to write into a non-empty directory and `mkdtemp`
+  // already created `workDir`, so the clone lands in a child path. The
+  // surrounding `mkdtemp` dir (with 0700 perms) still gates access; the
+  // credential helper sits beside the clone target so a single `rm -rf`
+  // of `workDir` cleans everything up. Surfaced by T042 S4 against
+  // `@chrisleekr-bot-dev`.
+  const cloneDir = join(workDir, "repo");
   // Credential helper lives INSIDE workDir so the 0700 mkdtemp directory
   // gates access (the helper file's own 0700 perms are belt-and-braces).
   const helperPath = join(workDir, ".git-credential-helper.sh");
@@ -90,18 +97,29 @@ export async function executeScopedRebase(
         );
 
         log.info({ workDir, head_ref, base_ref }, "Cloning head branch for scoped-rebase");
-        await $`git clone --branch=${head_ref} --single-branch -c credential.helper=${helperPath} ${repoUrl} ${workDir}`.env(
+        await $`git clone --branch=${head_ref} --single-branch -c credential.helper=${helperPath} ${repoUrl} ${cloneDir}`.env(
           gitEnv,
         );
-        await $`git -C ${workDir} config credential.helper ${helperPath}`;
-        await $`git -C ${workDir} config user.name ${config.botAppLogin}`;
-        await $`git -C ${workDir} config user.email ${`${config.botAppLogin}@users.noreply.github.com`}`;
+        await $`git -C ${cloneDir} config credential.helper ${helperPath}`;
+        await $`git -C ${cloneDir} config user.name ${config.botAppLogin}`;
+        await $`git -C ${cloneDir} config user.email ${`${config.botAppLogin}@users.noreply.github.com`}`;
 
         // Bring base into the local clone, then merge it into head. Never
         // `--ff-only` (we want the merge commit), never `--rebase`, never
         // `--force`. The static linter rule guards against regressions.
-        await $`git -C ${workDir} fetch origin ${base_ref}`.env(gitEnv);
-        const mergeResult = await $`git -C ${workDir} merge origin/${base_ref} --no-edit`.nothrow();
+        //
+        // The clone above uses `--single-branch --branch=<head_ref>`, which
+        // narrows the remote's fetch refspec to head only. A bare
+        // `git fetch origin <base_ref>` then downloads the commits but
+        // doesn't update `refs/remotes/origin/<base_ref>`, so the merge
+        // can't resolve `origin/<base_ref>` and exits 1 with
+        // "not something we can merge". Pass an explicit refspec so the
+        // remote-tracking ref lands. Surfaced by T042 S4.
+        await $`git -C ${cloneDir} fetch origin ${base_ref}:refs/remotes/origin/${base_ref}`.env(
+          gitEnv,
+        );
+        const mergeResult =
+          await $`git -C ${cloneDir} merge origin/${base_ref} --no-edit`.nothrow();
 
         if (mergeResult.exitCode === 0) {
           const stdout = mergeResult.stdout.toString();
@@ -109,8 +127,8 @@ export async function executeScopedRebase(
             return { status: "up-to-date" };
           }
           // Capture the merge commit SHA before pushing so we can report it.
-          const headSha = (await $`git -C ${workDir} rev-parse HEAD`.text()).trim();
-          await $`git -C ${workDir} push origin HEAD:${head_ref}`.env(gitEnv);
+          const headSha = (await $`git -C ${cloneDir} rev-parse HEAD`.text()).trim();
+          await $`git -C ${cloneDir} push origin HEAD:${head_ref}`.env(gitEnv);
           return { status: "merged", merge_commit_sha: headSha };
         }
 
@@ -118,7 +136,7 @@ export async function executeScopedRebase(
         // merge failures (auth, fs, unrelated histories). Throw on the
         // latter so the executor's catch path returns `halted` with the
         // git error rather than reporting a phantom conflict.
-        const unmergedRaw = await $`git -C ${workDir} ls-files -u`.text();
+        const unmergedRaw = await $`git -C ${cloneDir} ls-files -u`.text();
         if (unmergedRaw.trim().length === 0) {
           throw new Error(
             `git merge failed (exit ${String(mergeResult.exitCode)}): ${mergeResult.stderr.toString().slice(0, 500).trim()}`,
@@ -126,12 +144,12 @@ export async function executeScopedRebase(
         }
 
         // Conflict path. Collect conflicting paths and abort cleanly.
-        const conflictsRaw = await $`git -C ${workDir} diff --name-only --diff-filter=U`.text();
+        const conflictsRaw = await $`git -C ${cloneDir} diff --name-only --diff-filter=U`.text();
         const conflict_paths = conflictsRaw
           .split("\n")
           .map((p) => p.trim())
           .filter((p) => p.length > 0);
-        const abortResult = await $`git -C ${workDir} merge --abort`.nothrow();
+        const abortResult = await $`git -C ${cloneDir} merge --abort`.nothrow();
         if (abortResult.exitCode !== 0) {
           // The temp dir is rm'd in the finally below so no dirty state
           // persists, but a non-zero abort can still indicate disk pressure

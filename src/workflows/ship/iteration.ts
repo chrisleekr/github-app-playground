@@ -27,6 +27,7 @@ import { requireDb } from "../../db";
 import { appendIteration, type ShipIntentRow } from "../../db/queries/ship";
 import { logger as rootLogger } from "../../logger";
 import { enqueueJob } from "../../orchestrator/job-queue";
+import { recordWorkflowExecution } from "../execution-row";
 import type { WorkflowName } from "../registry";
 import { insertQueued } from "../runs-store";
 import { transitionToTerminal } from "./intent";
@@ -172,8 +173,24 @@ export async function runIteration(input: RunIterationInput): Promise<RunIterati
     sql,
   );
 
-  // 7. Enqueue the daemon job (workflow-run kind, carrying WorkflowRunRef).
+  // 7. Persist the `executions` row BEFORE enqueueing so the daemon's
+  //    accept handler can resolve `context_json` via this `deliveryId`.
+  //    Without this, the daemon side rejects the offer with
+  //    `No execution context found — producer did not call createExecution`
+  //    (surfaced by T042 S2 against `@chrisleekr-bot-dev`). The legacy
+  //    workflow dispatcher writes this row before its enqueue too — the
+  //    iteration handler must mirror that contract.
   const childDeliveryId = `${intent.id}::iteration::${String(actionIterationN)}`;
+  await recordWorkflowExecution({
+    deliveryId: childDeliveryId,
+    target: { type: "pr", owner: intent.owner, repo: intent.repo, number: intent.pr_number },
+    senderLogin: config.botAppLogin,
+    workflowName: nextWorkflowName,
+    runId: run.id,
+    logger: log,
+  });
+
+  // 8. Enqueue the daemon job (workflow-run kind, carrying WorkflowRunRef).
   await enqueueJob({
     kind: "workflow-run",
     deliveryId: childDeliveryId,

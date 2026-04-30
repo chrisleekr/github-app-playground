@@ -16,6 +16,8 @@
 
 import { z } from "zod";
 
+import { stripJsonFence } from "../nl-classifier";
+
 export const META_ISSUE_VERDICT_SCHEMA = z.object({
   actionable: z.boolean(),
   kind: z.enum(["bug", "feature", "tracking", "meta", "roadmap", "discussion", "unclear"]),
@@ -51,9 +53,13 @@ export async function classifyMetaIssue(input: ClassifyMetaIssueInput): Promise<
     systemPrompt: META_ISSUE_SYSTEM_PROMPT,
     userPrompt,
   });
+  // Anthropic Haiku 4.5 frequently wraps single-object JSON responses in a
+  // markdown code fence (```json …```) despite a "Return ONLY JSON" system
+  // prompt. Mirror the unwrap done in `nl-classifier` so the issue
+  // classifier doesn't refuse legitimate verdicts. Surfaced by T042 S9.
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw.trim());
+    parsed = JSON.parse(stripJsonFence(raw.trim()));
   } catch {
     throw new Error("meta-issue classifier returned non-JSON output");
   }

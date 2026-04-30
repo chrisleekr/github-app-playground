@@ -100,7 +100,11 @@ export async function classifyComment(input: ClassifyInput): Promise<NlClassifie
     return { intent: "none" };
   }
 
-  const trimmedJson = raw.trim();
+  // Strip a single leading ```/```json fence and trailing ``` if present.
+  // Anthropic Haiku frequently wraps single-object JSON responses in a
+  // markdown code block despite the system prompt asking for raw JSON;
+  // without unwrapping, every NL trigger silently classifies as `none`.
+  const trimmedJson = stripJsonFence(raw.trim());
   let parsed: unknown;
   try {
     parsed = JSON.parse(trimmedJson);
@@ -127,4 +131,24 @@ export async function classifyComment(input: ClassifyInput): Promise<NlClassifie
 /** Narrow the classifier's `intent` enum to a `CommandIntent` (drops `'none'`). */
 export function toCommandIntent(intent: NlClassifierResult["intent"]): CommandIntent | null {
   return intent === "none" ? null : intent;
+}
+
+/**
+ * Strip a single leading and trailing markdown code fence from an LLM
+ * response so the inner JSON can be parsed.
+ *
+ * Anthropic Haiku 4.5 — the model `TRIAGE_MODEL` defaults to — frequently
+ * answers with a fenced block (```json …```) even when the system prompt
+ * says "Return ONLY a single JSON object". Without unwrapping, every NL
+ * trigger silently classified as `none` and fell through to the legacy
+ * intent classifier (which routes ship to issues only). Surfaced by T042
+ * S2 against `@chrisleekr-bot-dev`.
+ *
+ * Conservative: only strips when both leading and trailing fences are
+ * present; passes through unfenced JSON unchanged.
+ */
+export function stripJsonFence(text: string): string {
+  const fencePattern = /^```(?:json)?\s*\n([\s\S]*?)\n```\s*$/;
+  const fenceMatch = fencePattern.exec(text);
+  return fenceMatch?.[1] ?? text;
 }
