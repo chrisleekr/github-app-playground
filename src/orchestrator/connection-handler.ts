@@ -583,10 +583,31 @@ async function handleScopedJobCompletion(
   const offerId = msg.payload.offerId;
   const { jobKind, status, deliveryId } = msg.payload;
 
-  // Release the pending offer if still tracked. The offer may already be
-  // gone if the daemon's earlier `job:accept` handler removed it (the
-  // legacy non-scoped flow does), so this is best-effort.
+  // Reject completions from sockets that have not finished registration —
+  // a pre-register socket (or a misbehaving daemon) must not be able to
+  // mutate another daemon's offer state or capacity counters.
+  if (daemonId === undefined) {
+    sendError(ws, msg.id, WS_ERROR_CODES.INTERNAL_ERROR, "Daemon not registered");
+    return;
+  }
+
+  // Ownership check: the offer's `daemonId` was set by handleScopedAccept
+  // when the daemon claimed it. Reject completions from a different
+  // daemon — otherwise daemon B can clear daemon A's offer and mark A's
+  // execution finalized.
   const offer = getPendingOffer(offerId);
+  if (offer?.daemonId !== undefined && offer.daemonId !== daemonId) {
+    logger.warn(
+      {
+        event: "ws.scoped_completion.unauthorized",
+        daemonId,
+        offerId,
+        ownerDaemon: offer.daemonId,
+      },
+      "scoped-job-completion from non-owner daemon — ignoring",
+    );
+    return;
+  }
   if (offer !== undefined) {
     removePendingOffer(offerId);
   }
@@ -597,12 +618,16 @@ async function handleScopedJobCompletion(
   // succeeded and halted/failed branches. Otherwise every scoped run leaks
   // one slot until the daemon disconnects.
   decrementActiveCount();
-  if (daemonId !== undefined) await decrementDaemonActiveJobs(daemonId);
+  await decrementDaemonActiveJobs(daemonId);
+
+  // Per-kind event keys match the FR-018 canonical names documented in
+  // `docs/OBSERVABILITY.md` (e.g. `ship.scoped.rebase.daemon.completed`).
+  const kindKey = jobKind.replace(/^scoped-/, "").replaceAll("-", "_");
 
   if (status === "succeeded") {
     logger.info(
       {
-        event: "ship.scoped.daemon.completed",
+        event: `ship.scoped.${kindKey}.daemon.completed`,
         daemonId,
         offerId,
         deliveryId,
@@ -620,7 +645,7 @@ async function handleScopedJobCompletion(
   // the daemon executor with the installation token.
   logger.warn(
     {
-      event: "ship.scoped.daemon.non_success",
+      event: `ship.scoped.${kindKey}.daemon.failed`,
       daemonId,
       offerId,
       deliveryId,

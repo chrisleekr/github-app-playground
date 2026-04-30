@@ -45,8 +45,7 @@ export function serializeShipWorkflowContext(intentId: string): ShipIntentContex
  * rows.
  */
 export function extractShipIntentId(state: unknown): string | undefined {
-  if (state === null || typeof state !== "object") return undefined;
-  const candidate = (state as Record<string, unknown>)["shipIntentId"];
-  if (typeof candidate !== "string" || candidate.length === 0) return undefined;
-  return candidate;
+  const parsed = ShipIntentContextSchema.safeParse(state);
+  if (!parsed.success) return undefined;
+  return parsed.data.shipIntentId;
 }

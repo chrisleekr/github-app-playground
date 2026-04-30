@@ -19,13 +19,17 @@ const workflowRunRefSchema = z.object({
   parentStepIndex: z.number().int().nonnegative().optional(),
 });
 
-const threadRefSchema = z.object({
-  threadId: z.string().min(1),
-  commentId: z.number().int().positive(),
-  filePath: z.string().min(1),
-  startLine: z.number().int().positive(),
-  endLine: z.number().int().positive(),
-});
+const threadRefSchema = z
+  .object({
+    threadId: z.string().min(1),
+    commentId: z.number().int().positive(),
+    filePath: z.string().min(1),
+    startLine: z.number().int().positive(),
+    endLine: z.number().int().positive(),
+  })
+  .refine(({ startLine, endLine }) => endLine >= startLine, {
+    message: "endLine must be greater than or equal to startLine",
+  });
 
 export type ScopedThreadRef = z.infer<typeof threadRefSchema>;
 

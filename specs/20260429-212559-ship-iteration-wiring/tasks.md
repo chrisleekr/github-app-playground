@@ -192,9 +192,9 @@ Single-project Bun layout per `plan.md`. Source under `src/`, tests co-located a
 
 After MVP:
 
-5. T017–T023 (US2) → quickstart S3 passes.
-6. T024–T036 (US3) → quickstart S4–S9 all pass.
-7. T037–T043 (Polish + full e2e).
+1. T017–T023 (US2) → quickstart S3 passes.
+2. T024–T036 (US3) → quickstart S4–S9 all pass.
+3. T037–T043 (Polish + full e2e).
 
 ### Sequential vs. parallel team
 

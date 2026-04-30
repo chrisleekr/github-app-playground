@@ -107,33 +107,33 @@ For each scenario below, record the result in a worksheet (pass/fail + observed 
 
 ---
 
-### S7 — fix-thread
+### S7 — fix-thread (scaffolding boundary in this slice)
 
 **Setup**: Open review thread asking for a single-line change.
 
 **Action**: Reply on the thread with `@chrisleekr-bot-dev fix-thread`.
 
-**Expected**: Bot pushes a commit limited to the cited file range, posts thread reply linking to the commit SHA, resolves the thread.
+**Expected (this slice)**: Bot posts a thread reply acknowledging the request and reports `status: halted` with reason "agent-sdk invocation pending follow-up". **No commit, no push, thread NOT resolved.** The full push/resolve behaviour described in `spec.md` lands in a follow-up that wires the Agent SDK invocation.
 
 ---
 
-### S8 — explain-thread
+### S8 — explain-thread (scaffolding boundary in this slice)
 
 **Setup**: Open review thread asking what some code does.
 
 **Action**: Reply on the thread with `@chrisleekr-bot-dev explain-thread`.
 
-**Expected**: Bot posts a thread reply explaining the cited code. **No commit, no push, thread NOT resolved**.
+**Expected (this slice)**: Bot posts a thread reply acknowledging the request and reports `status: halted` with reason "agent-sdk read-only invocation pending follow-up". **No commit, no push, thread NOT resolved.** Full read-only Agent SDK explanation lands in a follow-up.
 
 ---
 
-### S9 — open-pr actionable
+### S9 — open-pr actionable (scaffolding boundary in this slice)
 
 **Setup**: An issue with an actionable verdict (e.g., a small feature request the bot has previously triaged as "ready to scaffold").
 
 **Action**: Comment `@chrisleekr-bot-dev open-pr` on the issue.
 
-**Expected**: New branch created from default; starter PR opened against default; issue gets a comment linking to the new PR.
+**Expected (this slice)**: Bot posts an issue comment acknowledging the request and reports `status: halted`. **No new branch, no PR opened.** Full branch-create + PR-open behaviour lands in a follow-up that wires the Agent SDK invocation.
 
 ---
 

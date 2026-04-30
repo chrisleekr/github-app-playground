@@ -33,7 +33,7 @@ export interface ScopedOpenPrExecutorInput {
 }
 
 export interface ScopedOpenPrOutcome {
-  readonly status: "succeeded" | "halted";
+  readonly status: "succeeded" | "failed" | "halted";
   readonly newPrNumber?: number;
   readonly pushedCommitSha?: string;
   readonly reason?: string;

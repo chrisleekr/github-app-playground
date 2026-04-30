@@ -71,13 +71,17 @@ const workflowRunRefSchema = z.object({
  * via the same Zod parse — discriminator at the schema level, not via runtime
  * presence checks (per contracts/ws-messages.md validation requirement).
  */
-const scopedThreadRefSchema = z.object({
-  threadId: z.string().min(1),
-  commentId: z.number().int().positive(),
-  filePath: z.string().min(1),
-  startLine: z.number().int().positive(),
-  endLine: z.number().int().positive(),
-});
+const scopedThreadRefSchema = z
+  .object({
+    threadId: z.string().min(1),
+    commentId: z.number().int().positive(),
+    filePath: z.string().min(1),
+    startLine: z.number().int().positive(),
+    endLine: z.number().int().positive(),
+  })
+  .refine(({ startLine, endLine }) => endLine >= startLine, {
+    message: "endLine must be greater than or equal to startLine",
+  });
 
 const scopedJobContextSchema = z.discriminatedUnion("jobKind", [
   z.object({
@@ -156,27 +160,32 @@ const scopedJobOfferSchema = z.object({
 /** Daemon-to-server scoped job completion. Per-kind result fields are
  * carried under `result` and validated by a discriminator on `jobKind`. */
 const scopedJobResultSchema = z.discriminatedUnion("jobKind", [
-  z.object({
-    jobKind: z.literal("scoped-rebase"),
-    status: z.enum(["succeeded", "failed", "halted"]),
-    rebaseOutcome: z
-      .discriminatedUnion("result", [
-        z.object({ result: z.literal("up-to-date"), commentId: z.number().int().positive() }),
-        z.object({
-          result: z.literal("merged"),
-          commentId: z.number().int().positive(),
-          mergeCommitSha: z.string().min(1),
-        }),
-        z.object({
-          result: z.literal("conflict"),
-          commentId: z.number().int().positive(),
-          conflictPaths: z.array(z.string()),
-        }),
-        z.object({ result: z.literal("closed"), commentId: z.number().int().positive() }),
-      ])
-      .optional(),
-    reason: z.string().optional(),
-  }),
+  z
+    .object({
+      jobKind: z.literal("scoped-rebase"),
+      status: z.enum(["succeeded", "failed", "halted"]),
+      rebaseOutcome: z
+        .discriminatedUnion("result", [
+          z.object({ result: z.literal("up-to-date"), commentId: z.number().int().positive() }),
+          z.object({
+            result: z.literal("merged"),
+            commentId: z.number().int().positive(),
+            mergeCommitSha: z.string().min(1),
+          }),
+          z.object({
+            result: z.literal("conflict"),
+            commentId: z.number().int().positive(),
+            conflictPaths: z.array(z.string()),
+          }),
+          z.object({ result: z.literal("closed"), commentId: z.number().int().positive() }),
+        ])
+        .optional(),
+      reason: z.string().optional(),
+    })
+    .refine((v) => v.status !== "succeeded" || v.rebaseOutcome !== undefined, {
+      message: "rebaseOutcome is required when scoped-rebase status is succeeded",
+      path: ["rebaseOutcome"],
+    }),
   z.object({
     jobKind: z.literal("scoped-fix-thread"),
     status: z.enum(["succeeded", "failed", "halted"]),

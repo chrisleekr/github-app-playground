@@ -229,8 +229,25 @@ export async function executeJob(
   // Scoped-* jobs route through their own deterministic/agent-driven
   // executors. They do NOT go through the legacy BotContext pipeline, so
   // dispatch BEFORE the (legacy-shaped) context validation below.
+  //
+  // Register the offer in `activeJobs` for the duration of the scoped run
+  // so heartbeats, capacity checks, idle-shutdown, and `handleJobCancel`
+  // see the daemon as busy (CR #3163385094). `runScopedJob` clears the
+  // entry on completion via the same `activeJobs.delete` path the legacy
+  // executor uses.
   if (payload.payload.scoped !== undefined) {
-    await runScopedJob(payload, capabilities, send);
+    activeJobs.set(offerId, {
+      offerId,
+      deliveryId: payload.payload.scoped.deliveryId,
+      workDir: "",
+      agentPid: null,
+      startedAt: Date.now(),
+    });
+    try {
+      await runScopedJob(payload, capabilities, send);
+    } finally {
+      activeJobs.delete(offerId);
+    }
     return;
   }
 
@@ -569,11 +586,12 @@ async function runScopedJob(
     }
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    // Static event name keeps log-event allowlists tractable; jobKind goes
-    // into a structured field instead of the event template.
+    // Per-kind event key matches the FR-018 canonical names documented in
+    // `docs/OBSERVABILITY.md` (e.g. `ship.scoped.rebase.daemon.failed`).
+    const kindKey = scoped.jobKind.replace(/^scoped-/, "").replaceAll("-", "_");
     logger.error(
       {
-        event: "ship.scoped.daemon.failed",
+        event: `ship.scoped.${kindKey}.daemon.failed`,
         offerId,
         jobKind: scoped.jobKind,
         deliveryId: scoped.deliveryId,

@@ -114,6 +114,17 @@ export async function executeScopedRebase(
           return { status: "merged", merge_commit_sha: headSha };
         }
 
+        // Distinguish a real conflict (unmerged index entries) from other
+        // merge failures (auth, fs, unrelated histories). Throw on the
+        // latter so the executor's catch path returns `halted` with the
+        // git error rather than reporting a phantom conflict.
+        const unmergedRaw = await $`git -C ${workDir} ls-files -u`.text();
+        if (unmergedRaw.trim().length === 0) {
+          throw new Error(
+            `git merge failed (exit ${String(mergeResult.exitCode)}): ${mergeResult.stderr.toString().slice(0, 500).trim()}`,
+          );
+        }
+
         // Conflict path. Collect conflicting paths and abort cleanly.
         const conflictsRaw = await $`git -C ${workDir} diff --name-only --diff-filter=U`.text();
         const conflict_paths = conflictsRaw

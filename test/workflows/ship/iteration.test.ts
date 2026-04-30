@@ -262,11 +262,10 @@ describe.skipIf(sql === null)("runIteration", () => {
     expect(result.outcome).toBe("ready-shortcut");
     expect(mockEnqueueJob).toHaveBeenCalledTimes(0);
 
-    const iterRows: { count: number | string }[] = await requireSql()`
+    const iterRows: { count: number }[] = await requireSql()`
       SELECT COUNT(*)::int AS count FROM ship_iterations WHERE intent_id = ${intent.id}
     `;
-    const count = iterRows[0]?.count ?? 0;
-    expect(typeof count === "number" ? count : Number(count)).toBe(0);
+    expect(iterRows[0]?.count).toBe(0);
   });
 
   // H6: in-flight guard. A non-terminal `workflow_runs` row tagged with
@@ -315,10 +314,9 @@ describe.skipIf(sql === null)("runIteration", () => {
     expect(mockEnqueueJob).toHaveBeenCalledTimes(0);
 
     // No new ship_iterations rows either.
-    const iterRows: { count: number | string }[] = await requireSql()`
+    const iterRows: { count: number }[] = await requireSql()`
       SELECT COUNT(*)::int AS count FROM ship_iterations WHERE intent_id = ${intent.id}
     `;
-    const count = iterRows[0]?.count ?? 0;
-    expect(typeof count === "number" ? count : Number(count)).toBe(0);
+    expect(iterRows[0]?.count).toBe(0);
   });
 });
