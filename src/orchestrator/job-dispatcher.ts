@@ -338,6 +338,13 @@ async function handleOfferTimeout(offerId: string): Promise<void> {
   await requeueExecution(offer.deliveryId);
 
   const job = reconstructJobFromOffer(offer);
+  if (job === null) {
+    await markExecutionFailed(
+      offer.deliveryId,
+      "PendingOffer.scoped failed re-validation — refusing legacy fallback dispatch",
+    );
+    return;
+  }
 
   const requeued = await requeueJob(job);
   if (!requeued) {
@@ -358,7 +365,7 @@ async function handleOfferTimeout(offerId: string): Promise<void> {
  * union before casting so the failure surfaces at the queue boundary instead
  * of inside an async timeout/reject path.
  */
-function reconstructJobFromOffer(offer: PendingOffer): QueuedJob {
+function reconstructJobFromOffer(offer: PendingOffer): QueuedJob | null {
   if (offer.scoped !== undefined) {
     const reparsed = QueuedJobSchema.safeParse(offer.scoped);
     if (!reparsed.success || !isScopedJob(reparsed.data)) {
@@ -368,13 +375,15 @@ function reconstructJobFromOffer(offer: PendingOffer): QueuedJob {
           deliveryId: offer.deliveryId,
           issues: reparsed.success ? "shape-not-scoped" : reparsed.error.issues,
         },
-        "PendingOffer.scoped failed re-validation — falling back to legacy reconstruct",
+        "PendingOffer.scoped failed re-validation — failing job (do not fall back to legacy reconstruct)",
       );
-      // Fall through to the workflow-run / legacy branches.
-    } else {
-      const scoped: ScopedQueuedJob = reparsed.data;
-      return { ...scoped, retryCount: offer.retryCount, enqueuedAt: Date.now() };
+      // Fail closed: a corrupted scoped offer must NOT be reconstructed as a
+      // legacy or workflow-run job — that would dispatch the wrong job kind
+      // against the same repo/PR. Caller marks the execution failed.
+      return null;
     }
+    const scoped: ScopedQueuedJob = reparsed.data;
+    return { ...scoped, retryCount: offer.retryCount, enqueuedAt: Date.now() };
   }
   if (offer.workflowRun !== undefined) {
     return {
@@ -501,6 +510,13 @@ export async function handleJobReject(offerId: string, reason: string): Promise<
 
   // Re-enqueue the job with original metadata (retryCount incremented by requeueJob)
   const job = reconstructJobFromOffer(offer);
+  if (job === null) {
+    await markExecutionFailed(
+      offer.deliveryId,
+      "PendingOffer.scoped failed re-validation — refusing legacy fallback dispatch",
+    );
+    return;
+  }
   const requeued = await requeueJob(job);
   if (!requeued) {
     await markJobTerminallyFailed(

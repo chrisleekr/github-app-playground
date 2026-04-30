@@ -23,6 +23,7 @@
 import { Octokit } from "octokit";
 
 import { logger } from "../logger";
+import { SHIP_LOG_EVENTS } from "../workflows/ship/log-fields";
 
 export interface ScopedFixThreadExecutorInput {
   readonly installationToken: string;
@@ -91,10 +92,20 @@ export async function executeScopedFixThread(
     };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    log.warn(
-      { err: reason, event: "ship.scoped.fix_thread.thread_reply_failed" },
-      "scoped-fix-thread thread reply failed — halting (likely deleted comment / closed PR)",
-    );
-    return { status: "halted", reason: `thread reply failed: ${reason}` };
+    // Only 4xx (semantic GitHub state — deleted comment, closed PR, archived
+    // repo) is a clean halt. Transport failures and 5xx must rethrow so the
+    // outer scoped-job catch reports `failed` and the orchestrator can retry.
+    const status =
+      typeof err === "object" && err !== null && "status" in err
+        ? (err as { status?: unknown }).status
+        : undefined;
+    if (typeof status === "number" && status >= 400 && status < 500) {
+      log.warn(
+        { err: reason, status, event: SHIP_LOG_EVENTS.scoped.fixThread.daemonFailed },
+        "scoped-fix-thread thread reply failed — halting on semantic GitHub error",
+      );
+      return { status: "halted", reason: `thread reply failed: ${reason}` };
+    }
+    throw err;
   }
 }

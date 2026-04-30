@@ -22,6 +22,7 @@
 import { Octokit } from "octokit";
 
 import { logger } from "../logger";
+import { SHIP_LOG_EVENTS } from "../workflows/ship/log-fields";
 
 export interface ScopedOpenPrExecutorInput {
   readonly installationToken: string;
@@ -86,10 +87,20 @@ export async function executeScopedOpenPr(
     };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    log.warn(
-      { err: reason, event: "ship.scoped.open_pr.issue_reply_failed" },
-      "scoped-open-pr issue reply failed — halting (likely closed issue / archived repo)",
-    );
-    return { status: "halted", reason: `issue reply failed: ${reason}` };
+    // Only 4xx (closed issue, missing repo) is a clean halt. Transport
+    // failures and 5xx must rethrow so the outer catch reports `failed`
+    // and the orchestrator can retry.
+    const status =
+      typeof err === "object" && err !== null && "status" in err
+        ? (err as { status?: unknown }).status
+        : undefined;
+    if (typeof status === "number" && status >= 400 && status < 500) {
+      log.warn(
+        { err: reason, status, event: SHIP_LOG_EVENTS.scoped.openPr.daemonFailed },
+        "scoped-open-pr issue reply failed — halting on semantic GitHub error",
+      );
+      return { status: "halted", reason: `issue reply failed: ${reason}` };
+    }
+    throw err;
   }
 }

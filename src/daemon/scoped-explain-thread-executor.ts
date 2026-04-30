@@ -21,6 +21,7 @@
 import { Octokit } from "octokit";
 
 import { logger } from "../logger";
+import { SHIP_LOG_EVENTS } from "../workflows/ship/log-fields";
 
 export interface ScopedExplainThreadExecutorInput {
   readonly installationToken: string;
@@ -83,10 +84,19 @@ export async function executeScopedExplainThread(
     };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    log.warn(
-      { err: reason, event: "ship.scoped.explain_thread.thread_reply_failed" },
-      "scoped-explain-thread thread reply failed — halting (likely deleted comment / closed PR)",
-    );
-    return { status: "halted", reason: `thread reply failed: ${reason}` };
+    // Only 4xx (deleted comment, closed PR) is a clean halt. Transport
+    // failures and 5xx must rethrow so the outer catch reports `failed`.
+    const status =
+      typeof err === "object" && err !== null && "status" in err
+        ? (err as { status?: unknown }).status
+        : undefined;
+    if (typeof status === "number" && status >= 400 && status < 500) {
+      log.warn(
+        { err: reason, status, event: SHIP_LOG_EVENTS.scoped.explainThread.daemonFailed },
+        "scoped-explain-thread thread reply failed — halting on semantic GitHub error",
+      );
+      return { status: "halted", reason: `thread reply failed: ${reason}` };
+    }
+    throw err;
   }
 }

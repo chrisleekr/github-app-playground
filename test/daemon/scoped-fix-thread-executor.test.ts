@@ -8,6 +8,8 @@
 
 import { describe, expect, it, mock } from "bun:test";
 
+import { expectToReject } from "../utils/assertions";
+
 const mockCreateReply = mock(() => Promise.resolve({ data: { id: 9001 } }));
 void mock.module("octokit", () => ({
   Octokit: class MockOctokit {
@@ -50,10 +52,11 @@ describe("executeScopedFixThread", () => {
   // H2: 4xx from `createReplyForReviewComment` must map to `halted` (with a
   // structured reason), NOT `failed` — operator dashboards must distinguish
   // "user deleted the comment" from "executor crashed."
-  it("maps Octokit errors to halted with a structured reason (H2)", async () => {
+  it("maps Octokit 4xx errors to halted with a structured reason (H2)", async () => {
     mockCreateReply.mockClear();
     mockCreateReply.mockImplementationOnce(() => {
-      throw new Error("Not Found");
+      const err = Object.assign(new Error("Not Found"), { status: 404 });
+      throw err;
     });
     const { executeScopedFixThread } = await import("../../src/daemon/scoped-fix-thread-executor");
 
@@ -76,5 +79,34 @@ describe("executeScopedFixThread", () => {
     expect(outcome.threadReplyId).toBeUndefined();
     expect(outcome.reason).toContain("thread reply failed");
     expect(outcome.reason).toContain("Not Found");
+  });
+
+  // H2b: 5xx and transport errors must rethrow so the daemon's outer scoped
+  // catch reports `failed` and the orchestrator can retry.
+  it("rethrows transient (5xx / no status) errors so the outer catch can mark failed", async () => {
+    mockCreateReply.mockClear();
+    mockCreateReply.mockImplementationOnce(() => {
+      const err = Object.assign(new Error("Server unavailable"), { status: 503 });
+      throw err;
+    });
+    const { executeScopedFixThread } = await import("../../src/daemon/scoped-fix-thread-executor");
+
+    await expectToReject(
+      executeScopedFixThread({
+        installationToken: "tok",
+        owner: "octo",
+        repo: "repo",
+        prNumber: 42,
+        threadRef: {
+          threadId: "thread-1",
+          commentId: 7777,
+          filePath: "src/foo.ts",
+          startLine: 10,
+          endLine: 15,
+        },
+        triggerCommentId: 7777,
+      }),
+      "Server unavailable",
+    );
   });
 });
