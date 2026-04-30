@@ -1,3 +1,4 @@
+<!-- T042 S6 conflict marker -->
 # [1.5.0](https://github.com/chrisleekr/github-app-playground/compare/v1.4.0...v1.5.0) (2026-04-26)
 
 
