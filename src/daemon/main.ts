@@ -19,6 +19,8 @@ import {
   handleJobCancel,
   registerExitCleanup,
 } from "./job-executor";
+import { discoverCapabilities, getCurrentResources } from "./tool-discovery";
+import { DaemonWsClient } from "./ws-client";
 
 /**
  * Scoped jobKinds this daemon image understands. Reject any other kind
@@ -31,8 +33,6 @@ const SUPPORTED_SCOPED_KINDS: readonly ScopedJobKind[] = [
   "scoped-explain-thread",
   "scoped-open-pr",
 ] as const;
-import { discoverCapabilities, getCurrentResources } from "./tool-discovery";
-import { DaemonWsClient } from "./ws-client";
 
 const daemonId = getDaemonId();
 

@@ -33,6 +33,7 @@ import { insertQueued } from "../runs-store";
 import { transitionToTerminal } from "./intent";
 import { SHIP_LOG_EVENTS } from "./log-fields";
 import type { MergeReadiness, NonReadinessReason } from "./verdict";
+import { serializeShipWorkflowContext } from "./workflow-context";
 
 export interface RunIterationDeps {
   readonly sql?: SQL;
@@ -161,14 +162,20 @@ export async function runIteration(input: RunIterationInput): Promise<RunIterati
   //    orchestrator's `onStepComplete` cascade ZADDs `ship:tickle` on
   //    completion (T007). The deliveryId is synthesized from the intent
   //    id + iteration number so reaper queries can correlate the row
-  //    back to the originating ship session.
+  //    back to the originating ship session. The shipIntentId field is
+  //    written through `serializeShipWorkflowContext` so producer-side
+  //    validation matches the orchestrator's `extractShipIntentId` reader
+  //    (workflow-context.ts owns the contract).
   const run = await insertQueued(
     {
       workflowName: nextWorkflowName,
       target: { type: "pr", owner: intent.owner, repo: intent.repo, number: intent.pr_number },
       ownerKind: "orchestrator",
       ownerId: `ship-intent:${intent.id}`,
-      initialState: { shipIntentId: intent.id, iteration_n: actionIterationN },
+      initialState: {
+        ...serializeShipWorkflowContext(intent.id),
+        iteration_n: actionIterationN,
+      },
     },
     sql,
   );
@@ -207,7 +214,7 @@ export async function runIteration(input: RunIterationInput): Promise<RunIterati
     workflowRun: { runId: run.id, workflowName: nextWorkflowName },
   });
 
-  // 8. Append the action ship_iterations row. `kind=resolve` for fix-shaped
+  // 9. Append the action ship_iterations row. `kind=resolve` for fix-shaped
   //    runs; `kind=review` when the next workflow is `review`. Verdict
   //    columns are forbidden on non-`probe` kinds (schema CHECK).
   const iterationKind = nextWorkflowName === "review" ? "review" : "resolve";

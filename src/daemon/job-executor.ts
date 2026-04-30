@@ -440,6 +440,39 @@ async function runScopedJob(
           repo: scoped.repo,
           prNumber: scoped.prNumber,
         });
+        // Exhaustive mapping over RebaseOutcome.kind so a future variant
+        // forces a TypeScript error instead of silently mapping to `closed`.
+        const rebaseOutcome = ((): {
+          result: "merged" | "conflict" | "up-to-date" | "closed";
+          commentId: number;
+          mergeCommitSha?: string;
+          conflictPaths?: string[];
+        } => {
+          switch (outcome.kind) {
+            case "merged":
+              return {
+                result: "merged",
+                commentId: outcome.comment_id,
+                mergeCommitSha: outcome.merge_commit_sha,
+              };
+            case "conflict":
+              return {
+                result: "conflict",
+                commentId: outcome.comment_id,
+                conflictPaths: [...outcome.conflict_paths],
+              };
+            case "up-to-date":
+              return { result: "up-to-date", commentId: outcome.comment_id };
+            case "closed":
+              return { result: "closed", commentId: outcome.comment_id };
+            default: {
+              const _exhaustive: never = outcome;
+              throw new Error(
+                `unhandled RebaseOutcome.kind: ${(_exhaustive as { kind: string }).kind}`,
+              );
+            }
+          }
+        })();
         send({
           type: "scoped-job-completion",
           ...createMessageEnvelope(offerId),
@@ -449,22 +482,7 @@ async function runScopedJob(
             jobKind: "scoped-rebase",
             status: "succeeded" as const,
             durationMs: Date.now() - startedAt,
-            rebaseOutcome:
-              outcome.kind === "merged"
-                ? {
-                    result: "merged" as const,
-                    commentId: outcome.comment_id,
-                    mergeCommitSha: outcome.merge_commit_sha,
-                  }
-                : outcome.kind === "conflict"
-                  ? {
-                      result: "conflict" as const,
-                      commentId: outcome.comment_id,
-                      conflictPaths: [...outcome.conflict_paths],
-                    }
-                  : outcome.kind === "up-to-date"
-                    ? { result: "up-to-date" as const, commentId: outcome.comment_id }
-                    : { result: "closed" as const, commentId: outcome.comment_id },
+            rebaseOutcome,
           },
         });
         return;
