@@ -2,12 +2,18 @@ import { config } from "../config";
 import { logger } from "../logger";
 import type { DaemonCapabilities, PendingOffer } from "../shared/daemon-types";
 import type { WorkflowRunRef } from "../shared/workflow-types";
-import { createMessageEnvelope } from "../shared/ws-messages";
+import { createMessageEnvelope, type ScopedJobContext } from "../shared/ws-messages";
 import { markFailed as markWorkflowRunFailed } from "../workflows/runs-store";
 import { getConnections, getDaemonInfo, isDaemonDraining } from "./connection-handler";
 import { getActiveDaemons, getDaemonActiveJobs } from "./daemon-registry";
 import { markExecutionFailed, markExecutionOffered, requeueExecution } from "./history";
-import { isScopedJob, type QueuedJob, requeueJob, type ScopedQueuedJob } from "./job-queue";
+import {
+  isScopedJob,
+  type QueuedJob,
+  QueuedJobSchema,
+  requeueJob,
+  type ScopedQueuedJob,
+} from "./job-queue";
 
 // In-memory pending offers (keyed by offerId)
 
@@ -344,14 +350,31 @@ async function handleOfferTimeout(offerId: string): Promise<void> {
  * payload can be re-queued on reject/timeout. Scoped offers preserve the
  * original scoped queue payload verbatim — every per-kind field survives the
  * round-trip so re-dispatch keeps the same daemon contract.
+ *
+ * `offer.scoped` is typed `unknown` in shared/daemon-types so the shared
+ * module does not import orchestrator-only Zod schemas. The dispatcher
+ * always stores `ScopedQueuedJob` shapes there, but a malformed write or a
+ * test harness mutation would slip through; re-validate with the discriminated
+ * union before casting so the failure surfaces at the queue boundary instead
+ * of inside an async timeout/reject path.
  */
 function reconstructJobFromOffer(offer: PendingOffer): QueuedJob {
   if (offer.scoped !== undefined) {
-    // `offer.scoped` is typed `unknown` in shared/daemon-types to avoid a
-    // shared→orchestrator import cycle; the dispatcher only writes
-    // `ScopedQueuedJob` values into it, so this cast is sound.
-    const scoped = offer.scoped as ScopedQueuedJob;
-    return { ...scoped, retryCount: offer.retryCount, enqueuedAt: Date.now() };
+    const reparsed = QueuedJobSchema.safeParse(offer.scoped);
+    if (!reparsed.success || !isScopedJob(reparsed.data)) {
+      logger.error(
+        {
+          offerId: offer.offerId,
+          deliveryId: offer.deliveryId,
+          issues: reparsed.success ? "shape-not-scoped" : reparsed.error.issues,
+        },
+        "PendingOffer.scoped failed re-validation — falling back to legacy reconstruct",
+      );
+      // Fall through to the workflow-run / legacy branches.
+    } else {
+      const scoped: ScopedQueuedJob = reparsed.data;
+      return { ...scoped, retryCount: offer.retryCount, enqueuedAt: Date.now() };
+    }
   }
   if (offer.workflowRun !== undefined) {
     return {
@@ -403,6 +426,9 @@ export interface JobAcceptParams {
   memory: { id: string; category: string; content: string; pinned: boolean }[];
   /** Present for workflow-run jobs — forwarded verbatim into `job:payload`. */
   workflowRun?: WorkflowRunRef;
+  /** Present for scoped jobs — forwarded verbatim into `job:payload` so the
+   * daemon's `runScopedJob` router can dispatch on `scoped.jobKind`. */
+  scoped?: ScopedJobContext;
 }
 
 export function handleJobAccept({
@@ -416,6 +442,7 @@ export function handleJobAccept({
   envVars,
   memory,
   workflowRun,
+  scoped,
 }: JobAcceptParams): void {
   // Note: the pending offer is already removed by handleAccept in connection-handler.ts
   // before this function is called (C2 fix — prevents timeout/accept race).
@@ -439,11 +466,15 @@ export function handleJobAccept({
         ...(Object.keys(envVars).length > 0 ? { envVars } : {}),
         ...(memory.length > 0 ? { memory } : {}),
         ...(workflowRun !== undefined ? { workflowRun } : {}),
+        ...(scoped !== undefined ? { scoped } : {}),
       },
     }),
   );
 
-  logger.info({ deliveryId, daemonId, offerId }, "Job payload sent to daemon");
+  logger.info(
+    { deliveryId, daemonId, offerId, jobKind: scoped?.jobKind ?? "non-scoped" },
+    "Job payload sent to daemon",
+  );
 }
 
 /**

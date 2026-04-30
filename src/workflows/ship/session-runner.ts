@@ -233,40 +233,77 @@ export async function runShipFromCommand(input: RunShipFromCommandInput): Promis
 /**
  * Resume a paused (or active-but-tickled) intent by re-running the probe
  * and bridging the verdict back to the iteration handler. Idempotent —
- * terminal intents are no-ops; cap/deadline are re-checked at every
- * resume so a slow PR cannot accidentally exceed its budget.
+ * terminal intents are no-ops; cap/deadline are re-checked inside
+ * `runIteration` at every resume so a slow PR cannot accidentally exceed
+ * its budget.
  *
  * Used by the tickle scheduler's `onDue` callback (US2 wiring in
- * `src/app.ts`). Self-contained: no Octokit factory needed because the
- * iteration handler itself does not call GitHub — only Postgres + Valkey.
+ * `src/app.ts`). The `octokitFactory` is injected so the scheduler can
+ * mint installation tokens without this module needing to import the
+ * orchestrator's cached `App` singleton.
  */
-export async function resumeShipIntent(input: { intentId: string; log?: Logger }): Promise<void> {
+export interface ResumeShipIntentInput {
+  readonly intentId: string;
+  readonly octokitFactory: (installationId: number) => Promise<Octokit>;
+  readonly log?: Logger;
+}
+
+export async function resumeShipIntent(input: ResumeShipIntentInput): Promise<void> {
   const log = (input.log ?? rootLogger).child({
     component: "ship.session-runner.resume",
     intent_id: input.intentId,
   });
   const intent = await getIntentById(input.intentId);
   if (intent === null) {
-    log.warn("resumeShipIntent: intent not found — tickle entry stale, skipping");
+    log.warn(
+      { event: "ship.tickle.skip_terminal", reason: "intent_not_found" },
+      "resumeShipIntent: intent not found — tickle entry stale, skipping",
+    );
     return;
   }
   if (intent.status !== "active" && intent.status !== "paused") {
     log.info(
-      { status: intent.status },
+      { event: "ship.tickle.skip_terminal", status: intent.status },
       "resumeShipIntent: intent already terminal — tickle entry obsolete, skipping",
     );
     return;
   }
 
-  // The probe re-runs against the live PR state. Without an Octokit
-  // factory in scope, we can't actually probe here — that wiring lands
-  // in a follow-up. For now, surface a clear log so operators can spot
-  // tickle activity and the e2e quickstart S3 has a deterministic line
-  // to grep for.
+  const octokit = await input.octokitFactory(intent.installation_id);
+  const probe = await runProbe({
+    octokit,
+    owner: intent.owner,
+    repo: intent.repo,
+    pr_number: intent.pr_number,
+    botAppLogin: config.botAppLogin,
+    botPushedShas: new Set<string>(),
+  });
+
   log.info(
-    { event: "ship.tickle.due", source: "scheduler", status: intent.status },
-    "ship intent resumed by tickle (probe-on-resume wiring is a follow-up)",
+    {
+      event: "ship.tickle.due",
+      source: "scheduler",
+      status: intent.status,
+      verdict: verdictLabel(probe.verdict),
+    },
+    "ship intent resumed by tickle — bridging verdict to iteration handler",
   );
+
+  if (probe.verdict.ready) {
+    // Resume sees a now-ready PR. Terminal-shortcut behavior matches
+    // `runShipFromCommand`'s ready path, but without the trigger-time
+    // `markPullRequestReadyForReview` since the resume context lacks the
+    // command + tracking-comment id. Defer the GraphQL flip to the
+    // operator path; here we simply terminate the intent.
+    await transitionToTerminal(intent.id, "ready_awaiting_human_merge", null);
+    log.info(
+      { event: "ship.session.terminal_ready_on_resume" },
+      "ship intent terminal-ready on resume",
+    );
+    return;
+  }
+
+  await runIteration({ intent, probeVerdict: probe.verdict, log });
 }
 
 function verdictLabel(

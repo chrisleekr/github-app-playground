@@ -65,25 +65,36 @@ export async function executeScopedFixThread(
   });
 
   const octokit = new Octokit({ auth: input.installationToken });
-  const reply = await octokit.rest.pulls.createReplyForReviewComment({
-    owner: input.owner,
-    repo: input.repo,
-    pull_number: input.prNumber,
-    comment_id: input.threadRef.commentId,
-    body:
-      `\`bot:fix-thread\` daemon-side executor is scaffolded against ` +
-      `\`${input.threadRef.filePath}:${String(input.threadRef.startLine)}-${String(input.threadRef.endLine)}\`. ` +
-      `Multi-turn Agent SDK invocation is the next follow-up.`,
-  });
-
-  log.info(
-    { event: "ship.scoped.fix_thread.daemon.completed", threadReplyId: reply.data.id },
-    "scoped-fix-thread reply posted (scaffolding boundary)",
-  );
-
-  return {
-    status: "halted",
-    threadReplyId: reply.data.id,
-    reason: "agent-sdk invocation pending follow-up",
-  };
+  // Octokit-level errors (deleted comment, closed PR, abuse rate limit) are
+  // contractually `halted`, not `failed` — the executor itself ran cleanly,
+  // the user-visible state simply prevented the reply. Bubbling these as
+  // `failed` would conflate "user deleted the comment" with "executor crashed."
+  try {
+    const reply = await octokit.rest.pulls.createReplyForReviewComment({
+      owner: input.owner,
+      repo: input.repo,
+      pull_number: input.prNumber,
+      comment_id: input.threadRef.commentId,
+      body:
+        `\`bot:fix-thread\` daemon-side executor is scaffolded against ` +
+        `\`${input.threadRef.filePath}:${String(input.threadRef.startLine)}-${String(input.threadRef.endLine)}\`. ` +
+        `Multi-turn Agent SDK invocation is the next follow-up.`,
+    });
+    log.info(
+      { event: "ship.scoped.fix_thread.daemon.completed", threadReplyId: reply.data.id },
+      "scoped-fix-thread reply posted (scaffolding boundary)",
+    );
+    return {
+      status: "halted",
+      threadReplyId: reply.data.id,
+      reason: "agent-sdk invocation pending follow-up",
+    };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    log.warn(
+      { err: reason, event: "ship.scoped.fix_thread.thread_reply_failed" },
+      "scoped-fix-thread thread reply failed — halting (likely deleted comment / closed PR)",
+    );
+    return { status: "halted", reason: `thread reply failed: ${reason}` };
+  }
 }

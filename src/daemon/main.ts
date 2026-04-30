@@ -3,16 +3,34 @@ import { platform } from "node:os";
 import { config } from "../config";
 import { logger } from "../logger";
 import type { DaemonCapabilities } from "../shared/daemon-types";
-import { createMessageEnvelope, type ServerMessage } from "../shared/ws-messages";
+import {
+  createMessageEnvelope,
+  type ScopedJobKind,
+  type ServerMessage,
+  WS_REJECT_REASONS,
+} from "../shared/ws-messages";
 import { getDaemonId } from "./daemon-id";
 import { buildHeartbeatPong } from "./health-reporter";
 import {
   evaluateOffer,
+  evaluateScopedOffer,
   executeJob,
   getActiveJobCount,
   handleJobCancel,
   registerExitCleanup,
 } from "./job-executor";
+
+/**
+ * Scoped jobKinds this daemon image understands. Reject any other kind
+ * via `WS_REJECT_REASONS.SCOPED_KIND_UNSUPPORTED` so the orchestrator
+ * can re-offer to a capable daemon (FR-021 forward-compat).
+ */
+const SUPPORTED_SCOPED_KINDS: readonly ScopedJobKind[] = [
+  "scoped-rebase",
+  "scoped-fix-thread",
+  "scoped-explain-thread",
+  "scoped-open-pr",
+] as const;
 import { discoverCapabilities, getCurrentResources } from "./tool-discovery";
 import { DaemonWsClient } from "./ws-client";
 
@@ -138,7 +156,7 @@ function handleMessage(msg: ServerMessage): void {
         wsClient.send({
           type: "job:reject",
           ...createMessageEnvelope(msg.id),
-          payload: { reason: "daemon is draining" },
+          payload: { reason: WS_REJECT_REASONS.SHUTTING_DOWN },
         });
         return;
       }
@@ -156,7 +174,36 @@ function handleMessage(msg: ServerMessage): void {
         wsClient.send({
           type: "job:reject",
           ...createMessageEnvelope(msg.id),
-          payload: { reason: evaluation.reason ?? "unknown" },
+          payload: { reason: evaluation.reason ?? WS_REJECT_REASONS.INCOMPATIBLE },
+        });
+      }
+      break;
+    }
+
+    case "scoped-job-offer": {
+      if (draining) {
+        wsClient.send({
+          type: "job:reject",
+          ...createMessageEnvelope(msg.id),
+          payload: { reason: WS_REJECT_REASONS.SHUTTING_DOWN },
+        });
+        return;
+      }
+
+      capabilities = { ...capabilities, resources: getCurrentResources() };
+      const evaluation = evaluateScopedOffer(msg, capabilities, SUPPORTED_SCOPED_KINDS);
+
+      if (evaluation.accept) {
+        wsClient.send({
+          type: "job:accept",
+          ...createMessageEnvelope(msg.id),
+          payload: {},
+        });
+      } else {
+        wsClient.send({
+          type: "job:reject",
+          ...createMessageEnvelope(msg.id),
+          payload: { reason: evaluation.reason ?? WS_REJECT_REASONS.INCOMPATIBLE },
         });
       }
       break;

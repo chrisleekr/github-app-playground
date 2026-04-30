@@ -5,10 +5,15 @@
  * after a successful merge), and missing intents must not throw (the
  * tickle scheduler can't distinguish a still-existing intent from one
  * that was hand-deleted by an operator).
+ *
+ * Active intents now run `runProbe` against the live PR — the probe is
+ * stubbed via `octokitFactory` so the test keeps the existing
+ * "no DB mutation" assertion without hitting GitHub.
  */
 
 import { SQL } from "bun";
 import { beforeAll, describe, expect, it, mock } from "bun:test";
+import type { Octokit } from "octokit";
 
 const TEST_DATABASE_URL =
   process.env["TEST_DATABASE_URL"] ?? "postgres://bot:bot@localhost:5432/github_app_test";
@@ -32,6 +37,26 @@ void mock.module("../../../src/db", () => ({
   getDb: () => requireSql(),
   closeDb: () => Promise.resolve(),
 }));
+
+// Stub the probe so `resumeShipIntent` can run without a real Octokit.
+// Each test sets `mockProbeVerdict` before invoking; the default `ready: true`
+// drives the terminal-ready branch and never touches GitHub or Valkey.
+let mockProbeVerdict: { ready: true } | { ready: false; reason: string } = { ready: true };
+void mock.module("../../../src/workflows/ship/probe", () => ({
+  runProbe: () =>
+    Promise.resolve({
+      verdict: mockProbeVerdict,
+      response: {},
+    }),
+}));
+
+const throwingOctokitFactory = (): Promise<Octokit> => {
+  throw new Error("octokitFactory should not be called for terminal/missing intent paths");
+};
+
+const stubOctokitFactory = (): Promise<Octokit> =>
+  // The mocked runProbe ignores the octokit, so an empty object is fine.
+  Promise.resolve({} as Octokit);
 
 describe.skipIf(sql === null)("resumeShipIntent", () => {
   beforeAll(async () => {
@@ -57,7 +82,10 @@ describe.skipIf(sql === null)("resumeShipIntent", () => {
 
   it("is a no-op on a missing intent (stale tickle entry)", async () => {
     const { resumeShipIntent } = await import("../../../src/workflows/ship/session-runner");
-    await resumeShipIntent({ intentId: "00000000-0000-0000-0000-000000000000" });
+    await resumeShipIntent({
+      intentId: "00000000-0000-0000-0000-000000000000",
+      octokitFactory: throwingOctokitFactory,
+    });
     // No throw == pass. Side-effects are limited to a warn log.
     expect(true).toBe(true);
   });
@@ -82,14 +110,18 @@ describe.skipIf(sql === null)("resumeShipIntent", () => {
     );
     await transitionIntent(intent.id, "merged_externally", null, requireSql());
 
-    await resumeShipIntent({ intentId: intent.id });
+    await resumeShipIntent({
+      intentId: intent.id,
+      octokitFactory: throwingOctokitFactory,
+    });
     // No throw, no DB mutation expected. The status should remain terminal.
     const { getIntentById } = await import("../../../src/db/queries/ship");
     const refreshed = await getIntentById(intent.id, requireSql());
     expect(refreshed?.status).toBe("merged_externally");
   });
 
-  it("logs a tickle.due event for an active intent (probe-on-resume is a follow-up)", async () => {
+  it("transitions to ready_awaiting_human_merge when probe verdict is ready on resume", async () => {
+    mockProbeVerdict = { ready: true };
     const { resumeShipIntent } = await import("../../../src/workflows/ship/session-runner");
     const { insertIntent } = await import("../../../src/db/queries/ship");
 
@@ -108,11 +140,15 @@ describe.skipIf(sql === null)("resumeShipIntent", () => {
       requireSql(),
     );
 
-    await resumeShipIntent({ intentId: intent.id });
+    await resumeShipIntent({
+      intentId: intent.id,
+      octokitFactory: stubOctokitFactory,
+    });
 
-    // Status untouched until probe-on-resume lands as a follow-up.
+    // C3 fix: ready verdict on resume terminates the intent. The legacy
+    // stub-only behavior left it `active`; the wired-up handler closes it.
     const { getIntentById } = await import("../../../src/db/queries/ship");
     const refreshed = await getIntentById(intent.id, requireSql());
-    expect(refreshed?.status).toBe("active");
+    expect(refreshed?.status).toBe("ready_awaiting_human_merge");
   });
 });

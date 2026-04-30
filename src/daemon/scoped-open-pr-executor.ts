@@ -56,23 +56,40 @@ export async function executeScopedOpenPr(
   });
 
   const octokit = new Octokit({ auth: input.installationToken });
-  await octokit.rest.issues.createComment({
-    owner: input.owner,
-    repo: input.repo,
-    issue_number: input.issueNumber,
-    body:
-      `\`bot:open-pr\` daemon-side executor is scaffolded — clone + branch + ` +
-      `Agent SDK scaffolding + \`gh pr create\` invocation is the next follow-up. ` +
-      `Policy verdict (verbatim):\n\n> ${input.verdictSummary.replaceAll("\n", "\n> ")}`,
-  });
-
-  log.info(
-    { event: "ship.scoped.open_pr.daemon.completed" },
-    "scoped-open-pr reply posted (scaffolding boundary)",
-  );
-
-  return {
-    status: "halted",
-    reason: "agent-sdk invocation + branch creation pending follow-up",
-  };
+  // GitHub issue comment max body is 65 536 chars; truncate generously to
+  // leave room for the surrounding markdown so a pathological policy summary
+  // cannot turn into a 422 (which would otherwise misclassify as `failed`).
+  const MAX_SUMMARY_BYTES = 60_000;
+  const truncatedSummary =
+    input.verdictSummary.length <= MAX_SUMMARY_BYTES
+      ? input.verdictSummary
+      : `${input.verdictSummary.slice(0, MAX_SUMMARY_BYTES)}\n\n…(truncated)`;
+  // Octokit-level errors (closed issue, missing repo) are contractually
+  // `halted`, not `failed` — see scoped-fix-thread for rationale.
+  try {
+    await octokit.rest.issues.createComment({
+      owner: input.owner,
+      repo: input.repo,
+      issue_number: input.issueNumber,
+      body:
+        `\`bot:open-pr\` daemon-side executor is scaffolded — clone + branch + ` +
+        `Agent SDK scaffolding + \`gh pr create\` invocation is the next follow-up. ` +
+        `Policy verdict (verbatim):\n\n> ${truncatedSummary.replaceAll("\n", "\n> ")}`,
+    });
+    log.info(
+      { event: "ship.scoped.open_pr.daemon.completed" },
+      "scoped-open-pr reply posted (scaffolding boundary)",
+    );
+    return {
+      status: "halted",
+      reason: "agent-sdk invocation + branch creation pending follow-up",
+    };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    log.warn(
+      { err: reason, event: "ship.scoped.open_pr.issue_reply_failed" },
+      "scoped-open-pr issue reply failed — halting (likely closed issue / archived repo)",
+    );
+    return { status: "halted", reason: `issue reply failed: ${reason}` };
+  }
 }

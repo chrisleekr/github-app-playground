@@ -276,7 +276,7 @@ export async function onStepComplete(
       await recordWorkflowExecution({
         deliveryId: childDeliveryId,
         target: job.target,
-        senderLogin: "chrisleekr-bot[bot]",
+        senderLogin: config.botAppLogin,
         workflowName: job.workflowName,
         runId: job.runId,
         logger,
@@ -289,7 +289,7 @@ export async function onStepComplete(
         entityNumber: job.target.number,
         isPR: job.target.type === "pr",
         eventName: job.target.type === "pr" ? "pull_request" : "issues",
-        triggerUsername: "chrisleekr-bot[bot]",
+        triggerUsername: config.botAppLogin,
         labels: [],
         triggerBodyPreview: "",
         enqueuedAt: Date.now(),
@@ -380,14 +380,31 @@ export async function onStepComplete(
  */
 async function maybeEarlyWakeShipIntent(childRunId: string, log: pino.Logger): Promise<void> {
   const db = requireDb();
-  const rows: { state: Record<string, unknown> }[] = await db`
-    SELECT state FROM workflow_runs WHERE id = ${childRunId}
+  const rows: { state: Record<string, unknown>; status: string }[] = await db`
+    SELECT state, status FROM workflow_runs WHERE id = ${childRunId}
   `;
   const child = rows[0];
   if (child === undefined) return;
 
   const intentId = extractShipIntentId(child.state);
   if (intentId === undefined) return;
+
+  // Only succeeded children fire the cascade. A failed child should not
+  // auto-spin the next iteration — the iteration cap would eventually
+  // catch it, but until then the loop burns budget on a permanently
+  // broken intent. Operators can re-arm a stalled intent manually.
+  if (child.status !== "succeeded") {
+    log.info(
+      {
+        event: "ship.tickle.skip_failed_child",
+        intent_id: intentId,
+        child_run_id: childRunId,
+        child_status: child.status,
+      },
+      "ship-tickle early-wake skipped — child workflow run did not succeed",
+    );
+    return;
+  }
 
   try {
     const intent = await getIntentById(intentId);

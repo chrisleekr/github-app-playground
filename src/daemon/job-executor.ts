@@ -11,6 +11,9 @@ import {
   type JobCancelMessage,
   type JobOfferMessage,
   type JobPayloadMessage,
+  type ScopedJobKind,
+  type ScopedJobOfferMessage,
+  WS_REJECT_REASONS,
 } from "../shared/ws-messages";
 import { executeWorkflowRun } from "./workflow-executor";
 
@@ -107,6 +110,47 @@ export function evaluateOffer(
     return {
       accept: false,
       reason: `at capacity: ${activeJobs.size}/${MAX_CONCURRENT_JOBS} jobs active`,
+    };
+  }
+
+  return { accept: true };
+}
+
+/**
+ * Evaluate a `scoped-job-offer`. Scoped jobs do not declare `requiredTools`
+ * (the four executors only need git + bun, both baseline) and do not consume
+ * the legacy concurrency slot until `job:accept` is sent. The evaluator's
+ * single responsibility is forward-compat: reject jobKinds this image does
+ * not understand so the orchestrator can re-offer to a capable daemon.
+ */
+export function evaluateScopedOffer(
+  offer: ScopedJobOfferMessage,
+  capabilities: DaemonCapabilities,
+  supportedKinds: readonly ScopedJobKind[],
+): { accept: boolean; reason?: string } {
+  if (!supportedKinds.includes(offer.payload.jobKind)) {
+    return { accept: false, reason: WS_REJECT_REASONS.SCOPED_KIND_UNSUPPORTED };
+  }
+
+  // Memory floor still applies — scoped-rebase clones a repo.
+  if (capabilities.resources.memoryFreeMb < config.daemonMemoryFloorMb) {
+    return {
+      accept: false,
+      reason: `insufficient memory: ${capabilities.resources.memoryFreeMb}MB < ${config.daemonMemoryFloorMb}MB minimum`,
+    };
+  }
+
+  if (capabilities.resources.diskFreeMb < config.daemonDiskFloorMb) {
+    return {
+      accept: false,
+      reason: `insufficient disk: ${capabilities.resources.diskFreeMb}MB < ${config.daemonDiskFloorMb}MB minimum`,
+    };
+  }
+
+  if (activeJobs.size >= MAX_CONCURRENT_JOBS) {
+    return {
+      accept: false,
+      reason: WS_REJECT_REASONS.BUSY,
     };
   }
 
@@ -375,7 +419,6 @@ async function runScopedJob(
         const { executeScopedRebase } = await import("./scoped-rebase-executor");
         const outcome = await executeScopedRebase({
           installationToken,
-          installationId: scoped.installationId,
           owner: scoped.owner,
           repo: scoped.repo,
           prNumber: scoped.prNumber,
@@ -494,13 +537,45 @@ async function runScopedJob(
         });
         return;
       }
+      default: {
+        // Exhaustiveness check — a future jobKind addition with an older
+        // daemon image lands here. Surface a structured failed completion
+        // so the orchestrator can map it onto the user-facing reply path
+        // rather than letting the offer silently time out.
+        const _exhaustive: never = scoped;
+        const unknownKind = (_exhaustive as { jobKind: string }).jobKind;
+        logger.error(
+          {
+            event: "ship.scoped.unknown_kind.daemon.failed",
+            offerId,
+            jobKind: unknownKind,
+          },
+          "runScopedJob received unknown jobKind",
+        );
+        send({
+          type: "scoped-job-completion",
+          ...createMessageEnvelope(offerId),
+          payload: {
+            offerId,
+            deliveryId: (_exhaustive as { deliveryId: string }).deliveryId,
+            jobKind: unknownKind,
+            status: "failed" as const,
+            durationMs: Date.now() - startedAt,
+            reason: `unknown scoped jobKind: ${unknownKind}`,
+          },
+        });
+        return;
+      }
     }
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
+    // Static event name keeps log-event allowlists tractable; jobKind goes
+    // into a structured field instead of the event template.
     logger.error(
       {
-        event: `ship.scoped.${scoped.jobKind}.daemon.failed`,
+        event: "ship.scoped.daemon.failed",
         offerId,
+        jobKind: scoped.jobKind,
         deliveryId: scoped.deliveryId,
         reason,
       },

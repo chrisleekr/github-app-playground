@@ -27,7 +27,6 @@ import { requireDb } from "../../db";
 import { appendIteration, type ShipIntentRow } from "../../db/queries/ship";
 import { logger as rootLogger } from "../../logger";
 import { enqueueJob } from "../../orchestrator/job-queue";
-import type { BlockerCategory } from "../../shared/ship-types";
 import type { WorkflowName } from "../registry";
 import { insertQueued } from "../runs-store";
 import { transitionToTerminal } from "./intent";
@@ -49,7 +48,8 @@ export type RunIterationOutcome =
   | { readonly outcome: "enqueued"; readonly runId: string; readonly workflowName: WorkflowName }
   | { readonly outcome: "terminal-cap" }
   | { readonly outcome: "terminal-deadline" }
-  | { readonly outcome: "ready-shortcut" };
+  | { readonly outcome: "ready-shortcut" }
+  | { readonly outcome: "in-flight"; readonly runId: string };
 
 /**
  * Drive one iteration. Pure-ish — no GitHub API calls; only Postgres +
@@ -71,6 +71,25 @@ export async function runIteration(input: RunIterationInput): Promise<RunIterati
   });
 
   const intent = input.intent;
+
+  // 0. In-flight guard. A non-terminal `workflow_runs` row tagged with
+  //    this `shipIntentId` means a previous iteration is still running
+  //    (cascade-fire-while-running, or two concurrent invocations from
+  //    `resumeShipIntent` + a fresh comment trigger). Bail without
+  //    enqueueing; the cascade hook on the in-flight row's eventual
+  //    completion will tickle the intent again.
+  const inflight = await findInflightShipIntentRun(intent.id, sql);
+  if (inflight !== null) {
+    log.info(
+      {
+        event: SHIP_LOG_EVENTS.iteration.skipInflight,
+        run_id: inflight.id,
+        run_status: inflight.status,
+      },
+      "ship iteration skipped — non-terminal workflow_run already in flight for this intent",
+    );
+    return { outcome: "in-flight", runId: inflight.id };
+  }
 
   // 1. Cap check (FR-013, SC-005). Counted on the action-row count alone
   //    (probe rows that have not produced an action don't consume the
@@ -163,7 +182,7 @@ export async function runIteration(input: RunIterationInput): Promise<RunIterati
     entityNumber: intent.pr_number,
     isPR: true,
     eventName: "pull_request",
-    triggerUsername: "chrisleekr-bot[bot]",
+    triggerUsername: config.botAppLogin,
     labels: [],
     triggerBodyPreview: "",
     enqueuedAt: Date.now(),
@@ -197,6 +216,31 @@ export async function runIteration(input: RunIterationInput): Promise<RunIterati
   );
 
   return { outcome: "enqueued", runId: run.id, workflowName: nextWorkflowName };
+}
+
+/**
+ * Look up a non-terminal `workflow_runs` row carrying this `shipIntentId`
+ * in its `state` JSONB. Returns the in-flight row if one exists, else null.
+ *
+ * Used by `runIteration` to refuse double-enqueueing when (a) the
+ * cascade fired while the previous iteration was still running, or (b)
+ * `resumeShipIntent` and a fresh comment trigger raced.
+ */
+async function findInflightShipIntentRun(
+  intentId: string,
+  sql: SQL,
+): Promise<{ id: string; status: string } | null> {
+  // `state ->> 'shipIntentId' = $1` is equivalent to `state @> '{"shipIntentId":...}'::jsonb`
+  // here but parameter-binding is more reliable through Bun.sql than the
+  // `@> ::jsonb` cast which depends on driver-side JSON encoding.
+  const rows: { id: string; status: string }[] = await sql`
+    SELECT id, status
+      FROM workflow_runs
+     WHERE state ->> 'shipIntentId' = ${intentId}
+       AND status IN ('queued', 'running')
+     LIMIT 1
+  `;
+  return rows[0] ?? null;
 }
 
 /**
@@ -256,21 +300,4 @@ export async function countIterations(intentId: string, sql: SQL = requireDb()):
   if (typeof raw === "number") return raw;
   if (typeof raw === "string") return Number(raw);
   return 0;
-}
-
-/**
- * Map a non-readiness verdict to the matching `BlockerCategory` for terminal
- * transitions. Currently unused by `runIteration` (cap and deadline have
- * fixed mappings), but exported so future failure paths can compute the
- * blocker category from a verdict without re-deriving it locally.
- */
-export function blockerForVerdict(reason: NonReadinessReason): BlockerCategory {
-  switch (reason) {
-    case "human_took_over":
-      return "manual-push-detected";
-    case "behind_base":
-      return "merge-conflict-needs-human";
-    default:
-      return "unrecoverable-error";
-  }
 }

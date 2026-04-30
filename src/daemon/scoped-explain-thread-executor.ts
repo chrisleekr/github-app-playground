@@ -60,25 +60,33 @@ export async function executeScopedExplainThread(
   });
 
   const octokit = new Octokit({ auth: input.installationToken });
-  const reply = await octokit.rest.pulls.createReplyForReviewComment({
-    owner: input.owner,
-    repo: input.repo,
-    pull_number: input.prNumber,
-    comment_id: input.threadRef.commentId,
-    body:
-      `\`bot:explain-thread\` daemon-side read-only executor is scaffolded ` +
-      `against \`${input.threadRef.filePath}:${String(input.threadRef.startLine)}-${String(input.threadRef.endLine)}\`. ` +
-      `Agent SDK invocation with write-tool denylist is the next follow-up.`,
-  });
-
-  log.info(
-    { event: "ship.scoped.explain_thread.daemon.completed", threadReplyId: reply.data.id },
-    "scoped-explain-thread reply posted (scaffolding boundary)",
-  );
-
-  return {
-    status: "halted",
-    threadReplyId: reply.data.id,
-    reason: "agent-sdk read-only invocation pending follow-up",
-  };
+  // Octokit-level errors are contractually `halted` (see scoped-fix-thread).
+  try {
+    const reply = await octokit.rest.pulls.createReplyForReviewComment({
+      owner: input.owner,
+      repo: input.repo,
+      pull_number: input.prNumber,
+      comment_id: input.threadRef.commentId,
+      body:
+        `\`bot:explain-thread\` daemon-side read-only executor is scaffolded ` +
+        `against \`${input.threadRef.filePath}:${String(input.threadRef.startLine)}-${String(input.threadRef.endLine)}\`. ` +
+        `Agent SDK invocation with write-tool denylist is the next follow-up.`,
+    });
+    log.info(
+      { event: "ship.scoped.explain_thread.daemon.completed", threadReplyId: reply.data.id },
+      "scoped-explain-thread reply posted (scaffolding boundary)",
+    );
+    return {
+      status: "halted",
+      threadReplyId: reply.data.id,
+      reason: "agent-sdk read-only invocation pending follow-up",
+    };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    log.warn(
+      { err: reason, event: "ship.scoped.explain_thread.thread_reply_failed" },
+      "scoped-explain-thread thread reply failed — halting (likely deleted comment / closed PR)",
+    );
+    return { status: "halted", reason: `thread reply failed: ${reason}` };
+  }
 }

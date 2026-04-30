@@ -34,7 +34,6 @@ describe("executeScopedRebase", () => {
 
     const outcome = await executeScopedRebase({
       installationToken: "tok",
-      installationId: 1,
       owner: "octo",
       repo: "repo",
       prNumber: 7,

@@ -72,11 +72,13 @@ export const SHIP_LOG_EVENTS = {
     enqueued: "ship.iteration.enqueued",
     terminalCap: "ship.iteration.terminal_cap",
     terminalDeadline: "ship.iteration.terminal_deadline",
+    skipInflight: "ship.iteration.skip_inflight",
   },
   tickle: {
     started: "ship.tickle.started",
     due: "ship.tickle.due",
     skipTerminal: "ship.tickle.skip_terminal",
+    skipFailedChild: "ship.tickle.skip_failed_child",
   },
   scoped: {
     rebase: {

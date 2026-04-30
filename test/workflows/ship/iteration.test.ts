@@ -268,4 +268,57 @@ describe.skipIf(sql === null)("runIteration", () => {
     const count = iterRows[0]?.count ?? 0;
     expect(typeof count === "number" ? count : Number(count)).toBe(0);
   });
+
+  // H6: in-flight guard. A non-terminal `workflow_runs` row tagged with
+  // this `shipIntentId` means a previous iteration is still running. The
+  // handler MUST refuse to double-enqueue.
+  it("returns in-flight without enqueueing when a non-terminal workflow_run exists for the intent (H6)", async () => {
+    const { runIteration } = await import("../../../src/workflows/ship/iteration");
+    const { getIntentById } = await import("../../../src/db/queries/ship");
+    const { insertQueued } = await import("../../../src/workflows/runs-store");
+
+    // Use a pr_number far from other tests to avoid sharing the partial
+    // unique index `idx_workflow_runs_inflight` with another test's row.
+    const intent = await seedActiveIntent({ pr_number: 14246 });
+    const intentRow = await getIntentById(intent.id, requireSql());
+    if (intentRow === null) throw new Error("seed intent missing");
+
+    // Pre-seed a queued workflow_run carrying the intent id. Use workflow
+    // "implement" (not "resolve") so the row is unique under the inflight
+    // index even if a prior test left a leaked resolve-row at this PR.
+    const inflight = await insertQueued(
+      {
+        workflowName: "implement",
+        target: { type: "pr", owner: intent.owner, repo: intent.repo, number: intent.pr_number },
+        ownerKind: "orchestrator",
+        ownerId: `ship-intent:${intent.id}`,
+        initialState: { shipIntentId: intent.id, iteration_n: 1 },
+      },
+      requireSql(),
+    );
+
+    const result = await runIteration({
+      intent: intentRow,
+      probeVerdict: {
+        ready: false,
+        reason: "open_threads",
+        detail: "still",
+        checked_at: new Date().toISOString(),
+        head_sha: "head-sha",
+      },
+    });
+
+    expect(result.outcome).toBe("in-flight");
+    if (result.outcome === "in-flight") {
+      expect(result.runId).toBe(inflight.id);
+    }
+    expect(mockEnqueueJob).toHaveBeenCalledTimes(0);
+
+    // No new ship_iterations rows either.
+    const iterRows: { count: number | string }[] = await requireSql()`
+      SELECT COUNT(*)::int AS count FROM ship_iterations WHERE intent_id = ${intent.id}
+    `;
+    const count = iterRows[0]?.count ?? 0;
+    expect(typeof count === "number" ? count : Number(count)).toBe(0);
+  });
 });

@@ -400,7 +400,13 @@ async function runStartupChecks(): Promise<void> {
   // no separate reconcile method to invoke.
   shipTickleScheduler = createTickleScheduler({
     valkey: requireValkeyClient(),
-    onDue: (intent_id) => resumeShipIntent({ intentId: intent_id }),
+    onDue: (intent_id) =>
+      resumeShipIntent({
+        intentId: intent_id,
+        // Reuse the same App singleton bound at module scope; the cached
+        // installation tokens save a JWT mint per resume.
+        octokitFactory: (installationId) => app.getInstallationOctokit(installationId),
+      }),
   });
   await shipTickleScheduler.start();
   logger.info({ event: "ship.tickle.started" }, "Ship-intent tickle scheduler started");

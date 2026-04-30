@@ -29,12 +29,12 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { Octokit } from "octokit";
 
+import { config } from "../config";
 import { logger } from "../logger";
 import { type RebaseOutcome, runRebase } from "../workflows/ship/scoped/rebase";
 
 export interface ScopedRebaseExecutorInput {
   readonly installationToken: string;
-  readonly installationId: number;
   readonly owner: string;
   readonly repo: string;
   readonly prNumber: number;
@@ -64,7 +64,14 @@ export async function executeScopedRebase(
   // eslint-disable-next-line security/detect-non-literal-fs-filename
   await mkdir(baseDir, { recursive: true });
   const workDir = await mkdtemp(join(baseDir, `${input.owner}-${input.repo}-`));
-  const helperPath = `${workDir}.cred.sh`;
+  // Credential helper lives INSIDE workDir so the 0700 mkdtemp directory
+  // gates access (the helper file's own 0700 perms are belt-and-braces).
+  const helperPath = join(workDir, ".git-credential-helper.sh");
+  // The token never lands on disk: the helper reads `$GIT_TOKEN` from the
+  // process env at exec time. Keeps the secret out of the script body so
+  // an unusual token byte (`'`, `\`, `$`) cannot break the printf or
+  // become a shell-injection sink.
+  const gitEnv = { GIT_TOKEN: input.installationToken };
 
   try {
     return await runRebase({
@@ -75,24 +82,25 @@ export async function executeScopedRebase(
       log,
       runMerge: async ({ base_ref, head_ref }) => {
         const repoUrl = `https://github.com/${input.owner}/${input.repo}.git`;
-        // Credential helper avoids embedding the token in the argv table.
         // eslint-disable-next-line security/detect-non-literal-fs-filename
         await writeFile(
           helperPath,
-          `#!/bin/sh\nprintf 'username=x-access-token\\npassword=${input.installationToken}\\n'\n`,
+          `#!/bin/sh\nprintf 'username=x-access-token\\npassword=%s\\n' "$GIT_TOKEN"\n`,
           { mode: 0o700 },
         );
 
         log.info({ workDir, head_ref, base_ref }, "Cloning head branch for scoped-rebase");
-        await $`git clone --branch=${head_ref} --single-branch -c credential.helper=${helperPath} ${repoUrl} ${workDir}`;
+        await $`git clone --branch=${head_ref} --single-branch -c credential.helper=${helperPath} ${repoUrl} ${workDir}`.env(
+          gitEnv,
+        );
         await $`git -C ${workDir} config credential.helper ${helperPath}`;
-        await $`git -C ${workDir} config user.name ${"chrisleekr-bot[bot]"}`;
-        await $`git -C ${workDir} config user.email ${"chrisleekr-bot[bot]@users.noreply.github.com"}`;
+        await $`git -C ${workDir} config user.name ${config.botAppLogin}`;
+        await $`git -C ${workDir} config user.email ${`${config.botAppLogin}@users.noreply.github.com`}`;
 
         // Bring base into the local clone, then merge it into head. Never
         // `--ff-only` (we want the merge commit), never `--rebase`, never
         // `--force`. The static linter rule guards against regressions.
-        await $`git -C ${workDir} fetch origin ${base_ref}`;
+        await $`git -C ${workDir} fetch origin ${base_ref}`.env(gitEnv);
         const mergeResult = await $`git -C ${workDir} merge origin/${base_ref} --no-edit`.nothrow();
 
         if (mergeResult.exitCode === 0) {
@@ -102,7 +110,7 @@ export async function executeScopedRebase(
           }
           // Capture the merge commit SHA before pushing so we can report it.
           const headSha = (await $`git -C ${workDir} rev-parse HEAD`.text()).trim();
-          await $`git -C ${workDir} push origin HEAD:${head_ref}`;
+          await $`git -C ${workDir} push origin HEAD:${head_ref}`.env(gitEnv);
           return { status: "merged", merge_commit_sha: headSha };
         }
 
@@ -112,14 +120,24 @@ export async function executeScopedRebase(
           .split("\n")
           .map((p) => p.trim())
           .filter((p) => p.length > 0);
-        await $`git -C ${workDir} merge --abort`.nothrow();
+        const abortResult = await $`git -C ${workDir} merge --abort`.nothrow();
+        if (abortResult.exitCode !== 0) {
+          // The temp dir is rm'd in the finally below so no dirty state
+          // persists, but a non-zero abort can still indicate disk pressure
+          // or fs corruption — log so it surfaces in operator dashboards.
+          log.warn(
+            {
+              exitCode: abortResult.exitCode,
+              stderr: abortResult.stderr.toString().slice(0, 200),
+            },
+            "git merge --abort returned non-zero (non-fatal — workDir will be removed)",
+          );
+        }
         return { status: "conflict", conflict_paths };
       },
     });
   } finally {
-    await Promise.all([
-      rm(workDir, { recursive: true, force: true }),
-      rm(helperPath, { force: true }),
-    ]);
+    // helperPath lives inside workDir, so a single rm covers both.
+    await rm(workDir, { recursive: true, force: true });
   }
 }
