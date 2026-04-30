@@ -92,14 +92,17 @@ export async function executeScopedFixThread(
     };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    // Only 4xx (semantic GitHub state — deleted comment, closed PR, archived
-    // repo) is a clean halt. Transport failures and 5xx must rethrow so the
-    // outer scoped-job catch reports `failed` and the orchestrator can retry.
+    // Only terminal 4xx semantic-state codes (deleted comment, closed PR,
+    // archived repo, validation) are a clean halt. Throttling and abuse-
+    // detection responses (429, 403 with rate-limit body) MUST rethrow so the
+    // orchestrator's retry layer can back off and re-offer; treating them as
+    // halted permanently drops the request on a transient GitHub condition.
     const status =
       typeof err === "object" && err !== null && "status" in err
         ? (err as { status?: unknown }).status
         : undefined;
-    if (typeof status === "number" && status >= 400 && status < 500) {
+    const isRateLimited = status === 429 || (status === 403 && /rate limit|abuse/i.test(reason));
+    if (typeof status === "number" && status >= 400 && status < 500 && !isRateLimited) {
       log.warn(
         { err: reason, status, event: SHIP_LOG_EVENTS.scoped.fixThread.daemonFailed },
         "scoped-fix-thread thread reply failed — halting on semantic GitHub error",

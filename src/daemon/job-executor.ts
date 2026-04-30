@@ -39,6 +39,9 @@ export function getActiveJobCount(): number {
 export function registerExitCleanup(): void {
   process.on("exit", () => {
     for (const job of activeJobs.values()) {
+      // Scoped jobs never own a workspace path; skip the rm so we do not
+      // accidentally target `.cred.sh` in the daemon's CWD.
+      if (job.workDir === "") continue;
       try {
         rmSync(job.workDir, { recursive: true, force: true });
       } catch {
@@ -236,17 +239,27 @@ export async function executeJob(
   // entry on completion via the same `activeJobs.delete` path the legacy
   // executor uses.
   if (payload.payload.scoped !== undefined) {
+    // Register an AbortController so handleJobCancel can suppress the
+    // duplicate `scoped-job-completion` that runScopedJob would otherwise
+    // send after the cancel path's synthetic `job:result`. Without this,
+    // a cancel during a scoped run double-finalizes the execution and
+    // double-decrements the orchestrator capacity counter.
+    const scopedAbort = new AbortController();
+    jobAbortControllers.set(offerId, scopedAbort);
     activeJobs.set(offerId, {
       offerId,
       deliveryId: payload.payload.scoped.deliveryId,
+      // No workspace path for scoped jobs; cleanup paths must guard on
+      // `workDir !== ""` before deriving credential-helper filenames.
       workDir: "",
       agentPid: null,
       startedAt: Date.now(),
     });
     try {
-      await runScopedJob(payload, capabilities, send);
+      await runScopedJob(payload, capabilities, send, scopedAbort.signal);
     } finally {
       activeJobs.delete(offerId);
+      jobAbortControllers.delete(offerId);
     }
     return;
   }
@@ -419,6 +432,7 @@ async function runScopedJob(
   payload: JobPayloadMessage,
   _capabilities: DaemonCapabilities,
   send: (msg: unknown) => void,
+  signal: AbortSignal,
 ): Promise<void> {
   const scoped = payload.payload.scoped;
   if (scoped === undefined) {
@@ -429,6 +443,15 @@ async function runScopedJob(
   const offerId = payload.id;
   const startedAt = Date.now();
   const installationToken = payload.payload.installationToken;
+
+  // Wrap `send` so every scoped-job-completion is suppressed after a cancel,
+  // matching the legacy executor's abort-then-skip-result pattern. The cancel
+  // path emits its own synthetic `job:result`; we MUST NOT also emit a
+  // scoped-job-completion or the orchestrator will double-decrement capacity.
+  const sendIfNotAborted = (msg: unknown): void => {
+    if (signal.aborted) return;
+    send(msg);
+  };
 
   try {
     switch (scoped.jobKind) {
@@ -473,7 +496,7 @@ async function runScopedJob(
             }
           }
         })();
-        send({
+        sendIfNotAborted({
           type: "scoped-job-completion",
           ...createMessageEnvelope(offerId),
           payload: {
@@ -497,7 +520,7 @@ async function runScopedJob(
           threadRef: scoped.threadRef,
           triggerCommentId: scoped.triggerCommentId,
         });
-        send({
+        sendIfNotAborted({
           type: "scoped-job-completion",
           ...createMessageEnvelope(offerId),
           payload: {
@@ -527,7 +550,7 @@ async function runScopedJob(
           threadRef: scoped.threadRef,
           triggerCommentId: scoped.triggerCommentId,
         });
-        send({
+        sendIfNotAborted({
           type: "scoped-job-completion",
           ...createMessageEnvelope(offerId),
           payload: {
@@ -554,7 +577,7 @@ async function runScopedJob(
           triggerCommentId: scoped.triggerCommentId,
           verdictSummary: scoped.verdictSummary,
         });
-        send({
+        sendIfNotAborted({
           type: "scoped-job-completion",
           ...createMessageEnvelope(offerId),
           payload: {
@@ -587,7 +610,7 @@ async function runScopedJob(
           },
           "runScopedJob received unknown jobKind",
         );
-        send({
+        sendIfNotAborted({
           type: "scoped-job-completion",
           ...createMessageEnvelope(offerId),
           payload: {
@@ -617,7 +640,7 @@ async function runScopedJob(
       },
       "scoped-job execution failed",
     );
-    send({
+    sendIfNotAborted({
       type: "scoped-job-completion",
       ...createMessageEnvelope(offerId),
       payload: {

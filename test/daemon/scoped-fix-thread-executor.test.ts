@@ -39,14 +39,18 @@ describe("executeScopedFixThread", () => {
         startLine: 10,
         endLine: 15,
       },
-      triggerCommentId: 7777,
+      triggerCommentId: 8888,
     });
 
     expect(outcome.status).toBe("halted");
     expect(outcome.threadReplyId).toBe(9001);
     expect(mockCreateReply).toHaveBeenCalledTimes(1);
-    const args = mockCreateReply.mock.calls[0]?.[0] as { body?: string } | undefined;
+    const args = mockCreateReply.mock.calls[0]?.[0] as
+      | { body?: string; comment_id?: number }
+      | undefined;
     expect(args?.body).toContain("src/foo.ts:10-15");
+    // Reply MUST be posted against threadRef.commentId, never triggerCommentId.
+    expect(args?.comment_id).toBe(7777);
   });
 
   // H2: 4xx from `createReplyForReviewComment` must map to `halted` (with a
@@ -72,7 +76,7 @@ describe("executeScopedFixThread", () => {
         startLine: 10,
         endLine: 15,
       },
-      triggerCommentId: 7777,
+      triggerCommentId: 8888,
     });
 
     expect(outcome.status).toBe("halted");
@@ -104,7 +108,7 @@ describe("executeScopedFixThread", () => {
           startLine: 10,
           endLine: 15,
         },
-        triggerCommentId: 7777,
+        triggerCommentId: 8888,
       }),
       "Server unavailable",
     );

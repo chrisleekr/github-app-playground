@@ -84,13 +84,16 @@ export async function executeScopedExplainThread(
     };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    // Only 4xx (deleted comment, closed PR) is a clean halt. Transport
-    // failures and 5xx must rethrow so the outer catch reports `failed`.
+    // Terminal 4xx (deleted comment, closed PR) is a clean halt. Throttling
+    // and abuse-detection responses (429, 403 with rate-limit body) MUST
+    // rethrow so the orchestrator's retry layer can back off — same rule
+    // as scoped-fix-thread.
     const status =
       typeof err === "object" && err !== null && "status" in err
         ? (err as { status?: unknown }).status
         : undefined;
-    if (typeof status === "number" && status >= 400 && status < 500) {
+    const isRateLimited = status === 429 || (status === 403 && /rate limit|abuse/i.test(reason));
+    if (typeof status === "number" && status >= 400 && status < 500 && !isRateLimited) {
       log.warn(
         { err: reason, status, event: SHIP_LOG_EVENTS.scoped.explainThread.daemonFailed },
         "scoped-explain-thread thread reply failed — halting on semantic GitHub error",

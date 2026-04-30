@@ -19,7 +19,7 @@
  * cascade uses to early-wake the intent on completion.
  */
 
-import type { RedisClient, SQL } from "bun";
+import type { SQL } from "bun";
 import type { Logger } from "pino";
 
 import { config } from "../../config";
@@ -37,7 +37,6 @@ import { serializeShipWorkflowContext } from "./workflow-context";
 
 export interface RunIterationDeps {
   readonly sql?: SQL;
-  readonly valkey?: Pick<RedisClient, "send">;
   readonly log?: Logger;
 }
 

@@ -18,7 +18,7 @@ description: "Task list for ship-iteration-wiring feature"
 
 ## Path conventions
 
-Single-project Bun layout per `plan.md`. Source under `src/`, tests co-located as `*.test.ts` plus integration tests under `tests/integration/`.
+Single-project Bun layout per `plan.md`. Source under `src/`, tests co-located as `*.test.ts` plus integration tests under `test/integration/`.
 
 ---
 
@@ -28,7 +28,7 @@ Single-project Bun layout per `plan.md`. Source under `src/`, tests co-located a
 
 - [x] T001 [P] Document the `workflow_runs.context_json.shipIntentId` convention in `src/shared/workflow-types.ts` as a JSDoc note on the existing `WorkflowRunRef` interface (no struct change; this is a convention contract per research.md Q1).
 - [x] T002 [P] Add a `ShipIntentContextSchema` Zod schema in `src/workflows/ship/intent.ts` (or a new `src/workflows/ship/workflow-context.ts` if `intent.ts` is at line-count limit) that types and validates `{ shipIntentId: string }` for use at insert/read sites.
-- [x] T003 [P] Introduce a `kind` discriminator on `QueuedJob` in `src/orchestrator/job-queue.ts` and convert it to a Zod-validated discriminated union with five variants: `legacy` (existing shape), `workflow-run` (existing — moves the current `workflowRun?` field under this variant), and the four new `scoped-*` variants per `contracts/job-kinds.md`. **This is a non-trivial refactor**: every existing producer (orchestrator dispatcher, ephemeral-daemon scaler, all webhook event handlers that call `enqueueJob`) and every existing consumer (`src/daemon/job-executor.ts`, queue-worker, history) MUST be updated to set/read the new `kind` field. Today's implicit "presence of `workflowRun` ⇒ workflow-run path" check becomes an explicit `kind === "workflow-run"` switch.
+- [x] T003 [P] Introduce a `kind` discriminator on `QueuedJob` in `src/orchestrator/job-queue.ts` and convert it to a Zod-validated discriminated union with six variants: `legacy` (existing shape), `workflow-run` (existing — moves the current `workflowRun?` field under this variant), and the four new `scoped-*` variants per `contracts/job-kinds.md`. **This is a non-trivial refactor**: every existing producer (orchestrator dispatcher, ephemeral-daemon scaler, all webhook event handlers that call `enqueueJob`) and every existing consumer (`src/daemon/job-executor.ts`, queue-worker, history) MUST be updated to set/read the new `kind` field. Today's implicit "presence of `workflowRun` ⇒ workflow-run path" check becomes an explicit `kind === "workflow-run"` switch.
 - [x] T004 [P] Extend WS message Zod schemas in `src/shared/ws-messages.ts` with `scoped-job-offer` and `scoped-job-completion` (per `contracts/ws-messages.md`); add `scoped-kind-unsupported` to the reject-reason enum.
 - [x] T005 Co-locate Zod schema unit tests in `src/shared/ws-messages.test.ts` — round-trip parse/serialize for each new message kind plus rejection of malformed payloads.
 
@@ -62,14 +62,14 @@ Single-project Bun layout per `plan.md`. Source under `src/`, tests co-located a
 > **Write these tests FIRST, ensure they FAIL before implementation.**
 
 - [x] T010 [P] [US1] Unit tests for the iteration handler in `src/workflows/ship/iteration.test.ts` — covers: cap exceeded → terminal:halted:cap; deadline exceeded → terminal:halted:deadline; non-ready verdict with valid action → workflow_runs row inserted + job enqueued + ship_iterations row appended; verdict missing required field → throws.
-- [x] T011 [US1] Integration test in `tests/integration/ship-iteration-loop.test.ts` — full round-trip: seed an active intent, simulate a non-ready probe, assert the queued job has `workflowRun.workflowName` set and `context_json.shipIntentId` matches the seeded intent.
+- [x] T011 [US1] Integration test in `test/integration/ship-iteration-loop.test.ts` — full round-trip: seed an active intent, simulate a non-ready probe, assert the queued job has `workflowRun.workflowName` set and `context_json.shipIntentId` matches the seeded intent.
 
 ### Implementation for User Story 1
 
 - [x] T012 [US1] Create `src/workflows/ship/iteration.ts` with exported `runIteration({ intent, probeVerdict, db, valkey, log })` that: (a) re-evaluates cap/deadline (transition terminal if exceeded); (b) selects exactly one next action from the verdict (one-action-per-iteration per research.md Q4); (c) inserts a `workflow_runs` row via the existing helper, embedding `shipIntentId` in `context_json`; (d) enqueues via `enqueueJob({ workflowRun: ... })`; (e) appends to `ship_iterations`; (f) emits `event=ship.iteration.enqueued` log line.
 - [x] T013 [US1] Replace the `"iteration loop pending US2"` log block in `src/workflows/ship/session-runner.ts` (the non-ready branch around the existing log statement) with a call to `runIteration` from T012.
 - [x] T014 [US1] Add cap and deadline accessors (helpers) reading `config.maxShipIterations` (env: `MAX_SHIP_ITERATIONS`) and `config.maxWallClockPerShipRun` (env: `MAX_WALL_CLOCK_PER_SHIP_RUN`). Place in `src/workflows/ship/intent.ts` if no equivalent exists; if cap/deadline accessors already exist there, reuse them. The iteration handler MUST read from a single source of truth — no duplicated cap-comparison logic.
-- [x] T015 [US1] Verify the orchestrator cascade from T007 actually fires on iteration-driven runs by extending `tests/integration/ship-iteration-loop.test.ts` with a "completion → tickle ZADD" assertion that uses a Valkey test double or an isolated test database.
+- [x] T015 [US1] Verify the orchestrator cascade from T007 actually fires on iteration-driven runs by extending `test/integration/ship-iteration-loop.test.ts` with a "completion → tickle ZADD" assertion that uses a Valkey test double or an isolated test database.
 - [x] T016 [US1] Add JSDoc to all exports in `iteration.ts` per Constitution Principle VIII; include `@param`, `@returns`, `@throws` for any error paths.
 
 **Checkpoint**: User Story 1 fully functional — `bot:ship` on a non-ready PR drives at least one iteration through the existing daemon pipeline and re-enters via tickle on completion. (US2 makes the _paused_ re-entry work; US1 only requires the early-wake `score=0` path.)
@@ -85,7 +85,7 @@ Single-project Bun layout per `plan.md`. Source under `src/`, tests co-located a
 ### Tests for User Story 2 ⚠️
 
 - [x] T017 [P] [US2] Unit tests for `resumeShipIntent` in `src/workflows/ship/session-runner.test.ts` — covers: terminal intent → no-op (no enqueue, no `due_at` write); cap/deadline tripped → terminal transition; ready verdict → terminal:ready; non-ready verdict → calls runIteration; awaiting verdict → re-pause with new `due_at`.
-- [x] T018 [US2] Integration test in `tests/integration/ship-tickle-resume.test.ts` — boot `createTickleScheduler` against a test Valkey + Postgres, seed a paused intent, ZADD with `score=0`, await one tick, assert exactly one `runIteration`-equivalent side-effect occurred.
+- [x] T018 [US2] Integration test in `test/integration/ship-tickle-resume.test.ts` — boot `createTickleScheduler` against a test Valkey + Postgres, seed a paused intent, ZADD with `score=0`, await one tick, assert exactly one `runIteration`-equivalent side-effect occurred.
 
 ### Implementation for User Story 2
 
@@ -111,7 +111,7 @@ Single-project Bun layout per `plan.md`. Source under `src/`, tests co-located a
 - [x] T025 [P] [US3] Unit tests for `scoped-fix-thread-executor` in `src/daemon/scoped-fix-thread-executor.test.ts` — covers: agent with diff → push + thread reply + thread resolve; agent with no diff → reply "no change required" without commit; agent writes outside thread scope → halt without push.
 - [x] T026 [P] [US3] Unit tests for `scoped-explain-thread-executor` in `src/daemon/scoped-explain-thread-executor.test.ts` — covers: read-only behavior (no push, no thread resolve); agent reply posted on thread; write-tool denylist enforced.
 - [x] T027 [P] [US3] Unit tests for `scoped-open-pr-executor` in `src/daemon/scoped-open-pr-executor.test.ts` — covers: branch created from default; PR opened linking issue; agent produces no diff → halt without empty branch.
-- [x] T028 [US3] Integration test in `tests/integration/scoped-rebase-roundtrip.test.ts` — full WS round-trip: orchestrator enqueues `scoped-rebase`, daemon receives offer, accepts, completes, reports outcome. Validates `contracts/ws-messages.md` end-to-end for at least one scoped kind (FR-020).
+- [x] T028 [US3] Integration test in `test/integration/scoped-rebase-roundtrip.test.ts` — full WS round-trip: orchestrator enqueues `scoped-rebase`, daemon receives offer, accepts, completes, reports outcome. Validates `contracts/ws-messages.md` end-to-end for at least one scoped kind (FR-020).
 
 ### Implementation for User Story 3
 

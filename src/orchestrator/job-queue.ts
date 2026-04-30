@@ -152,8 +152,11 @@ function parseQueuedJob(raw: string): QueuedJob | null {
   }
   const result = QueuedJobSchema.safeParse(parsed);
   if (!result.success) {
+    // `raw` can carry user-authored content (triggerBodyPreview,
+    // verdictSummary). Log only metadata so an invalid payload does not
+    // leak free-form user text into operator logs.
     logger.error(
-      { issues: result.error.issues, raw: raw.slice(0, 200) },
+      { issues: result.error.issues, rawLength: raw.length },
       "queue:jobs payload failed schema validation",
     );
     return null;
@@ -279,7 +282,7 @@ export async function leaseJob(
   if (raw === null) return null;
   const job = parseQueuedJob(raw);
   if (job === null) {
-    logger.error({ raw: raw.slice(0, 200) }, "Failed to parse leased job — dropping poison pill");
+    logger.error({ rawLength: raw.length }, "Failed to parse leased job — dropping poison pill");
     await valkey.send("LREM", [dest, "1", raw]);
     return null;
   }
