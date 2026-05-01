@@ -11,3 +11,4 @@ bun.lockb
 .github/agents/
 .github/prompts/
 .specify/
+docs/index.md

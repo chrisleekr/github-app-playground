@@ -92,16 +92,30 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Setup: SETUP.md
-  - Architecture: ARCHITECTURE.md
-  - Configuration: CONFIGURATION.md
-  - Bot workflows: BOT-WORKFLOWS.md
-  - PR shepherding (`bot:ship`): SHIP.md
-  - Operator guides:
-      - Observability: OBSERVABILITY.md
-      - Triage: TRIAGE.md
-      - Daemon mode: DAEMON.md
-  - Deployment: DEPLOYMENT.md
-  - Extending: EXTENDING.md
-  - Contributing: CONTRIBUTING.md
-  - Changelog: CHANGELOG.md
+  - Use the bot:
+      - Invoking: use/invoking.md
+      - Workflows:
+          - Catalog: use/workflows/index.md
+          - bot:ship: use/workflows/ship.md
+          - bot:triage: use/workflows/triage.md
+          - bot:plan: use/workflows/plan.md
+          - bot:implement: use/workflows/implement.md
+          - bot:review: use/workflows/review.md
+          - bot:resolve: use/workflows/resolve.md
+      - Safety: use/safety.md
+  - Run the service:
+      - Local development: operate/setup.md
+      - GitHub App creation: operate/github-app.md
+      - Deployment: operate/deployment.md
+      - Configuration: operate/configuration.md
+      - Observability: operate/observability.md
+      - Runbooks:
+          - Daemon fleet: operate/runbooks/daemon-fleet.md
+          - Triage: operate/runbooks/triage.md
+          - Stuck bot:ship session: operate/runbooks/stuck-ship-intent.md
+  - Build on it:
+      - Architecture: build/architecture.md
+      - Extending: build/extending.md
+      - Conventions: build/conventions.md
+      - Contributing: build/contributing.md
+  - Changelog: changelog.md

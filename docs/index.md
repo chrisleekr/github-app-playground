@@ -5,20 +5,36 @@ hide:
 
 # GitHub App Playground
 
-A GitHub App that responds to `@chrisleekr-bot` mentions on pull requests and issues, powered by the Claude Agent SDK. Every request is handed off to the daemon fleet over WebSocket; when triage flags the job as heavy or the queue backs up, the orchestrator spawns an ephemeral daemon Pod on Kubernetes so the same image scales on demand.
+A GitHub App that responds to `@chrisleekr-bot` mentions on pull requests and issues, powered by the Claude Agent SDK. Every webhook is acknowledged in under ten seconds and handed to the daemon fleet over WebSocket; when triage flags the job as heavy or the queue backs up, the orchestrator spawns an ephemeral daemon Pod on Kubernetes so the same image scales on demand.
 
-## Start here
+## Three doors
 
-- **[Setup](SETUP.md)** — GitHub App creation, local tunnel, environment variables.
-- **[Architecture](ARCHITECTURE.md)** — end-to-end request flow, from webhook through the daemon fleet to the tracking comment.
-- **[Deployment](DEPLOYMENT.md)** — Docker build, health probes, resource sizing.
-- **[Extending](EXTENDING.md)** — add new webhook handlers and MCP servers.
+<div class="grid cards" markdown>
 
-## Operator guides
+-   :material-account-voice:{ .lg .middle } __Use the bot__
 
-- [Configuration](CONFIGURATION.md) — every environment variable the app reads.
-- [Observability](OBSERVABILITY.md) — log fields, dispatch reasons, alerts.
-- [Triage](TRIAGE.md) — binary heavy-job classifier behaviour and tuning.
-- [Daemon mode](DAEMON.md) — persistent vs ephemeral daemons and the WebSocket protocol.
+    ---
 
-This site tracks the `main` branch. See the repository `CHANGELOG.md` for release history.
+    Trigger workflows from comments, labels, or natural language. See what each `bot:*` command does and how to stop one mid-flight.
+
+    [:octicons-arrow-right-24: Start with invocation](use/invoking.md)
+
+-   :material-server:{ .lg .middle } __Run the service__
+
+    ---
+
+    Get from `git clone` to a webhook receiving production traffic. Configuration, deployment, observability, and runbooks for the most common Day-2 issues.
+
+    [:octicons-arrow-right-24: Start with setup](operate/setup.md)
+
+-   :material-code-braces:{ .lg .middle } __Build on it__
+
+    ---
+
+    Architecture, request flow, and how to add a new workflow or MCP server. Conventions and contribution rules.
+
+    [:octicons-arrow-right-24: Start with architecture](build/architecture.md)
+
+</div>
+
+This site tracks the `main` branch. Release history lives in the [changelog](changelog.md).
