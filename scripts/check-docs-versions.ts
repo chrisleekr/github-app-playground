@@ -18,7 +18,12 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+// `DOCS_CHECK_REPO_ROOT` env override exists solely so the test suite can
+// point the gate at a fixture tree without copying the script. Production
+// invocations leave it unset and resolve `repoRoot` from the script's own
+// location.
+const repoRoot =
+  process.env["DOCS_CHECK_REPO_ROOT"] ?? resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const TOOL_VERSIONS = join(repoRoot, ".tool-versions");
 const PACKAGE_JSON = join(repoRoot, "package.json");
 const DOCKERFILES = [
@@ -106,13 +111,19 @@ function checkDockerfile(path: string, canonical: string): Mismatch[] {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i] ?? "";
     const baseMatch = /^FROM\s+oven\/bun:(\d+\.\d+\.\d+)\s+AS\s+base/.exec(line);
-    if (baseMatch) {
-      foundBase = true;
-      if (baseMatch[1] !== canonical) {
+    if (baseMatch) foundBase = true;
+    // Scan every `oven/bun:<ver>` occurrence on the line — the anchored FROM
+    // check above only confirms the base stage exists; comments, ENV lines
+    // and RUN snippets can also embed `oven/bun:<ver>` and rot independently
+    // (e.g. `# /root is mode 700 in oven/bun:<ver>` in Dockerfile.daemon).
+    OVEN_RE.lastIndex = 0;
+    let ovenMatch: RegExpExecArray | null;
+    while ((ovenMatch = OVEN_RE.exec(line)) !== null) {
+      if (ovenMatch[1] !== canonical) {
         out.push({
           file: relative(repoRoot, path),
           line: i + 1,
-          found: `oven/bun:${baseMatch[1] ?? ""}`,
+          found: `oven/bun:${ovenMatch[1] ?? ""}`,
           context: line.trim(),
         });
       }

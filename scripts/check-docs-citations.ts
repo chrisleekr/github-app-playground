@@ -15,7 +15,12 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+// `DOCS_CHECK_REPO_ROOT` env override exists solely so the test suite can
+// point the gate at a fixture tree without copying the script. Production
+// invocations leave it unset and resolve `repoRoot` from the script's own
+// location.
+const repoRoot =
+  process.env["DOCS_CHECK_REPO_ROOT"] ?? resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DOCS_ROOT = join(repoRoot, "docs");
 
 // Match `src/<path>.<ext>:<line>` or `:<start>-<end>`. Path may include
@@ -83,6 +88,19 @@ function check(): BrokenCitation[] {
         const end = endStr === undefined ? start : Number.parseInt(endStr, 10);
         const citation =
           endStr === undefined ? `${relPath}:${startStr}` : `${relPath}:${startStr}-${endStr}`;
+        // Reject `..` segments — `CITATION_RE` allows them in the path
+        // component, so a doc citing `src/../foo.ts:1` would otherwise
+        // statSync a path that escapes `src/` and report "OK" for a
+        // citation that no longer points into the source tree.
+        if (relPath.split("/").includes("..")) {
+          broken.push({
+            docFile: relative(repoRoot, md),
+            docLine: i + 1,
+            citation,
+            reason: `path contains a \`..\` segment — citations must point inside src/`,
+          });
+          continue;
+        }
         const abs = join(repoRoot, relPath);
         if (!fileExists(abs)) {
           broken.push({
