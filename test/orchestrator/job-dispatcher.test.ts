@@ -68,6 +68,18 @@ void mock.module("../../src/orchestrator/job-queue", () => ({
   enqueueJob: mock(() => Promise.resolve()),
   tryDequeueJob: mock(() => Promise.resolve(null)),
   dequeueJob: mock(() => Promise.resolve(null)),
+  isScopedJob: () => false,
+  SCOPED_JOB_KINDS: [
+    "scoped-rebase",
+    "scoped-fix-thread",
+    "scoped-explain-thread",
+    "scoped-open-pr",
+  ],
+  // C2: job-dispatcher's `reconstructJobFromOffer` re-validates
+  // `offer.scoped` via the discriminated-union schema; the legacy-path
+  // tests in this file never set `offer.scoped`, so a permanently-failing
+  // safeParse keeps the legacy reconstruct branch live.
+  QueuedJobSchema: { safeParse: () => ({ success: false, error: { issues: [] } }) },
 }));
 
 // concurrency

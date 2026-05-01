@@ -41,6 +41,13 @@ function requireSql(): SQL {
 const mockEnqueueJob = mock(() => Promise.resolve());
 void mock.module("../../src/orchestrator/job-queue", () => ({
   enqueueJob: mockEnqueueJob,
+  isScopedJob: () => false,
+  SCOPED_JOB_KINDS: [
+    "scoped-rebase",
+    "scoped-fix-thread",
+    "scoped-explain-thread",
+    "scoped-open-pr",
+  ],
 }));
 
 void mock.module("../../src/workflows/execution-row", () => ({
@@ -66,6 +73,19 @@ void mock.module("../../src/db", () => ({
   requireDb: () => requireSql(),
   getDb: () => requireSql(),
   closeDb: () => Promise.resolve(),
+}));
+
+// Stand-in for the Valkey client used by the ship-intent early-wake hook.
+// Records ZADD calls so the cascade test can assert exactly one tickle
+// per completed run that carries `state.shipIntentId`.
+const mockValkeySend = mock((_cmd: string, _args: string[]) => Promise.resolve(1));
+const mockValkeyClient = { send: mockValkeySend };
+void mock.module("../../src/orchestrator/valkey", () => ({
+  requireValkeyClient: () => mockValkeyClient,
+  getValkeyClient: () => mockValkeyClient,
+  isValkeyHealthy: () => true,
+  connectValkey: () => Promise.resolve(),
+  closeValkey: () => Promise.resolve(),
 }));
 
 function silentLogger(): pino.Logger {
@@ -119,6 +139,7 @@ describe.skipIf(sql === null)("orchestrator.onStepComplete", () => {
   beforeEach(() => {
     mockEnqueueJob.mockClear();
     mockSetState.mockClear();
+    mockValkeySend.mockClear();
   });
 
   it("T025 success chain: each child success enqueues the next, final child flips parent to succeeded", async () => {
@@ -505,5 +526,155 @@ describe.skipIf(sql === null)("orchestrator.onStepComplete", () => {
     const humanMessage = lastSetStateCall?.[1]?.humanMessage ?? "";
     expect(humanMessage).toContain("review-2");
     expect(humanMessage).toContain("Manual re-review recommended");
+  });
+
+  // ─── Ship-iteration early-wake (T009) ─────────────────────────────────
+  it("ZADDs ship:tickle when a completed workflow_run carries state.shipIntentId and the intent is non-terminal", async () => {
+    const { insertQueued, markSucceeded } = await import("../../src/workflows/runs-store");
+    const { onStepComplete } = await import("../../src/workflows/orchestrator");
+    const { insertIntent } = await import("../../src/db/queries/ship");
+
+    const intent = await insertIntent(
+      {
+        installation_id: 100,
+        owner: "acme",
+        repo: "tickle-repo",
+        pr_number: 9001,
+        target_base_sha: "base-sha",
+        target_head_sha: "head-sha",
+        deadline_at: new Date(Date.now() + 60 * 60 * 1000),
+        created_by_user: "tester",
+        tracking_comment_marker: "<!-- ship-intent: pending -->",
+      },
+      requireSql(),
+    );
+
+    const run = await insertQueued(
+      {
+        workflowName: "implement",
+        target: { type: "pr", owner: "acme", repo: "tickle-repo", number: 9001 },
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
+      },
+      requireSql(),
+    );
+    await markSucceeded(run.id, { shipIntentId: intent.id }, requireSql());
+
+    await onStepComplete({ octokit: {} as never, logger: silentLogger() }, run.id, {
+      status: "succeeded",
+    });
+
+    const zaddCalls = mockValkeySend.mock.calls.filter((c) => c[0] === "ZADD");
+    expect(zaddCalls).toHaveLength(1);
+    expect(zaddCalls[0]?.[1]).toEqual(["ship:tickle", "0", intent.id]);
+  });
+
+  it("does not ZADD ship:tickle when the workflow_run state has no shipIntentId", async () => {
+    const { insertQueued, markSucceeded } = await import("../../src/workflows/runs-store");
+    const { onStepComplete } = await import("../../src/workflows/orchestrator");
+
+    const run = await insertQueued(
+      {
+        workflowName: "implement",
+        target: { type: "pr", owner: "acme", repo: "no-intent", number: 9100 },
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
+      },
+      requireSql(),
+    );
+    await markSucceeded(run.id, { unrelated: true }, requireSql());
+
+    await onStepComplete({ octokit: {} as never, logger: silentLogger() }, run.id, {
+      status: "succeeded",
+    });
+
+    const zaddCalls = mockValkeySend.mock.calls.filter((c) => c[0] === "ZADD");
+    expect(zaddCalls).toHaveLength(0);
+  });
+
+  it("does not ZADD ship:tickle when the intent is already terminal", async () => {
+    const { insertQueued, markSucceeded } = await import("../../src/workflows/runs-store");
+    const { onStepComplete } = await import("../../src/workflows/orchestrator");
+    const { insertIntent, transitionIntent } = await import("../../src/db/queries/ship");
+
+    const intent = await insertIntent(
+      {
+        installation_id: 101,
+        owner: "acme",
+        repo: "terminal-repo",
+        pr_number: 9200,
+        target_base_sha: "base",
+        target_head_sha: "head",
+        deadline_at: new Date(Date.now() + 60 * 60 * 1000),
+        created_by_user: "tester",
+        tracking_comment_marker: "<!-- ship-intent: pending -->",
+      },
+      requireSql(),
+    );
+    await transitionIntent(intent.id, "merged_externally", null, requireSql());
+
+    const run = await insertQueued(
+      {
+        workflowName: "implement",
+        target: { type: "pr", owner: "acme", repo: "terminal-repo", number: 9200 },
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
+      },
+      requireSql(),
+    );
+    await markSucceeded(run.id, { shipIntentId: intent.id }, requireSql());
+
+    await onStepComplete({ octokit: {} as never, logger: silentLogger() }, run.id, {
+      status: "succeeded",
+    });
+
+    const zaddCalls = mockValkeySend.mock.calls.filter((c) => c[0] === "ZADD");
+    expect(zaddCalls).toHaveLength(0);
+  });
+
+  // H1: a failed child workflow_run must NOT trigger the cascade. Without
+  // this guard a permanently broken intent would burn the iteration cap
+  // re-firing on every failure.
+  it("does not ZADD ship:tickle when the child workflow_run failed (H1)", async () => {
+    const { insertQueued, markFailed } = await import("../../src/workflows/runs-store");
+    const { onStepComplete } = await import("../../src/workflows/orchestrator");
+    const { insertIntent } = await import("../../src/db/queries/ship");
+
+    const intent = await insertIntent(
+      {
+        installation_id: 102,
+        owner: "acme",
+        repo: "failed-child-repo",
+        pr_number: 9300,
+        target_base_sha: "base",
+        target_head_sha: "head",
+        deadline_at: new Date(Date.now() + 60 * 60 * 1000),
+        created_by_user: "tester",
+        tracking_comment_marker: "<!-- ship-intent: pending -->",
+      },
+      requireSql(),
+    );
+
+    const run = await insertQueued(
+      {
+        workflowName: "implement",
+        target: { type: "pr", owner: "acme", repo: "failed-child-repo", number: 9300 },
+        ownerKind: "orchestrator",
+        ownerId: "test-orchestrator",
+      },
+      requireSql(),
+    );
+    await markFailed(run.id, "implement crashed", { shipIntentId: intent.id }, requireSql());
+
+    mockValkeySend.mockClear();
+    await onStepComplete({ octokit: {} as never, logger: silentLogger() }, run.id, {
+      status: "failed",
+      reason: "implement crashed",
+    });
+
+    const zaddCalls = mockValkeySend.mock.calls.filter(
+      (c) => c[0] === "ZADD" && Array.isArray(c[1]) && c[1][0] === "ship:tickle",
+    );
+    expect(zaddCalls).toHaveLength(0);
   });
 });

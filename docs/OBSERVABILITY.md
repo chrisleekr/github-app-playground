@@ -53,6 +53,24 @@ event:"ship.intent.transition" to_status:"human_took_over" terminal_blocker_cate
 
 The schema is the **source of truth**. Adding or renaming a field requires updating `src/workflows/ship/log-fields.ts`; the co-located `log-fields.test.ts` round-trips a sample through the schema and rejects unknown / mistyped fields, so silent drift fails CI.
 
+### Iteration / tickle / scoped event keys (FR-018)
+
+Every ship-iteration-wiring emitter draws its `event` value from the typed `SHIP_LOG_EVENTS` constant in `src/workflows/ship/log-fields.ts`. A typo is therefore a compile error, and operators can grep for these literals deterministically.
+
+| Event key                             | Where it fires                                                                            | What it indicates                                                                                              |
+| ------------------------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `ship.iteration.enqueued`             | `iteration.runIteration` after `enqueueJob`                                               | A non-ready verdict bridged into the daemon `workflow_runs` pipeline. One row per iteration.                   |
+| `ship.iteration.terminal_cap`         | `iteration.runIteration` cap check                                                        | The intent hit `MAX_SHIP_ITERATIONS` and was transitioned to `deadline_exceeded` with `iteration-cap` blocker. |
+| `ship.iteration.terminal_deadline`    | `iteration.runIteration` deadline check                                                   | The intent's `deadline_at` elapsed; transitioned to `deadline_exceeded`.                                       |
+| `ship.tickle.started`                 | `app.ts` boot, after `tickleScheduler.start()`                                            | The cron tickle scheduler is now scanning `ship:tickle`. Quickstart S0 pre-flight asserts on this line.        |
+| `ship.tickle.due`                     | `orchestrator.onStepComplete` early-wake **OR** `session-runner.resumeShipIntent`         | An intent is being re-entered. `source` field discriminates `workflow_run_completion` vs scheduler.            |
+| `ship.tickle.skip_terminal`           | `orchestrator.onStepComplete` early-wake                                                  | The hook found a `shipIntentId` but the intent is already terminal (or missing); ZADD was skipped.             |
+| `ship.scoped.<verb>.enqueued`         | `dispatch-scoped.ts` after `enqueueJob`                                                   | A scoped command (`rebase` / `fix_thread` / `explain_thread` / `open_pr`) was enqueued for daemon dispatch.    |
+| `ship.scoped.<verb>.daemon.completed` | `connection-handler.handleScopedJobCompletion` (orchestrator) **AND** the executor itself | Daemon reported successful completion. The bridge logs at this key on `status === "succeeded"`.                |
+| `ship.scoped.<verb>.daemon.failed`    | Same handler / executor                                                                   | Daemon reported `halted` or `failed`. `reason` field carries the structured halt reason.                       |
+
+`<verb>` ∈ `rebase`, `fix_thread`, `explain_thread`, `open_pr`. The literal strings live as nested const properties on `SHIP_LOG_EVENTS` so a Datadog search like `event:"ship.scoped.rebase.daemon.completed"` is guaranteed to match the emitter.
+
 ## Dispatch reasons
 
 Canonical source: `src/shared/dispatch-types.ts`. Four values, all landing on `dispatch_target=daemon`.

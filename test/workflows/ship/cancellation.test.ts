@@ -38,23 +38,29 @@ void mock.module("../../../src/db", () => ({
   closeDb: () => Promise.resolve(),
 }));
 
+const valkeyClient = {
+  send: (cmd: string, args: string[]): Promise<unknown> => {
+    const key = args[0] ?? "";
+    if (cmd === "GET") return Promise.resolve(valkeyState.get(key) ?? null);
+    if (cmd === "SET") {
+      valkeyState.set(key, args[1] ?? "1");
+      return Promise.resolve("OK");
+    }
+    if (cmd === "DEL") {
+      valkeyState.delete(key);
+      return Promise.resolve(1);
+    }
+    if (cmd === "ZADD" || cmd === "ZREM") return Promise.resolve(1);
+    if (cmd === "LPUSH" || cmd === "LMOVE" || cmd === "LREM") return Promise.resolve(1);
+    return Promise.resolve(null);
+  },
+};
+
 void mock.module("../../../src/orchestrator/valkey", () => ({
-  getValkeyClient: () => ({
-    send: (cmd: string, args: string[]): Promise<unknown> => {
-      const key = args[0] ?? "";
-      if (cmd === "GET") return Promise.resolve(valkeyState.get(key) ?? null);
-      if (cmd === "SET") {
-        valkeyState.set(key, args[1] ?? "1");
-        return Promise.resolve("OK");
-      }
-      if (cmd === "DEL") {
-        valkeyState.delete(key);
-        return Promise.resolve(1);
-      }
-      if (cmd === "ZADD" || cmd === "ZREM") return Promise.resolve(1);
-      return Promise.resolve(null);
-    },
-  }),
+  getValkeyClient: () => valkeyClient,
+  requireValkeyClient: () => valkeyClient,
+  isValkeyHealthy: () => true,
+  closeValkey: () => {},
 }));
 
 const { runShipFromCommand } = await import("../../../src/workflows/ship/session-runner");

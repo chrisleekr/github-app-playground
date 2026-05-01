@@ -23,10 +23,12 @@ import type { Logger } from "pino";
 
 import { resolveModelId } from "../../../ai/llm-client";
 import { config } from "../../../config";
+import { enqueueJob } from "../../../orchestrator/job-queue";
 import type { CanonicalCommand } from "../../../shared/ship-types";
 import { getTriageLLMClient } from "../../../webhook/triage-client-factory";
+import { SHIP_LOG_EVENTS } from "../log-fields";
 import { runInvestigate } from "./investigate";
-import { runOpenPr } from "./open-pr";
+import { runOpenPrPolicy } from "./open-pr";
 import { runSummarize } from "./summarize";
 import { runTriage } from "./triage";
 
@@ -55,17 +57,129 @@ function buildCallLlm(): (input: { systemPrompt: string; userPrompt: string }) =
   };
 }
 
-async function postNotImplemented(
+/**
+ * Synthesize a `triggerCommentId` for scoped-job offers. CanonicalCommand
+ * carries `thread_id` (the REST review-comment id) for review-thread
+ * triggers; for non-thread triggers the dispatcher today does not plumb
+ * the maintainer's comment id through, so we fall back to a sentinel
+ * (`1`) and rely on the daemon-side idempotency check against the
+ * tracking-comment durable layer instead.
+ *
+ * The schema requires a positive integer; downstream consumers MUST treat
+ * `1` as "unknown" rather than as a real id.
+ */
+function deriveTriggerCommentId(command: CanonicalCommand): number {
+  if (command.thread_id !== undefined && command.thread_id.length > 0) {
+    const parsed = Number(command.thread_id);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  return 1;
+}
+
+/**
+ * Build the queue offer for a review-thread-scoped job (`fix-thread` or
+ * `explain-thread`). Both kinds carry the same payload shape; the only
+ * difference is the discriminator. Refuses dispatch when the thread
+ * cannot be resolved (no scoped offer is enqueued).
+ */
+async function enqueueScopedThreadJob(
   deps: ScopedCommandDeps,
   command: CanonicalCommand,
-  reason: string,
+  kind: "scoped-fix-thread" | "scoped-explain-thread",
 ): Promise<void> {
-  await deps.octokit.rest.issues.createComment({
-    owner: command.pr.owner,
-    repo: command.pr.repo,
-    issue_number: command.pr.number,
-    body: `\`bot:${command.intent}\` is recognised but not yet wired in this build (${reason}). The trigger-router accepted the command and the maintainer is being notified — no further action will be taken on this trigger.`,
+  const triggerCommentId = deriveTriggerCommentId(command);
+  if (triggerCommentId === 1) {
+    deps.log?.warn(
+      { intent: command.intent },
+      `${kind}: missing thread_id on canonical command — refusing dispatch`,
+    );
+    return;
+  }
+  const threadRef = await resolveThreadRef(deps, command, triggerCommentId);
+  if (threadRef === null) {
+    return;
+  }
+  await enqueueJob({
+    kind,
+    deliveryId: `${kind}::${command.pr.owner}/${command.pr.repo}#${String(command.pr.number)}::${String(triggerCommentId)}`,
+    repoOwner: command.pr.owner,
+    repoName: command.pr.repo,
+    entityNumber: command.pr.number,
+    isPR: true,
+    eventName: "pull_request_review_comment",
+    triggerUsername: command.principal_login,
+    labels: [],
+    triggerBodyPreview: "",
+    enqueuedAt: Date.now(),
+    retryCount: 0,
+    installationId: command.pr.installation_id,
+    prNumber: command.pr.number,
+    threadRef,
+    triggerCommentId,
   });
+  const eventKey =
+    kind === "scoped-fix-thread"
+      ? SHIP_LOG_EVENTS.scoped.fixThread.enqueued
+      : SHIP_LOG_EVENTS.scoped.explainThread.enqueued;
+  deps.log?.info(
+    {
+      event: eventKey,
+      owner: command.pr.owner,
+      repo: command.pr.repo,
+      pr_number: command.pr.number,
+      thread_id: threadRef.threadId,
+    },
+    `${kind} enqueued`,
+  );
+}
+
+/**
+ * Resolve a review-comment's file/line range so the daemon executor can
+ * scope its prompt without re-fetching. Returns null when the lookup
+ * fails — caller should refuse the dispatch in that case rather than
+ * enqueue a malformed offer.
+ */
+async function resolveThreadRef(
+  deps: ScopedCommandDeps,
+  command: CanonicalCommand,
+  commentId: number,
+): Promise<{
+  threadId: string;
+  commentId: number;
+  filePath: string;
+  startLine: number;
+  endLine: number;
+} | null> {
+  try {
+    const res = await deps.octokit.rest.pulls.getReviewComment({
+      owner: command.pr.owner,
+      repo: command.pr.repo,
+      comment_id: commentId,
+    });
+    const c = res.data;
+    if (typeof c.path !== "string" || c.path.length === 0) return null;
+    const startLine =
+      typeof c.start_line === "number" && c.start_line > 0
+        ? c.start_line
+        : typeof c.line === "number" && c.line > 0
+          ? c.line
+          : null;
+    const endLine = typeof c.line === "number" && c.line > 0 ? c.line : startLine;
+    if (startLine === null || endLine === null) return null;
+    return {
+      threadId: command.thread_id ?? String(commentId),
+      commentId,
+      filePath: c.path,
+      startLine,
+      endLine,
+    };
+  } catch (err) {
+    deps.log?.warn(
+      { err, commentId, intent: command.intent },
+      "resolveThreadRef failed — refusing scoped dispatch",
+    );
+    return null;
+  }
 }
 
 /**
@@ -128,50 +242,95 @@ async function runScopedCommand(command: CanonicalCommand, deps: ScopedCommandDe
       });
       return;
     case "open-pr": {
-      // The branch+PR creation callback is not wired in v1 (the daemon-side
-      // git helper that performs the actual `git checkout -b` + `gh pr create`
-      // sequence is a follow-up — see comment at top of this file). Until
-      // it lands, open-pr surfaces the maintainer-facing classifier verdict
-      // without creating a PR.
-      const createBranchAndPr = (): Promise<{
-        pr_number: number;
-        branch_name: string;
-        pr_url: string;
-      }> => {
-        throw new Error("createBranchAndPr daemon-side helper not yet wired");
-      };
-      await runOpenPr({
+      // Run the policy-only path of `runOpenPr` (idempotency + classifier +
+      // non-actionable refusal). On `actionable`, hand the verdict to the
+      // daemon via a `scoped-open-pr` queue offer so the daemon can clone,
+      // scaffold a branch via the Agent SDK, push, and open the PR.
+      //
+      // The legacy approach called `runOpenPr` with a stub `createBranchAndPr`
+      // that returned `{ pr_number: 0, ... }`. That caused `runOpenPr` to
+      // post a back-link marker `<!-- bot:open-pr:0 -->` BEFORE the daemon
+      // had created any PR — `findExistingBackLink` matches by verb prefix,
+      // so the bogus marker would permanently block future re-triggers
+      // (Copilot review on PR #79). The daemon executor is now solely
+      // responsible for posting the back-link marker once it actually
+      // creates the PR.
+      const policy = await runOpenPrPolicy({
         octokit: deps.octokit,
         owner: command.pr.owner,
         repo: command.pr.repo,
         issue_number: command.pr.number,
         callLlm,
-        createBranchAndPr,
         ...(deps.log ? { log: deps.log } : {}),
       });
+      if (policy.kind !== "actionable") return;
+      const verdictSummary = `${policy.issue_title}\n\nclassifier: ${policy.verdict.kind} (${policy.verdict.actionable ? "actionable" : "non-actionable"})\n\nreason: ${policy.verdict.reason}`;
+      await enqueueJob({
+        kind: "scoped-open-pr",
+        deliveryId: `scoped-open-pr::${command.pr.owner}/${command.pr.repo}#${String(command.pr.number)}::${String(Date.now())}`,
+        repoOwner: command.pr.owner,
+        repoName: command.pr.repo,
+        entityNumber: command.pr.number,
+        isPR: false,
+        eventName: "issues",
+        triggerUsername: command.principal_login,
+        labels: [],
+        triggerBodyPreview: verdictSummary.slice(0, 200),
+        enqueuedAt: Date.now(),
+        retryCount: 0,
+        installationId: command.pr.installation_id,
+        issueNumber: command.pr.number,
+        triggerCommentId: deriveTriggerCommentId(command),
+        verdictSummary,
+      });
+      deps.log?.info(
+        {
+          event: SHIP_LOG_EVENTS.scoped.openPr.enqueued,
+          owner: command.pr.owner,
+          repo: command.pr.repo,
+          issue_number: command.pr.number,
+        },
+        "scoped-open-pr enqueued",
+      );
       return;
     }
-    case "fix-thread":
-      await postNotImplemented(
-        deps,
-        command,
-        "needs the daemon-side mechanical-fix executor; tracked as a v1 follow-up",
+    case "fix-thread": {
+      await enqueueScopedThreadJob(deps, command, "scoped-fix-thread");
+      return;
+    }
+    case "explain-thread": {
+      await enqueueScopedThreadJob(deps, command, "scoped-explain-thread");
+      return;
+    }
+    case "rebase": {
+      await enqueueJob({
+        kind: "scoped-rebase",
+        deliveryId: `scoped-rebase::${command.pr.owner}/${command.pr.repo}#${String(command.pr.number)}::${String(Date.now())}`,
+        repoOwner: command.pr.owner,
+        repoName: command.pr.repo,
+        entityNumber: command.pr.number,
+        isPR: true,
+        eventName: "pull_request",
+        triggerUsername: command.principal_login,
+        labels: [],
+        triggerBodyPreview: "",
+        enqueuedAt: Date.now(),
+        retryCount: 0,
+        installationId: command.pr.installation_id,
+        prNumber: command.pr.number,
+        triggerCommentId: deriveTriggerCommentId(command),
+      });
+      deps.log?.info(
+        {
+          event: SHIP_LOG_EVENTS.scoped.rebase.enqueued,
+          owner: command.pr.owner,
+          repo: command.pr.repo,
+          pr_number: command.pr.number,
+        },
+        "scoped-rebase enqueued",
       );
       return;
-    case "explain-thread":
-      await postNotImplemented(
-        deps,
-        command,
-        "needs the daemon-side code-snippet resolver; tracked as a v1 follow-up",
-      );
-      return;
-    case "rebase":
-      await postNotImplemented(
-        deps,
-        command,
-        "needs the daemon-side `git merge` runner; tracked as a v1 follow-up",
-      );
-      return;
+    }
     default: {
       // Defensive — exhaustiveness guard. A new scoped intent added to
       // SCOPED_COMMAND_INTENTS without a case here will fail the type

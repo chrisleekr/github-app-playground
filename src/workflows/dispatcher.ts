@@ -126,6 +126,7 @@ export async function dispatchByLabel(params: DispatchByLabelParams): Promise<Di
       logger,
     });
     await enqueueJob({
+      kind: "workflow-run",
       deliveryId,
       repoOwner: target.owner,
       repoName: target.repo,
@@ -305,6 +306,7 @@ export async function dispatchByIntent(params: DispatchByIntentParams): Promise<
       triggerEventType,
     });
     await enqueueJob({
+      kind: "workflow-run",
       deliveryId,
       repoOwner: target.owner,
       repoName: target.repo,

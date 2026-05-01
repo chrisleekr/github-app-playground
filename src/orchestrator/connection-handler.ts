@@ -37,6 +37,7 @@ import type { DaemonInfo, HeartbeatState } from "../shared/daemon-types";
 import {
   createMessageEnvelope,
   type DaemonMessage,
+  type ScopedJobContext,
   WS_CLOSE_CODES,
   WS_ERROR_CODES,
 } from "../shared/ws-messages";
@@ -61,6 +62,7 @@ import {
   handleJobReject,
   removePendingOffer,
 } from "./job-dispatcher";
+import { isScopedJob, QueuedJobSchema, type ScopedQueuedJob } from "./job-queue";
 import { sendError, type WsConnectionData } from "./ws-server";
 
 // In-memory state (per orchestrator process)
@@ -317,6 +319,9 @@ export function handleDaemonMessage(
     case "job:result":
       handleJobMessage(ws, msg);
       break;
+    case "scoped-job-completion":
+      void handleScopedJobCompletion(ws, msg);
+      break;
   }
 }
 
@@ -557,6 +562,152 @@ function handleUpdateAcknowledged(
 
 // Job message handling (T032-T033)
 
+/**
+ * Server-side bridge for `scoped-job-completion` (T033b). The daemon
+ * executor reports the structured outcome here; the orchestrator releases
+ * the pending offer + capacity slot and emits a telemetry log line. The
+ * user-facing Octokit reply is posted by the daemon executor itself
+ * (using the installation token it already holds), so this handler
+ * does not need to format another comment — doing so would double-post.
+ *
+ * Validation: payload arrives via the Zod discriminated union from
+ * `serverMessageSchema` / `daemonMessageSchema` parse, so unknown
+ * `jobKind` values are rejected at the WS boundary before reaching this
+ * function.
+ */
+async function handleScopedJobCompletion(
+  ws: ServerWebSocket<WsConnectionData>,
+  msg: Extract<DaemonMessage, { type: "scoped-job-completion" }>,
+): Promise<void> {
+  const daemonId = ws.data.daemonId;
+  const offerId = msg.payload.offerId;
+  const { jobKind, status, deliveryId } = msg.payload;
+
+  // Reject completions from sockets that have not finished registration —
+  // a pre-register socket (or a misbehaving daemon) must not be able to
+  // mutate another daemon's offer state or capacity counters.
+  if (daemonId === undefined) {
+    sendError(ws, msg.id, WS_ERROR_CODES.INTERNAL_ERROR, "Daemon not registered");
+    return;
+  }
+
+  // Ownership + late-result guard. The in-memory offer is removed by
+  // handleAccept right after dispatch to handleScopedAccept, so by the
+  // time a real scoped-job-completion arrives `getPendingOffer(offerId)`
+  // is almost always undefined and an offer-based check is ineffective.
+  // Mirror handleResult: validate against durable execution state so a
+  // replayed/forged completion cannot decrement capacity counters or
+  // finalize an execution it does not own.
+  const state = await getExecutionState(deliveryId);
+  if (state?.daemonId !== daemonId || state.status === "completed" || state.status === "failed") {
+    logger.warn(
+      {
+        event: "ws.scoped_completion.unauthorized",
+        daemonId,
+        offerId,
+        deliveryId,
+        assignedDaemon: state?.daemonId ?? null,
+        currentStatus: state?.status ?? null,
+      },
+      "scoped-job-completion failed ownership/finality validation — ignoring",
+    );
+    return;
+  }
+
+  // Best-effort cleanup of the in-memory offer entry (may already be gone).
+  const offer = getPendingOffer(offerId);
+  if (offer !== undefined) {
+    removePendingOffer(offerId);
+  }
+
+  // Capacity slot ownership: handleAccept incremented when the daemon
+  // claimed the offer; the scoped completion path replaces handleResult
+  // for these jobs, so the matching decrements MUST happen here for both
+  // succeeded and halted/failed branches. Otherwise every scoped run leaks
+  // one slot until the daemon disconnects. Decrements come AFTER the
+  // durable guard so a forged completion cannot tamper with capacity.
+  decrementActiveCount();
+  await decrementDaemonActiveJobs(daemonId);
+
+  // Per-kind event keys match the FR-018 canonical names documented in
+  // `docs/OBSERVABILITY.md` (e.g. `ship.scoped.rebase.daemon.completed`).
+  const kindKey = jobKind.replace(/^scoped-/, "").replaceAll("-", "_");
+
+  if (status === "succeeded") {
+    logger.info(
+      {
+        event: `ship.scoped.${kindKey}.daemon.completed`,
+        daemonId,
+        offerId,
+        deliveryId,
+        jobKind,
+      },
+      "scoped-job daemon reported success",
+    );
+    await finalizeScopedExecution(deliveryId, "succeeded");
+    return;
+  }
+
+  // halted / failed paths: surface the reason as a structured log line so
+  // operators can see why an executor halted without tailing the daemon
+  // pod's stderr. Tracking-comment / thread-reply was already posted by
+  // the daemon executor with the installation token.
+  logger.warn(
+    {
+      event: `ship.scoped.${kindKey}.daemon.failed`,
+      daemonId,
+      offerId,
+      deliveryId,
+      jobKind,
+      status,
+      reason: msg.payload.reason ?? null,
+    },
+    "scoped-job daemon reported non-success",
+  );
+  await finalizeScopedExecution(deliveryId, status);
+}
+
+/**
+ * Finalize the executions row for a scoped completion.
+ *
+ * `succeeded` and `halted` both leave the row out of the failed state —
+ * `halted` is the contractual outcome for scaffolding-only executors and
+ * for "no work needed" cases (e.g., rebase already up-to-date). Only
+ * `failed` writes the failure reason so operator dashboards can branch
+ * on the outcome.
+ */
+async function finalizeScopedExecution(
+  deliveryId: string,
+  status: "succeeded" | "halted" | "failed",
+): Promise<void> {
+  if (status === "failed") {
+    try {
+      await markExecutionFailed(deliveryId, "scoped-job daemon failed");
+    } catch (err) {
+      logger.warn(
+        { err: err instanceof Error ? err.message : String(err), deliveryId },
+        "markExecutionFailed for scoped completion failed (non-fatal)",
+      );
+    }
+    return;
+  }
+  // succeeded / halted — handleScopedAccept already called
+  // markExecutionRunning, so the row is in 'running'. Without a terminal
+  // write here, succeeded/halted scoped executions stay 'running' forever,
+  // which breaks the FM-4 stale-execution recovery and any operator query
+  // that filters on terminal status. `markExecutionCompleted` only flips
+  // rows where status='running', so it is safe even if a competing path
+  // already finalized.
+  try {
+    await markExecutionCompleted(deliveryId, {});
+  } catch (err) {
+    logger.warn(
+      { err: err instanceof Error ? err.message : String(err), deliveryId, status },
+      "markExecutionCompleted for scoped completion failed (non-fatal)",
+    );
+  }
+}
+
 function handleJobMessage(ws: ServerWebSocket<WsConnectionData>, msg: DaemonMessage): void {
   const daemonId = ws.data.daemonId;
   if (daemonId === undefined) {
@@ -603,6 +754,17 @@ async function handleAccept(
   incrementActiveCount();
   await incrementDaemonActiveJobs(daemonId);
   await markExecutionRunning(offer.deliveryId);
+
+  // Scoped jobs route via a different daemon executor (`runScopedJob`) and
+  // do not need the legacy `executions.context_json` lookup or the
+  // `BotContext`-shaped allowed-tool resolution. Mint the installation
+  // token directly from `offer.scoped.installationId` and forward the
+  // scoped payload verbatim. The `scoped-job-completion` handler decrements
+  // capacity on completion.
+  if (offer.scoped !== undefined) {
+    await handleScopedAccept(daemonId, offerId, offer);
+    return;
+  }
 
   const { getDb } = await import("../db");
   const db = getDb();
@@ -703,6 +865,137 @@ async function handleAccept(
     await markExecutionFailed(offer.deliveryId, "Failed to mint installation token");
     await decrementDaemonActiveJobs(daemonId);
     decrementActiveCount();
+  }
+}
+
+/**
+ * Mint a token for a scoped offer and forward the scoped context into
+ * `job:payload`. Skips the legacy `executions.context_json` shape and the
+ * `BotContext`-shaped allowed-tool resolution — scoped executors run their
+ * own deterministic / single-purpose pipelines on the daemon side.
+ *
+ * Capacity decrement on success happens in `handleScopedJobCompletion`;
+ * failure paths here decrement before returning.
+ */
+async function handleScopedAccept(
+  daemonId: string,
+  offerId: string,
+  offer: PendingOfferLike,
+): Promise<void> {
+  // `offer.scoped` is typed `unknown` in the shared module; revalidate
+  // with the discriminated union before casting (mirrors job-dispatcher's
+  // reconstructJobFromOffer guard).
+  const reparsed = QueuedJobSchema.safeParse(offer.scoped);
+  if (!reparsed.success || !isScopedJob(reparsed.data)) {
+    logger.error(
+      {
+        offerId,
+        daemonId,
+        deliveryId: offer.deliveryId,
+        issues: reparsed.success ? "shape-not-scoped" : reparsed.error.issues,
+      },
+      "Scoped accept: offer.scoped failed re-validation",
+    );
+    await markExecutionFailed(offer.deliveryId, "Scoped offer payload malformed");
+    await decrementDaemonActiveJobs(daemonId);
+    decrementActiveCount();
+    return;
+  }
+  const scopedJob: ScopedQueuedJob = reparsed.data;
+
+  try {
+    const app = getOrCreateApp();
+    const octokit = await app.getInstallationOctokit(scopedJob.installationId);
+    const { token } = (await octokit.auth({ type: "installation" })) as { token: string };
+
+    handleJobAccept({
+      offerId,
+      daemonId,
+      deliveryId: offer.deliveryId,
+      installationToken: token,
+      // Scoped daemon executors do not read `context`/`allowedTools`/`envVars`/
+      // `memory`; pass minimal/empty shapes to satisfy the schema.
+      contextJson: {},
+      allowedTools: [],
+      envVars: {},
+      memory: [],
+      scoped: scopedJobToContext(scopedJob),
+    });
+  } catch (err) {
+    logger.error(
+      { err, offerId, daemonId, jobKind: scopedJob.kind },
+      "Scoped accept: failed to mint installation token",
+    );
+    await markExecutionFailed(offer.deliveryId, "Failed to mint installation token (scoped)");
+    await decrementDaemonActiveJobs(daemonId);
+    decrementActiveCount();
+  }
+}
+
+/** Narrow type — only the fields handleScopedAccept needs from PendingOffer.
+ * `scoped` is optional on the source but is checked non-undefined at the
+ * call site, so the helper can require it. */
+interface PendingOfferLike {
+  readonly deliveryId: string;
+  readonly scoped?: unknown;
+}
+
+/**
+ * Convert a `ScopedQueuedJob` (queue-side shape) into the `ScopedJobContext`
+ * shape consumed by `runScopedJob` (daemon-side schema). The two schemas
+ * carry the same fields but the queue uses `kind` while the daemon context
+ * uses `jobKind`; this keeps the wire format faithful to
+ * `contracts/ws-messages.md`.
+ */
+function scopedJobToContext(job: ScopedQueuedJob): ScopedJobContext {
+  switch (job.kind) {
+    case "scoped-rebase":
+      return {
+        jobKind: "scoped-rebase",
+        deliveryId: job.deliveryId,
+        installationId: job.installationId,
+        owner: job.repoOwner,
+        repo: job.repoName,
+        prNumber: job.prNumber,
+        triggerCommentId: job.triggerCommentId,
+        enqueuedAt: job.enqueuedAt,
+      };
+    case "scoped-fix-thread":
+      return {
+        jobKind: "scoped-fix-thread",
+        deliveryId: job.deliveryId,
+        installationId: job.installationId,
+        owner: job.repoOwner,
+        repo: job.repoName,
+        prNumber: job.prNumber,
+        threadRef: job.threadRef,
+        triggerCommentId: job.triggerCommentId,
+        enqueuedAt: job.enqueuedAt,
+      };
+    case "scoped-explain-thread":
+      return {
+        jobKind: "scoped-explain-thread",
+        deliveryId: job.deliveryId,
+        installationId: job.installationId,
+        owner: job.repoOwner,
+        repo: job.repoName,
+        prNumber: job.prNumber,
+        threadRef: job.threadRef,
+        triggerCommentId: job.triggerCommentId,
+        enqueuedAt: job.enqueuedAt,
+      };
+    case "scoped-open-pr":
+      return {
+        jobKind: "scoped-open-pr",
+        deliveryId: job.deliveryId,
+        installationId: job.installationId,
+        owner: job.repoOwner,
+        repo: job.repoName,
+        issueNumber: job.issueNumber,
+        triggerCommentId: job.triggerCommentId,
+        enqueuedAt: job.enqueuedAt,
+        verdictSummary: job.verdictSummary,
+      };
   }
 }
 

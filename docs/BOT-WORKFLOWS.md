@@ -246,3 +246,67 @@ See the source of truth:
 - Orchestrator (composite cascade): `src/workflows/orchestrator.ts`
 - Branch-refresh helper: `src/workflows/handlers/branch-refresh.ts`
 - Hand-off protocol: `specs/20260421-181205-bot-workflows/contracts/handoff-protocol.md`
+
+## Bridge architecture: ship-iteration → daemon `workflow_runs`
+
+The `bot:ship` shepherding loop does **not** own its own daemon-execution path. It bridges onto the existing `workflow_runs` pipeline so a single executor surface clones, runs the Agent SDK, and pushes — no parallel implementation to drift between.
+
+The bridge has three moving parts:
+
+1. **Iteration handler** (`src/workflows/ship/iteration.ts`) — converts a non-ready probe verdict into one `workflow_runs` row carrying `state.shipIntentId`, plus an enqueued `kind: "workflow-run"` job.
+2. **Orchestrator cascade hook** (`src/workflows/orchestrator.ts` `onStepComplete` early-wake) — on every workflow-run completion reads `state.shipIntentId` and `ZADD ship:tickle 0 <intent>` if the intent is non-terminal.
+3. **Tickle scheduler** (`src/workflows/ship/tickle-scheduler.ts`, booted from `src/app.ts`) — fires `resumeShipIntent` for every due intent so the next iteration re-enters via the same bridge.
+
+```mermaid
+flowchart LR
+  subgraph WEBHOOK["Webhook server (orchestrator process)"]
+    direction LR
+    cmd["@chrisleekr-bot ship comment"] --> trig[trigger-router]
+    trig --> SR["session-runner.runShipFromCommand"]
+    SR --> probe[probe<br/>verdict]
+    probe -->|"ready"| terminal["terminal:ready"]
+    probe -->|"non-ready"| iter["iteration.runIteration"]
+    iter --> wr[("workflow_runs row<br/>state.shipIntentId")]
+    iter --> q[("queue:jobs<br/>kind=workflow-run")]
+  end
+
+  q --> daemon[Daemon process]
+  daemon --> exec[Daemon job executor]
+  exec --> agent[Agent SDK<br/>+ Octokit push]
+  agent --> done["markSucceeded(runId)"]
+  done --> cascade["orchestrator.onStepComplete<br/>maybeEarlyWakeShipIntent"]
+  cascade --> tickle[("ship:tickle ZSET<br/>score=0")]
+
+  subgraph SCHED["Tickle scheduler (orchestrator process)"]
+    direction LR
+    timer["setInterval"] --> due["ZRANGEBYSCORE 0 now"]
+    due --> resume["resumeShipIntent(intent_id)"]
+    resume --> SR2["session-runner.resumeShipIntent"]
+  end
+
+  tickle --> due
+  SR2 -.->|next iteration| iter
+
+  classDef ship fill:#1f4d8c,stroke:#0a1f3d,color:#fff
+  classDef daemon fill:#7a3b1f,stroke:#3d1d0e,color:#fff
+  classDef store fill:#2d5d4a,stroke:#143025,color:#fff
+  iter:::ship
+  SR:::ship
+  SR2:::ship
+  resume:::ship
+  exec:::daemon
+  agent:::daemon
+  wr:::store
+  q:::store
+  tickle:::store
+```
+
+### Why bridge instead of duplicate
+
+The existing `src/core/pipeline.ts` already does clone + Agent SDK + push + cleanup. Reimplementing this inside `src/workflows/ship/` would duplicate ~300 lines of clone/temp-dir/cleanup logic and create two parallel agent-execution paths, doubling the surface area for security and resource-leak bugs (research.md Q5).
+
+### Scoped commands (`bot:rebase`, `bot:fix-thread`, `bot:explain-thread`, `bot:open-pr`)
+
+Each scoped command gets its own per-executor `JobKind` and its own daemon-side executor under `src/daemon/scoped-*-executor.ts`. The orchestrator emits a `scoped-job-offer` (server→daemon); the daemon evaluates capacity, accepts via `job:accept`, executes, then reports `scoped-job-completion` (daemon→server). The executor posts the user-facing reply directly via the installation token — the orchestrator-side bridge in `connection-handler.ts` finalizes the execution row and emits telemetry but does not re-post the comment.
+
+`scoped-rebase` is deterministic git only (no Agent SDK). The other three are scaffolded; the multi-turn Agent SDK invocation lands as a follow-up.

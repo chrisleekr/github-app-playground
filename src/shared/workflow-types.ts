@@ -25,6 +25,16 @@ export type {
  * Reference to a `workflow_runs` row that piggybacks on the existing job
  * queue and WebSocket payload. The daemon branches on the presence of this
  * field to route to the workflow handler path instead of the legacy pipeline.
+ *
+ * **`workflow_runs.state.shipIntentId` convention** (ship-iteration-wiring):
+ * When a ship-driven iteration inserts a `workflow_runs` row, it MUST embed
+ * `{ shipIntentId: <uuid> }` inside the `state` JSONB column (the spec
+ * calls this "context_json" generically; the actual column is `state`).
+ * This is a JSON convention, not a column — it lets the orchestrator's
+ * completion cascade (`onStepComplete` in `src/workflows/orchestrator.ts`)
+ * early-wake the originating intent via `ZADD ship:tickle 0 <intent_id>`
+ * without growing `WorkflowRunRef` itself. The daemon does not need to
+ * read `shipIntentId` — only the server-side cascade does.
  */
 export interface WorkflowRunRef {
   readonly runId: string;

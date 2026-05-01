@@ -18,6 +18,13 @@ import { expectToReject } from "../utils/assertions";
 const mockEnqueueJob = mock(() => Promise.resolve());
 void mock.module("../../src/orchestrator/job-queue", () => ({
   enqueueJob: mockEnqueueJob,
+  isScopedJob: () => false,
+  SCOPED_JOB_KINDS: [
+    "scoped-rebase",
+    "scoped-fix-thread",
+    "scoped-explain-thread",
+    "scoped-open-pr",
+  ],
 }));
 
 const mockRecordWorkflowExecution = mock(() => Promise.resolve());

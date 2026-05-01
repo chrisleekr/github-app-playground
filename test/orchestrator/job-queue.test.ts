@@ -78,6 +78,7 @@ const {
 
 function makeQueuedJob(overrides: Partial<QueuedJob> = {}): QueuedJob {
   return {
+    kind: "legacy",
     deliveryId: "delivery-001",
     repoOwner: "test-owner",
     repoName: "test-repo",
@@ -90,7 +91,7 @@ function makeQueuedJob(overrides: Partial<QueuedJob> = {}): QueuedJob {
     enqueuedAt: Date.now(),
     retryCount: 0,
     ...overrides,
-  };
+  } as QueuedJob;
 }
 
 // Tests
@@ -122,7 +123,7 @@ describe("job-queue", () => {
       await enqueueJob(job);
 
       expect(mockLoggerInfo).toHaveBeenCalledWith(
-        { deliveryId: "d-123", retryCount: 2 },
+        { kind: "legacy", deliveryId: "d-123", retryCount: 2 },
         "Job enqueued",
       );
     });
@@ -155,7 +156,9 @@ describe("job-queue", () => {
       const result = await tryDequeueJob();
 
       expect(result).toBeNull();
-      expect(mockLoggerError).toHaveBeenCalledWith("Failed to parse dequeued job");
+      expect(mockLoggerError).toHaveBeenCalledWith(
+        "Failed to parse dequeued job — dropping poison pill",
+      );
     });
   });
 
@@ -185,7 +188,9 @@ describe("job-queue", () => {
       const result = await dequeueJob();
 
       expect(result).toBeNull();
-      expect(mockLoggerError).toHaveBeenCalledWith("Failed to parse dequeued job");
+      expect(mockLoggerError).toHaveBeenCalledWith(
+        "Failed to parse dequeued job — dropping poison pill",
+      );
     });
   });
 

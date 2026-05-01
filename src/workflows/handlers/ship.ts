@@ -90,6 +90,7 @@ export const handler: WorkflowHandler = async (ctx) => {
       logger: log,
     });
     await enqueueJob({
+      kind: "workflow-run",
       deliveryId: childDeliveryId,
       repoOwner: target.owner,
       repoName: target.repo,

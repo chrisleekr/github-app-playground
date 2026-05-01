@@ -81,6 +81,13 @@ const mockGetQueueLength = mock(() => Promise.resolve(0));
 void mock.module("../../src/orchestrator/job-queue", () => ({
   enqueueJob: mockEnqueueJob,
   getQueueLength: mockGetQueueLength,
+  isScopedJob: () => false,
+  SCOPED_JOB_KINDS: [
+    "scoped-rebase",
+    "scoped-fix-thread",
+    "scoped-explain-thread",
+    "scoped-open-pr",
+  ],
 }));
 
 const mockTriageRequest = mock(() =>

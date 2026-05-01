@@ -18,7 +18,20 @@ import { join } from "node:path";
 // (e.g., "NEVER call `gh pr merge`"); those documentation lines must
 // not trigger the guard. The runtime test in T046a covers the legacy
 // handlers via mocked tool-call recorders.
+//
+// US3 extension (specs/20260429-212559-ship-iteration-wiring T035):
+// the four daemon-side scoped executors live under `src/daemon/` —
+// outside the ship-workflow tree but governed by the same FR-009
+// prohibitions. Including them as explicit file roots keeps the scan
+// noise-free (other `src/daemon/` files embed agent prompts that
+// document `--force` semantics legitimately).
 const SCAN_ROOTS = ["src/workflows/ship"];
+const SCAN_FILES = [
+  "src/daemon/scoped-rebase-executor.ts",
+  "src/daemon/scoped-fix-thread-executor.ts",
+  "src/daemon/scoped-explain-thread-executor.ts",
+  "src/daemon/scoped-open-pr-executor.ts",
+];
 
 const FORBIDDEN: { readonly pattern: RegExp; readonly description: string }[] = [
   { pattern: /git\s+push\s+--force(?!-with-lease-if)/i, description: "git push --force" },
@@ -56,8 +69,10 @@ function* walk(dir: string): Generator<string> {
 function scan(): { file: string; line: number; description: string; text: string }[] {
   const violations: { file: string; line: number; description: string; text: string }[] = [];
   const visited = new Set<string>();
-  for (const root of SCAN_ROOTS) {
-    for (const file of walk(root)) {
+  const fileIterables: Iterable<string>[] = SCAN_ROOTS.map((r) => walk(r));
+  fileIterables.push(SCAN_FILES);
+  for (const iter of fileIterables) {
+    for (const file of iter) {
       if (visited.has(file)) continue;
       visited.add(file);
       // Skip self — this guard file documents the patterns it checks for.
@@ -94,4 +109,6 @@ if (violations.length > 0) {
   }
   process.exit(1);
 }
-console.log(`FR-009 destructive-action guard: clean (${SCAN_ROOTS.length} roots scanned)`);
+console.log(
+  `FR-009 destructive-action guard: clean (${SCAN_ROOTS.length} roots, ${SCAN_FILES.length} files scanned)`,
+);

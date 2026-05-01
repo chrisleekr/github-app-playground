@@ -11,6 +11,9 @@ import {
   type JobCancelMessage,
   type JobOfferMessage,
   type JobPayloadMessage,
+  type ScopedJobKind,
+  type ScopedJobOfferMessage,
+  WS_REJECT_REASONS,
 } from "../shared/ws-messages";
 import { executeWorkflowRun } from "./workflow-executor";
 
@@ -36,6 +39,9 @@ export function getActiveJobCount(): number {
 export function registerExitCleanup(): void {
   process.on("exit", () => {
     for (const job of activeJobs.values()) {
+      // Scoped jobs never own a workspace path; skip the rm so we do not
+      // accidentally target `.cred.sh` in the daemon's CWD.
+      if (job.workDir === "") continue;
       try {
         rmSync(job.workDir, { recursive: true, force: true });
       } catch {
@@ -113,6 +119,47 @@ export function evaluateOffer(
   return { accept: true };
 }
 
+/**
+ * Evaluate a `scoped-job-offer`. Scoped jobs do not declare `requiredTools`
+ * (the four executors only need git + bun, both baseline) and do not consume
+ * the legacy concurrency slot until `job:accept` is sent. The evaluator's
+ * single responsibility is forward-compat: reject jobKinds this image does
+ * not understand so the orchestrator can re-offer to a capable daemon.
+ */
+export function evaluateScopedOffer(
+  offer: ScopedJobOfferMessage,
+  capabilities: DaemonCapabilities,
+  supportedKinds: readonly ScopedJobKind[],
+): { accept: boolean; reason?: string } {
+  if (!supportedKinds.includes(offer.payload.jobKind)) {
+    return { accept: false, reason: WS_REJECT_REASONS.SCOPED_KIND_UNSUPPORTED };
+  }
+
+  // Memory floor still applies — scoped-rebase clones a repo.
+  if (capabilities.resources.memoryFreeMb < config.daemonMemoryFloorMb) {
+    return {
+      accept: false,
+      reason: `insufficient memory: ${capabilities.resources.memoryFreeMb}MB < ${config.daemonMemoryFloorMb}MB minimum`,
+    };
+  }
+
+  if (capabilities.resources.diskFreeMb < config.daemonDiskFloorMb) {
+    return {
+      accept: false,
+      reason: `insufficient disk: ${capabilities.resources.diskFreeMb}MB < ${config.daemonDiskFloorMb}MB minimum`,
+    };
+  }
+
+  if (activeJobs.size >= MAX_CONCURRENT_JOBS) {
+    return {
+      accept: false,
+      reason: WS_REJECT_REASONS.BUSY,
+    };
+  }
+
+  return { accept: true };
+}
+
 // Helpers extracted from executeJob to reduce complexity / statement count
 
 /** Validate critical context fields at boundary. Returns false if invalid (sends error result). */
@@ -181,6 +228,41 @@ export async function executeJob(
 ): Promise<void> {
   const offerId = payload.id;
   const context = payload.payload.context as unknown as SerializableBotContext;
+
+  // Scoped-* jobs route through their own deterministic/agent-driven
+  // executors. They do NOT go through the legacy BotContext pipeline, so
+  // dispatch BEFORE the (legacy-shaped) context validation below.
+  //
+  // Register the offer in `activeJobs` for the duration of the scoped run
+  // so heartbeats, capacity checks, idle-shutdown, and `handleJobCancel`
+  // see the daemon as busy (CR #3163385094). `runScopedJob` clears the
+  // entry on completion via the same `activeJobs.delete` path the legacy
+  // executor uses.
+  if (payload.payload.scoped !== undefined) {
+    // Register an AbortController so handleJobCancel can suppress the
+    // duplicate `scoped-job-completion` that runScopedJob would otherwise
+    // send after the cancel path's synthetic `job:result`. Without this,
+    // a cancel during a scoped run double-finalizes the execution and
+    // double-decrements the orchestrator capacity counter.
+    const scopedAbort = new AbortController();
+    jobAbortControllers.set(offerId, scopedAbort);
+    activeJobs.set(offerId, {
+      offerId,
+      deliveryId: payload.payload.scoped.deliveryId,
+      // No workspace path for scoped jobs; cleanup paths must guard on
+      // `workDir !== ""` before deriving credential-helper filenames.
+      workDir: "",
+      agentPid: null,
+      startedAt: Date.now(),
+    });
+    try {
+      await runScopedJob(payload, capabilities, send, scopedAbort.signal);
+    } finally {
+      activeJobs.delete(offerId);
+      jobAbortControllers.delete(offerId);
+    }
+    return;
+  }
 
   if (!validateJobContext(context, offerId, send)) return;
 
@@ -331,6 +413,245 @@ export async function executeJob(
   } finally {
     activeJobs.delete(offerId);
     jobAbortControllers.delete(offerId);
+  }
+}
+
+// Scoped-job dispatch (US3 routing surface)
+
+/**
+ * Dispatch a `scoped-*` job:payload to the matching executor. The executor
+ * implementations land in US3 (T029-T032); this surface throws a structured
+ * `not implemented` error per kind so a daemon image without the executors
+ * surfaces a clean halt rather than a silent drop.
+ *
+ * Routes via the Zod-validated `payload.scoped.jobKind` discriminator —
+ * matches the `scoped-job-offer` schema at the WS boundary, so a misrouted
+ * payload is impossible by construction.
+ */
+async function runScopedJob(
+  payload: JobPayloadMessage,
+  _capabilities: DaemonCapabilities,
+  send: (msg: unknown) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  const scoped = payload.payload.scoped;
+  if (scoped === undefined) {
+    logger.error({ offerId: payload.id }, "runScopedJob called without scoped payload");
+    return;
+  }
+
+  const offerId = payload.id;
+  const startedAt = Date.now();
+  const installationToken = payload.payload.installationToken;
+
+  // Wrap `send` so every scoped-job-completion is suppressed after a cancel,
+  // matching the legacy executor's abort-then-skip-result pattern. The cancel
+  // path emits its own synthetic `job:result`; we MUST NOT also emit a
+  // scoped-job-completion or the orchestrator will double-decrement capacity.
+  const sendIfNotAborted = (msg: unknown): void => {
+    if (signal.aborted) return;
+    send(msg);
+  };
+
+  try {
+    switch (scoped.jobKind) {
+      case "scoped-rebase": {
+        const { executeScopedRebase } = await import("./scoped-rebase-executor");
+        const outcome = await executeScopedRebase({
+          installationToken,
+          owner: scoped.owner,
+          repo: scoped.repo,
+          prNumber: scoped.prNumber,
+        });
+        // Exhaustive mapping over RebaseOutcome.kind so a future variant
+        // forces a TypeScript error instead of silently mapping to `closed`.
+        const rebaseOutcome = ((): {
+          result: "merged" | "conflict" | "up-to-date" | "closed";
+          commentId: number;
+          mergeCommitSha?: string;
+          conflictPaths?: string[];
+        } => {
+          switch (outcome.kind) {
+            case "merged":
+              return {
+                result: "merged",
+                commentId: outcome.comment_id,
+                mergeCommitSha: outcome.merge_commit_sha,
+              };
+            case "conflict":
+              return {
+                result: "conflict",
+                commentId: outcome.comment_id,
+                conflictPaths: [...outcome.conflict_paths],
+              };
+            case "up-to-date":
+              return { result: "up-to-date", commentId: outcome.comment_id };
+            case "closed":
+              return { result: "closed", commentId: outcome.comment_id };
+            default: {
+              const _exhaustive: never = outcome;
+              throw new Error(
+                `unhandled RebaseOutcome.kind: ${(_exhaustive as { kind: string }).kind}`,
+              );
+            }
+          }
+        })();
+        sendIfNotAborted({
+          type: "scoped-job-completion",
+          ...createMessageEnvelope(offerId),
+          payload: {
+            offerId,
+            deliveryId: scoped.deliveryId,
+            jobKind: "scoped-rebase",
+            status: "succeeded" as const,
+            durationMs: Date.now() - startedAt,
+            rebaseOutcome,
+          },
+        });
+        return;
+      }
+      case "scoped-fix-thread": {
+        const { executeScopedFixThread } = await import("./scoped-fix-thread-executor");
+        const outcome = await executeScopedFixThread({
+          installationToken,
+          owner: scoped.owner,
+          repo: scoped.repo,
+          prNumber: scoped.prNumber,
+          threadRef: scoped.threadRef,
+          triggerCommentId: scoped.triggerCommentId,
+        });
+        sendIfNotAborted({
+          type: "scoped-job-completion",
+          ...createMessageEnvelope(offerId),
+          payload: {
+            offerId,
+            deliveryId: scoped.deliveryId,
+            jobKind: "scoped-fix-thread",
+            status: outcome.status,
+            durationMs: Date.now() - startedAt,
+            ...(outcome.threadReplyId !== undefined
+              ? { threadReplyId: outcome.threadReplyId }
+              : {}),
+            ...(outcome.pushedCommitSha !== undefined
+              ? { pushedCommitSha: outcome.pushedCommitSha }
+              : {}),
+            ...(outcome.reason !== undefined ? { reason: outcome.reason } : {}),
+          },
+        });
+        return;
+      }
+      case "scoped-explain-thread": {
+        const { executeScopedExplainThread } = await import("./scoped-explain-thread-executor");
+        const outcome = await executeScopedExplainThread({
+          installationToken,
+          owner: scoped.owner,
+          repo: scoped.repo,
+          prNumber: scoped.prNumber,
+          threadRef: scoped.threadRef,
+          triggerCommentId: scoped.triggerCommentId,
+        });
+        sendIfNotAborted({
+          type: "scoped-job-completion",
+          ...createMessageEnvelope(offerId),
+          payload: {
+            offerId,
+            deliveryId: scoped.deliveryId,
+            jobKind: "scoped-explain-thread",
+            status: outcome.status,
+            durationMs: Date.now() - startedAt,
+            ...(outcome.threadReplyId !== undefined
+              ? { threadReplyId: outcome.threadReplyId }
+              : {}),
+            ...(outcome.reason !== undefined ? { reason: outcome.reason } : {}),
+          },
+        });
+        return;
+      }
+      case "scoped-open-pr": {
+        const { executeScopedOpenPr } = await import("./scoped-open-pr-executor");
+        const outcome = await executeScopedOpenPr({
+          installationToken,
+          owner: scoped.owner,
+          repo: scoped.repo,
+          issueNumber: scoped.issueNumber,
+          triggerCommentId: scoped.triggerCommentId,
+          verdictSummary: scoped.verdictSummary,
+        });
+        sendIfNotAborted({
+          type: "scoped-job-completion",
+          ...createMessageEnvelope(offerId),
+          payload: {
+            offerId,
+            deliveryId: scoped.deliveryId,
+            jobKind: "scoped-open-pr",
+            status: outcome.status,
+            durationMs: Date.now() - startedAt,
+            ...(outcome.newPrNumber !== undefined ? { newPrNumber: outcome.newPrNumber } : {}),
+            ...(outcome.pushedCommitSha !== undefined
+              ? { pushedCommitSha: outcome.pushedCommitSha }
+              : {}),
+            ...(outcome.reason !== undefined ? { reason: outcome.reason } : {}),
+          },
+        });
+        return;
+      }
+      default: {
+        // Exhaustiveness check — a future jobKind addition with an older
+        // daemon image lands here. Surface a structured failed completion
+        // so the orchestrator can map it onto the user-facing reply path
+        // rather than letting the offer silently time out.
+        const _exhaustive: never = scoped;
+        const unknownKind = (_exhaustive as { jobKind: string }).jobKind;
+        logger.error(
+          {
+            event: "ship.scoped.unknown_kind.daemon.failed",
+            offerId,
+            jobKind: unknownKind,
+          },
+          "runScopedJob received unknown jobKind",
+        );
+        sendIfNotAborted({
+          type: "scoped-job-completion",
+          ...createMessageEnvelope(offerId),
+          payload: {
+            offerId,
+            deliveryId: (_exhaustive as { deliveryId: string }).deliveryId,
+            jobKind: unknownKind,
+            status: "failed" as const,
+            durationMs: Date.now() - startedAt,
+            reason: `unknown scoped jobKind: ${unknownKind}`,
+          },
+        });
+        return;
+      }
+    }
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    // Per-kind event key matches the FR-018 canonical names documented in
+    // `docs/OBSERVABILITY.md` (e.g. `ship.scoped.rebase.daemon.failed`).
+    const kindKey = scoped.jobKind.replace(/^scoped-/, "").replaceAll("-", "_");
+    logger.error(
+      {
+        event: `ship.scoped.${kindKey}.daemon.failed`,
+        offerId,
+        jobKind: scoped.jobKind,
+        deliveryId: scoped.deliveryId,
+        reason,
+      },
+      "scoped-job execution failed",
+    );
+    sendIfNotAborted({
+      type: "scoped-job-completion",
+      ...createMessageEnvelope(offerId),
+      payload: {
+        offerId,
+        deliveryId: scoped.deliveryId,
+        jobKind: scoped.jobKind,
+        status: "failed" as const,
+        durationMs: Date.now() - startedAt,
+        reason,
+      },
+    });
   }
 }
 
