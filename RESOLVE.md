@@ -1,103 +1,34 @@
-# Resolve report — PR #70
+# Resolve — PR #88 (`chore/51-docs-ci-drift-guards`)
 
 ## Summary
 
-PR #70 (`ci/wire-postgres-valkey-services-50` → `main`) had one failing
-check (`Lint & Test`) and three open review threads when this resolve
-iteration started. All three review threads were classified **Valid**
-and are now addressed in commit
-[`fddee33`](https://github.com/chrisleekr/github-app-playground/commit/fddee336).
-The CI failure was an integration-test-isolation drift — the two suites
-touched by this PR forgot to drop `workflow_runs` (added by migration
-`005_workflow_runs` after these two suites were last edited) — and is
-fixed in the same commit. PR is now waiting for CI to re-run on the new
-HEAD; provided green, all blockers are cleared.
+All three open review threads on PR #88 were classified **Valid** and addressed in a single follow-up commit (`0bf0164`). The two new CI gates introduced by the PR (`scripts/check-docs-versions.ts` and `scripts/check-docs-citations.ts`) now (a) catch stale `oven/bun:<ver>` mentions inside Dockerfile comments / RUN / ENV lines instead of only the anchored `FROM … AS base` form, (b) reject `..` segments inside the citation path component so a doc citing `src/sub/../foo.ts:1` no longer silently reports OK, and (c) are exercised by 11 committed tests under `test/scripts/` that drive each script via `Bun.spawnSync` against tmp-dir fixtures. Both scripts grew a tiny env-var seam (`DOCS_CHECK_REPO_ROOT`, namespaced + commented) so tests can point them at a fixture tree without copying the script — production invocations leave it unset and resolve `repoRoot` from `import.meta.url` exactly as before. Branch is now `0bf0164`, 2 ahead of `main`, no rebase required; the new commit is the final blocker for CI reruns to confirm. Nothing else is outstanding from this resolve iteration.
 
 ## CI status
 
-| Check                     | Before                                                                                                                        | What I did                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Lint & Test`             | fail (1m14s, [run 24991617907](https://github.com/chrisleekr/github-app-playground/actions/runs/24991617907/job/73178325642)) | Diagnosed: `bun test test/integration/telemetry-aggregates.test.ts` failed with `PostgresError: relation "workflow_runs" already exists` during `runMigrations` step `005_workflow_runs`. Root cause: each Bun test file runs in its own process under `scripts/test-isolated.sh`; an earlier file (one of the 6 newer DB-backed suites) creates `workflow_runs`, and the cleanup hook in `telemetry-aggregates.test.ts` / `repo-knowledge.test.ts` only drops the legacy table set (`_migrations`, `repo_memory`, `triage_results`, `executions`, `daemons`) — leaving `workflow_runs` behind. Migration 005 then fails because `CREATE TABLE workflow_runs` (no `IF NOT EXISTS`) hits the leftover. **Fix**: added `DROP TABLE IF EXISTS workflow_runs CASCADE;` to both suites' `beforeAll` (and `telemetry-aggregates.test.ts`'s `afterAll`). The other 6 DB-backed suites already drop it. Pushed in `fddee33`. |
-| `Analyze (actions)`       | pass                                                                                                                          | unchanged                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `Analyze (javascript-…)`  | pass                                                                                                                          | unchanged                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `CodeQL`                  | pass                                                                                                                          | unchanged                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `Gitleaks` (×2)           | pass                                                                                                                          | unchanged                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `Label PR based on title` | pass                                                                                                                          | unchanged                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Check               | State at start       | Action                                   |
+| ------------------- | -------------------- | ---------------------------------------- |
+| All required checks | passing on `3455f33` | None (branch was clean entering resolve) |
+
+No diagnose-and-fix cycle was needed. The follow-up commit `0bf0164` will rerun the same suite. The new tests are scoped to `test/scripts/` and stay inside the existing 90% per-file coverage threshold (Bun's coverage only counts files loaded into the test process; the spawned scripts run in a child process and aren't measured by the parent test file's coverage).
 
 ## Review comments
 
-### [major] `.github/workflows/ci.yml:134` — `TEST_VALKEY_URL` is dead
-
-- **Classification**: Valid.
-- **Evidence**: `grep -rn 'TEST_VALKEY_URL' src/ test/` returns zero
-  matches in code; only `liveness-reaper.test.ts:21` reads
-  `process.env["VALKEY_URL"]`, and the rest of the suite picks up
-  `VALKEY_URL` via `setIfEmpty("VALKEY_URL", "redis://localhost:6379")`
-  in `test/preload.ts:62`. CI worked today only because the preload
-  default coincidentally matches the service container's port.
-- **Action**: renamed `TEST_VALKEY_URL` → `VALKEY_URL` on the `Test`
-  step in `.github/workflows/ci.yml`, with an inline comment explaining
-  why the name differs from `TEST_DATABASE_URL`. Updated CONTRIBUTING.md
-  to reference `VALKEY_URL` (and to note the preload default).
-- **Reply**: <https://github.com/chrisleekr/github-app-playground/pull/70#discussion_r3147016965>
-
-### [minor] `CONTRIBUTING.md:89` — DB-backed suite table is incomplete
-
-- **Classification**: Valid.
-- **Evidence**: `grep -rn 'TEST_DATABASE_URL' test/` finds 8 suites,
-  not 3. The 5 missing entries: `test/webhook/events/issue-comment.test.ts`,
-  `test/workflows/runs-store.test.ts`,
-  `test/workflows/handlers/ship.test.ts`,
-  `test/workflows/orchestrator.test.ts`,
-  `test/orchestrator/liveness-reaper.test.ts`.
-- **Action**: reframed the section in terms of the contract — "any suite
-  gating on `process.env["TEST_DATABASE_URL"]` is opt-in; locate the
-  current set with `grep -rn 'TEST_DATABASE_URL' test/`" — listed all 8
-  current opt-in suites for visibility, and added explicit guidance to
-  new-suite authors to drop every migration-created table in their
-  cleanup hooks. That last point is exactly the trap that broke this
-  PR's CI in the first place.
-- **Reply**: <https://github.com/chrisleekr/github-app-playground/pull/70#discussion_r3147017118>
-
-### [nit] `scripts/test-isolated.sh:15` — `' 0 fail'` is unanchored
-
-- **Classification**: Valid (low-risk false-positive surface).
-- **Evidence**: existing `grep -q ' 0 fail'` would match a stack trace,
-  test name, or echoed string containing the substring; the new skip
-  check on the same file already anchors with `^[[:space:]]+`.
-- **Action**: tightened to `grep -qE '^[[:space:]]+0 fail'` for symmetry
-  with the skip-check anchor on the same file. Updated the inline
-  comment to explain the anchor's role. `shellcheck` still clean.
-- **Reply**: <https://github.com/chrisleekr/github-app-playground/pull/70#discussion_r3147017224>
+| ID                                                                                                 | File:line                             | Classification | Action                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Reply                                                                                              |
+| -------------------------------------------------------------------------------------------------- | ------------------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| [`3173541169`](https://github.com/chrisleekr/github-app-playground/pull/88#discussion_r3173541169) | `scripts/check-docs-versions.ts:113`  | **Valid**      | `checkDockerfile` now scans every `oven/bun:<ver>` occurrence on each line via the existing `OVEN_RE` regex; the anchored `FROM … AS base` check is kept solely as a presence assertion. Stale comments such as `Dockerfile.daemon:193` (`# /root is mode 700 in oven/bun:1.3.13`) now trip on the next bump. Regression test: `flags a Dockerfile comment whose oven/bun:<ver> has rotted` in `test/scripts/check-docs-versions.test.ts`.                                                                                               | [`3173593316`](https://github.com/chrisleekr/github-app-playground/pull/88#discussion_r3173593316) |
+| [`3173541707`](https://github.com/chrisleekr/github-app-playground/pull/88#discussion_r3173541707) | `scripts/check-docs-citations.ts:29`  | **Valid**      | After the regex match, `relPath.split("/").includes("..")` rejects any citation whose path component contains a `..` segment, with reason `path contains a \`..\` segment — citations must point inside src/`. Regression test: `rejects \`..\` segments in the path component`.                                                                                                                                                                                                                                                         | [`3173593722`](https://github.com/chrisleekr/github-app-playground/pull/88#discussion_r3173593722) |
+| [`3173542242`](https://github.com/chrisleekr/github-app-playground/pull/88#discussion_r3173542242) | `scripts/check-docs-citations.ts:154` | **Valid**      | Added `test/scripts/check-docs-versions.test.ts` (5 cases) + `test/scripts/check-docs-citations.test.ts` (6 cases). Each builds a tmp-dir fixture (`.tool-versions`, `package.json`, `Dockerfile.*`, `docs/`, `src/`), spawns the script via `Bun.spawnSync` with `DOCS_CHECK_REPO_ROOT` pointing at the fixture, and asserts exit code + a stderr substring. Both scripts now read `process.env["DOCS_CHECK_REPO_ROOT"] ?? <import.meta.url default>` so production behaviour is unchanged. `bun test test/scripts/` → 11 pass, 0 fail. | [`3173594183`](https://github.com/chrisleekr/github-app-playground/pull/88#discussion_r3173594183) |
 
 ## Commits pushed
 
-- `fddee33` · `fix(testing): drop workflow_runs in integration test cleanup; address review feedback`
+- `0bf0164` · ci(docs): harden version + citation gates against PR #88 review feedback
 
 ## Outstanding
 
-- **Waiting on CI** — the new HEAD (`fddee33`) was pushed at
-  ~2026-04-27T11:46Z; the `Lint & Test` re-run is the canonical
-  verification surface, just like the original PR. Provided it goes
-  green:
-  - `Lint & Test` cleared by the `workflow_runs` drop.
-  - All 3 review threads cleared by the same commit.
-  - `reviewDecision` is currently **not** APPROVED (the prior review
-    raised the three findings); a re-review or explicit resolution by
-    the author is the only remaining merge gate.
-- **No human action items raised by this resolve iteration** beyond
-  the standard re-review.
+Nothing blocks merge from a resolve perspective:
 
-Local pre-push verification on `fddee33`:
-
-- `bun run typecheck` — clean.
-- `bun run lint` — 0 errors / 139 pre-existing warnings (unchanged baseline).
-- `bun run format` — `All matched files use Prettier code style!`.
-- `bun run build` — `Build completed successfully`.
-- `bun run check:dockerfile-base-sync` — `OK: SHARED-BASE blocks match`.
-- `shellcheck scripts/test-isolated.sh` — clean.
-- `bash scripts/test-isolated.sh` (full suite) — 38 files passed; 6
-  DB-backed suites correctly fail-via-skip locally because the sandbox
-  has no Postgres / Valkey. CI provisions both; that is what cleared
-  the silent-skip masking and is exactly the path the original PR was
-  designed to enable.
+- All three review comments are addressed and have evidence-backed replies.
+- Local `bun run typecheck`, `bun run lint` (0 errors / 276 pre-existing warnings, unchanged), `bun run format`, `bun run check:no-destructive`, `bun run check:docs-versions`, `bun run check:docs-citations`, and `bun test test/scripts/` are all green.
+- `bun run test` (full suite via `scripts/test-isolated.sh` / Postgres + Valkey) and `bun run docs:build` (mkdocs strict, needs Python deps) were not run locally — both run in CI on this PR and were passing on the prior commit.
+- This bot can post inline replies but cannot submit a formal `APPROVE` review decision (FR-017). Final approval and merge remain a human action.

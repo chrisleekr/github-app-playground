@@ -113,17 +113,24 @@ The `docs/` tree is published as a MkDocs Material site at <https://chrisleekr.g
 
 **Keep docs in sync with code.** When a PR changes any of these surfaces, update the matching page in `docs/` in the same PR:
 
-- `src/config.ts` env var schema → `docs/CONFIGURATION.md`
-- `src/shared/dispatch-types.ts` targets or reasons → `docs/OBSERVABILITY.md` + `docs/ARCHITECTURE.md`
-- `src/orchestrator/triage.ts` fallback reasons or model config → `docs/TRIAGE.md`
-- `src/webhook/` routing or idempotency behaviour → `docs/ARCHITECTURE.md`
-- `src/k8s/ephemeral-daemon-spawner.ts` Pod-spec changes → `docs/DAEMON.md` (ephemeral section) + `docs/DEPLOYMENT.md` (RBAC)
-- `src/daemon/` lifecycle → `docs/DAEMON.md`
-- `src/workflows/` registry, dispatcher, handlers, or orchestrator → `docs/BOT-WORKFLOWS.md`
-- New MCP server in `src/mcp/` → `docs/EXTENDING.md`
-- New Pino log field or metric → `docs/OBSERVABILITY.md`
+- `src/config.ts` env var schema → `docs/operate/configuration.md`
+- `src/shared/dispatch-types.ts` targets or reasons → `docs/operate/observability.md` + `docs/build/architecture.md`
+- `src/orchestrator/triage.ts` fallback reasons or model config → `docs/operate/runbooks/triage.md`
+- `src/webhook/` routing or idempotency behaviour → `docs/build/architecture.md`
+- `src/k8s/ephemeral-daemon-spawner.ts` Pod-spec changes → `docs/operate/runbooks/daemon-fleet.md` + `docs/operate/deployment.md` (RBAC)
+- `src/daemon/` lifecycle → `docs/operate/runbooks/daemon-fleet.md`
+- `src/workflows/` registry, dispatcher, handlers, or orchestrator → `docs/use/workflows/`
+- New MCP server in `src/mcp/` → `docs/build/extending.md`
+- New Pino log field or metric → `docs/operate/observability.md`
 
 Validate locally with `bun run docs:build` before pushing. If no matching doc exists yet, flag the gap in the PR description rather than shipping silently.
+
+**CI-enforced doc gates.** Two project-specific checks run in `.github/workflows/docs.yml` ahead of `mkdocs build --strict` (which only validates internal links and snippet targets, not prose-vs-source agreement):
+
+- Bun version strings in `docs/` are pinned to `.tool-versions` via `bun run scripts/check-docs-versions.ts` (also asserts `package.json` `engines.bun` / `packageManager` and the two `Dockerfile.*` `FROM oven/bun:<ver>` lines agree).
+- `src/<file>:<line>` citations in `docs/` are anchor-verified via `bun run scripts/check-docs-citations.ts` (file must exist; cited line / range must be in bounds).
+
+The `docs.yml` `pull_request:` trigger has no `paths:` filter, so these gates run on every PR — code-side bumps that invalidate doc facts (Renovate Bun bump, refactor that shifts cited line numbers) trip the build the same way doc edits do. `Deploy to GitHub Pages` is still gated on `push` / `workflow_dispatch`, so PRs validate but never publish.
 
 ## Active Technologies
 
