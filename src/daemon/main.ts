@@ -165,6 +165,10 @@ function handleMessage(msg: ServerMessage): void {
       const evaluation = evaluateOffer(msg, capabilities);
 
       if (evaluation.accept) {
+        // Mark active before accept so the ephemeral idle loop cannot
+        // self-drain during the orchestrator-side token/context lookup
+        // that runs before `job:payload` arrives.
+        markActive();
         wsClient.send({
           type: "job:accept",
           ...createMessageEnvelope(msg.id),
@@ -194,6 +198,7 @@ function handleMessage(msg: ServerMessage): void {
       const evaluation = evaluateScopedOffer(msg, capabilities, SUPPORTED_SCOPED_KINDS);
 
       if (evaluation.accept) {
+        markActive();
         wsClient.send({
           type: "job:accept",
           ...createMessageEnvelope(msg.id),

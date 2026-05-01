@@ -591,23 +591,31 @@ async function handleScopedJobCompletion(
     return;
   }
 
-  // Ownership check: the offer's `daemonId` was set by handleScopedAccept
-  // when the daemon claimed it. Reject completions from a different
-  // daemon — otherwise daemon B can clear daemon A's offer and mark A's
-  // execution finalized.
-  const offer = getPendingOffer(offerId);
-  if (offer?.daemonId !== undefined && offer.daemonId !== daemonId) {
+  // Ownership + late-result guard. The in-memory offer is removed by
+  // handleAccept right after dispatch to handleScopedAccept, so by the
+  // time a real scoped-job-completion arrives `getPendingOffer(offerId)`
+  // is almost always undefined and an offer-based check is ineffective.
+  // Mirror handleResult: validate against durable execution state so a
+  // replayed/forged completion cannot decrement capacity counters or
+  // finalize an execution it does not own.
+  const state = await getExecutionState(deliveryId);
+  if (state?.daemonId !== daemonId || state.status === "completed" || state.status === "failed") {
     logger.warn(
       {
         event: "ws.scoped_completion.unauthorized",
         daemonId,
         offerId,
-        ownerDaemon: offer.daemonId,
+        deliveryId,
+        assignedDaemon: state?.daemonId ?? null,
+        currentStatus: state?.status ?? null,
       },
-      "scoped-job-completion from non-owner daemon — ignoring",
+      "scoped-job-completion failed ownership/finality validation — ignoring",
     );
     return;
   }
+
+  // Best-effort cleanup of the in-memory offer entry (may already be gone).
+  const offer = getPendingOffer(offerId);
   if (offer !== undefined) {
     removePendingOffer(offerId);
   }
@@ -616,7 +624,8 @@ async function handleScopedJobCompletion(
   // claimed the offer; the scoped completion path replaces handleResult
   // for these jobs, so the matching decrements MUST happen here for both
   // succeeded and halted/failed branches. Otherwise every scoped run leaks
-  // one slot until the daemon disconnects.
+  // one slot until the daemon disconnects. Decrements come AFTER the
+  // durable guard so a forged completion cannot tamper with capacity.
   decrementActiveCount();
   await decrementDaemonActiveJobs(daemonId);
 
@@ -682,8 +691,21 @@ async function finalizeScopedExecution(
     }
     return;
   }
-  // succeeded / halted — no-op on the executions row; the daemon executor
-  // already finalized any user-visible state (thread reply, push, etc.).
+  // succeeded / halted — handleScopedAccept already called
+  // markExecutionRunning, so the row is in 'running'. Without a terminal
+  // write here, succeeded/halted scoped executions stay 'running' forever,
+  // which breaks the FM-4 stale-execution recovery and any operator query
+  // that filters on terminal status. `markExecutionCompleted` only flips
+  // rows where status='running', so it is safe even if a competing path
+  // already finalized.
+  try {
+    await markExecutionCompleted(deliveryId, {});
+  } catch (err) {
+    logger.warn(
+      { err: err instanceof Error ? err.message : String(err), deliveryId, status },
+      "markExecutionCompleted for scoped completion failed (non-fatal)",
+    );
+  }
 }
 
 function handleJobMessage(ws: ServerWebSocket<WsConnectionData>, msg: DaemonMessage): void {

@@ -1336,11 +1336,17 @@ describe("handleDaemonMessage - scoped-job-completion (C4)", () => {
     mockDecrementActiveCount.mockClear();
     mockDecrementDaemonActiveJobs.mockClear();
     mockMarkExecutionFailed.mockClear();
+    mockMarkExecutionCompleted.mockClear();
   });
 
   it("decrements capacity and does NOT mark failed on succeeded", async () => {
     const ws = makeFakeWs();
     await registerDaemon(ws, "daemon-scoped-ok");
+
+    // Seed durable state so the ownership/late-result guard passes.
+    mockGetExecutionState.mockImplementation(() =>
+      Promise.resolve({ status: "running", daemonId: "daemon-scoped-ok" }),
+    );
 
     const completionMsg = {
       type: "scoped-job-completion",
@@ -1364,11 +1370,16 @@ describe("handleDaemonMessage - scoped-job-completion (C4)", () => {
     expect(mockDecrementActiveCount).toHaveBeenCalled();
     expect(mockDecrementDaemonActiveJobs).toHaveBeenCalledWith("daemon-scoped-ok");
     expect(mockMarkExecutionFailed).not.toHaveBeenCalled();
+    expect(mockMarkExecutionCompleted).toHaveBeenCalledWith("del-scoped-ok", {});
   });
 
   it("decrements capacity and marks executions failed on failed", async () => {
     const ws = makeFakeWs();
     await registerDaemon(ws, "daemon-scoped-fail");
+
+    mockGetExecutionState.mockImplementation(() =>
+      Promise.resolve({ status: "running", daemonId: "daemon-scoped-fail" }),
+    );
 
     const completionMsg = {
       type: "scoped-job-completion",
@@ -1398,9 +1409,13 @@ describe("handleDaemonMessage - scoped-job-completion (C4)", () => {
     );
   });
 
-  it("decrements capacity and does NOT mark failed on halted (scaffolding-only outcome)", async () => {
+  it("decrements capacity and marks completed on halted (scaffolding-only outcome)", async () => {
     const ws = makeFakeWs();
     await registerDaemon(ws, "daemon-scoped-halted");
+
+    mockGetExecutionState.mockImplementation(() =>
+      Promise.resolve({ status: "running", daemonId: "daemon-scoped-halted" }),
+    );
 
     const completionMsg = {
       type: "scoped-job-completion",
@@ -1425,7 +1440,75 @@ describe("handleDaemonMessage - scoped-job-completion (C4)", () => {
     expect(mockDecrementActiveCount).toHaveBeenCalled();
     expect(mockDecrementDaemonActiveJobs).toHaveBeenCalledWith("daemon-scoped-halted");
     // halted is contractually a non-failure outcome — executions row should
-    // NOT be marked failed.
+    // NOT be marked failed, but it MUST receive a terminal write so the
+    // row leaves 'running'.
     expect(mockMarkExecutionFailed).not.toHaveBeenCalled();
+    expect(mockMarkExecutionCompleted).toHaveBeenCalledWith("del-scoped-halted", {});
+  });
+
+  it("ignores completion when execution state daemon does not match sender (forged/replay)", async () => {
+    const ws = makeFakeWs();
+    await registerDaemon(ws, "daemon-impostor");
+
+    // Durable state shows a different daemon owns this delivery.
+    mockGetExecutionState.mockImplementation(() =>
+      Promise.resolve({ status: "running", daemonId: "daemon-real-owner" }),
+    );
+
+    const completionMsg = {
+      type: "scoped-job-completion",
+      id: crypto.randomUUID(),
+      timestamp: Date.now(),
+      payload: {
+        offerId: "offer-stolen",
+        deliveryId: "del-stolen",
+        jobKind: "scoped-rebase",
+        status: "succeeded",
+        durationMs: 100,
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    handleDaemonMessage(ws as any, completionMsg);
+
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(mockDecrementActiveCount).not.toHaveBeenCalled();
+    expect(mockDecrementDaemonActiveJobs).not.toHaveBeenCalled();
+    expect(mockMarkExecutionCompleted).not.toHaveBeenCalled();
+    expect(mockMarkExecutionFailed).not.toHaveBeenCalled();
+  });
+
+  it("ignores completion when execution is already finalized (late result)", async () => {
+    const ws = makeFakeWs();
+    await registerDaemon(ws, "daemon-late");
+
+    mockGetExecutionState.mockImplementation(() =>
+      Promise.resolve({ status: "completed", daemonId: "daemon-late" }),
+    );
+
+    const completionMsg = {
+      type: "scoped-job-completion",
+      id: crypto.randomUUID(),
+      timestamp: Date.now(),
+      payload: {
+        offerId: "offer-late",
+        deliveryId: "del-late",
+        jobKind: "scoped-rebase",
+        status: "succeeded",
+        durationMs: 100,
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    handleDaemonMessage(ws as any, completionMsg);
+
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(mockDecrementActiveCount).not.toHaveBeenCalled();
+    expect(mockDecrementDaemonActiveJobs).not.toHaveBeenCalled();
+    expect(mockMarkExecutionCompleted).not.toHaveBeenCalled();
   });
 });

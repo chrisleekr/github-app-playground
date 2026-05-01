@@ -93,7 +93,11 @@ void mock.module("../../src/orchestrator/history", () => ({
   markExecutionFailed: markExecutionFailedSpy,
   markExecutionRunning: mock(() => Promise.resolve()),
   markExecutionCompleted: mock(() => Promise.resolve()),
-  getExecutionState: mock(() => Promise.resolve(null)),
+  // Seed durable execution state matching the test's daemon + delivery so
+  // the orchestrator's ownership/late-result guard in
+  // handleScopedJobCompletion accepts this round-trip. A null state would
+  // (correctly) be rejected as forged/late.
+  getExecutionState: mock(() => Promise.resolve({ status: "running", daemonId: FAKE_DAEMON_ID })),
   getOrphanedExecutions: mock(() => Promise.resolve([])),
   requeueExecution: mock(() => Promise.resolve()),
 }));
