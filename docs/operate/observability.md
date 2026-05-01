@@ -2,6 +2,18 @@
 
 Structured JSON logs via [pino](https://getpino.io) are the primary signal. Every dispatch decision and every pipeline step carries a `deliveryId` so you can reconstruct a request end-to-end from a single log query. When `DATABASE_URL` is configured, the same information is persisted to `executions` and `triage_results` for aggregate reporting.
 
+## Log redaction
+
+The root pino instance at `src/logger.ts:174` is the canonical chokepoint for secret scrubbing — every child logger inherits its `redact.paths` list and its custom `err` serializer, so individual call sites do not need to remember to scrub. Two layers run on every emitted line:
+
+1. **Path-based redaction** (`src/logger.ts:17`) — pino replaces matching field values with `[Redacted]` before the JSON is serialised. Paths covered: `authorization` and its `*.authorization` / `headers.authorization` / `*.headers.authorization` / `req.headers.authorization` / `request.headers.authorization` variants; the webhook signature header `x-hub-signature-256` (also wildcard-prefixed); `response.data.token`; and the named credential fields `token`, `installationToken`, `privateKey`, `webhookSecret`, `anthropicApiKey`, `claudeCodeOauthToken`, `daemonAuthToken`, `awsSecretAccessKey`, `awsSessionToken`, `awsBearerTokenBedrock`, `*.password`.
+
+2. **`err` serializer scrubbing** (`src/logger.ts:113`) — defers to pino's `stdSerializers.err` and then runs the result's `message`, `stack`, `request.headers.*`, and `response.data` through `redactGitHubTokens` (`src/utils/sanitize.ts:77`) plus an inline credential-URL scrubber that mirrors `redactValkeyUrl` (`src/orchestrator/valkey.ts:64`). This catches free-text leakage that path-based rules cannot match — notably an Octokit `RequestError` whose `err.request.headers.authorization` sits 4 segments below the log root, and `ghs_…` installation tokens echoed inside `err.message` / `err.stack`.
+
+The serializer operates on a copy, so the original Error instance is never mutated.
+
+If you add a new secret-bearing config field to `src/config.ts`, add its property name to `REDACT_PATHS` in the same PR. The point helpers `redactGitHubTokens` and `redactValkeyUrl` remain in place for their non-log call sites (prompt sanitisation and the Valkey startup info log respectively); the logger config is the system-wide default.
+
 ## Common log fields
 
 | Field                                | Meaning                                                                                               |
