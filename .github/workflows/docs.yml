@@ -9,12 +9,13 @@ on:
       - "mkdocs.yml"
       - "CHANGELOG.md"
       - ".github/workflows/docs.yml"
+  # Run on every PR (no paths filter) so code-side changes that invalidate
+  # doc facts — Renovate Bun bumps, src/ refactors that shift cited line
+  # numbers, .tool-versions updates — still trip the docs gate. The
+  # `Deploy to GitHub Pages` step further down stays guarded by
+  # `if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'`,
+  # so PRs validate but never publish.
   pull_request:
-    paths:
-      - "docs/**"
-      - "mkdocs.yml"
-      - "CHANGELOG.md"
-      - ".github/workflows/docs.yml"
   workflow_dispatch:
 
 permissions:
@@ -31,6 +32,16 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .tool-versions
+
+      - name: Verify docs version pins
+        run: bun run scripts/check-docs-versions.ts
+
+      - name: Verify docs src citations
+        run: bun run scripts/check-docs-citations.ts
 
       - uses: actions/setup-python@v6
         with:
