@@ -25,7 +25,7 @@ bun run dev:deps
 
 # Copy and fill .env
 cp .env.example .env
-# Edit .env — see operate/configuration.md for every variable.
+# Edit .env — see configuration.md for every variable.
 
 # Run database migrations
 bun run db:migrate

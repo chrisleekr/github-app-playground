@@ -14,7 +14,7 @@ This page enumerates the boundary the bot enforces on itself. The boundary is de
 | `git filter-branch` / `git filter-repo`                                | History rewriting is out of scope.                              |
 | `gh pr merge` / `mergePullRequest` (GraphQL) / `mergeBranch` (GraphQL) | The bot never merges.                                           |
 
-`src/workflows/handlers/resolve.ts` carries an additional in-source assertion that `octokit.rest.pulls.merge` is never called.
+`src/workflows/handlers/resolve.ts` documents a non-negotiable requirement that `octokit.rest.pulls.merge` must never be called (header comment + a step in the agent's instruction set). It is a documented constraint, not a runtime guard — the static guard above is what fails the build if anyone tries.
 
 ## Pause / resume / abort (ship sessions)
 

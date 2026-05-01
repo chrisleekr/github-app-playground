@@ -103,10 +103,10 @@ Shortcut: `bun run docker:run:daemon` (connects back to `ws://host.docker.intern
 
 Endpoints exist on the **orchestrator image only**. Daemon liveness is tracked via the WebSocket heartbeat in the orchestrator's daemon registry.
 
-| Endpoint   | Method | Success     | Failure             | Purpose                                                                             |
-| ---------- | ------ | ----------- | ------------------- | ----------------------------------------------------------------------------------- |
-| `/healthz` | GET    | `200 ok`    | —                   | Liveness — process is alive (no external deps).                                     |
-| `/readyz`  | GET    | `200 ready` | `503 shutting down` | Readiness — config validated and data layer reachable. Flips to `503` on `SIGTERM`. |
+| Endpoint   | Method | Success     | Failure         | Purpose                                                                                                                                       |
+| ---------- | ------ | ----------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/healthz` | GET    | `200 ok`    | —               | Liveness — process is alive (no external deps).                                                                                               |
+| `/readyz`  | GET    | `200 ready` | `503 not ready` | Readiness — config validated and data layer reachable. Returns `503 not ready` during startup, when a dependency is down, or after `SIGTERM`. |
 
 `Dockerfile.orchestrator` ships with a Docker `HEALTHCHECK` invoking `curl -f http://localhost:3000/healthz`. Honoured by Docker Compose, ECS, Nomad, Swarm. Kubernetes ignores Docker `HEALTHCHECK` and uses the probe spec below.
 

@@ -31,4 +31,4 @@ The agent writes `PLAN.md`; the pipeline reports success or failure. No turn cap
 
 ## Re-trigger semantics
 
-`plan` is **fresh** while a successful row exists for the issue created **after** the most recent triage success. Re-applying the label after either succeeded run terminates re-runs the latest stale step.
+`plan` is **fresh** when a successful `plan` row exists for the issue created **after** the most recent successful `triage`. Re-applying the label when `plan` is stale enqueues a fresh run; an in-flight stale run is not interrupted, so wait for it to terminate before re-applying.
