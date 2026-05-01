@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * Fails CI when a PR touches `src/workflows/**` without also updating
- * `docs/BOT-WORKFLOWS.md` (FR-019 / SC-007 doc-sync guard).
+ * any page under `docs/use/workflows/`.
  *
  * Reads the diff between `BASE_SHA..HEAD_SHA` (env vars set by CI) and
  * compares the two path sets. Tests and markdown files under
@@ -12,7 +12,7 @@ import { exit } from "node:process";
 
 const WORKFLOW_PATH = /^src\/workflows\//;
 const WORKFLOW_EXEMPT = /^src\/workflows\/.*\.(test\.ts|md)$/;
-const DOC_PATH = /^docs\/BOT-WORKFLOWS\.md$/;
+const DOC_PATH = /^docs\/use\/workflows\/.*\.md$/;
 
 function diffFiles(base: string, head: string): string[] {
   const res = spawnSync("git", ["diff", "--name-only", `${base}...${head}`], {
@@ -36,15 +36,15 @@ const touchedDoc = files.some((f) => DOC_PATH.test(f));
 if (touchedWorkflows.length > 0 && !touchedDoc) {
   console.error(
     [
-      "❌ Doc-sync check failed (FR-019).",
+      "❌ Doc-sync check failed.",
       "",
       "The following src/workflows/ files changed without a matching",
-      "docs/BOT-WORKFLOWS.md update:",
+      "update under docs/use/workflows/:",
       ...touchedWorkflows.map((f) => `  - ${f}`),
       "",
-      "Update docs/BOT-WORKFLOWS.md in this PR, or mark the change as",
-      "test/docs-only by moving it under src/workflows/**/*.test.ts or",
-      "src/workflows/**/*.md.",
+      "Update the relevant docs/use/workflows/*.md page in this PR, or",
+      "mark the change as test/docs-only by moving it under",
+      "src/workflows/**/*.test.ts or src/workflows/**/*.md.",
     ].join("\n"),
   );
   exit(1);
