@@ -10,25 +10,31 @@
       
       
       
+        <link rel="canonical" href="https://chrisleekr.github.io/github-app-playground/operate/runbooks/triage/">
       
+      
+        <link rel="prev" href="../daemon-fleet/">
+      
+      
+        <link rel="next" href="../stuck-ship-intent/">
       
       
         
       
       
-      <link rel="icon" href="/github-app-playground/assets/images/favicon.png">
+      <link rel="icon" href="../../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
-        <title>GitHub App Playground</title>
+        <title>Triage - GitHub App Playground</title>
       
     
     
-      <link rel="stylesheet" href="/github-app-playground/assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
       
         
-        <link rel="stylesheet" href="/github-app-playground/assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -42,20 +48,33 @@
         
         
         
-        <link rel="stylesheet" href="/github-app-playground/assets/external/fonts.googleapis.com/css.49ea35f2.css">
+        <link rel="stylesheet" href="../../../assets/external/fonts.googleapis.com/css.49ea35f2.css">
         <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
       
     
     
-      <link rel="stylesheet" href="/github-app-playground/stylesheets/extra.css">
+      <link rel="stylesheet" href="../../../stylesheets/extra.css">
     
-    <script>__md_scope=new URL("/github-app-playground/",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
     
     
-  </head>
+  
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Triage - GitHub App Playground" />
+<meta property="og:description" content="A GitHub App webhook server powered by the Claude Agent SDK." />
+<meta property="og:image" content="https://chrisleekr.github.io/github-app-playground/assets/images/social/operate/runbooks/triage.png" />
+<meta property="og:image:type" content="image/png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:url" content="https://chrisleekr.github.io/github-app-playground/operate/runbooks/triage/" />
+<meta property="twitter:card" content="summary_large_image" />
+<meta property="twitter:title" content="Triage - GitHub App Playground" />
+<meta property="twitter:description" content="A GitHub App webhook server powered by the Claude Agent SDK." />
+<meta property="twitter:image" content="https://chrisleekr.github.io/github-app-playground/assets/images/social/operate/runbooks/triage.png" />
+</head>
   
   
     
@@ -73,6 +92,11 @@
     <label class="md-overlay" for="__drawer"></label>
     <div data-md-component="skip">
       
+        
+        <a href="#runbook-triage" class="md-skip">
+          Skip to content
+        </a>
+      
     </div>
     <div data-md-component="announce">
       
@@ -83,7 +107,7 @@
 
 <header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="/github-app-playground/." title="GitHub App Playground" class="md-header__button md-logo" aria-label="GitHub App Playground" data-md-component="logo">
+    <a href="../../.." title="GitHub App Playground" class="md-header__button md-logo" aria-label="GitHub App Playground" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -103,7 +127,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              
+              Triage
             
           </span>
         </div>
@@ -221,7 +245,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="/github-app-playground/." class="md-tabs__link">
+      <a href="../../.." class="md-tabs__link">
         
   
   
@@ -242,7 +266,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="/github-app-playground/use/invoking/" class="md-tabs__link">
+        <a href="../../../use/invoking/" class="md-tabs__link">
           
   
   
@@ -258,11 +282,13 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="/github-app-playground/operate/setup/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../setup/" class="md-tabs__link">
           
   
   
@@ -282,7 +308,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="/github-app-playground/build/architecture/" class="md-tabs__link">
+        <a href="../../../build/architecture/" class="md-tabs__link">
           
   
   
@@ -300,7 +326,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="/github-app-playground/changelog/" class="md-tabs__link">
+      <a href="../../../changelog/" class="md-tabs__link">
         
   
   
@@ -335,7 +361,7 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="/github-app-playground/." title="GitHub App Playground" class="md-nav__button md-logo" aria-label="GitHub App Playground" data-md-component="logo">
+    <a href="../../.." title="GitHub App Playground" class="md-nav__button md-logo" aria-label="GitHub App Playground" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -365,7 +391,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/." class="md-nav__link">
+      <a href="../../.." class="md-nav__link">
         
   
   
@@ -444,7 +470,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/use/invoking/" class="md-nav__link">
+      <a href="../../../use/invoking/" class="md-nav__link">
         
   
   
@@ -524,7 +550,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/use/workflows/" class="md-nav__link">
+      <a href="../../../use/workflows/" class="md-nav__link">
         
   
   
@@ -552,7 +578,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/use/workflows/ship/" class="md-nav__link">
+      <a href="../../../use/workflows/ship/" class="md-nav__link">
         
   
   
@@ -580,7 +606,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/use/workflows/triage/" class="md-nav__link">
+      <a href="../../../use/workflows/triage/" class="md-nav__link">
         
   
   
@@ -608,7 +634,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/use/workflows/plan/" class="md-nav__link">
+      <a href="../../../use/workflows/plan/" class="md-nav__link">
         
   
   
@@ -636,7 +662,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/use/workflows/implement/" class="md-nav__link">
+      <a href="../../../use/workflows/implement/" class="md-nav__link">
         
   
   
@@ -664,7 +690,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/use/workflows/review/" class="md-nav__link">
+      <a href="../../../use/workflows/review/" class="md-nav__link">
         
   
   
@@ -692,7 +718,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/use/workflows/resolve/" class="md-nav__link">
+      <a href="../../../use/workflows/resolve/" class="md-nav__link">
         
   
   
@@ -728,7 +754,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/use/safety/" class="md-nav__link">
+      <a href="../../../use/safety/" class="md-nav__link">
         
   
   
@@ -760,26 +786,31 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
             
   
   
@@ -797,7 +828,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -815,7 +846,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/operate/setup/" class="md-nav__link">
+      <a href="../../setup/" class="md-nav__link">
         
   
   
@@ -843,7 +874,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/operate/github-app/" class="md-nav__link">
+      <a href="../../github-app/" class="md-nav__link">
         
   
   
@@ -871,7 +902,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/operate/deployment/" class="md-nav__link">
+      <a href="../../deployment/" class="md-nav__link">
         
   
   
@@ -899,7 +930,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/operate/configuration/" class="md-nav__link">
+      <a href="../../configuration/" class="md-nav__link">
         
   
   
@@ -927,7 +958,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/operate/observability/" class="md-nav__link">
+      <a href="../../observability/" class="md-nav__link">
         
   
   
@@ -952,26 +983,31 @@
                 
   
   
+    
   
   
+  
     
     
     
     
       
       
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_6" >
         
           
-          <label class="md-nav__link" for="__nav_3_6" id="__nav_3_6_label" tabindex="0">
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_6" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3_6" id="__nav_3_6_label" tabindex="">
             
   
   
@@ -989,7 +1025,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_6_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_6_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3_6">
             <span class="md-nav__icon md-icon"></span>
             
@@ -1007,7 +1043,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/operate/runbooks/daemon-fleet/" class="md-nav__link">
+      <a href="../daemon-fleet/" class="md-nav__link">
         
   
   
@@ -1032,10 +1068,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="/github-app-playground/operate/runbooks/triage/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Triage
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -1051,6 +1114,103 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-a-call-returns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a call returns
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#confidence-threshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Confidence threshold
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#circuit-breaker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Circuit breaker
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#six-fallback-reasons" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Six fallback reasons
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cost-implications" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cost implications
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tuning-knobs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tuning knobs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#querying" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Querying
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1063,7 +1223,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/operate/runbooks/stuck-ship-intent/" class="md-nav__link">
+      <a href="../stuck-ship-intent/" class="md-nav__link">
         
   
   
@@ -1158,7 +1318,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/build/architecture/" class="md-nav__link">
+      <a href="../../../build/architecture/" class="md-nav__link">
         
   
   
@@ -1186,7 +1346,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/build/extending/" class="md-nav__link">
+      <a href="../../../build/extending/" class="md-nav__link">
         
   
   
@@ -1214,7 +1374,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/build/conventions/" class="md-nav__link">
+      <a href="../../../build/conventions/" class="md-nav__link">
         
   
   
@@ -1242,7 +1402,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/build/contributing/" class="md-nav__link">
+      <a href="../../../build/contributing/" class="md-nav__link">
         
   
   
@@ -1277,7 +1437,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/changelog/" class="md-nav__link">
+      <a href="../../../changelog/" class="md-nav__link">
         
   
   
@@ -1314,6 +1474,93 @@
   
   
   
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-a-call-returns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a call returns
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#confidence-threshold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Confidence threshold
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#circuit-breaker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Circuit breaker
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#six-fallback-reasons" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Six fallback reasons
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cost-implications" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cost implications
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tuning-knobs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tuning knobs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#querying" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Querying
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
   
 </nav>
                   </div>
@@ -1326,8 +1573,150 @@
               
               <article class="md-content__inner md-typeset">
                 
-  <h1>404 - Not found</h1>
+                  
 
+
+  
+    <a href="https://github.com/chrisleekr/github-app-playground/edit/main/docs/operate/runbooks/triage.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="runbook-triage">Runbook — triage<a class="headerlink" href="#runbook-triage" title="Permanent link">&para;</a></h1>
+<p>Triage is a binary <code>heavy</code> classifier. It runs on every event (subject to the kill-switch and circuit breaker) and answers one question: should this job prefer an ephemeral daemon? <code>heavy=true</code> is one of the two triggers that can spawn an ephemeral daemon Pod (the other is queue overflow).</p>
+<h2 id="what-a-call-returns">What a call returns<a class="headerlink" href="#what-a-call-returns" title="Permanent link">&para;</a></h2>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span><span class="w"> </span><span class="nt">&quot;heavy&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;confidence&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.92</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;rationale&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="w"> </span><span class="p">}</span>
+</span></code></pre></div>
+<p>There is no <code>complexity</code> field and no <code>maxTurns</code> mapping — <code>maxTurns</code> always comes from <code>config.defaultMaxTurns</code> regardless of the triage outcome.</p>
+<h2 id="confidence-threshold">Confidence threshold<a class="headerlink" href="#confidence-threshold" title="Permanent link">&para;</a></h2>
+<p>At or above <code>TRIAGE_CONFIDENCE_THRESHOLD</code>, <code>heavy</code> is accepted as-is. Below it, the router treats the signal as <code>heavy=false</code> — the job routes to <code>persistent-daemon</code> and the log line carries <code>triage_fallback_reason=sub-threshold</code>. Day-one default is <code>1.0</code> so only perfectly confident results route an ephemeral spawn.</p>
+<h2 id="circuit-breaker">Circuit breaker<a class="headerlink" href="#circuit-breaker" title="Permanent link">&para;</a></h2>
+<p>Triage wraps the LLM call in a circuit breaker (<code>src/orchestrator/triage.ts</code>). Consecutive failures trip the breaker; while open, the function short-circuits to <code>heavy=false</code> and emits <code>triage_fallback_reason=circuit-open</code>. The breaker re-closes after a cooldown.</p>
+<h2 id="six-fallback-reasons">Six fallback reasons<a class="headerlink" href="#six-fallback-reasons" title="Permanent link">&para;</a></h2>
+<p>All emitted as <code>triage_fallback_reason</code> in pino logs.</p>
+<table>
+<thead>
+<tr>
+<th>Reason</th>
+<th>Trigger</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>disabled</code></td>
+<td><code>TRIAGE_ENABLED=false</code> — short-circuits without calling the LLM.</td>
+</tr>
+<tr>
+<td><code>circuit-open</code></td>
+<td>Breaker tripped after consecutive failures.</td>
+</tr>
+<tr>
+<td><code>timeout</code></td>
+<td>The call exceeded <code>TRIAGE_TIMEOUT_MS</code>.</td>
+</tr>
+<tr>
+<td><code>llm-error</code></td>
+<td>The provider returned an error.</td>
+</tr>
+<tr>
+<td><code>parse-error</code></td>
+<td>The JSON response failed schema validation.</td>
+</tr>
+<tr>
+<td><code>sub-threshold</code></td>
+<td>Parsed successfully but <code>confidence &lt; TRIAGE_CONFIDENCE_THRESHOLD</code>.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="cost-implications">Cost implications<a class="headerlink" href="#cost-implications" title="Permanent link">&para;</a></h2>
+<p>Every event attempts triage. When <code>TRIAGE_ENABLED=false</code> or the breaker is open the call short-circuits <strong>before</strong> hitting Haiku, so those paths are free. When the call proceeds, one Haiku invocation is the dominant marginal cost on a busy install.</p>
+<p>Mitigations:</p>
+<ul>
+<li><code>TRIAGE_CONFIDENCE_THRESHOLD</code> defaults to <code>1.0</code> (strictest). Lower toward <code>0.8</code>–<code>0.9</code> to accept more heavy verdicts; raising above <code>1.0</code> is unsupported and gates out every response. The compute cost is unchanged either way — the knob only controls whether the result routes an ephemeral spawn.</li>
+<li>Flip <code>TRIAGE_ENABLED=false</code> during a provider incident to suppress spend without redeploying.</li>
+<li>Keep <code>TRIAGE_MAX_TOKENS</code> low (the response schema is ~40 tokens).</li>
+</ul>
+<h2 id="tuning-knobs">Tuning knobs<a class="headerlink" href="#tuning-knobs" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>When to change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>TRIAGE_ENABLED</code></td>
+<td><code>true</code></td>
+<td>Incident kill-switch.</td>
+</tr>
+<tr>
+<td><code>TRIAGE_MODEL</code></td>
+<td><code>haiku-3-5</code></td>
+<td>Experiment with newer Haiku aliases for latency.</td>
+</tr>
+<tr>
+<td><code>TRIAGE_CONFIDENCE_THRESHOLD</code></td>
+<td><code>1.0</code></td>
+<td>Relax to <code>0.8</code>–<code>0.9</code> once the classifier is calibrated.</td>
+</tr>
+<tr>
+<td><code>TRIAGE_MAX_TOKENS</code></td>
+<td><code>256</code></td>
+<td>Only raise if rationale is being truncated.</td>
+</tr>
+<tr>
+<td><code>TRIAGE_TIMEOUT_MS</code></td>
+<td><code>5000</code></td>
+<td>Raise if provider latency is consistently &gt; 5 s.</td>
+</tr>
+</tbody>
+</table>
+<p>Full schema: <a href="../../configuration/#triage"><code>../configuration.md</code></a>.</p>
+<h2 id="querying">Querying<a class="headerlink" href="#querying" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Question</th>
+<th>Approach</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Triage accuracy this week</td>
+<td>Sample log lines with <code>heavy:true</code> or <code>heavy:false</code> and grade against the actual job duration / cost.</td>
+</tr>
+<tr>
+<td>Spend on triage calls</td>
+<td><code>triageSpend(days)</code> helper in <code>src/db/queries/dispatch-stats.ts</code>.</td>
+</tr>
+<tr>
+<td>Fallback rate</td>
+<td>Log query: <code>triage_fallback_reason:*</code> grouped by reason.</td>
+</tr>
+<tr>
+<td>Sub-threshold tail</td>
+<td>Histogram of <code>confidence</code> for non-fallback events; if the 90th percentile is below <code>TRIAGE_CONFIDENCE_THRESHOLD</code>, lower the threshold.</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
               </article>
             </div>
           
@@ -1345,6 +1734,44 @@
       
         <footer class="md-footer">
   
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../daemon-fleet/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Daemon fleet">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Daemon fleet
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../stuck-ship-intent/" class="md-footer__link md-footer__link--next" aria-label="Next: Stuck bot:ship session">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Stuck bot:ship session
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
     
   
   <div class="md-footer-meta md-typeset">
@@ -1374,10 +1801,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "/github-app-playground/", "features": ["navigation.instant", "navigation.instant.progress", "navigation.tabs", "navigation.sections", "navigation.top", "navigation.footer", "toc.follow", "search.suggest", "search.highlight", "search.share", "content.code.copy", "content.code.select", "content.code.annotate", "content.action.edit"], "search": "/github-app-playground/assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.instant", "navigation.instant.progress", "navigation.tabs", "navigation.sections", "navigation.top", "navigation.footer", "toc.follow", "search.suggest", "search.highlight", "search.share", "content.code.copy", "content.code.select", "content.code.annotate", "content.action.edit"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="/github-app-playground/assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

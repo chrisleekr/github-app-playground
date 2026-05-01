@@ -10,25 +10,31 @@
       
       
       
+        <link rel="canonical" href="https://chrisleekr.github.io/github-app-playground/use/safety/">
       
+      
+        <link rel="prev" href="../workflows/resolve/">
+      
+      
+        <link rel="next" href="../../operate/setup/">
       
       
         
       
       
-      <link rel="icon" href="/github-app-playground/assets/images/favicon.png">
+      <link rel="icon" href="../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
-        <title>GitHub App Playground</title>
+        <title>Safety - GitHub App Playground</title>
       
     
     
-      <link rel="stylesheet" href="/github-app-playground/assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
         
-        <link rel="stylesheet" href="/github-app-playground/assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -42,20 +48,33 @@
         
         
         
-        <link rel="stylesheet" href="/github-app-playground/assets/external/fonts.googleapis.com/css.49ea35f2.css">
+        <link rel="stylesheet" href="../../assets/external/fonts.googleapis.com/css.49ea35f2.css">
         <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
       
     
     
-      <link rel="stylesheet" href="/github-app-playground/stylesheets/extra.css">
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
     
-    <script>__md_scope=new URL("/github-app-playground/",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
     
     
-  </head>
+  
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Safety - GitHub App Playground" />
+<meta property="og:description" content="A GitHub App webhook server powered by the Claude Agent SDK." />
+<meta property="og:image" content="https://chrisleekr.github.io/github-app-playground/assets/images/social/use/safety.png" />
+<meta property="og:image:type" content="image/png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:url" content="https://chrisleekr.github.io/github-app-playground/use/safety/" />
+<meta property="twitter:card" content="summary_large_image" />
+<meta property="twitter:title" content="Safety - GitHub App Playground" />
+<meta property="twitter:description" content="A GitHub App webhook server powered by the Claude Agent SDK." />
+<meta property="twitter:image" content="https://chrisleekr.github.io/github-app-playground/assets/images/social/use/safety.png" />
+</head>
   
   
     
@@ -73,6 +92,11 @@
     <label class="md-overlay" for="__drawer"></label>
     <div data-md-component="skip">
       
+        
+        <a href="#what-the-bot-will-and-wont-do" class="md-skip">
+          Skip to content
+        </a>
+      
     </div>
     <div data-md-component="announce">
       
@@ -83,7 +107,7 @@
 
 <header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="/github-app-playground/." title="GitHub App Playground" class="md-header__button md-logo" aria-label="GitHub App Playground" data-md-component="logo">
+    <a href="../.." title="GitHub App Playground" class="md-header__button md-logo" aria-label="GitHub App Playground" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -103,7 +127,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              
+              Safety
             
           </span>
         </div>
@@ -221,7 +245,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="/github-app-playground/." class="md-tabs__link">
+      <a href="../.." class="md-tabs__link">
         
   
   
@@ -238,11 +262,13 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="/github-app-playground/use/invoking/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../invoking/" class="md-tabs__link">
           
   
   
@@ -262,7 +288,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="/github-app-playground/operate/setup/" class="md-tabs__link">
+        <a href="../../operate/setup/" class="md-tabs__link">
           
   
   
@@ -282,7 +308,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="/github-app-playground/build/architecture/" class="md-tabs__link">
+        <a href="../../build/architecture/" class="md-tabs__link">
           
   
   
@@ -300,7 +326,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="/github-app-playground/changelog/" class="md-tabs__link">
+      <a href="../../changelog/" class="md-tabs__link">
         
   
   
@@ -335,7 +361,7 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="/github-app-playground/." title="GitHub App Playground" class="md-nav__button md-logo" aria-label="GitHub App Playground" data-md-component="logo">
+    <a href="../.." title="GitHub App Playground" class="md-nav__button md-logo" aria-label="GitHub App Playground" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -365,7 +391,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/." class="md-nav__link">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -389,26 +415,31 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
         
           
-          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
             
   
   
@@ -426,7 +457,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_2">
             <span class="md-nav__icon md-icon"></span>
             
@@ -444,7 +475,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/use/invoking/" class="md-nav__link">
+      <a href="../invoking/" class="md-nav__link">
         
   
   
@@ -478,17 +509,20 @@
       
       
         
+          
+          
+        
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
         <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_2" >
         
           
-          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="">
             
   
   
@@ -524,7 +558,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/use/workflows/" class="md-nav__link">
+      <a href="../workflows/" class="md-nav__link">
         
   
   
@@ -552,7 +586,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/use/workflows/ship/" class="md-nav__link">
+      <a href="../workflows/ship/" class="md-nav__link">
         
   
   
@@ -580,7 +614,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/use/workflows/triage/" class="md-nav__link">
+      <a href="../workflows/triage/" class="md-nav__link">
         
   
   
@@ -608,7 +642,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/use/workflows/plan/" class="md-nav__link">
+      <a href="../workflows/plan/" class="md-nav__link">
         
   
   
@@ -636,7 +670,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/use/workflows/implement/" class="md-nav__link">
+      <a href="../workflows/implement/" class="md-nav__link">
         
   
   
@@ -664,7 +698,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/use/workflows/review/" class="md-nav__link">
+      <a href="../workflows/review/" class="md-nav__link">
         
   
   
@@ -692,7 +726,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/use/workflows/resolve/" class="md-nav__link">
+      <a href="../workflows/resolve/" class="md-nav__link">
         
   
   
@@ -725,10 +759,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="/github-app-playground/use/safety/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Safety
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -744,6 +805,103 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#static-guard-destructive-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Static guard — destructive actions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pause-resume-abort-ship-sessions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pause / resume / abort (ship sessions)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#foreign-push-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Foreign-push semantics
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#forbidden-target-branches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Forbidden target branches
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reviews" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reviews
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#idempotency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Idempotency
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fork-prs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fork PRs
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -815,7 +973,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/operate/setup/" class="md-nav__link">
+      <a href="../../operate/setup/" class="md-nav__link">
         
   
   
@@ -843,7 +1001,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/operate/github-app/" class="md-nav__link">
+      <a href="../../operate/github-app/" class="md-nav__link">
         
   
   
@@ -871,7 +1029,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/operate/deployment/" class="md-nav__link">
+      <a href="../../operate/deployment/" class="md-nav__link">
         
   
   
@@ -899,7 +1057,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/operate/configuration/" class="md-nav__link">
+      <a href="../../operate/configuration/" class="md-nav__link">
         
   
   
@@ -927,7 +1085,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/operate/observability/" class="md-nav__link">
+      <a href="../../operate/observability/" class="md-nav__link">
         
   
   
@@ -1007,7 +1165,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/operate/runbooks/daemon-fleet/" class="md-nav__link">
+      <a href="../../operate/runbooks/daemon-fleet/" class="md-nav__link">
         
   
   
@@ -1035,7 +1193,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/operate/runbooks/triage/" class="md-nav__link">
+      <a href="../../operate/runbooks/triage/" class="md-nav__link">
         
   
   
@@ -1063,7 +1221,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/operate/runbooks/stuck-ship-intent/" class="md-nav__link">
+      <a href="../../operate/runbooks/stuck-ship-intent/" class="md-nav__link">
         
   
   
@@ -1158,7 +1316,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/build/architecture/" class="md-nav__link">
+      <a href="../../build/architecture/" class="md-nav__link">
         
   
   
@@ -1186,7 +1344,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/build/extending/" class="md-nav__link">
+      <a href="../../build/extending/" class="md-nav__link">
         
   
   
@@ -1214,7 +1372,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/build/conventions/" class="md-nav__link">
+      <a href="../../build/conventions/" class="md-nav__link">
         
   
   
@@ -1242,7 +1400,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/build/contributing/" class="md-nav__link">
+      <a href="../../build/contributing/" class="md-nav__link">
         
   
   
@@ -1277,7 +1435,7 @@
   
   
     <li class="md-nav__item">
-      <a href="/github-app-playground/changelog/" class="md-nav__link">
+      <a href="../../changelog/" class="md-nav__link">
         
   
   
@@ -1314,6 +1472,93 @@
   
   
   
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#static-guard-destructive-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Static guard — destructive actions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pause-resume-abort-ship-sessions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pause / resume / abort (ship sessions)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#foreign-push-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Foreign-push semantics
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#forbidden-target-branches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Forbidden target branches
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reviews" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reviews
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#idempotency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Idempotency
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fork-prs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fork PRs
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
   
 </nav>
                   </div>
@@ -1326,8 +1571,104 @@
               
               <article class="md-content__inner md-typeset">
                 
-  <h1>404 - Not found</h1>
+                  
 
+
+  
+    <a href="https://github.com/chrisleekr/github-app-playground/edit/main/docs/use/safety.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="what-the-bot-will-and-wont-do">What the bot will and won't do<a class="headerlink" href="#what-the-bot-will-and-wont-do" title="Permanent link">&para;</a></h1>
+<p>This page enumerates the boundary the bot enforces on itself. The boundary is defended in two places: handler code and a static guard at <code>scripts/check-no-destructive-actions.ts</code> that runs in <code>bun run check</code>.</p>
+<h2 id="static-guard-destructive-actions">Static guard — destructive actions<a class="headerlink" href="#static-guard-destructive-actions" title="Permanent link">&para;</a></h2>
+<p><code>scripts/check-no-destructive-actions.ts</code> scans <code>src/workflows/ship/</code> (recursive) and the four scoped daemon executors for the following patterns. The CI gate fails the build on any match outside of comments.</p>
+<table>
+<thead>
+<tr>
+<th>Pattern</th>
+<th>Why blocked</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>git push --force</code> / <code>git push -f</code></td>
+<td>Always replaced with <code>--force-with-lease</code> after a clean rebase.</td>
+</tr>
+<tr>
+<td><code>git reset --hard</code></td>
+<td>The bot never discards local work without explicit intent.</td>
+</tr>
+<tr>
+<td><code>git branch -D</code> / <code>git push --delete</code></td>
+<td>Branch deletion is a human action.</td>
+</tr>
+<tr>
+<td><code>git filter-branch</code> / <code>git filter-repo</code></td>
+<td>History rewriting is out of scope.</td>
+</tr>
+<tr>
+<td><code>gh pr merge</code> / <code>mergePullRequest</code> (GraphQL) / <code>mergeBranch</code> (GraphQL)</td>
+<td>The bot never merges.</td>
+</tr>
+</tbody>
+</table>
+<p><code>src/workflows/handlers/resolve.ts</code> documents a non-negotiable requirement that <code>octokit.rest.pulls.merge</code> must never be called (header comment + a step in the agent's instruction set). It is a documented constraint, not a runtime guard — the static guard above is what fails the build if anyone tries.</p>
+<h2 id="pause-resume-abort-ship-sessions">Pause / resume / abort (ship sessions)<a class="headerlink" href="#pause-resume-abort-ship-sessions" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Verb</th>
+<th>Behaviour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bot:stop</code></td>
+<td>Sets <code>ship_intents.status = 'paused'</code>. The deadline keeps counting down. The session can be resumed.</td>
+</tr>
+<tr>
+<td><code>bot:resume</code></td>
+<td>Verifies no foreign push has landed since the pause, clears the Valkey cancel flag, re-enqueues the continuation. Refused if a manual push happened during the pause.</td>
+</tr>
+<tr>
+<td><code>bot:abort-ship</code></td>
+<td>Sets the Valkey cancel flag at <code>ship:cancel:{intent_id}</code>, waits ≤2 s for the next cooperative checkpoint, force-transitions to <code>aborted_by_user</code>. After abort, the bot performs zero further mutating actions on the PR.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="foreign-push-semantics">Foreign-push semantics<a class="headerlink" href="#foreign-push-semantics" title="Permanent link">&para;</a></h2>
+<p>The shepherding probe detects when a non-bot principal has pushed to the PR's head branch. The session terminates immediately with <code>human_took_over</code> + <code>terminal_blocker_category='manual-push-detected'</code>. The bot does not race the human or revert the push.</p>
+<h2 id="forbidden-target-branches">Forbidden target branches<a class="headerlink" href="#forbidden-target-branches" title="Permanent link">&para;</a></h2>
+<p><code>SHIP_FORBIDDEN_TARGET_BRANCHES</code> (comma-separated) lists branches <code>bot:ship</code> will refuse to shepherd into. Typical values: <code>main</code>, <code>production</code>, <code>release</code>. The refusal is delivered as a maintainer-facing reply naming the offending branch; no <code>ship_intents</code> row is created.</p>
+<h2 id="reviews">Reviews<a class="headerlink" href="#reviews" title="Permanent link">&para;</a></h2>
+<p><code>bot:review</code> posts findings as <strong>inline comments</strong>, one MCP call per finding. It never:</p>
+<ul>
+<li>Submits a top-level <code>APPROVE</code> or <code>REQUEST_CHANGES</code> review (those are human prerogatives).</li>
+<li>Merges the PR.</li>
+<li>Bundles findings into a single wall-of-text review POST.</li>
+</ul>
+<h2 id="idempotency">Idempotency<a class="headerlink" href="#idempotency" title="Permanent link">&para;</a></h2>
+<p>A duplicate webhook delivery — same <code>X-GitHub-Delivery</code> header or same tracking-comment marker — is dropped before any work runs. The fast in-memory <code>Map</code> is lost on restart; the durable check (looking for the bot's hidden delivery marker in existing tracking comments) survives crash loops.</p>
+<h2 id="fork-prs">Fork PRs<a class="headerlink" href="#fork-prs" title="Permanent link">&para;</a></h2>
+<p>The bot's installation token cannot push to a fork branch. PR-side workflows (<code>review</code>, <code>resolve</code>, <code>ship</code>) detect this, post a top-level comment asking the contributor to rebase, and proceed against the stale head — flagging affected findings in the final report.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
               </article>
             </div>
           
@@ -1345,6 +1686,44 @@
       
         <footer class="md-footer">
   
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../workflows/resolve/" class="md-footer__link md-footer__link--prev" aria-label="Previous: bot:resolve">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                bot:resolve
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../../operate/setup/" class="md-footer__link md-footer__link--next" aria-label="Next: Local development">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Local development
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
     
   
   <div class="md-footer-meta md-typeset">
@@ -1374,10 +1753,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "/github-app-playground/", "features": ["navigation.instant", "navigation.instant.progress", "navigation.tabs", "navigation.sections", "navigation.top", "navigation.footer", "toc.follow", "search.suggest", "search.highlight", "search.share", "content.code.copy", "content.code.select", "content.code.annotate", "content.action.edit"], "search": "/github-app-playground/assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.instant.progress", "navigation.tabs", "navigation.sections", "navigation.top", "navigation.footer", "toc.follow", "search.suggest", "search.highlight", "search.share", "content.code.copy", "content.code.select", "content.code.annotate", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="/github-app-playground/assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

@@ -10,29 +10,31 @@
       
       
       
-        <link rel="canonical" href="https://chrisleekr.github.io/github-app-playground/">
+        <link rel="canonical" href="https://chrisleekr.github.io/github-app-playground/operate/setup/">
       
       
+        <link rel="prev" href="../../use/safety/">
       
-        <link rel="next" href="use/invoking/">
+      
+        <link rel="next" href="../github-app/">
       
       
         
       
       
-      <link rel="icon" href="assets/images/favicon.png">
+      <link rel="icon" href="../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
-        <title>GitHub App Playground</title>
+        <title>Local development - GitHub App Playground</title>
       
     
     
-      <link rel="stylesheet" href="assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
         
-        <link rel="stylesheet" href="assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -46,14 +48,14 @@
         
         
         
-        <link rel="stylesheet" href="assets/external/fonts.googleapis.com/css.49ea35f2.css">
+        <link rel="stylesheet" href="../../assets/external/fonts.googleapis.com/css.49ea35f2.css">
         <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
       
     
     
-      <link rel="stylesheet" href="stylesheets/extra.css">
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
     
-    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -61,17 +63,17 @@
     
   
 <meta property="og:type" content="website" />
-<meta property="og:title" content="GitHub App Playground" />
+<meta property="og:title" content="Local development - GitHub App Playground" />
 <meta property="og:description" content="A GitHub App webhook server powered by the Claude Agent SDK." />
-<meta property="og:image" content="https://chrisleekr.github.io/github-app-playground/assets/images/social/index.png" />
+<meta property="og:image" content="https://chrisleekr.github.io/github-app-playground/assets/images/social/operate/setup.png" />
 <meta property="og:image:type" content="image/png" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
-<meta property="og:url" content="https://chrisleekr.github.io/github-app-playground/" />
+<meta property="og:url" content="https://chrisleekr.github.io/github-app-playground/operate/setup/" />
 <meta property="twitter:card" content="summary_large_image" />
-<meta property="twitter:title" content="GitHub App Playground" />
+<meta property="twitter:title" content="Local development - GitHub App Playground" />
 <meta property="twitter:description" content="A GitHub App webhook server powered by the Claude Agent SDK." />
-<meta property="twitter:image" content="https://chrisleekr.github.io/github-app-playground/assets/images/social/index.png" />
+<meta property="twitter:image" content="https://chrisleekr.github.io/github-app-playground/assets/images/social/operate/setup.png" />
 </head>
   
   
@@ -91,7 +93,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#github-app-playground" class="md-skip">
+        <a href="#local-development-setup" class="md-skip">
           Skip to content
         </a>
       
@@ -105,7 +107,7 @@
 
 <header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="." title="GitHub App Playground" class="md-header__button md-logo" aria-label="GitHub App Playground" data-md-component="logo">
+    <a href="../.." title="GitHub App Playground" class="md-header__button md-logo" aria-label="GitHub App Playground" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -125,7 +127,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Home
+              Local development
             
           </span>
         </div>
@@ -241,11 +243,9 @@
   
   
   
-    
   
-  
-    <li class="md-tabs__item md-tabs__item--active">
-      <a href="." class="md-tabs__link">
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
         
   
   
@@ -266,7 +266,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="use/invoking/" class="md-tabs__link">
+        <a href="../../use/invoking/" class="md-tabs__link">
           
   
   
@@ -282,11 +282,13 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="operate/setup/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
           
   
   
@@ -306,7 +308,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="build/architecture/" class="md-tabs__link">
+        <a href="../../build/architecture/" class="md-tabs__link">
           
   
   
@@ -324,7 +326,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="changelog/" class="md-tabs__link">
+      <a href="../../changelog/" class="md-tabs__link">
         
   
   
@@ -348,8 +350,6 @@
           
             
               
-                
-              
               <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
                 <div class="md-sidebar__scrollwrap">
                   <div class="md-sidebar__inner">
@@ -361,7 +361,7 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="." title="GitHub App Playground" class="md-nav__button md-logo" aria-label="GitHub App Playground" data-md-component="logo">
+    <a href="../.." title="GitHub App Playground" class="md-nav__button md-logo" aria-label="GitHub App Playground" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -388,37 +388,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Home
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="." class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -434,37 +407,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#three-doors" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Three doors
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -528,7 +470,7 @@
   
   
     <li class="md-nav__item">
-      <a href="use/invoking/" class="md-nav__link">
+      <a href="../../use/invoking/" class="md-nav__link">
         
   
   
@@ -608,7 +550,7 @@
   
   
     <li class="md-nav__item">
-      <a href="use/workflows/" class="md-nav__link">
+      <a href="../../use/workflows/" class="md-nav__link">
         
   
   
@@ -636,7 +578,7 @@
   
   
     <li class="md-nav__item">
-      <a href="use/workflows/ship/" class="md-nav__link">
+      <a href="../../use/workflows/ship/" class="md-nav__link">
         
   
   
@@ -664,7 +606,7 @@
   
   
     <li class="md-nav__item">
-      <a href="use/workflows/triage/" class="md-nav__link">
+      <a href="../../use/workflows/triage/" class="md-nav__link">
         
   
   
@@ -692,7 +634,7 @@
   
   
     <li class="md-nav__item">
-      <a href="use/workflows/plan/" class="md-nav__link">
+      <a href="../../use/workflows/plan/" class="md-nav__link">
         
   
   
@@ -720,7 +662,7 @@
   
   
     <li class="md-nav__item">
-      <a href="use/workflows/implement/" class="md-nav__link">
+      <a href="../../use/workflows/implement/" class="md-nav__link">
         
   
   
@@ -748,7 +690,7 @@
   
   
     <li class="md-nav__item">
-      <a href="use/workflows/review/" class="md-nav__link">
+      <a href="../../use/workflows/review/" class="md-nav__link">
         
   
   
@@ -776,7 +718,7 @@
   
   
     <li class="md-nav__item">
-      <a href="use/workflows/resolve/" class="md-nav__link">
+      <a href="../../use/workflows/resolve/" class="md-nav__link">
         
   
   
@@ -812,7 +754,7 @@
   
   
     <li class="md-nav__item">
-      <a href="use/safety/" class="md-nav__link">
+      <a href="../../use/safety/" class="md-nav__link">
         
   
   
@@ -844,26 +786,31 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
             
   
   
@@ -881,7 +828,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -896,10 +843,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="operate/setup/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Local development
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -915,6 +889,92 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#first-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        First run
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#expose-the-local-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expose the local server
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-dev-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common dev commands
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-a-daemon-locally" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running a daemon locally
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-webhook-delivery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing webhook delivery
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -927,7 +987,7 @@
   
   
     <li class="md-nav__item">
-      <a href="operate/github-app/" class="md-nav__link">
+      <a href="../github-app/" class="md-nav__link">
         
   
   
@@ -955,7 +1015,7 @@
   
   
     <li class="md-nav__item">
-      <a href="operate/deployment/" class="md-nav__link">
+      <a href="../deployment/" class="md-nav__link">
         
   
   
@@ -983,7 +1043,7 @@
   
   
     <li class="md-nav__item">
-      <a href="operate/configuration/" class="md-nav__link">
+      <a href="../configuration/" class="md-nav__link">
         
   
   
@@ -1011,7 +1071,7 @@
   
   
     <li class="md-nav__item">
-      <a href="operate/observability/" class="md-nav__link">
+      <a href="../observability/" class="md-nav__link">
         
   
   
@@ -1045,17 +1105,20 @@
       
       
         
+          
+          
+        
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
         <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_6" >
         
           
-          <label class="md-nav__link" for="__nav_3_6" id="__nav_3_6_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_6" id="__nav_3_6_label" tabindex="">
             
   
   
@@ -1091,7 +1154,7 @@
   
   
     <li class="md-nav__item">
-      <a href="operate/runbooks/daemon-fleet/" class="md-nav__link">
+      <a href="../runbooks/daemon-fleet/" class="md-nav__link">
         
   
   
@@ -1119,7 +1182,7 @@
   
   
     <li class="md-nav__item">
-      <a href="operate/runbooks/triage/" class="md-nav__link">
+      <a href="../runbooks/triage/" class="md-nav__link">
         
   
   
@@ -1147,7 +1210,7 @@
   
   
     <li class="md-nav__item">
-      <a href="operate/runbooks/stuck-ship-intent/" class="md-nav__link">
+      <a href="../runbooks/stuck-ship-intent/" class="md-nav__link">
         
   
   
@@ -1242,7 +1305,7 @@
   
   
     <li class="md-nav__item">
-      <a href="build/architecture/" class="md-nav__link">
+      <a href="../../build/architecture/" class="md-nav__link">
         
   
   
@@ -1270,7 +1333,7 @@
   
   
     <li class="md-nav__item">
-      <a href="build/extending/" class="md-nav__link">
+      <a href="../../build/extending/" class="md-nav__link">
         
   
   
@@ -1298,7 +1361,7 @@
   
   
     <li class="md-nav__item">
-      <a href="build/conventions/" class="md-nav__link">
+      <a href="../../build/conventions/" class="md-nav__link">
         
   
   
@@ -1326,7 +1389,7 @@
   
   
     <li class="md-nav__item">
-      <a href="build/contributing/" class="md-nav__link">
+      <a href="../../build/contributing/" class="md-nav__link">
         
   
   
@@ -1361,7 +1424,7 @@
   
   
     <li class="md-nav__item">
-      <a href="changelog/" class="md-nav__link">
+      <a href="../../changelog/" class="md-nav__link">
         
   
   
@@ -1389,9 +1452,7 @@
             
             
               
-                
-              
-              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" hidden>
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
                 <div class="md-sidebar__scrollwrap">
                   <div class="md-sidebar__inner">
                     
@@ -1410,10 +1471,65 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#three-doors" class="md-nav__link">
+  <a href="#prerequisites" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Three doors
+        Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#first-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        First run
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#expose-the-local-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Expose the local server
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-dev-commands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common dev commands
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-a-daemon-locally" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running a daemon locally
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#testing-webhook-delivery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Testing webhook delivery
       
     </span>
   </a>
@@ -1434,12 +1550,10 @@
               <article class="md-content__inner md-typeset">
                 
                   
-  
-
 
 
   
-    <a href="https://github.com/chrisleekr/github-app-playground/edit/main/docs/index.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/chrisleekr/github-app-playground/edit/main/docs/operate/setup.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -1447,32 +1561,153 @@
   
 
 
-<h1 id="github-app-playground">GitHub App Playground<a class="headerlink" href="#github-app-playground" title="Permanent link">&para;</a></h1>
-<p>A GitHub App that responds to <code>@chrisleekr-bot</code> mentions on pull requests and issues, powered by the Claude Agent SDK. Every webhook is acknowledged in under ten seconds and handed to the daemon fleet over WebSocket; when triage flags the job as heavy or the queue backs up, the orchestrator spawns an ephemeral daemon Pod on Kubernetes so the same image scales on demand.</p>
-<h2 id="three-doors">Three doors<a class="headerlink" href="#three-doors" title="Permanent link">&para;</a></h2>
-<div class="grid cards">
-<ul>
-<li>
-<p><span class="twemoji lg middle"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9 5a4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4m0 10c2.67 0 8 1.34 8 4v2H1v-2c0-2.66 5.33-4 8-4m7.76-9.64c2.02 2.2 2.02 5.25 0 7.27l-1.68-1.69c.84-1.18.84-2.71 0-3.89zM20.07 2c3.93 4.05 3.9 10.11 0 14l-1.63-1.63c2.77-3.18 2.77-7.72 0-10.74z"/></svg></span> <strong>Use the bot</strong></p>
-<hr />
-<p>Trigger workflows from comments, labels, or natural language. See what each <code>bot:*</code> command does and how to stop one mid-flight.</p>
-<p><a href="use/invoking/"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13.22 19.03a.75.75 0 0 1 0-1.06L18.19 13H3.75a.75.75 0 0 1 0-1.5h14.44l-4.97-4.97a.749.749 0 0 1 .326-1.275.75.75 0 0 1 .734.215l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0"/></svg></span> Start with invocation</a></p>
-</li>
-<li>
-<p><span class="twemoji lg middle"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 1h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1m0 8h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1m0 8h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1M9 5h1V3H9zm0 8h1v-2H9zm0 8h1v-2H9zM5 3v2h2V3zm0 8v2h2v-2zm0 8v2h2v-2z"/></svg></span> <strong>Run the service</strong></p>
-<hr />
-<p>Get from <code>git clone</code> to a webhook receiving production traffic. Configuration, deployment, observability, and runbooks for the most common Day-2 issues.</p>
-<p><a href="operate/setup/"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13.22 19.03a.75.75 0 0 1 0-1.06L18.19 13H3.75a.75.75 0 0 1 0-1.5h14.44l-4.97-4.97a.749.749 0 0 1 .326-1.275.75.75 0 0 1 .734.215l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0"/></svg></span> Start with setup</a></p>
-</li>
-<li>
-<p><span class="twemoji lg middle"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M8 3a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2H3v2h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h2v-2H8v-5a2 2 0 0 0-2-2 2 2 0 0 0 2-2V5h2V3m6 0a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1v2h-1a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-2v-2h2v-5a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5h-2V3z"/></svg></span> <strong>Build on it</strong></p>
-<hr />
-<p>Architecture, request flow, and how to add a new workflow or MCP server. Conventions and contribution rules.</p>
-<p><a href="build/architecture/"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13.22 19.03a.75.75 0 0 1 0-1.06L18.19 13H3.75a.75.75 0 0 1 0-1.5h14.44l-4.97-4.97a.749.749 0 0 1 .326-1.275.75.75 0 0 1 .734.215l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0"/></svg></span> Start with architecture</a></p>
-</li>
-</ul>
-</div>
-<p>This site tracks the <code>main</code> branch. Release history lives in the <a href="changelog/">changelog</a>.</p>
+<h1 id="local-development-setup">Local development setup<a class="headerlink" href="#local-development-setup" title="Permanent link">&para;</a></h1>
+<p>This page covers running the bot on your laptop against a real GitHub App. For first-time GitHub App creation, see <a href="../github-app/"><code>github-app.md</code></a>. For production deployment, see <a href="../deployment/"><code>deployment.md</code></a>.</p>
+<h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>Version</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://bun.sh">Bun</a></td>
+<td>from <code>.tool-versions</code> (currently <code>1.3.13</code>)</td>
+<td>Runtime and package manager.</td>
+</tr>
+<tr>
+<td>Git</td>
+<td>any</td>
+<td>Repository checkout during agent execution.</td>
+</tr>
+<tr>
+<td>Docker</td>
+<td>any recent</td>
+<td>Local Postgres + Valkey via <code>docker-compose.dev.yml</code>.</td>
+</tr>
+<tr>
+<td>GitHub account</td>
+<td>—</td>
+<td>Admin access to the org or personal account where the App is registered.</td>
+</tr>
+<tr>
+<td>Tunnelling tool</td>
+<td>—</td>
+<td>ngrok or smee.io to expose <code>localhost:3000</code> to GitHub.</td>
+</tr>
+<tr>
+<td>AI provider credentials</td>
+<td>—</td>
+<td>One of: Anthropic API key, Claude Code OAuth token, AWS credentials for Bedrock.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="first-run">First run<a class="headerlink" href="#first-run" title="Permanent link">&para;</a></h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/chrisleekr/github-app-playground.git
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nb">cd</span><span class="w"> </span>github-app-playground
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>bun<span class="w"> </span>install
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="c1"># Start Postgres + Valkey in the background</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>bun<span class="w"> </span>run<span class="w"> </span>dev:deps
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="c1"># Copy and fill .env</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>cp<span class="w"> </span>.env.example<span class="w"> </span>.env
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="c1"># Edit .env — see configuration.md for every variable.</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="c1"># Run database migrations</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>bun<span class="w"> </span>run<span class="w"> </span>db:migrate
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="c1"># Run in watch mode</span>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>bun<span class="w"> </span>run<span class="w"> </span>dev
+</span></code></pre></div>
+<p>The HTTP server binds to <code>PORT</code> (default <code>3000</code>). Hit <code>http://localhost:3000/healthz</code> to confirm it's up; <code>http://localhost:3000/readyz</code> confirms the data layer is reachable.</p>
+<h2 id="expose-the-local-server">Expose the local server<a class="headerlink" href="#expose-the-local-server" title="Permanent link">&para;</a></h2>
+<p>GitHub must reach your webhook URL over the internet.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Wrapped script: ngrok on port 3000</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>bun<span class="w"> </span>run<span class="w"> </span>dev:ngrok
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="c1"># Copy the https://....ngrok.io URL into the GitHub App&#39;s webhook URL field.</span>
+</span></code></pre></div>
+<p>Alternative — smee.io:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>smee<span class="w"> </span>--url<span class="w"> </span>https://smee.io/&lt;your-channel&gt;<span class="w"> </span>--path<span class="w"> </span>/api/github/webhooks<span class="w"> </span>--port<span class="w"> </span><span class="m">3000</span>
+</span></code></pre></div>
+<p>The local trigger phrase is conventionally <code>@chrisleekr-bot-dev</code> (set <code>TRIGGER_PHRASE</code> in <code>.env</code>) so the dev installation does not collide with the production bot's mention.</p>
+<h2 id="common-dev-commands">Common dev commands<a class="headerlink" href="#common-dev-commands" title="Permanent link">&para;</a></h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>bun<span class="w"> </span>run<span class="w"> </span>dev<span class="w">             </span><span class="c1"># Watch mode</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>bun<span class="w"> </span>run<span class="w"> </span>start<span class="w">           </span><span class="c1"># Production binary (after bun run build)</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>bun<span class="w"> </span>run<span class="w"> </span>build<span class="w">           </span><span class="c1"># Compile to dist/</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>bun<span class="w"> </span>run<span class="w"> </span>check<span class="w">           </span><span class="c1"># Unified gate: typecheck + lint + format + tests + no-destructive</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>bun<span class="w"> </span>run<span class="w"> </span>typecheck<span class="w">       </span><span class="c1"># tsc --noEmit</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>bun<span class="w"> </span>run<span class="w"> </span>lint<span class="w">            </span><span class="c1"># ESLint</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>bun<span class="w"> </span>run<span class="w"> </span>lint:fix<span class="w">        </span><span class="c1"># ESLint auto-fix</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>bun<span class="w"> </span>run<span class="w"> </span>format<span class="w">          </span><span class="c1"># Prettier check</span>
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>bun<span class="w"> </span>run<span class="w"> </span>format:fix<span class="w">      </span><span class="c1"># Prettier auto-fix</span>
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>bun<span class="w"> </span><span class="nb">test</span><span class="w">                </span><span class="c1"># Run tests via scripts/test-isolated.sh (Bun mock isolation)</span>
+</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>bun<span class="w"> </span>run<span class="w"> </span>test:fast<span class="w">       </span><span class="c1"># Direct bun test (no isolation)</span>
+</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>bun<span class="w"> </span>run<span class="w"> </span>test:watch<span class="w">      </span><span class="c1"># Watch mode</span>
+</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>bun<span class="w"> </span>run<span class="w"> </span>test:coverage<span class="w">   </span><span class="c1"># With coverage report</span>
+</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>
+</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>bun<span class="w"> </span>run<span class="w"> </span>audit:ci<span class="w">        </span><span class="c1"># Severity-gated bun audit (used by CI)</span>
+</span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>bun<span class="w"> </span>run<span class="w"> </span>db:migrate<span class="w">      </span><span class="c1"># Run migrations against DATABASE_URL</span>
+</span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>bun<span class="w"> </span>run<span class="w"> </span>dev:deps<span class="w">        </span><span class="c1"># Up Postgres + Valkey</span>
+</span><span id="__span-3-20"><a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a>bun<span class="w"> </span>run<span class="w"> </span>dev:deps:down<span class="w">   </span><span class="c1"># Tear down</span>
+</span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>bun<span class="w"> </span>run<span class="w"> </span>dev:daemon<span class="w">      </span><span class="c1"># Run a daemon locally against the running orchestrator</span>
+</span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>
+</span><span id="__span-3-23"><a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a>bun<span class="w"> </span>run<span class="w"> </span>docs:install<span class="w">    </span><span class="c1"># Install MkDocs Python deps (one-time)</span>
+</span><span id="__span-3-24"><a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a>bun<span class="w"> </span>run<span class="w"> </span>docs:serve<span class="w">      </span><span class="c1"># Live-reload preview at http://localhost:8000</span>
+</span><span id="__span-3-25"><a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a>bun<span class="w"> </span>run<span class="w"> </span>docs:build<span class="w">      </span><span class="c1"># Strict build (CI also runs this)</span>
+</span></code></pre></div>
+<p><code>bun run check</code> is the single command to run before opening a PR.</p>
+<h2 id="running-a-daemon-locally">Running a daemon locally<a class="headerlink" href="#running-a-daemon-locally" title="Permanent link">&para;</a></h2>
+<p>The webhook server embeds an orchestrator that talks to daemons over WebSocket. To exercise the full pipeline locally:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Terminal 1 — orchestrator (webhook server)</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>bun<span class="w"> </span>run<span class="w"> </span>dev
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1"># Terminal 2 — local daemon</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>bun<span class="w"> </span>run<span class="w"> </span>dev:daemon
+</span></code></pre></div>
+<p>The daemon connects back to <code>ws://localhost:3002</code> (<code>WS_PORT</code>) using <code>DAEMON_AUTH_TOKEN</code> from <code>.env</code>. From there, every <code>@chrisleekr-bot-dev</code> mention exercises the full webhook → orchestrator → daemon → pipeline path.</p>
+<h2 id="testing-webhook-delivery">Testing webhook delivery<a class="headerlink" href="#testing-webhook-delivery" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Open an issue or PR in a repository where your dev App is installed.</li>
+<li>Comment <code>@chrisleekr-bot-dev triage this</code>.</li>
+<li>The bot creates a tracking comment within ~2 s.</li>
+</ol>
+<p>If nothing happens, check:</p>
+<table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Likely cause</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>401 / 403 in tunnel logs</td>
+<td><code>GITHUB_WEBHOOK_SECRET</code> mismatch with the App settings (no trailing newline).</td>
+</tr>
+<tr>
+<td>200 OK but no comment</td>
+<td><code>ALLOWED_OWNERS</code> excludes the repo owner; or <code>MAX_CONCURRENT_REQUESTS</code> is saturated.</td>
+</tr>
+<tr>
+<td><code>GITHUB_APP_PRIVATE_KEY</code> parse error</td>
+<td>Set the full PEM including <code>-----BEGIN…</code> / <code>-----END…</code> lines (literal <code>\n</code> is normalised).</td>
+</tr>
+<tr>
+<td><code>ANTHROPIC_API_KEY is required</code></td>
+<td><code>CLAUDE_PROVIDER</code> defaults to <code>anthropic</code>; set the key or switch to <code>bedrock</code>.</td>
+</tr>
+<tr>
+<td>Bot mention ignored locally</td>
+<td><code>TRIGGER_PHRASE</code> is unchanged from the default <code>@chrisleekr-bot</code>; the dev App expects <code>@chrisleekr-bot-dev</code>.</td>
+</tr>
+</tbody>
+</table>
 
 
 
@@ -1480,13 +1715,8 @@
 
 
 
-  
-  
 
 
-
-
-  
 
 
 
@@ -1510,19 +1740,33 @@
   
     
       
-        
-      
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../../use/safety/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Safety">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Safety
+              </div>
+            </div>
+          </a>
         
         
           
-          <a href="use/invoking/" class="md-footer__link md-footer__link--next" aria-label="Next: Invoking">
+          <a href="../github-app/" class="md-footer__link md-footer__link--next" aria-label="Next: GitHub App creation">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Invoking
+                GitHub App creation
               </div>
             </div>
             <div class="md-footer__button md-icon">
@@ -1561,10 +1805,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.instant", "navigation.instant.progress", "navigation.tabs", "navigation.sections", "navigation.top", "navigation.footer", "toc.follow", "search.suggest", "search.highlight", "search.share", "content.code.copy", "content.code.select", "content.code.annotate", "content.action.edit"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.instant.progress", "navigation.tabs", "navigation.sections", "navigation.top", "navigation.footer", "toc.follow", "search.suggest", "search.highlight", "search.share", "content.code.copy", "content.code.select", "content.code.annotate", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

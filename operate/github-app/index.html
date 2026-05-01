@@ -10,29 +10,31 @@
       
       
       
-        <link rel="canonical" href="https://chrisleekr.github.io/github-app-playground/">
+        <link rel="canonical" href="https://chrisleekr.github.io/github-app-playground/operate/github-app/">
       
       
+        <link rel="prev" href="../setup/">
       
-        <link rel="next" href="use/invoking/">
+      
+        <link rel="next" href="../deployment/">
       
       
         
       
       
-      <link rel="icon" href="assets/images/favicon.png">
+      <link rel="icon" href="../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
-        <title>GitHub App Playground</title>
+        <title>GitHub App creation - GitHub App Playground</title>
       
     
     
-      <link rel="stylesheet" href="assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
       
         
-        <link rel="stylesheet" href="assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -46,14 +48,14 @@
         
         
         
-        <link rel="stylesheet" href="assets/external/fonts.googleapis.com/css.49ea35f2.css">
+        <link rel="stylesheet" href="../../assets/external/fonts.googleapis.com/css.49ea35f2.css">
         <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
       
     
     
-      <link rel="stylesheet" href="stylesheets/extra.css">
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
     
-    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -61,17 +63,17 @@
     
   
 <meta property="og:type" content="website" />
-<meta property="og:title" content="GitHub App Playground" />
+<meta property="og:title" content="GitHub App creation - GitHub App Playground" />
 <meta property="og:description" content="A GitHub App webhook server powered by the Claude Agent SDK." />
-<meta property="og:image" content="https://chrisleekr.github.io/github-app-playground/assets/images/social/index.png" />
+<meta property="og:image" content="https://chrisleekr.github.io/github-app-playground/assets/images/social/operate/github-app.png" />
 <meta property="og:image:type" content="image/png" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
-<meta property="og:url" content="https://chrisleekr.github.io/github-app-playground/" />
+<meta property="og:url" content="https://chrisleekr.github.io/github-app-playground/operate/github-app/" />
 <meta property="twitter:card" content="summary_large_image" />
-<meta property="twitter:title" content="GitHub App Playground" />
+<meta property="twitter:title" content="GitHub App creation - GitHub App Playground" />
 <meta property="twitter:description" content="A GitHub App webhook server powered by the Claude Agent SDK." />
-<meta property="twitter:image" content="https://chrisleekr.github.io/github-app-playground/assets/images/social/index.png" />
+<meta property="twitter:image" content="https://chrisleekr.github.io/github-app-playground/assets/images/social/operate/github-app.png" />
 </head>
   
   
@@ -91,7 +93,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#github-app-playground" class="md-skip">
+        <a href="#creating-the-github-app" class="md-skip">
           Skip to content
         </a>
       
@@ -105,7 +107,7 @@
 
 <header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="." title="GitHub App Playground" class="md-header__button md-logo" aria-label="GitHub App Playground" data-md-component="logo">
+    <a href="../.." title="GitHub App Playground" class="md-header__button md-logo" aria-label="GitHub App Playground" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -125,7 +127,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Home
+              GitHub App creation
             
           </span>
         </div>
@@ -241,11 +243,9 @@
   
   
   
-    
   
-  
-    <li class="md-tabs__item md-tabs__item--active">
-      <a href="." class="md-tabs__link">
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
         
   
   
@@ -266,7 +266,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="use/invoking/" class="md-tabs__link">
+        <a href="../../use/invoking/" class="md-tabs__link">
           
   
   
@@ -282,11 +282,13 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="operate/setup/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../setup/" class="md-tabs__link">
           
   
   
@@ -306,7 +308,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="build/architecture/" class="md-tabs__link">
+        <a href="../../build/architecture/" class="md-tabs__link">
           
   
   
@@ -324,7 +326,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="changelog/" class="md-tabs__link">
+      <a href="../../changelog/" class="md-tabs__link">
         
   
   
@@ -348,8 +350,6 @@
           
             
               
-                
-              
               <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
                 <div class="md-sidebar__scrollwrap">
                   <div class="md-sidebar__inner">
@@ -361,7 +361,7 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="." title="GitHub App Playground" class="md-nav__button md-logo" aria-label="GitHub App Playground" data-md-component="logo">
+    <a href="../.." title="GitHub App Playground" class="md-nav__button md-logo" aria-label="GitHub App Playground" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -388,37 +388,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Home
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="." class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -434,37 +407,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#three-doors" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Three doors
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -528,7 +470,7 @@
   
   
     <li class="md-nav__item">
-      <a href="use/invoking/" class="md-nav__link">
+      <a href="../../use/invoking/" class="md-nav__link">
         
   
   
@@ -608,7 +550,7 @@
   
   
     <li class="md-nav__item">
-      <a href="use/workflows/" class="md-nav__link">
+      <a href="../../use/workflows/" class="md-nav__link">
         
   
   
@@ -636,7 +578,7 @@
   
   
     <li class="md-nav__item">
-      <a href="use/workflows/ship/" class="md-nav__link">
+      <a href="../../use/workflows/ship/" class="md-nav__link">
         
   
   
@@ -664,7 +606,7 @@
   
   
     <li class="md-nav__item">
-      <a href="use/workflows/triage/" class="md-nav__link">
+      <a href="../../use/workflows/triage/" class="md-nav__link">
         
   
   
@@ -692,7 +634,7 @@
   
   
     <li class="md-nav__item">
-      <a href="use/workflows/plan/" class="md-nav__link">
+      <a href="../../use/workflows/plan/" class="md-nav__link">
         
   
   
@@ -720,7 +662,7 @@
   
   
     <li class="md-nav__item">
-      <a href="use/workflows/implement/" class="md-nav__link">
+      <a href="../../use/workflows/implement/" class="md-nav__link">
         
   
   
@@ -748,7 +690,7 @@
   
   
     <li class="md-nav__item">
-      <a href="use/workflows/review/" class="md-nav__link">
+      <a href="../../use/workflows/review/" class="md-nav__link">
         
   
   
@@ -776,7 +718,7 @@
   
   
     <li class="md-nav__item">
-      <a href="use/workflows/resolve/" class="md-nav__link">
+      <a href="../../use/workflows/resolve/" class="md-nav__link">
         
   
   
@@ -812,7 +754,7 @@
   
   
     <li class="md-nav__item">
-      <a href="use/safety/" class="md-nav__link">
+      <a href="../../use/safety/" class="md-nav__link">
         
   
   
@@ -844,26 +786,31 @@
       
   
   
+    
   
   
+  
     
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
             
   
   
@@ -881,7 +828,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             
@@ -899,7 +846,7 @@
   
   
     <li class="md-nav__item">
-      <a href="operate/setup/" class="md-nav__link">
+      <a href="../setup/" class="md-nav__link">
         
   
   
@@ -924,10 +871,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="operate/github-app/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GitHub App creation
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -943,6 +917,164 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-register-the-app" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Register the App
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Register the App">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-open-the-registration-form" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.1 Open the registration form
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-basic-information" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.2 Basic information
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13-webhook-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.3 Webhook configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#14-oauth-setup-post-install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.4 OAuth, Setup, post-install
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#15-permissions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.5 Permissions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#16-subscribe-to-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.6 Subscribe to events
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#17-install-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.7 Install scope
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-generate-a-private-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Generate a private key
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-note-the-app-id" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Note the App ID
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-install-on-repositories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Install on repositories
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Verify
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -955,7 +1087,7 @@
   
   
     <li class="md-nav__item">
-      <a href="operate/deployment/" class="md-nav__link">
+      <a href="../deployment/" class="md-nav__link">
         
   
   
@@ -983,7 +1115,7 @@
   
   
     <li class="md-nav__item">
-      <a href="operate/configuration/" class="md-nav__link">
+      <a href="../configuration/" class="md-nav__link">
         
   
   
@@ -1011,7 +1143,7 @@
   
   
     <li class="md-nav__item">
-      <a href="operate/observability/" class="md-nav__link">
+      <a href="../observability/" class="md-nav__link">
         
   
   
@@ -1045,17 +1177,20 @@
       
       
         
+          
+          
+        
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
         <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_6" >
         
           
-          <label class="md-nav__link" for="__nav_3_6" id="__nav_3_6_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3_6" id="__nav_3_6_label" tabindex="">
             
   
   
@@ -1091,7 +1226,7 @@
   
   
     <li class="md-nav__item">
-      <a href="operate/runbooks/daemon-fleet/" class="md-nav__link">
+      <a href="../runbooks/daemon-fleet/" class="md-nav__link">
         
   
   
@@ -1119,7 +1254,7 @@
   
   
     <li class="md-nav__item">
-      <a href="operate/runbooks/triage/" class="md-nav__link">
+      <a href="../runbooks/triage/" class="md-nav__link">
         
   
   
@@ -1147,7 +1282,7 @@
   
   
     <li class="md-nav__item">
-      <a href="operate/runbooks/stuck-ship-intent/" class="md-nav__link">
+      <a href="../runbooks/stuck-ship-intent/" class="md-nav__link">
         
   
   
@@ -1242,7 +1377,7 @@
   
   
     <li class="md-nav__item">
-      <a href="build/architecture/" class="md-nav__link">
+      <a href="../../build/architecture/" class="md-nav__link">
         
   
   
@@ -1270,7 +1405,7 @@
   
   
     <li class="md-nav__item">
-      <a href="build/extending/" class="md-nav__link">
+      <a href="../../build/extending/" class="md-nav__link">
         
   
   
@@ -1298,7 +1433,7 @@
   
   
     <li class="md-nav__item">
-      <a href="build/conventions/" class="md-nav__link">
+      <a href="../../build/conventions/" class="md-nav__link">
         
   
   
@@ -1326,7 +1461,7 @@
   
   
     <li class="md-nav__item">
-      <a href="build/contributing/" class="md-nav__link">
+      <a href="../../build/contributing/" class="md-nav__link">
         
   
   
@@ -1361,7 +1496,7 @@
   
   
     <li class="md-nav__item">
-      <a href="changelog/" class="md-nav__link">
+      <a href="../../changelog/" class="md-nav__link">
         
   
   
@@ -1389,9 +1524,7 @@
             
             
               
-                
-              
-              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" hidden>
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
                 <div class="md-sidebar__scrollwrap">
                   <div class="md-sidebar__inner">
                     
@@ -1410,10 +1543,137 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#three-doors" class="md-nav__link">
+  <a href="#1-register-the-app" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Three doors
+        1. Register the App
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Register the App">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-open-the-registration-form" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.1 Open the registration form
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-basic-information" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.2 Basic information
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#13-webhook-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.3 Webhook configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#14-oauth-setup-post-install" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.4 OAuth, Setup, post-install
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#15-permissions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.5 Permissions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#16-subscribe-to-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.6 Subscribe to events
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#17-install-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.7 Install scope
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-generate-a-private-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Generate a private key
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-note-the-app-id" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Note the App ID
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-install-on-repositories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Install on repositories
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Verify
       
     </span>
   </a>
@@ -1434,12 +1694,10 @@
               <article class="md-content__inner md-typeset">
                 
                   
-  
-
 
 
   
-    <a href="https://github.com/chrisleekr/github-app-playground/edit/main/docs/index.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/chrisleekr/github-app-playground/edit/main/docs/operate/github-app.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -1447,32 +1705,242 @@
   
 
 
-<h1 id="github-app-playground">GitHub App Playground<a class="headerlink" href="#github-app-playground" title="Permanent link">&para;</a></h1>
-<p>A GitHub App that responds to <code>@chrisleekr-bot</code> mentions on pull requests and issues, powered by the Claude Agent SDK. Every webhook is acknowledged in under ten seconds and handed to the daemon fleet over WebSocket; when triage flags the job as heavy or the queue backs up, the orchestrator spawns an ephemeral daemon Pod on Kubernetes so the same image scales on demand.</p>
-<h2 id="three-doors">Three doors<a class="headerlink" href="#three-doors" title="Permanent link">&para;</a></h2>
-<div class="grid cards">
-<ul>
-<li>
-<p><span class="twemoji lg middle"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9 5a4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4m0 10c2.67 0 8 1.34 8 4v2H1v-2c0-2.66 5.33-4 8-4m7.76-9.64c2.02 2.2 2.02 5.25 0 7.27l-1.68-1.69c.84-1.18.84-2.71 0-3.89zM20.07 2c3.93 4.05 3.9 10.11 0 14l-1.63-1.63c2.77-3.18 2.77-7.72 0-10.74z"/></svg></span> <strong>Use the bot</strong></p>
-<hr />
-<p>Trigger workflows from comments, labels, or natural language. See what each <code>bot:*</code> command does and how to stop one mid-flight.</p>
-<p><a href="use/invoking/"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13.22 19.03a.75.75 0 0 1 0-1.06L18.19 13H3.75a.75.75 0 0 1 0-1.5h14.44l-4.97-4.97a.749.749 0 0 1 .326-1.275.75.75 0 0 1 .734.215l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0"/></svg></span> Start with invocation</a></p>
-</li>
-<li>
-<p><span class="twemoji lg middle"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 1h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1m0 8h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1m0 8h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1M9 5h1V3H9zm0 8h1v-2H9zm0 8h1v-2H9zM5 3v2h2V3zm0 8v2h2v-2zm0 8v2h2v-2z"/></svg></span> <strong>Run the service</strong></p>
-<hr />
-<p>Get from <code>git clone</code> to a webhook receiving production traffic. Configuration, deployment, observability, and runbooks for the most common Day-2 issues.</p>
-<p><a href="operate/setup/"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13.22 19.03a.75.75 0 0 1 0-1.06L18.19 13H3.75a.75.75 0 0 1 0-1.5h14.44l-4.97-4.97a.749.749 0 0 1 .326-1.275.75.75 0 0 1 .734.215l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0"/></svg></span> Start with setup</a></p>
-</li>
-<li>
-<p><span class="twemoji lg middle"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M8 3a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2H3v2h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h2v-2H8v-5a2 2 0 0 0-2-2 2 2 0 0 0 2-2V5h2V3m6 0a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1v2h-1a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-2v-2h2v-5a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5h-2V3z"/></svg></span> <strong>Build on it</strong></p>
-<hr />
-<p>Architecture, request flow, and how to add a new workflow or MCP server. Conventions and contribution rules.</p>
-<p><a href="build/architecture/"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13.22 19.03a.75.75 0 0 1 0-1.06L18.19 13H3.75a.75.75 0 0 1 0-1.5h14.44l-4.97-4.97a.749.749 0 0 1 .326-1.275.75.75 0 0 1 .734.215l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0"/></svg></span> Start with architecture</a></p>
-</li>
-</ul>
-</div>
-<p>This site tracks the <code>main</code> branch. Release history lives in the <a href="changelog/">changelog</a>.</p>
+<h1 id="creating-the-github-app">Creating the GitHub App<a class="headerlink" href="#creating-the-github-app" title="Permanent link">&para;</a></h1>
+<p>Step-by-step guide for registering, configuring, and installing the <code>@chrisleekr-bot</code> GitHub App. For local development after the App exists, see <a href="../setup/"><code>setup.md</code></a>.</p>
+<h2 id="1-register-the-app">1. Register the App<a class="headerlink" href="#1-register-the-app" title="Permanent link">&para;</a></h2>
+<h3 id="11-open-the-registration-form">1.1 Open the registration form<a class="headerlink" href="#11-open-the-registration-form" title="Permanent link">&para;</a></h3>
+<p>Personal account: <strong>Settings → Developer settings → GitHub Apps → New GitHub App</strong>.
+Organization: <strong>Org settings → Developer settings → GitHub Apps → New GitHub App</strong>.</p>
+<p>Direct link: <a href="https://github.com/settings/apps/new">https://github.com/settings/apps/new</a>.</p>
+<blockquote>
+<p>A user or organization can register up to 100 GitHub Apps. Source: <a href="https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app">Registering a GitHub App</a>.</p>
+</blockquote>
+<h3 id="12-basic-information">1.2 Basic information<a class="headerlink" href="#12-basic-information" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GitHub App name</td>
+<td><code>chrisleekr-bot</code></td>
+<td>Globally unique, ≤ 34 chars, slugified to lowercase-with-dashes.</td>
+</tr>
+<tr>
+<td>Homepage URL</td>
+<td><code>https://github.com/chrisleekr/github-app-playground</code></td>
+<td>Required; any valid HTTPS URL.</td>
+</tr>
+<tr>
+<td>Description</td>
+<td><code>AI-powered code review bot — responds to @chrisleekr-bot mentions on PRs and issues.</code></td>
+<td>Optional.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="13-webhook-configuration">1.3 Webhook configuration<a class="headerlink" href="#13-webhook-configuration" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Active</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Webhook URL</td>
+<td><code>https://&lt;your-public-host&gt;/api/github/webhooks</code></td>
+</tr>
+<tr>
+<td>SSL verification</td>
+<td>Enabled (default — keep it).</td>
+</tr>
+<tr>
+<td>Webhook secret</td>
+<td>Output of <code>openssl rand -hex 32</code>. Save as <code>GITHUB_WEBHOOK_SECRET</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>The path <code>/api/github</code> is set by <code>pathPrefix</code> in <code>createNodeMiddleware</code> (<code>src/app.ts</code>). Don't change the path unless you also change the source.</p>
+<p>For local dev, use a tunnel:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>bun<span class="w"> </span>run<span class="w"> </span>dev:ngrok
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="c1"># or</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>smee<span class="w"> </span>--url<span class="w"> </span>https://smee.io/&lt;channel&gt;<span class="w"> </span>--path<span class="w"> </span>/api/github/webhooks<span class="w"> </span>--port<span class="w"> </span><span class="m">3000</span>
+</span></code></pre></div>
+<h3 id="14-oauth-setup-post-install">1.4 OAuth, Setup, post-install<a class="headerlink" href="#14-oauth-setup-post-install" title="Permanent link">&para;</a></h3>
+<p>Leave all OAuth, callback URL, Device Flow, and Setup URL fields empty/unchecked. This App uses <strong>installation tokens only</strong> (server-to-server) and never acts on behalf of an individual user. See <a href="https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/about-authentication-with-a-github-app">About authentication with a GitHub App</a>.</p>
+<h3 id="15-permissions">1.5 Permissions<a class="headerlink" href="#15-permissions" title="Permanent link">&para;</a></h3>
+<p>Repository permissions:</p>
+<table>
+<thead>
+<tr>
+<th>Permission</th>
+<th>Setting</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Actions</td>
+<td>Read-only</td>
+<td>Read workflow run state for <code>bot:resolve</code> CI fixes.</td>
+</tr>
+<tr>
+<td>Contents</td>
+<td>Read &amp; Write</td>
+<td>Clone repos and push commits via the git CLI.</td>
+</tr>
+<tr>
+<td>Issues</td>
+<td>Read &amp; Write</td>
+<td>Read issue body / comments; post bot replies.</td>
+</tr>
+<tr>
+<td>Pull requests</td>
+<td>Read &amp; Write</td>
+<td>Read PR diff and context; post review comments and replies.</td>
+</tr>
+<tr>
+<td>Metadata</td>
+<td>Read-only</td>
+<td>Auto-granted; required for all GitHub Apps.</td>
+</tr>
+<tr>
+<td>Workflows</td>
+<td>Read &amp; Write</td>
+<td>Modify <code>.github/workflows/*.yml</code> when an <code>implement</code> task touches CI.</td>
+</tr>
+</tbody>
+</table>
+<p>Leave all organisation and account permissions at <strong>No access</strong>. Principle of least privilege — see <a href="https://docs.github.com/en/apps/creating-github-apps/setting-up-a-github-app/choosing-permissions-for-a-github-app">Choosing permissions for a GitHub App</a>.</p>
+<h3 id="16-subscribe-to-events">1.6 Subscribe to events<a class="headerlink" href="#16-subscribe-to-events" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Checkbox</th>
+<th>Actions handled</th>
+<th>Handler</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Issue comments</td>
+<td><code>issue_comment.created</code></td>
+<td><code>src/webhook/events/issue-comment.ts</code></td>
+</tr>
+<tr>
+<td>Issues</td>
+<td><code>issues.labeled</code>, <code>issues.unlabeled</code></td>
+<td><code>src/webhook/events/issues.ts</code></td>
+</tr>
+<tr>
+<td>Pull requests</td>
+<td><code>pull_request.opened</code> / <code>.labeled</code> / <code>.synchronize</code> / <code>.closed</code></td>
+<td><code>src/webhook/events/pull-request.ts</code></td>
+</tr>
+<tr>
+<td>Pull request reviews</td>
+<td><code>pull_request_review.submitted</code></td>
+<td><code>src/webhook/events/review.ts</code></td>
+</tr>
+<tr>
+<td>Pull request review comments</td>
+<td><code>pull_request_review_comment.created</code> / <code>.edited</code> / <code>.deleted</code></td>
+<td><code>src/webhook/events/review-comment.ts</code></td>
+</tr>
+<tr>
+<td>Pull request review threads</td>
+<td><code>pull_request_review_thread.resolved</code> / <code>.unresolved</code></td>
+<td><code>src/webhook/events/review-thread.ts</code></td>
+</tr>
+<tr>
+<td>Check runs</td>
+<td><code>check_run.completed</code></td>
+<td><code>src/webhook/events/check-run.ts</code></td>
+</tr>
+<tr>
+<td>Check suites</td>
+<td><code>check_suite.completed</code></td>
+<td><code>src/webhook/events/check-suite.ts</code></td>
+</tr>
+</tbody>
+</table>
+<p>The shepherding reactor uses <code>synchronize</code>, <code>closed</code>, <code>edited</code>, <code>deleted</code>, <code>check_run</code>, and <code>check_suite</code> to early-wake active sessions on <code>Valkey ZADD ship:tickle</code>. Every subscribed event you do not handle still hits your webhook URL — keep this list tight.</p>
+<blockquote>
+<p>GitHub does not emit a <code>pull_request_review_thread.created</code> action. The only valid actions for that event are <code>resolved</code> and <code>unresolved</code>.</p>
+</blockquote>
+<h3 id="17-install-scope">1.7 Install scope<a class="headerlink" href="#17-install-scope" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Use when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Only on this account</td>
+<td>Personal or single-org private deployment (recommended).</td>
+</tr>
+<tr>
+<td>Any account</td>
+<td>You plan to share the App publicly.</td>
+</tr>
+</tbody>
+</table>
+<p>Click <strong>Create GitHub App</strong>. GitHub assigns the <strong>App ID</strong> and redirects to the App's General settings.</p>
+<h2 id="2-generate-a-private-key">2. Generate a private key<a class="headerlink" href="#2-generate-a-private-key" title="Permanent link">&para;</a></h2>
+<p>On the App's General settings:</p>
+<ol>
+<li>Scroll to <strong>Private keys</strong>.</li>
+<li>Click <strong>Generate a private key</strong> — GitHub immediately downloads <code>chrisleekr-bot.YYYY-MM-DD.private-key.pem</code>.</li>
+<li>Move it to a password manager or secrets vault. <strong>Never commit it.</strong></li>
+</ol>
+<p>The full PEM (including <code>-----BEGIN…</code> / <code>-----END…</code> lines) is the value of <code>GITHUB_APP_PRIVATE_KEY</code>. Single-line <code>.env</code> form:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nv">GITHUB_APP_PRIVATE_KEY</span><span class="o">=</span><span class="s2">&quot;-----BEGIN RSA PRIVATE KEY-----\n&lt;KEY&gt;\n-----END RSA PRIVATE KEY-----\n&quot;</span>
+</span></code></pre></div>
+<p>Or read from disk:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">GITHUB_APP_PRIVATE_KEY</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>awk<span class="w"> </span><span class="s1">&#39;NF {sub(/\r/, &quot;&quot;); printf &quot;%s\\n&quot;,$0;}&#39;</span><span class="w"> </span>chrisleekr-bot.private-key.pem<span class="k">)</span><span class="s2">&quot;</span>
+</span></code></pre></div>
+<p>See <a href="https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/managing-private-keys-for-github-apps">Managing private keys for GitHub Apps</a> for rotation.</p>
+<h2 id="3-note-the-app-id">3. Note the App ID<a class="headerlink" href="#3-note-the-app-id" title="Permanent link">&para;</a></h2>
+<p>On the General settings page, the <strong>About</strong> section shows the numeric <strong>App ID</strong> (e.g. <code>123456</code>). Save it as <code>GITHUB_APP_ID</code>.</p>
+<h2 id="4-install-on-repositories">4. Install on repositories<a class="headerlink" href="#4-install-on-repositories" title="Permanent link">&para;</a></h2>
+<p>In the App settings sidebar, click <strong>Install App</strong>, then <strong>Install</strong> next to the target account. Choose:</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>All repositories</td>
+<td>Access to every current and future repository on the account.</td>
+</tr>
+<tr>
+<td>Only select repositories</td>
+<td>Limited to repositories you explicitly choose (recommended).</td>
+</tr>
+</tbody>
+</table>
+<p>After installation, the bot only responds to mentions in repositories where the App is installed.</p>
+<h2 id="5-verify">5. Verify<a class="headerlink" href="#5-verify" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>Settings → Developer settings → GitHub Apps → your app → Advanced</strong> — redeliver a recent webhook.</li>
+<li>Open an issue in an installed repository and post <code>@chrisleekr-bot triage this</code> (or <code>@chrisleekr-bot-dev</code> locally).</li>
+<li>The bot posts a tracking comment within seconds.</li>
+</ol>
+<p>If it doesn't, see the troubleshooting table in <a href="../setup/#testing-webhook-delivery"><code>setup.md</code></a>.</p>
 
 
 
@@ -1480,13 +1948,8 @@
 
 
 
-  
-  
 
 
-
-
-  
 
 
 
@@ -1510,19 +1973,33 @@
   
     
       
-        
-      
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../setup/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Local development">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Local development
+              </div>
+            </div>
+          </a>
         
         
           
-          <a href="use/invoking/" class="md-footer__link md-footer__link--next" aria-label="Next: Invoking">
+          <a href="../deployment/" class="md-footer__link md-footer__link--next" aria-label="Next: Deployment">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Invoking
+                Deployment
               </div>
             </div>
             <div class="md-footer__button md-icon">
@@ -1561,10 +2038,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.instant", "navigation.instant.progress", "navigation.tabs", "navigation.sections", "navigation.top", "navigation.footer", "toc.follow", "search.suggest", "search.highlight", "search.share", "content.code.copy", "content.code.select", "content.code.annotate", "content.action.edit"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.instant.progress", "navigation.tabs", "navigation.sections", "navigation.top", "navigation.footer", "toc.follow", "search.suggest", "search.highlight", "search.share", "content.code.copy", "content.code.select", "content.code.annotate", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

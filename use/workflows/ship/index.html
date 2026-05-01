@@ -10,29 +10,31 @@
       
       
       
-        <link rel="canonical" href="https://chrisleekr.github.io/github-app-playground/">
+        <link rel="canonical" href="https://chrisleekr.github.io/github-app-playground/use/workflows/ship/">
       
       
+        <link rel="prev" href="../">
       
-        <link rel="next" href="use/invoking/">
+      
+        <link rel="next" href="../triage/">
       
       
         
       
       
-      <link rel="icon" href="assets/images/favicon.png">
+      <link rel="icon" href="../../../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
-        <title>GitHub App Playground</title>
+        <title>bot:ship - GitHub App Playground</title>
       
     
     
-      <link rel="stylesheet" href="assets/stylesheets/main.484c7ddc.min.css">
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.484c7ddc.min.css">
       
         
-        <link rel="stylesheet" href="assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -46,14 +48,14 @@
         
         
         
-        <link rel="stylesheet" href="assets/external/fonts.googleapis.com/css.49ea35f2.css">
+        <link rel="stylesheet" href="../../../assets/external/fonts.googleapis.com/css.49ea35f2.css">
         <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
       
     
     
-      <link rel="stylesheet" href="stylesheets/extra.css">
+      <link rel="stylesheet" href="../../../stylesheets/extra.css">
     
-    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -61,17 +63,17 @@
     
   
 <meta property="og:type" content="website" />
-<meta property="og:title" content="GitHub App Playground" />
+<meta property="og:title" content="bot:ship - GitHub App Playground" />
 <meta property="og:description" content="A GitHub App webhook server powered by the Claude Agent SDK." />
-<meta property="og:image" content="https://chrisleekr.github.io/github-app-playground/assets/images/social/index.png" />
+<meta property="og:image" content="https://chrisleekr.github.io/github-app-playground/assets/images/social/use/workflows/ship.png" />
 <meta property="og:image:type" content="image/png" />
 <meta property="og:image:width" content="1200" />
 <meta property="og:image:height" content="630" />
-<meta property="og:url" content="https://chrisleekr.github.io/github-app-playground/" />
+<meta property="og:url" content="https://chrisleekr.github.io/github-app-playground/use/workflows/ship/" />
 <meta property="twitter:card" content="summary_large_image" />
-<meta property="twitter:title" content="GitHub App Playground" />
+<meta property="twitter:title" content="bot:ship - GitHub App Playground" />
 <meta property="twitter:description" content="A GitHub App webhook server powered by the Claude Agent SDK." />
-<meta property="twitter:image" content="https://chrisleekr.github.io/github-app-playground/assets/images/social/index.png" />
+<meta property="twitter:image" content="https://chrisleekr.github.io/github-app-playground/assets/images/social/use/workflows/ship.png" />
 </head>
   
   
@@ -91,7 +93,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#github-app-playground" class="md-skip">
+        <a href="#botship-pr-shepherding-to-merge-ready" class="md-skip">
           Skip to content
         </a>
       
@@ -105,7 +107,7 @@
 
 <header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="." title="GitHub App Playground" class="md-header__button md-logo" aria-label="GitHub App Playground" data-md-component="logo">
+    <a href="../../.." title="GitHub App Playground" class="md-header__button md-logo" aria-label="GitHub App Playground" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -125,7 +127,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Home
+              bot:ship
             
           </span>
         </div>
@@ -241,11 +243,9 @@
   
   
   
-    
   
-  
-    <li class="md-tabs__item md-tabs__item--active">
-      <a href="." class="md-tabs__link">
+    <li class="md-tabs__item">
+      <a href="../../.." class="md-tabs__link">
         
   
   
@@ -262,11 +262,13 @@
   
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="use/invoking/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../invoking/" class="md-tabs__link">
           
   
   
@@ -286,7 +288,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="operate/setup/" class="md-tabs__link">
+        <a href="../../../operate/setup/" class="md-tabs__link">
           
   
   
@@ -306,7 +308,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="build/architecture/" class="md-tabs__link">
+        <a href="../../../build/architecture/" class="md-tabs__link">
           
   
   
@@ -324,7 +326,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="changelog/" class="md-tabs__link">
+      <a href="../../../changelog/" class="md-tabs__link">
         
   
   
@@ -348,8 +350,6 @@
           
             
               
-                
-              
               <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
                 <div class="md-sidebar__scrollwrap">
                   <div class="md-sidebar__inner">
@@ -361,7 +361,7 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="." title="GitHub App Playground" class="md-nav__button md-logo" aria-label="GitHub App Playground" data-md-component="logo">
+    <a href="../../.." title="GitHub App Playground" class="md-nav__button md-logo" aria-label="GitHub App Playground" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -388,6 +388,203 @@
       
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use the bot
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Use the bot
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../invoking/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Invoking
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflows
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Workflows
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Catalog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -407,7 +604,7 @@
   <span class="md-ellipsis">
     
   
-    Home
+    bot:ship
   
 
     
@@ -418,14 +615,14 @@
           <span class="md-nav__icon md-icon"></span>
         </label>
       
-      <a href="." class="md-nav__link md-nav__link--active">
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
   <span class="md-ellipsis">
     
   
-    Home
+    bot:ship
   
 
     
@@ -451,10 +648,98 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#three-doors" class="md-nav__link">
+  <a href="#how-to-invoke" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Three doors
+        How to invoke
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-monitor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to monitor
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-pause-resume-abort" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to pause, resume, abort
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-runs-each-iteration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What runs each iteration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#status-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status values
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-bot-will-and-wont-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the bot will and won't do
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#re-triggering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Re-triggering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tuning-knobs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tuning knobs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-a-human-should-step-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When a human should step in
       
     </span>
   </a>
@@ -468,165 +753,6 @@
     </li>
   
 
-    
-      
-      
-  
-  
-  
-  
-    
-    
-    
-    
-      
-      
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
-        
-          
-          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Use the bot
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_2">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Use the bot
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="use/invoking/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Invoking
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    
-    
-    
-    
-      
-      
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_2" >
-        
-          
-          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="0">
-            
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Workflows
-  
-
-    
-  </span>
-  
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_2_2">
-            <span class="md-nav__icon md-icon"></span>
-            
-  
-    Workflows
-  
-
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="use/workflows/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Catalog
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
               
             
               
@@ -636,35 +762,7 @@
   
   
     <li class="md-nav__item">
-      <a href="use/workflows/ship/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    bot:ship
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="use/workflows/triage/" class="md-nav__link">
+      <a href="../triage/" class="md-nav__link">
         
   
   
@@ -692,7 +790,7 @@
   
   
     <li class="md-nav__item">
-      <a href="use/workflows/plan/" class="md-nav__link">
+      <a href="../plan/" class="md-nav__link">
         
   
   
@@ -720,7 +818,7 @@
   
   
     <li class="md-nav__item">
-      <a href="use/workflows/implement/" class="md-nav__link">
+      <a href="../implement/" class="md-nav__link">
         
   
   
@@ -748,7 +846,7 @@
   
   
     <li class="md-nav__item">
-      <a href="use/workflows/review/" class="md-nav__link">
+      <a href="../review/" class="md-nav__link">
         
   
   
@@ -776,7 +874,7 @@
   
   
     <li class="md-nav__item">
-      <a href="use/workflows/resolve/" class="md-nav__link">
+      <a href="../resolve/" class="md-nav__link">
         
   
   
@@ -812,7 +910,7 @@
   
   
     <li class="md-nav__item">
-      <a href="use/safety/" class="md-nav__link">
+      <a href="../../safety/" class="md-nav__link">
         
   
   
@@ -899,7 +997,7 @@
   
   
     <li class="md-nav__item">
-      <a href="operate/setup/" class="md-nav__link">
+      <a href="../../../operate/setup/" class="md-nav__link">
         
   
   
@@ -927,7 +1025,7 @@
   
   
     <li class="md-nav__item">
-      <a href="operate/github-app/" class="md-nav__link">
+      <a href="../../../operate/github-app/" class="md-nav__link">
         
   
   
@@ -955,7 +1053,7 @@
   
   
     <li class="md-nav__item">
-      <a href="operate/deployment/" class="md-nav__link">
+      <a href="../../../operate/deployment/" class="md-nav__link">
         
   
   
@@ -983,7 +1081,7 @@
   
   
     <li class="md-nav__item">
-      <a href="operate/configuration/" class="md-nav__link">
+      <a href="../../../operate/configuration/" class="md-nav__link">
         
   
   
@@ -1011,7 +1109,7 @@
   
   
     <li class="md-nav__item">
-      <a href="operate/observability/" class="md-nav__link">
+      <a href="../../../operate/observability/" class="md-nav__link">
         
   
   
@@ -1091,7 +1189,7 @@
   
   
     <li class="md-nav__item">
-      <a href="operate/runbooks/daemon-fleet/" class="md-nav__link">
+      <a href="../../../operate/runbooks/daemon-fleet/" class="md-nav__link">
         
   
   
@@ -1119,7 +1217,7 @@
   
   
     <li class="md-nav__item">
-      <a href="operate/runbooks/triage/" class="md-nav__link">
+      <a href="../../../operate/runbooks/triage/" class="md-nav__link">
         
   
   
@@ -1147,7 +1245,7 @@
   
   
     <li class="md-nav__item">
-      <a href="operate/runbooks/stuck-ship-intent/" class="md-nav__link">
+      <a href="../../../operate/runbooks/stuck-ship-intent/" class="md-nav__link">
         
   
   
@@ -1242,7 +1340,7 @@
   
   
     <li class="md-nav__item">
-      <a href="build/architecture/" class="md-nav__link">
+      <a href="../../../build/architecture/" class="md-nav__link">
         
   
   
@@ -1270,7 +1368,7 @@
   
   
     <li class="md-nav__item">
-      <a href="build/extending/" class="md-nav__link">
+      <a href="../../../build/extending/" class="md-nav__link">
         
   
   
@@ -1298,7 +1396,7 @@
   
   
     <li class="md-nav__item">
-      <a href="build/conventions/" class="md-nav__link">
+      <a href="../../../build/conventions/" class="md-nav__link">
         
   
   
@@ -1326,7 +1424,7 @@
   
   
     <li class="md-nav__item">
-      <a href="build/contributing/" class="md-nav__link">
+      <a href="../../../build/contributing/" class="md-nav__link">
         
   
   
@@ -1361,7 +1459,7 @@
   
   
     <li class="md-nav__item">
-      <a href="changelog/" class="md-nav__link">
+      <a href="../../../changelog/" class="md-nav__link">
         
   
   
@@ -1389,9 +1487,7 @@
             
             
               
-                
-              
-              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" hidden>
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
                 <div class="md-sidebar__scrollwrap">
                   <div class="md-sidebar__inner">
                     
@@ -1410,10 +1506,98 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#three-doors" class="md-nav__link">
+  <a href="#how-to-invoke" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Three doors
+        How to invoke
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-monitor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to monitor
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-pause-resume-abort" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to pause, resume, abort
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-runs-each-iteration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What runs each iteration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#status-values" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status values
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-the-bot-will-and-wont-do" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What the bot will and won't do
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#re-triggering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Re-triggering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tuning-knobs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tuning knobs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#when-a-human-should-step-in" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When a human should step in
       
     </span>
   </a>
@@ -1434,12 +1618,10 @@
               <article class="md-content__inner md-typeset">
                 
                   
-  
-
 
 
   
-    <a href="https://github.com/chrisleekr/github-app-playground/edit/main/docs/index.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/chrisleekr/github-app-playground/edit/main/docs/use/workflows/ship.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -1447,32 +1629,183 @@
   
 
 
-<h1 id="github-app-playground">GitHub App Playground<a class="headerlink" href="#github-app-playground" title="Permanent link">&para;</a></h1>
-<p>A GitHub App that responds to <code>@chrisleekr-bot</code> mentions on pull requests and issues, powered by the Claude Agent SDK. Every webhook is acknowledged in under ten seconds and handed to the daemon fleet over WebSocket; when triage flags the job as heavy or the queue backs up, the orchestrator spawns an ephemeral daemon Pod on Kubernetes so the same image scales on demand.</p>
-<h2 id="three-doors">Three doors<a class="headerlink" href="#three-doors" title="Permanent link">&para;</a></h2>
-<div class="grid cards">
+<h1 id="botship-pr-shepherding-to-merge-ready"><code>bot:ship</code> — PR shepherding to merge-ready<a class="headerlink" href="#botship-pr-shepherding-to-merge-ready" title="Permanent link">&para;</a></h1>
+<p>The shepherding lifecycle takes an open pull request from "needs work" to "ready for human merge". The bot drives the probe → fix → reply → wait loop until the merge-readiness probe says the PR is clean. <strong>The bot never merges</strong>; the final action is always a human's.</p>
+<p>The lifecycle lives in <code>src/workflows/ship/</code> (entry point <code>runShipFromCommand</code> in <code>session-runner.ts</code>). Each session is a row in <code>ship_intents</code>, with iteration history in <code>ship_iterations</code> and wake state in <code>ship_continuations</code>.</p>
+<h2 id="how-to-invoke">How to invoke<a class="headerlink" href="#how-to-invoke" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Surface</th>
+<th>Example</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Literal</strong></td>
+<td><code>bot:ship</code> · <code>bot:ship --deadline 2h</code></td>
+<td>PR comment. Deterministic regex; never costs an LLM call.</td>
+</tr>
+<tr>
+<td><strong>Natural</strong></td>
+<td><code>@chrisleekr-bot ship this please</code></td>
+<td>Requires the trigger-phrase mention. Without the mention the comment is skipped at zero cost.</td>
+</tr>
+<tr>
+<td><strong>Label</strong></td>
+<td>Apply <code>bot:ship</code> (or <code>bot:ship/deadline=2h</code>) to a PR</td>
+<td>The bot self-removes the label after acting. Re-applying re-triggers.</td>
+</tr>
+</tbody>
+</table>
+<p>The four lifecycle verbs are <code>ship</code>, <code>stop</code>, <code>resume</code>, <code>abort-ship</code>. All four are available on all three surfaces.</p>
+<p><code>--deadline</code> accepts <code>Nh</code> / <code>Nm</code> / <code>Ns</code>. The session deadline is clamped to <code>MAX_WALL_CLOCK_PER_SHIP_RUN</code> (default 4h).</p>
+<h2 id="how-to-monitor">How to monitor<a class="headerlink" href="#how-to-monitor" title="Permanent link">&para;</a></h2>
+<p>Each session writes a single canonical tracking comment marked with <code>&lt;!-- ship-intent:{intent_id} --&gt;</code>. The body shows current phase, last action, next queued action, iteration count, USD spent, deadline, and (on terminal) the blocker category. One comment is enough to know exactly where the bot is.</p>
+<h2 id="how-to-pause-resume-abort">How to pause, resume, abort<a class="headerlink" href="#how-to-pause-resume-abort" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Verb</th>
+<th>Effect</th>
+<th>Recoverable?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bot:stop</code></td>
+<td>Sets <code>ship_intents.status = 'paused'</code>. Deadline keeps counting down.</td>
+<td>Yes — <code>bot:resume</code>.</td>
+</tr>
+<tr>
+<td><code>bot:resume</code></td>
+<td>Verifies no foreign push since the pause, clears the cancel flag, re-enqueues the continuation.</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>bot:abort-ship</code></td>
+<td>Sets the Valkey cancel flag, waits ≤2 s for a cooperative checkpoint, then force-transitions to <code>aborted_by_user</code>.</td>
+<td>No. After abort, the bot performs zero further mutating actions on the PR.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="what-runs-each-iteration">What runs each iteration<a class="headerlink" href="#what-runs-each-iteration" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>flowchart LR
+    Iter["Iteration N starts"]:::start
+    Probe["Probe&lt;br/&gt;GraphQL PR snapshot"]:::work
+    Verdict{{"Verdict"}}:::fork
+    Behind["Refresh branch&lt;br/&gt;git rebase --force-with-lease"]:::fix
+    Failing["Resolve failing checks"]:::fix
+    Pending["Wait for pending checks&lt;br/&gt;tickle on check_run.completed"]:::wait
+    Threads["Reply to open review threads&lt;br/&gt;resolve thread on success"]:::fix
+    ChangesReq["Wait for human action&lt;br/&gt;changes_requested"]:::wait
+    Ready["Terminal:ready&lt;br/&gt;tracking comment + status flip"]:::done
+    Took["Terminal:human_took_over&lt;br/&gt;foreign push detected"]:::halt
+
+    Iter --&gt; Probe --&gt; Verdict
+    Verdict --&gt;|behind base| Behind --&gt; Iter
+    Verdict --&gt;|failing checks| Failing --&gt; Iter
+    Verdict --&gt;|pending checks| Pending --&gt; Iter
+    Verdict --&gt;|open threads| Threads --&gt; Iter
+    Verdict --&gt;|changes requested| ChangesReq --&gt; Iter
+    Verdict --&gt;|ready| Ready
+    Probe -. detects manual push .-&gt; Took
+
+    classDef start fill:#0b5cad,stroke:#083e74,color:#ffffff
+    classDef work fill:#164a3a,stroke:#0d2c24,color:#ffffff
+    classDef fork fill:#6a2080,stroke:#451454,color:#ffffff
+    classDef fix fill:#8a5a00,stroke:#5c3d00,color:#ffffff
+    classDef wait fill:#5c3d00,stroke:#3d2900,color:#ffffff
+    classDef done fill:#2a6f2a,stroke:#1a4d1a,color:#ffffff
+    classDef halt fill:#852020,stroke:#5a1414,color:#ffffff</code></pre>
+<p>The verdict ladder is ordered: <code>human_took_over</code> &gt; <code>behind_base</code> &gt; <code>failing_checks</code> &gt; <code>pending_checks</code> &gt; <code>mergeable_pending</code> &gt; <code>changes_requested</code> &gt; <code>open_threads</code> &gt; <code>ready</code>. The first matching rung wins — fixing failing checks always precedes replying to threads, and a manual push always wins outright.</p>
+<p><code>mergeable=null</code> is treated specially: the probe backs off through <code>MERGEABLE_NULL_BACKOFF_MS_LIST</code> (default <code>500,1500,4500</code>); exhausting the list yields a <code>mergeable_pending</code> verdict and the session yields rather than spinning.</p>
+<h2 id="status-values">Status values<a class="headerlink" href="#status-values" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>stateDiagram-v2
+    [*] --&gt; active : runShipFromCommand
+    active --&gt; paused : bot:stop
+    paused --&gt; active : bot:resume
+    active --&gt; ready_awaiting_human_merge : verdict=ready
+    active --&gt; human_took_over : foreign push, iteration cap, or flake cap
+    active --&gt; deadline_exceeded : MAX_WALL_CLOCK_PER_SHIP_RUN
+    active --&gt; merged_externally : pull_request.closed merged
+    active --&gt; pr_closed : pull_request.closed not merged
+    active --&gt; aborted_by_user : bot:abort-ship
+    paused --&gt; aborted_by_user : bot:abort-ship
+    paused --&gt; deadline_exceeded : deadline elapsed while paused
+    ready_awaiting_human_merge --&gt; [*]
+    human_took_over --&gt; [*]
+    deadline_exceeded --&gt; [*]
+    merged_externally --&gt; [*]
+    pr_closed --&gt; [*]
+    aborted_by_user --&gt; [*]</code></pre>
+<h2 id="what-the-bot-will-and-wont-do">What the bot will and won't do<a class="headerlink" href="#what-the-bot-will-and-wont-do" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Will</th>
+<th>Won't</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Force-push with <code>--force-with-lease</code> after a clean rebase onto base</td>
+<td>Force-push without rebasing</td>
+</tr>
+<tr>
+<td>Push fix commits in response to failing CI</td>
+<td>Merge the PR (<code>gh pr merge</code> is statically guarded)</td>
+</tr>
+<tr>
+<td>Reply to review threads with the <code>resolve-review-thread</code> MCP</td>
+<td>Post <code>APPROVE</code> or <code>REQUEST_CHANGES</code> reviews</td>
+</tr>
+<tr>
+<td>Mark a draft PR ready-for-review on terminal <code>ready</code></td>
+<td>Cancel a foreign push — manual push wins; the session terminates</td>
+</tr>
+<tr>
+<td>Self-remove the <code>bot:ship</code> label after acting</td>
+<td>Take any mutating action after <code>bot:abort-ship</code></td>
+</tr>
+</tbody>
+</table>
+<p>If the target branch matches <code>SHIP_FORBIDDEN_TARGET_BRANCHES</code> (e.g. <code>main,production</code>), the trigger is refused before any session is created.</p>
+<h2 id="re-triggering">Re-triggering<a class="headerlink" href="#re-triggering" title="Permanent link">&para;</a></h2>
+<p>Re-applying the <code>bot:ship</code> label or re-commenting <code>bot:ship</code> on the same PR while a session is <strong>active</strong> is a no-op. Re-applying after the session is <strong>terminal</strong> starts a fresh session — the prior <code>ship_intents</code> row is preserved for audit.</p>
+<h2 id="tuning-knobs">Tuning knobs<a class="headerlink" href="#tuning-knobs" title="Permanent link">&para;</a></h2>
+<p>Configured at the process level via <a href="../../../operate/configuration/#ship"><code>operate/configuration.md</code></a>. The two you most often touch:</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MAX_WALL_CLOCK_PER_SHIP_RUN</code></td>
+<td><code>4h</code></td>
+<td>Hard ceiling on a session's wall-clock budget. Per-invocation <code>--deadline</code> is clamped to this value.</td>
+</tr>
+<tr>
+<td><code>MAX_SHIP_ITERATIONS</code></td>
+<td><code>50</code></td>
+<td>Iteration cap. Firing transitions to <code>human_took_over</code> with <code>terminal_blocker_category='iteration-cap'</code>.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="when-a-human-should-step-in">When a human should step in<a class="headerlink" href="#when-a-human-should-step-in" title="Permanent link">&para;</a></h2>
+<p>The tracking comment puts the answer at the top: any terminal status other than <code>ready_awaiting_human_merge</code> and <code>merged_externally</code> means human attention is needed. <code>terminal_blocker_category</code> names which class:</p>
 <ul>
-<li>
-<p><span class="twemoji lg middle"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9 5a4 4 0 0 1 4 4 4 4 0 0 1-4 4 4 4 0 0 1-4-4 4 4 0 0 1 4-4m0 10c2.67 0 8 1.34 8 4v2H1v-2c0-2.66 5.33-4 8-4m7.76-9.64c2.02 2.2 2.02 5.25 0 7.27l-1.68-1.69c.84-1.18.84-2.71 0-3.89zM20.07 2c3.93 4.05 3.9 10.11 0 14l-1.63-1.63c2.77-3.18 2.77-7.72 0-10.74z"/></svg></span> <strong>Use the bot</strong></p>
-<hr />
-<p>Trigger workflows from comments, labels, or natural language. See what each <code>bot:*</code> command does and how to stop one mid-flight.</p>
-<p><a href="use/invoking/"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13.22 19.03a.75.75 0 0 1 0-1.06L18.19 13H3.75a.75.75 0 0 1 0-1.5h14.44l-4.97-4.97a.749.749 0 0 1 .326-1.275.75.75 0 0 1 .734.215l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0"/></svg></span> Start with invocation</a></p>
-</li>
-<li>
-<p><span class="twemoji lg middle"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 1h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1m0 8h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1m0 8h16a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1M9 5h1V3H9zm0 8h1v-2H9zm0 8h1v-2H9zM5 3v2h2V3zm0 8v2h2v-2zm0 8v2h2v-2z"/></svg></span> <strong>Run the service</strong></p>
-<hr />
-<p>Get from <code>git clone</code> to a webhook receiving production traffic. Configuration, deployment, observability, and runbooks for the most common Day-2 issues.</p>
-<p><a href="operate/setup/"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13.22 19.03a.75.75 0 0 1 0-1.06L18.19 13H3.75a.75.75 0 0 1 0-1.5h14.44l-4.97-4.97a.749.749 0 0 1 .326-1.275.75.75 0 0 1 .734.215l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0"/></svg></span> Start with setup</a></p>
-</li>
-<li>
-<p><span class="twemoji lg middle"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M8 3a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2H3v2h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h2v-2H8v-5a2 2 0 0 0-2-2 2 2 0 0 0 2-2V5h2V3m6 0a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1v2h-1a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-2v-2h2v-5a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5h-2V3z"/></svg></span> <strong>Build on it</strong></p>
-<hr />
-<p>Architecture, request flow, and how to add a new workflow or MCP server. Conventions and contribution rules.</p>
-<p><a href="build/architecture/"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13.22 19.03a.75.75 0 0 1 0-1.06L18.19 13H3.75a.75.75 0 0 1 0-1.5h14.44l-4.97-4.97a.749.749 0 0 1 .326-1.275.75.75 0 0 1 .734.215l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0"/></svg></span> Start with architecture</a></p>
-</li>
+<li><code>flake-cap</code> — the same failure signature was retried <code>FIX_ATTEMPTS_PER_SIGNATURE_CAP</code> times (default 3); investigate the flake.</li>
+<li><code>iteration-cap</code> — the session ran <code>MAX_SHIP_ITERATIONS</code> rounds without resolving; re-scope the work.</li>
+<li><code>manual-push-detected</code> — someone pushed to the PR; the bot stepped back. Re-trigger <code>bot:ship</code> if you want the bot to take it from here.</li>
+<li><code>merge-conflict-needs-human</code> — the rebase produced conflicts the bot would not resolve confidently.</li>
 </ul>
-</div>
-<p>This site tracks the <code>main</code> branch. Release history lives in the <a href="changelog/">changelog</a>.</p>
+<p>For Day-2 SQL and the other terminal categories, see <a href="../../../operate/runbooks/stuck-ship-intent/"><code>operate/runbooks/stuck-ship-intent.md</code></a>.</p>
 
 
 
@@ -1480,13 +1813,8 @@
 
 
 
-  
-  
 
 
-
-
-  
 
 
 
@@ -1510,19 +1838,33 @@
   
     
       
-        
-      
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../" class="md-footer__link md-footer__link--prev" aria-label="Previous: Catalog">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Catalog
+              </div>
+            </div>
+          </a>
         
         
           
-          <a href="use/invoking/" class="md-footer__link md-footer__link--next" aria-label="Next: Invoking">
+          <a href="../triage/" class="md-footer__link md-footer__link--next" aria-label="Next: bot:triage">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Invoking
+                bot:triage
               </div>
             </div>
             <div class="md-footer__button md-icon">
@@ -1561,10 +1903,10 @@
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": ".", "features": ["navigation.instant", "navigation.instant.progress", "navigation.tabs", "navigation.sections", "navigation.top", "navigation.footer", "toc.follow", "search.suggest", "search.highlight", "search.share", "content.code.copy", "content.code.select", "content.code.annotate", "content.action.edit"], "search": "assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.instant", "navigation.instant.progress", "navigation.tabs", "navigation.sections", "navigation.top", "navigation.footer", "toc.follow", "search.suggest", "search.highlight", "search.share", "content.code.copy", "content.code.select", "content.code.annotate", "content.action.edit"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="assets/javascripts/bundle.79ae519e.min.js"></script>
+      <script src="../../../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

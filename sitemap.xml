@@ -5,51 +5,91 @@
          <lastmod>2026-05-01</lastmod>
     </url>
     <url>
-         <loc>https://chrisleekr.github.io/github-app-playground/ARCHITECTURE/</loc>
+         <loc>https://chrisleekr.github.io/github-app-playground/changelog/</loc>
          <lastmod>2026-05-01</lastmod>
     </url>
     <url>
-         <loc>https://chrisleekr.github.io/github-app-playground/BOT-WORKFLOWS/</loc>
+         <loc>https://chrisleekr.github.io/github-app-playground/build/architecture/</loc>
          <lastmod>2026-05-01</lastmod>
     </url>
     <url>
-         <loc>https://chrisleekr.github.io/github-app-playground/CHANGELOG/</loc>
+         <loc>https://chrisleekr.github.io/github-app-playground/build/contributing/</loc>
          <lastmod>2026-05-01</lastmod>
     </url>
     <url>
-         <loc>https://chrisleekr.github.io/github-app-playground/CONFIGURATION/</loc>
+         <loc>https://chrisleekr.github.io/github-app-playground/build/conventions/</loc>
          <lastmod>2026-05-01</lastmod>
     </url>
     <url>
-         <loc>https://chrisleekr.github.io/github-app-playground/CONTRIBUTING/</loc>
+         <loc>https://chrisleekr.github.io/github-app-playground/build/extending/</loc>
          <lastmod>2026-05-01</lastmod>
     </url>
     <url>
-         <loc>https://chrisleekr.github.io/github-app-playground/DAEMON/</loc>
+         <loc>https://chrisleekr.github.io/github-app-playground/operate/configuration/</loc>
          <lastmod>2026-05-01</lastmod>
     </url>
     <url>
-         <loc>https://chrisleekr.github.io/github-app-playground/DEPLOYMENT/</loc>
+         <loc>https://chrisleekr.github.io/github-app-playground/operate/deployment/</loc>
          <lastmod>2026-05-01</lastmod>
     </url>
     <url>
-         <loc>https://chrisleekr.github.io/github-app-playground/EXTENDING/</loc>
+         <loc>https://chrisleekr.github.io/github-app-playground/operate/github-app/</loc>
          <lastmod>2026-05-01</lastmod>
     </url>
     <url>
-         <loc>https://chrisleekr.github.io/github-app-playground/OBSERVABILITY/</loc>
+         <loc>https://chrisleekr.github.io/github-app-playground/operate/observability/</loc>
          <lastmod>2026-05-01</lastmod>
     </url>
     <url>
-         <loc>https://chrisleekr.github.io/github-app-playground/SETUP/</loc>
+         <loc>https://chrisleekr.github.io/github-app-playground/operate/setup/</loc>
          <lastmod>2026-05-01</lastmod>
     </url>
     <url>
-         <loc>https://chrisleekr.github.io/github-app-playground/SHIP/</loc>
+         <loc>https://chrisleekr.github.io/github-app-playground/operate/runbooks/daemon-fleet/</loc>
          <lastmod>2026-05-01</lastmod>
     </url>
     <url>
-         <loc>https://chrisleekr.github.io/github-app-playground/TRIAGE/</loc>
+         <loc>https://chrisleekr.github.io/github-app-playground/operate/runbooks/stuck-ship-intent/</loc>
+         <lastmod>2026-05-01</lastmod>
+    </url>
+    <url>
+         <loc>https://chrisleekr.github.io/github-app-playground/operate/runbooks/triage/</loc>
+         <lastmod>2026-05-01</lastmod>
+    </url>
+    <url>
+         <loc>https://chrisleekr.github.io/github-app-playground/use/invoking/</loc>
+         <lastmod>2026-05-01</lastmod>
+    </url>
+    <url>
+         <loc>https://chrisleekr.github.io/github-app-playground/use/safety/</loc>
+         <lastmod>2026-05-01</lastmod>
+    </url>
+    <url>
+         <loc>https://chrisleekr.github.io/github-app-playground/use/workflows/</loc>
+         <lastmod>2026-05-01</lastmod>
+    </url>
+    <url>
+         <loc>https://chrisleekr.github.io/github-app-playground/use/workflows/implement/</loc>
+         <lastmod>2026-05-01</lastmod>
+    </url>
+    <url>
+         <loc>https://chrisleekr.github.io/github-app-playground/use/workflows/plan/</loc>
+         <lastmod>2026-05-01</lastmod>
+    </url>
+    <url>
+         <loc>https://chrisleekr.github.io/github-app-playground/use/workflows/resolve/</loc>
+         <lastmod>2026-05-01</lastmod>
+    </url>
+    <url>
+         <loc>https://chrisleekr.github.io/github-app-playground/use/workflows/review/</loc>
+         <lastmod>2026-05-01</lastmod>
+    </url>
+    <url>
+         <loc>https://chrisleekr.github.io/github-app-playground/use/workflows/ship/</loc>
+         <lastmod>2026-05-01</lastmod>
+    </url>
+    <url>
+         <loc>https://chrisleekr.github.io/github-app-playground/use/workflows/triage/</loc>
          <lastmod>2026-05-01</lastmod>
     </url>
 </urlset>
