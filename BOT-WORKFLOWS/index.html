@@ -880,6 +880,45 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#bridge-architecture-ship-iteration-daemon-workflow_runs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bridge architecture: ship-iteration → daemon workflow_runs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Bridge architecture: ship-iteration → daemon workflow_runs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-bridge-instead-of-duplicate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why bridge instead of duplicate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scoped-commands-botrebase-botfix-thread-botexplain-thread-botopen-pr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scoped commands (bot:rebase, bot:fix-thread, bot:explain-thread, bot:open-pr)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1402,6 +1441,45 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#bridge-architecture-ship-iteration-daemon-workflow_runs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bridge architecture: ship-iteration → daemon workflow_runs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Bridge architecture: ship-iteration → daemon workflow_runs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#why-bridge-instead-of-duplicate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why bridge instead of duplicate
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scoped-commands-botrebase-botfix-thread-botexplain-thread-botopen-pr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Scoped commands (bot:rebase, bot:fix-thread, bot:explain-thread, bot:open-pr)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1711,6 +1789,60 @@
 <li>Branch-refresh helper: <code>src/workflows/handlers/branch-refresh.ts</code></li>
 <li>Hand-off protocol: <code>specs/20260421-181205-bot-workflows/contracts/handoff-protocol.md</code></li>
 </ul>
+<h2 id="bridge-architecture-ship-iteration-daemon-workflow_runs">Bridge architecture: ship-iteration → daemon <code>workflow_runs</code><a class="headerlink" href="#bridge-architecture-ship-iteration-daemon-workflow_runs" title="Permanent link">&para;</a></h2>
+<p>The <code>bot:ship</code> shepherding loop does <strong>not</strong> own its own daemon-execution path. It bridges onto the existing <code>workflow_runs</code> pipeline so a single executor surface clones, runs the Agent SDK, and pushes — no parallel implementation to drift between.</p>
+<p>The bridge has three moving parts:</p>
+<ol>
+<li><strong>Iteration handler</strong> (<code>src/workflows/ship/iteration.ts</code>) — converts a non-ready probe verdict into one <code>workflow_runs</code> row carrying <code>state.shipIntentId</code>, plus an enqueued <code>kind: "workflow-run"</code> job.</li>
+<li><strong>Orchestrator cascade hook</strong> (<code>src/workflows/orchestrator.ts</code> <code>onStepComplete</code> early-wake) — on every workflow-run completion reads <code>state.shipIntentId</code> and <code>ZADD ship:tickle 0 &lt;intent&gt;</code> if the intent is non-terminal.</li>
+<li><strong>Tickle scheduler</strong> (<code>src/workflows/ship/tickle-scheduler.ts</code>, booted from <code>src/app.ts</code>) — fires <code>resumeShipIntent</code> for every due intent so the next iteration re-enters via the same bridge.</li>
+</ol>
+<pre class="mermaid"><code>flowchart LR
+  subgraph WEBHOOK["Webhook server (orchestrator process)"]
+    direction LR
+    cmd["@chrisleekr-bot ship comment"] --&gt; trig[trigger-router]
+    trig --&gt; SR["session-runner.runShipFromCommand"]
+    SR --&gt; probe[probe&lt;br/&gt;verdict]
+    probe --&gt;|"ready"| terminal["terminal:ready"]
+    probe --&gt;|"non-ready"| iter["iteration.runIteration"]
+    iter --&gt; wr[("workflow_runs row&lt;br/&gt;state.shipIntentId")]
+    iter --&gt; q[("queue:jobs&lt;br/&gt;kind=workflow-run")]
+  end
+
+  q --&gt; daemon[Daemon process]
+  daemon --&gt; exec[Daemon job executor]
+  exec --&gt; agent[Agent SDK&lt;br/&gt;+ Octokit push]
+  agent --&gt; done["markSucceeded(runId)"]
+  done --&gt; cascade["orchestrator.onStepComplete&lt;br/&gt;maybeEarlyWakeShipIntent"]
+  cascade --&gt; tickle[("ship:tickle ZSET&lt;br/&gt;score=0")]
+
+  subgraph SCHED["Tickle scheduler (orchestrator process)"]
+    direction LR
+    timer["setInterval"] --&gt; due["ZRANGEBYSCORE 0 now"]
+    due --&gt; resume["resumeShipIntent(intent_id)"]
+    resume --&gt; SR2["session-runner.resumeShipIntent"]
+  end
+
+  tickle --&gt; due
+  SR2 -.-&gt;|next iteration| iter
+
+  classDef ship fill:#1f4d8c,stroke:#0a1f3d,color:#fff
+  classDef daemon fill:#7a3b1f,stroke:#3d1d0e,color:#fff
+  classDef store fill:#2d5d4a,stroke:#143025,color:#fff
+  iter:::ship
+  SR:::ship
+  SR2:::ship
+  resume:::ship
+  exec:::daemon
+  agent:::daemon
+  wr:::store
+  q:::store
+  tickle:::store</code></pre>
+<h3 id="why-bridge-instead-of-duplicate">Why bridge instead of duplicate<a class="headerlink" href="#why-bridge-instead-of-duplicate" title="Permanent link">&para;</a></h3>
+<p>The existing <code>src/core/pipeline.ts</code> already does clone + Agent SDK + push + cleanup. Reimplementing this inside <code>src/workflows/ship/</code> would duplicate ~300 lines of clone/temp-dir/cleanup logic and create two parallel agent-execution paths, doubling the surface area for security and resource-leak bugs (research.md Q5).</p>
+<h3 id="scoped-commands-botrebase-botfix-thread-botexplain-thread-botopen-pr">Scoped commands (<code>bot:rebase</code>, <code>bot:fix-thread</code>, <code>bot:explain-thread</code>, <code>bot:open-pr</code>)<a class="headerlink" href="#scoped-commands-botrebase-botfix-thread-botexplain-thread-botopen-pr" title="Permanent link">&para;</a></h3>
+<p>Each scoped command gets its own per-executor <code>JobKind</code> and its own daemon-side executor under <code>src/daemon/scoped-*-executor.ts</code>. The orchestrator emits a <code>scoped-job-offer</code> (server→daemon); the daemon evaluates capacity, accepts via <code>job:accept</code>, executes, then reports <code>scoped-job-completion</code> (daemon→server). The executor posts the user-facing reply directly via the installation token — the orchestrator-side bridge in <code>connection-handler.ts</code> finalizes the execution row and emits telemetry but does not re-post the comment.</p>
+<p><code>scoped-rebase</code> is deterministic git only (no Agent SDK). The other three are scaffolded; the multi-turn Agent SDK invocation lands as a follow-up.</p>
 
 
 

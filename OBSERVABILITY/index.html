@@ -801,6 +801,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Ship-workflow log fields (FR-016)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#iteration-tickle-scoped-event-keys-fr-018" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Iteration / tickle / scoped event keys (FR-018)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1073,6 +1090,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Ship-workflow log fields (FR-016)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#iteration-tickle-scoped-event-keys-fr-018" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Iteration / tickle / scoped event keys (FR-018)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1309,6 +1343,65 @@
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>| count by pr.repo
 </span></code></pre></div>
 <p>The schema is the <strong>source of truth</strong>. Adding or renaming a field requires updating <code>src/workflows/ship/log-fields.ts</code>; the co-located <code>log-fields.test.ts</code> round-trips a sample through the schema and rejects unknown / mistyped fields, so silent drift fails CI.</p>
+<h3 id="iteration-tickle-scoped-event-keys-fr-018">Iteration / tickle / scoped event keys (FR-018)<a class="headerlink" href="#iteration-tickle-scoped-event-keys-fr-018" title="Permanent link">&para;</a></h3>
+<p>Every ship-iteration-wiring emitter draws its <code>event</code> value from the typed <code>SHIP_LOG_EVENTS</code> constant in <code>src/workflows/ship/log-fields.ts</code>. A typo is therefore a compile error, and operators can grep for these literals deterministically.</p>
+<table>
+<thead>
+<tr>
+<th>Event key</th>
+<th>Where it fires</th>
+<th>What it indicates</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ship.iteration.enqueued</code></td>
+<td><code>iteration.runIteration</code> after <code>enqueueJob</code></td>
+<td>A non-ready verdict bridged into the daemon <code>workflow_runs</code> pipeline. One row per iteration.</td>
+</tr>
+<tr>
+<td><code>ship.iteration.terminal_cap</code></td>
+<td><code>iteration.runIteration</code> cap check</td>
+<td>The intent hit <code>MAX_SHIP_ITERATIONS</code> and was transitioned to <code>deadline_exceeded</code> with <code>iteration-cap</code> blocker.</td>
+</tr>
+<tr>
+<td><code>ship.iteration.terminal_deadline</code></td>
+<td><code>iteration.runIteration</code> deadline check</td>
+<td>The intent's <code>deadline_at</code> elapsed; transitioned to <code>deadline_exceeded</code>.</td>
+</tr>
+<tr>
+<td><code>ship.tickle.started</code></td>
+<td><code>app.ts</code> boot, after <code>tickleScheduler.start()</code></td>
+<td>The cron tickle scheduler is now scanning <code>ship:tickle</code>. Quickstart S0 pre-flight asserts on this line.</td>
+</tr>
+<tr>
+<td><code>ship.tickle.due</code></td>
+<td><code>orchestrator.onStepComplete</code> early-wake <strong>OR</strong> <code>session-runner.resumeShipIntent</code></td>
+<td>An intent is being re-entered. <code>source</code> field discriminates <code>workflow_run_completion</code> vs scheduler.</td>
+</tr>
+<tr>
+<td><code>ship.tickle.skip_terminal</code></td>
+<td><code>orchestrator.onStepComplete</code> early-wake</td>
+<td>The hook found a <code>shipIntentId</code> but the intent is already terminal (or missing); ZADD was skipped.</td>
+</tr>
+<tr>
+<td><code>ship.scoped.&lt;verb&gt;.enqueued</code></td>
+<td><code>dispatch-scoped.ts</code> after <code>enqueueJob</code></td>
+<td>A scoped command (<code>rebase</code> / <code>fix_thread</code> / <code>explain_thread</code> / <code>open_pr</code>) was enqueued for daemon dispatch.</td>
+</tr>
+<tr>
+<td><code>ship.scoped.&lt;verb&gt;.daemon.completed</code></td>
+<td><code>connection-handler.handleScopedJobCompletion</code> (orchestrator) <strong>AND</strong> the executor itself</td>
+<td>Daemon reported successful completion. The bridge logs at this key on <code>status === "succeeded"</code>.</td>
+</tr>
+<tr>
+<td><code>ship.scoped.&lt;verb&gt;.daemon.failed</code></td>
+<td>Same handler / executor</td>
+<td>Daemon reported <code>halted</code> or <code>failed</code>. <code>reason</code> field carries the structured halt reason.</td>
+</tr>
+</tbody>
+</table>
+<p><code>&lt;verb&gt;</code> ∈ <code>rebase</code>, <code>fix_thread</code>, <code>explain_thread</code>, <code>open_pr</code>. The literal strings live as nested const properties on <code>SHIP_LOG_EVENTS</code> so a Datadog search like <code>event:"ship.scoped.rebase.daemon.completed"</code> is guaranteed to match the emitter.</p>
 <h2 id="dispatch-reasons">Dispatch reasons<a class="headerlink" href="#dispatch-reasons" title="Permanent link">&para;</a></h2>
 <p>Canonical source: <code>src/shared/dispatch-types.ts</code>. Four values, all landing on <code>dispatch_target=daemon</code>.</p>
 <table>
