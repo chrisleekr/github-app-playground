@@ -126,6 +126,12 @@ describe("executeAgent — cancellation", () => {
     expect(result.success).toBe(false);
     expect(observedReason).toBeInstanceOf(Error);
     expect((observedReason as Error).message).toContain("timed out after 25ms");
+    // Downstream handlers (workflow-executor → markFailed) read
+    // result.errorMessage to populate state.failedReason on the
+    // workflow_runs row. Asserting it explicitly here so the
+    // operator-visibility contract from PR #90 cannot regress to
+    // success: false with no message.
+    expect(result.errorMessage).toMatch(/^Agent execution timed out after \d+ms$/);
   });
 
   it("clears the wall-clock timer on the happy path", async () => {
@@ -168,6 +174,7 @@ describe("executeAgent — cancellation", () => {
 
     expect(result.success).toBe(false);
     expect(lastQueryCall?.options.abortController?.signal.aborted).toBe(true);
+    expect(result.errorMessage).toBe("cancelled by orchestrator");
   });
 
   it("propagates a caller signal aborted mid-execution", async () => {
@@ -186,5 +193,6 @@ describe("executeAgent — cancellation", () => {
 
     expect(result.success).toBe(false);
     expect(lastQueryCall?.options.abortController?.signal.aborted).toBe(true);
+    expect(result.errorMessage).toBe("daemon cancel");
   });
 });

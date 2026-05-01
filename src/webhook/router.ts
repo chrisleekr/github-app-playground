@@ -32,7 +32,12 @@ export interface DispatchDecision {
   reason: DispatchReason;
   triage?: TriageResult;
   triageAttempted?: boolean;
-  /** Set when `reason === "ephemeral-spawn-failed"` — surfaced in the tracking comment. */
+  /**
+   * Set when `reason === "ephemeral-spawn-failed"`. Retained for operator-side
+   * surfaces only (structured logs, executions row) — never interpolated into
+   * public GitHub comments because the underlying error string can embed an
+   * installation token or other Kubernetes API detail.
+   */
   spawnError?: string;
 }
 
@@ -314,10 +319,14 @@ async function recordSpawnFailedRejection(
       owner: ctx.owner,
       repo: ctx.repo,
       issue_number: ctx.entityNumber,
+      // Public comment — do NOT include `decision.spawnError`. The raw
+      // text can carry K8s API URLs, RBAC detail, or other operational
+      // info. The structured spawn error is already on the log line and
+      // in the executions row for operators.
       body:
         `**${config.triggerPhrase}** cannot dispatch this request: scaling up the ephemeral ` +
-        `daemon pool requires Kubernetes infrastructure that is unavailable right now ` +
-        `(${decision.spawnError ?? "unknown error"}). Please re-trigger in a few minutes.`,
+        `daemon pool requires Kubernetes infrastructure that is unavailable right now. ` +
+        `Please re-trigger in a few minutes; if this persists, check server logs.`,
     });
   } catch (commentError) {
     ctx.log.error({ err: commentError }, "Failed to post ephemeral-spawn-failed comment");

@@ -94,6 +94,13 @@ function buildFinalOpts(result: ExecutionResult): {
   if (result.costUsd !== undefined) {
     opts.costUsd = result.costUsd;
   }
+  // The raw `result.errorMessage` is intentionally NOT forwarded into the
+  // tracking comment — the comment is publicly visible on GitHub and an
+  // upstream error string can carry credentials (octokit error stacks
+  // include the request URL with the installation token), file paths, or
+  // other sensitive context. The error message is still propagated to the
+  // caller via the returned `ExecutionResult` for operator-side surfaces
+  // (logs, DB `state.failedReason`, orchestrator quota-retry detection).
   return opts;
 }
 
@@ -330,6 +337,9 @@ export async function runPipeline(
           () =>
             finalizeTrackingComment(ctx, commentId, {
               success: false,
+              // Public-comment safe text. The actual `err.message` flows
+              // out via the returned ExecutionResult.errorMessage for
+              // operator-side surfaces only.
               error: "An internal error occurred. Check server logs for details.",
             }),
           {
@@ -343,6 +353,6 @@ export async function runPipeline(
       }
     }
 
-    return { success: false };
+    return { success: false, errorMessage: err.message !== "" ? err.message : err.name };
   }
 }

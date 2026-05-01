@@ -206,7 +206,13 @@ export async function executeWorkflowRun(
           {
             runId: workflowRun.runId,
             patch: {},
-            humanMessage: result.humanMessage ?? `${entry.name} failed: ${result.reason}`,
+            // Defense-in-depth: never default to `result.reason` for the
+            // public comment — handlers may put raw error messages in
+            // `reason` (intended for DB state.failedReason and operator
+            // logs only). Handlers that want a richer comment must set
+            // `humanMessage` explicitly.
+            humanMessage:
+              result.humanMessage ?? `${entry.name} failed — see server logs for details.`,
           },
         );
       } catch (mirrorErr) {
@@ -256,7 +262,12 @@ export async function executeWorkflowRun(
         {
           runId: workflowRun.runId,
           patch: {},
-          humanMessage: `${workflowRun.workflowName} failed: ${reason}`,
+          // Public comment must NOT carry the raw uncaught-throw message.
+          // octokit error stacks include the request URL with the
+          // installation token (`https://x-access-token:GHS_xxx@…`); other
+          // throws may surface file paths or env values. Raw `reason` is
+          // still persisted to DB state.failedReason via markFailed above.
+          humanMessage: `${workflowRun.workflowName} failed — see server logs for details.`,
         },
       );
     } catch (cleanupErr) {

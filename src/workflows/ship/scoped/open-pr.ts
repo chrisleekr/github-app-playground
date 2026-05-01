@@ -209,11 +209,16 @@ export async function runOpenPrPolicy(
     });
   } catch (err) {
     const error_message = err instanceof Error ? err.message : String(err);
+    // Do NOT inline `error_message` in the public comment — LLM client
+    // errors can carry the raw upstream response (request URLs with
+    // bearer tokens, prompt fragments). The structured `error_message`
+    // is still surfaced via the return value for operator dashboards
+    // and the warn log line below carries the full `err`.
     const reply = await input.octokit.rest.issues.createComment({
       owner: input.owner,
       repo: input.repo,
       issue_number: input.issue_number,
-      body: `I couldn't classify this issue (\`${error_message}\`). No PR opened.`,
+      body: `I couldn't classify this issue. No PR opened — see server logs for details.`,
     });
     log.warn({ err, comment_id: reply.data.id }, "open_pr classifier failed");
     return { kind: "classifier-failed", comment_id: reply.data.id, error_message };
@@ -266,11 +271,16 @@ export async function runOpenPr(input: RunOpenPrInput): Promise<OpenPrOutcome> {
     // same shape as the classifier-failed path so downstream handlers
     // (logs, dashboards) treat them uniformly.
     const error_message = err instanceof Error ? err.message : String(err);
+    // Do NOT inline `error_message` in the public comment — octokit
+    // error stacks include the request URL with the installation
+    // token (`https://x-access-token:GHS_xxx@…`). The structured
+    // `error_message` still flows out via the return value for operator
+    // surfaces; the full `err` is logged below.
     const reply = await input.octokit.rest.issues.createComment({
       owner: input.owner,
       repo: input.repo,
       issue_number: input.issue_number,
-      body: `I classified this issue as actionable but couldn't create the draft PR (\`${error_message}\`). No PR opened.`,
+      body: `I classified this issue as actionable but couldn't create the draft PR — see server logs for details.`,
     });
     log.warn({ err, comment_id: reply.data.id }, "open_pr branch/PR creation failed");
     return { kind: "classifier-failed", comment_id: reply.data.id, error_message };

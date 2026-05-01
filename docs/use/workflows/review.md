@@ -54,3 +54,10 @@ If the PR head is behind base **and** the branch is not on a fork, the agent reb
 ## Push policy
 
 The only push acceptable from `review` is `git push --force-with-lease` after a clean rebase onto base (same diff, fresh head SHA). The handler never creates code commits, never calls `pulls.merge`, never posts an `APPROVE` or `REQUEST_CHANGES` review.
+
+## Failure handling
+
+Every failure path (`runPipeline` failure, the outer handler catch, or any sync/async throw before the pipeline runs) returns `status: "failed"` with two distinct outputs:
+
+- **Public tracking comment** — a safe constant: `"review pipeline execution failed — see server logs for details."` Never carries the raw error string, since octokit error stacks include the request URL with the installation token (`https://x-access-token:GHS_xxx@…`).
+- **Operator surfaces (DB + logs)** — `state.failedReason` on the `workflow_runs` row, `pino` log line on the daemon, and `ExecutionResult.errorMessage` returned to the caller. These carry the full SDK message so an operator can diagnose without tailing daemon stderr.

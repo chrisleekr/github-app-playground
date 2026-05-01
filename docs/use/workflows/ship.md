@@ -123,3 +123,13 @@ The tracking comment puts the answer at the top: any terminal status other than 
 - `merge-conflict-needs-human` — the rebase produced conflicts the bot would not resolve confidently.
 
 For Day-2 SQL and the other terminal categories, see [`operate/runbooks/stuck-ship-intent.md`](../../operate/runbooks/stuck-ship-intent.md).
+
+## Auto-defer on Anthropic usage-limit
+
+A child workflow run that fails because the Claude Agent SDK reported `"You've hit your limit · resets <time> UTC"` (subscription-token quota or per-tier rate limit) is treated as a **transient** failure rather than a permanent one. The orchestrator's `maybeEarlyWakeShipIntent` cascade:
+
+1. Reads `state.failedReason` from the failed `workflow_runs` row.
+2. `detectTransientQuotaError` matches the usage-limit signature and parses the `resets …` clock (handles `6pm (UTC)`, `18:30 UTC`, etc.; falls back to a `+1h` deferral when the clock is unparseable).
+3. `ZADD ship:tickle <retryAtMs> <intent_id>` so the periodic tickle scanner re-fires the iteration once the quota window resets, instead of leaving the intent stalled until an operator re-arms it.
+
+Non-quota failures still take the original `ship.tickle.skip_failed_child` path — the iteration cap remains the safety net for permanently broken intents.

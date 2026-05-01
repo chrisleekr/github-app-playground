@@ -100,7 +100,11 @@ export async function onStepComplete(
         parentRunId: parent.id,
         parentTerminal: {
           status: "failed",
-          humanMessage: `ship halted at step ${String(childStepIndex)} (${parent.workflow_name} → ${child.workflow_name}): ${result.reason ?? "unknown"}`,
+          // Do NOT inline `result.reason` — handlers persist raw error
+          // strings in `reason` for DB+log forensics, and that surface is
+          // public on GitHub. The DB carries the raw reason via the
+          // `failedReason` patch above.
+          humanMessage: `ship halted at step ${String(childStepIndex)} (${parent.workflow_name} → ${child.workflow_name}) — see server logs for details.`,
         },
       };
       return;
@@ -378,6 +382,88 @@ export async function onStepComplete(
  * @param childRunId  ID of the child `workflow_runs` row that just terminated.
  * @param log         Pino logger used by the cascade caller.
  */
+/**
+ * Read `state.failedReason` written by `markFailed` from a workflow_runs
+ * state blob. Returns `undefined` when the row was not marked failed by
+ * `markFailed` (e.g. legacy rows or non-failure states).
+ */
+export function extractFailedReason(state: unknown): string | undefined {
+  if (state === null || typeof state !== "object") return undefined;
+  const candidate = (state as Record<string, unknown>)["failedReason"];
+  return typeof candidate === "string" && candidate !== "" ? candidate : undefined;
+}
+
+/** Conservative fallback when the quota error has no parseable reset clock. */
+const QUOTA_FALLBACK_RETRY_DELAY_MS = 60 * 60 * 1000;
+
+/**
+ * Detect the Anthropic usage-limit error and compute when to retry.
+ *
+ * The Claude Agent SDK throws an Error with a message like
+ * `Claude Code returned an error result: You've hit your limit · resets 6pm (UTC)`.
+ * This is *transient* (it self-heals at the reset boundary) so the ship
+ * loop should defer the next iteration to that timestamp instead of
+ * stalling the intent.
+ *
+ * Returns `null` when the reason is absent or does not match the
+ * usage-limit signature; caller falls back to the existing skip path.
+ */
+function parseResetsClock(
+  reason: string,
+  nowMs: number,
+): { retryAtMs: number; resetPhrase: string } | null {
+  const matches = reason.matchAll(/resets\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*\(?\s*UTC\s*\)?/gi);
+  const match = matches.next().value;
+  if (match === undefined) return null;
+  const hourRaw = Number(match[1]);
+  const minute = match[2] !== undefined ? Number(match[2]) : 0;
+  const meridiem = match[3]?.toLowerCase();
+  let hour = hourRaw;
+  if (meridiem === "pm" && hourRaw < 12) hour = hourRaw + 12;
+  else if (meridiem === "am" && hourRaw === 12) hour = 0;
+  if (!Number.isFinite(hour) || hour < 0 || hour >= 24 || minute < 0 || minute >= 60) {
+    return null;
+  }
+  const today = new Date(nowMs);
+  // 30s buffer past the boundary so we don't race the reset.
+  const resetAt = Date.UTC(
+    today.getUTCFullYear(),
+    today.getUTCMonth(),
+    today.getUTCDate(),
+    hour,
+    minute,
+    30,
+  );
+  const retryAtMs = resetAt > nowMs ? resetAt : resetAt + 24 * 60 * 60 * 1000;
+  return { retryAtMs, resetPhrase: match[0] };
+}
+
+export function detectTransientQuotaError(
+  reason: string | undefined,
+  nowMs: number = Date.now(),
+): { retryAtMs: number; resetPhrase: string } | null {
+  if (reason === undefined || reason === "") return null;
+  // Two confirmed Anthropic usage-limit signals — we deliberately do NOT
+  // match a bare "rate limit" / "usage limit" because that pattern also
+  // appears in GitHub secondary-rate-limit responses and other upstream
+  // throttling we should not auto-defer:
+  //   1. The Anthropic-specific phrase "hit your limit" (subscription
+  //      quota copy from the Claude Agent SDK).
+  //   2. A "resets ... UTC" clock — the Anthropic API includes the reset
+  //      boundary inline; treat that as a sufficient confirmation.
+  const hasAnthropicPhrase = /hit your limit/i.test(reason);
+  const hasResetsClock = /\bresets\b/i.test(reason);
+  if (!hasAnthropicPhrase && !hasResetsClock) return null;
+
+  const parsed = parseResetsClock(reason, nowMs);
+  if (parsed !== null) return parsed;
+
+  // No parseable clock. The +1h fallback only fires for the Anthropic-
+  // specific phrase — a bare "resets" without it could be unrelated.
+  if (!hasAnthropicPhrase) return null;
+  return { retryAtMs: nowMs + QUOTA_FALLBACK_RETRY_DELAY_MS, resetPhrase: "fallback_1h" };
+}
+
 async function maybeEarlyWakeShipIntent(childRunId: string, log: pino.Logger): Promise<void> {
   const db = requireDb();
   const rows: { state: Record<string, unknown>; status: string }[] = await db`
@@ -389,11 +475,46 @@ async function maybeEarlyWakeShipIntent(childRunId: string, log: pino.Logger): P
   const intentId = extractShipIntentId(child.state);
   if (intentId === undefined) return;
 
-  // Only succeeded children fire the cascade. A failed child should not
-  // auto-spin the next iteration — the iteration cap would eventually
-  // catch it, but until then the loop burns budget on a permanently
-  // broken intent. Operators can re-arm a stalled intent manually.
+  // Only succeeded children fire the cascade immediately. A failed child
+  // should not auto-spin the next iteration — the iteration cap would
+  // eventually catch it, but until then the loop burns budget on a
+  // permanently broken intent. Operators can re-arm a stalled intent
+  // manually.
+  //
+  // Exception: a *transient* failure (Anthropic usage-limit cap) is
+  // recoverable on its own clock. Defer the tickle to the reset time so
+  // the periodic scanner picks it up automatically when the quota resets.
   if (child.status !== "succeeded") {
+    const failedReason = extractFailedReason(child.state);
+    const transient = detectTransientQuotaError(failedReason);
+    if (transient !== null) {
+      try {
+        const valkey = requireValkeyClient();
+        await valkey.send("ZADD", [TICKLE_KEY, String(transient.retryAtMs), intentId]);
+        log.info(
+          {
+            event: "ship.tickle.deferred_quota",
+            intent_id: intentId,
+            child_run_id: childRunId,
+            child_status: child.status,
+            retry_at_ms: transient.retryAtMs,
+            retry_at_iso: new Date(transient.retryAtMs).toISOString(),
+            reset_phrase: transient.resetPhrase,
+          },
+          "ship-tickle deferred — child hit Anthropic usage limit, will retry after reset",
+        );
+      } catch (zaddErr) {
+        log.warn(
+          {
+            err: zaddErr instanceof Error ? zaddErr.message : String(zaddErr),
+            intent_id: intentId,
+            child_run_id: childRunId,
+          },
+          "ship-tickle deferred-ZADD failed (non-fatal — periodic scan will catch up)",
+        );
+      }
+      return;
+    }
     log.info(
       {
         event: "ship.tickle.skip_failed_child",
