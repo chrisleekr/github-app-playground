@@ -283,8 +283,6 @@ describe("configSchema — ship workflow defaults", () => {
       expect(result.data.reviewBarrierSafetyMarginMs).toBe(1_200_000);
       expect(result.data.fixAttemptsPerSignatureCap).toBe(3);
       expect(result.data.shipForbiddenTargetBranches).toEqual([]);
-      expect(result.data.shipUseProbeVerdict).toBe(false);
-      expect(result.data.shipUseContinuationLoop).toBe(false);
     }
   });
 
@@ -433,29 +431,5 @@ describe("configSchema — SHIP_FORBIDDEN_TARGET_BRANCHES parsing", () => {
     });
     expect(result.success).toBe(true);
     if (result.success) expect(result.data.shipForbiddenTargetBranches).toEqual([]);
-  });
-});
-
-describe("configSchema — SHIP_USE_* feature flags", () => {
-  it("defaults all three rollout flags to false", () => {
-    const result = configSchema.safeParse({ ...ANTHROPIC_BASE });
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.shipUseProbeVerdict).toBe(false);
-      expect(result.data.shipUseContinuationLoop).toBe(false);
-    }
-  });
-
-  it("accepts boolean true overrides", () => {
-    const result = configSchema.safeParse({
-      ...ANTHROPIC_BASE,
-      shipUseProbeVerdict: true,
-      shipUseContinuationLoop: true,
-    });
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.shipUseProbeVerdict).toBe(true);
-      expect(result.data.shipUseContinuationLoop).toBe(true);
-    }
   });
 });

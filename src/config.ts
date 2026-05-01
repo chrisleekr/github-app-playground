@@ -492,21 +492,6 @@ const configSchema = z
     // those target branches; the maintainer-facing rejection message
     // surfaces the offending branch name.
     shipForbiddenTargetBranches: shipForbiddenTargetBranchesField,
-
-    // Feature flag — when true, the shepherding handler uses the structural
-    // probe verdict (`src/workflows/ship/verdict.ts` + `probe.ts`) as the
-    // terminal-readiness signal. When false, the legacy in-process
-    // review/resolve loop runs unchanged. Defaults off for safe rollout
-    // (research.md R8 cutover plan); flipped on after Phase 1+2 soak.
-    shipUseProbeVerdict: z.boolean().default(false),
-
-    // Feature flag — when true, the shepherding handler releases the
-    // daemon slot between iterations and re-enters via continuation
-    // (Valkey `ship:tickle` + Postgres `ship_continuations`). When false,
-    // the legacy in-process loop holds the slot for the full session.
-    // Defaults off for safe rollout; flipped on after the probe verdict
-    // path is validated.
-    shipUseContinuationLoop: z.boolean().default(false),
   })
   .superRefine((data, ctx) => {
     validateServerModeCredentials(data, ctx);
@@ -800,14 +785,6 @@ function loadConfig(): Config {
     reviewBarrierSafetyMarginMs: process.env["REVIEW_BARRIER_SAFETY_MARGIN_MS"],
     fixAttemptsPerSignatureCap: process.env["FIX_ATTEMPTS_PER_SIGNATURE_CAP"],
     shipForbiddenTargetBranches: process.env["SHIP_FORBIDDEN_TARGET_BRANCHES"],
-    shipUseProbeVerdict: parseBooleanEnv(
-      "SHIP_USE_PROBE_VERDICT",
-      process.env["SHIP_USE_PROBE_VERDICT"],
-    ),
-    shipUseContinuationLoop: parseBooleanEnv(
-      "SHIP_USE_CONTINUATION_LOOP",
-      process.env["SHIP_USE_CONTINUATION_LOOP"],
-    ),
   });
 
   assertOauthRequiresAllowlist(cfg);
