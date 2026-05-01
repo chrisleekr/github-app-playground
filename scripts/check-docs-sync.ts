@@ -3,9 +3,10 @@
  * Fails CI when a PR touches `src/workflows/**` without also updating
  * any page under `docs/use/workflows/`.
  *
- * Reads the diff between `BASE_SHA..HEAD_SHA` (env vars set by CI) and
- * compares the two path sets. Tests and markdown files under
- * `src/workflows/` are exempt.
+ * Reads the diff between `BASE_SHA...HEAD_SHA` (env vars set by CI;
+ * three-dot range, so commits unique to the PR head relative to the
+ * merge base) and compares the two path sets. Tests and markdown
+ * files under `src/workflows/` are exempt.
  */
 import { spawnSync } from "node:child_process";
 import { exit } from "node:process";

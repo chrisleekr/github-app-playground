@@ -15,7 +15,7 @@ The two images intentionally diverge after the shared base because their cost an
 
 | Stage         | Base              | Purpose                                                                                                                                         |
 | ------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `base`        | `oven/bun:1.3.12` | Installs Node.js 20 (for the Claude Code CLI), npm 11, `curl`, `git`, `@anthropic-ai/claude-code` globally, plus targeted openssl CVE upgrades. |
+| `base`        | `oven/bun:1.3.13` | Installs Node.js 20 (for the Claude Code CLI), npm 11, `curl`, `git`, `@anthropic-ai/claude-code` globally, plus targeted openssl CVE upgrades. |
 | `development` | `base`            | `bun install` (all deps) + `bun run build` → `dist/` (app, daemon main, MCP stdio servers).                                                     |
 | `deps`        | `base`            | `bun install --production --ignore-scripts` (runtime deps only).                                                                                |
 
