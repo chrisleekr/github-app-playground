@@ -127,7 +127,43 @@ async function findExistingBackLink(input: {
   return null;
 }
 
-export async function runOpenPr(input: RunOpenPrInput): Promise<OpenPrOutcome> {
+/**
+ * Outcome of the policy-only phase (idempotency + classification +
+ * non-actionable refusal). The caller decides what to do with an
+ * `actionable` verdict — either create the PR inline (`runOpenPr`) or
+ * enqueue an asynchronous daemon job (dispatch-scoped's `open-pr` path).
+ *
+ * Crucially, this phase NEVER posts the `<!-- bot:open-pr:N -->`
+ * back-link marker. Posting the marker is the responsibility of whoever
+ * actually creates the PR — posting it pre-emptively (e.g. with a
+ * synthetic `pr_number: 0`) would permanently block re-triggers because
+ * `findExistingBackLink` matches by the verb prefix alone.
+ */
+export type OpenPrPolicyOutcome =
+  | {
+      readonly kind: "non-actionable";
+      readonly comment_id: number;
+      readonly verdict: MetaIssueVerdict;
+    }
+  | {
+      readonly kind: "duplicate";
+      readonly comment_id: number;
+      readonly existing_marker_comment_id: number;
+    }
+  | {
+      readonly kind: "classifier-failed";
+      readonly comment_id: number;
+      readonly error_message: string;
+    }
+  | {
+      readonly kind: "actionable";
+      readonly verdict: MetaIssueVerdict;
+      readonly issue_title: string;
+    };
+
+export async function runOpenPrPolicy(
+  input: Omit<RunOpenPrInput, "createBranchAndPr">,
+): Promise<OpenPrPolicyOutcome> {
   const log = (input.log ?? rootLogger).child({
     event: "ship.scoped.open_pr",
     owner: input.owner,
@@ -194,11 +230,33 @@ export async function runOpenPr(input: RunOpenPrInput): Promise<OpenPrOutcome> {
     return { kind: "non-actionable", comment_id: reply.data.id, verdict };
   }
 
+  return { kind: "actionable", verdict, issue_title: issue.data.title };
+}
+
+export async function runOpenPr(input: RunOpenPrInput): Promise<OpenPrOutcome> {
+  const log = (input.log ?? rootLogger).child({
+    event: "ship.scoped.open_pr",
+    owner: input.owner,
+    repo: input.repo,
+    issue_number: input.issue_number,
+  });
+
+  const policy = await runOpenPrPolicy({
+    octokit: input.octokit,
+    owner: input.owner,
+    repo: input.repo,
+    issue_number: input.issue_number,
+    callLlm: input.callLlm,
+    ...(input.log ? { log: input.log } : {}),
+  });
+  if (policy.kind !== "actionable") return policy;
+  const { verdict, issue_title } = policy;
+
   let created: CreateBranchAndPrResult;
   try {
     created = await input.createBranchAndPr({
       issue_number: input.issue_number,
-      issue_title: issue.data.title,
+      issue_title,
       verdict,
     });
   } catch (err) {

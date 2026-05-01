@@ -32,7 +32,7 @@ import type { WorkflowName } from "../registry";
 import { insertQueued } from "../runs-store";
 import { transitionToTerminal } from "./intent";
 import { SHIP_LOG_EVENTS } from "./log-fields";
-import type { MergeReadiness, NonReadinessReason } from "./verdict";
+import { type MergeReadiness, type NonReadinessReason, NonReadinessReasonSchema } from "./verdict";
 import { serializeShipWorkflowContext } from "./workflow-context";
 
 export interface RunIterationDeps {
@@ -131,8 +131,10 @@ export async function runIteration(input: RunIterationInput): Promise<RunIterati
   }
 
   const verdict = input.probeVerdict;
-  if (typeof verdict.reason !== "string") {
-    throw new Error("runIteration: probeVerdict missing reason field");
+  if (!isNonReadinessReason(verdict.reason)) {
+    throw new Error(
+      `runIteration: probeVerdict has missing or invalid reason field (got ${String(verdict.reason)})`,
+    );
   }
 
   // 4. Persist the probe verdict as `kind=probe` (verdict columns allowed),
@@ -306,7 +308,19 @@ function selectNextWorkflow(reason: NonReadinessReason): WorkflowName {
       // if we land here defensively, fall back to a review-only run that
       // the orchestrator cascade cannot cause harm with.
       return "review";
+    default: {
+      // Exhaustiveness guard — the `isNonReadinessReason` check at the
+      // entry of `runIteration` already rejects unknown strings, so this
+      // branch is unreachable; a `never` assignment surfaces a type error
+      // if the enum grows without an accompanying case here.
+      const _exhaustive: never = reason;
+      throw new Error(`runIteration: unsupported non-readiness reason "${String(_exhaustive)}"`);
+    }
   }
+}
+
+function isNonReadinessReason(reason: unknown): reason is NonReadinessReason {
+  return NonReadinessReasonSchema.safeParse(reason).success;
 }
 
 /**

@@ -102,7 +102,13 @@ export async function executeScopedFixThread(
         ? (err as { status?: unknown }).status
         : undefined;
     const isRateLimited = status === 429 || (status === 403 && /rate limit|abuse/i.test(reason));
-    if (typeof status === "number" && status >= 400 && status < 500 && !isRateLimited) {
+    // Per GitHub REST docs, only 404 (gone/missing), 410 (gone), and 422
+    // (validation/spam) are terminal resource-state errors. 401 and generic
+    // 403 indicate token/permission failures and MUST surface as `failed`
+    // so the orchestrator can flag the broken installation rather than
+    // silently dropping the request.
+    const isTerminalSemanticError = status === 404 || status === 410 || status === 422;
+    if (isTerminalSemanticError && !isRateLimited) {
       log.warn(
         { err: reason, status, event: SHIP_LOG_EVENTS.scoped.fixThread.daemonFailed },
         "scoped-fix-thread thread reply failed — halting on semantic GitHub error",

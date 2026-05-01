@@ -28,7 +28,7 @@ import type { CanonicalCommand } from "../../../shared/ship-types";
 import { getTriageLLMClient } from "../../../webhook/triage-client-factory";
 import { SHIP_LOG_EVENTS } from "../log-fields";
 import { runInvestigate } from "./investigate";
-import { runOpenPr } from "./open-pr";
+import { runOpenPrPolicy } from "./open-pr";
 import { runSummarize } from "./summarize";
 import { runTriage } from "./triage";
 
@@ -242,69 +242,56 @@ async function runScopedCommand(command: CanonicalCommand, deps: ScopedCommandDe
       });
       return;
     case "open-pr": {
-      // The policy classifier produces an actionable verdict + summary; we
-      // hand both to the daemon by way of the scoped-open-pr queue offer so
-      // the daemon can scaffold the branch, run the Agent SDK, push, and
-      // open the PR. The classifier-output callback path used to throw
-      // the legacy maintainer-notice — that path is replaced here.
-      const createBranchAndPr = async (
-        verdictSummary: string,
-      ): Promise<{
-        pr_number: number;
-        branch_name: string;
-        pr_url: string;
-      }> => {
-        await enqueueJob({
-          kind: "scoped-open-pr",
-          deliveryId: `scoped-open-pr::${command.pr.owner}/${command.pr.repo}#${String(command.pr.number)}::${String(Date.now())}`,
-          repoOwner: command.pr.owner,
-          repoName: command.pr.repo,
-          entityNumber: command.pr.number,
-          isPR: false,
-          eventName: "issues",
-          triggerUsername: command.principal_login,
-          labels: [],
-          triggerBodyPreview: verdictSummary.slice(0, 200),
-          enqueuedAt: Date.now(),
-          retryCount: 0,
-          installationId: command.pr.installation_id,
-          issueNumber: command.pr.number,
-          triggerCommentId: deriveTriggerCommentId(command),
-          verdictSummary,
-        });
-        deps.log?.info(
-          {
-            event: SHIP_LOG_EVENTS.scoped.openPr.enqueued,
-            owner: command.pr.owner,
-            repo: command.pr.repo,
-            issue_number: command.pr.number,
-          },
-          "scoped-open-pr enqueued",
-        );
-        // The actual PR is created by the daemon — the policy-layer reply
-        // is posted by the daemon executor as well, so callers that depend
-        // on the {pr_number, branch_name, pr_url} return value will see a
-        // synthetic placeholder until the daemon's executor lands the
-        // actual createPullRequest call. Returning a stub keeps the
-        // existing runOpenPr signature intact while removing the throw.
-        return {
-          pr_number: 0,
-          branch_name: "(daemon-created)",
-          pr_url: `https://github.com/${command.pr.owner}/${command.pr.repo}/issues/${String(command.pr.number)}`,
-        };
-      };
-      await runOpenPr({
+      // Run the policy-only path of `runOpenPr` (idempotency + classifier +
+      // non-actionable refusal). On `actionable`, hand the verdict to the
+      // daemon via a `scoped-open-pr` queue offer so the daemon can clone,
+      // scaffold a branch via the Agent SDK, push, and open the PR.
+      //
+      // The legacy approach called `runOpenPr` with a stub `createBranchAndPr`
+      // that returned `{ pr_number: 0, ... }`. That caused `runOpenPr` to
+      // post a back-link marker `<!-- bot:open-pr:0 -->` BEFORE the daemon
+      // had created any PR — `findExistingBackLink` matches by verb prefix,
+      // so the bogus marker would permanently block future re-triggers
+      // (Copilot review on PR #79). The daemon executor is now solely
+      // responsible for posting the back-link marker once it actually
+      // creates the PR.
+      const policy = await runOpenPrPolicy({
         octokit: deps.octokit,
         owner: command.pr.owner,
         repo: command.pr.repo,
         issue_number: command.pr.number,
         callLlm,
-        createBranchAndPr: ({ issue_title, verdict }) =>
-          createBranchAndPr(
-            `${issue_title}\n\nclassifier: ${verdict.kind} (${verdict.actionable ? "actionable" : "non-actionable"})\n\nreason: ${verdict.reason}`,
-          ),
         ...(deps.log ? { log: deps.log } : {}),
       });
+      if (policy.kind !== "actionable") return;
+      const verdictSummary = `${policy.issue_title}\n\nclassifier: ${policy.verdict.kind} (${policy.verdict.actionable ? "actionable" : "non-actionable"})\n\nreason: ${policy.verdict.reason}`;
+      await enqueueJob({
+        kind: "scoped-open-pr",
+        deliveryId: `scoped-open-pr::${command.pr.owner}/${command.pr.repo}#${String(command.pr.number)}::${String(Date.now())}`,
+        repoOwner: command.pr.owner,
+        repoName: command.pr.repo,
+        entityNumber: command.pr.number,
+        isPR: false,
+        eventName: "issues",
+        triggerUsername: command.principal_login,
+        labels: [],
+        triggerBodyPreview: verdictSummary.slice(0, 200),
+        enqueuedAt: Date.now(),
+        retryCount: 0,
+        installationId: command.pr.installation_id,
+        issueNumber: command.pr.number,
+        triggerCommentId: deriveTriggerCommentId(command),
+        verdictSummary,
+      });
+      deps.log?.info(
+        {
+          event: SHIP_LOG_EVENTS.scoped.openPr.enqueued,
+          owner: command.pr.owner,
+          repo: command.pr.repo,
+          issue_number: command.pr.number,
+        },
+        "scoped-open-pr enqueued",
+      );
       return;
     }
     case "fix-thread": {

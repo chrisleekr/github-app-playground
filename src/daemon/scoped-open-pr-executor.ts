@@ -96,7 +96,10 @@ export async function executeScopedOpenPr(
         ? (err as { status?: unknown }).status
         : undefined;
     const isRateLimited = status === 429 || (status === 403 && /rate limit|abuse/i.test(reason));
-    if (typeof status === "number" && status >= 400 && status < 500 && !isRateLimited) {
+    // See scoped-fix-thread-executor for the rationale; only 404/410/422
+    // are terminal resource-state errors per GitHub REST semantics.
+    const isTerminalSemanticError = status === 404 || status === 410 || status === 422;
+    if (isTerminalSemanticError && !isRateLimited) {
       log.warn(
         { err: reason, status, event: SHIP_LOG_EVENTS.scoped.openPr.daemonFailed },
         "scoped-open-pr issue reply failed — halting on semantic GitHub error",
