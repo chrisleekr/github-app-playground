@@ -1,3 +1,17 @@
+# [1.7.0](https://github.com/chrisleekr/github-app-playground/compare/v1.6.1...v1.7.0) (2026-05-01)
+
+
+### Bug Fixes
+
+* **idempotency:** scope durable check with since=triggerTimestamp (closes [#33](https://github.com/chrisleekr/github-app-playground/issues/33)) ([#69](https://github.com/chrisleekr/github-app-playground/issues/69)) ([5f1c1fa](https://github.com/chrisleekr/github-app-playground/commit/5f1c1fa519c40128f9d18c360413ef262356bb11))
+
+
+### Features
+
+* **ship:** pr shepherding scaffolding + flag-gated trigger surfaces ([#75](https://github.com/chrisleekr/github-app-playground/issues/75)) ([928811b](https://github.com/chrisleekr/github-app-playground/commit/928811b21ccf594952439afa6d30652f69e08278))
+* **ship:** scoped commands (US5) + remove SHIP_USE_TRIGGER_SURFACES_V2 flag ([#77](https://github.com/chrisleekr/github-app-playground/issues/77)) ([33132a3](https://github.com/chrisleekr/github-app-playground/commit/33132a3ffa968f169d0692450700dc445a6e2290))
+* **ship:** wire ship iteration loop, tickle scheduler, and four scoped executors ([#79](https://github.com/chrisleekr/github-app-playground/issues/79)) ([43da9aa](https://github.com/chrisleekr/github-app-playground/commit/43da9aa0568c5b8cd2817b70e91f257aa260a5f5))
+
 ## [1.6.1](https://github.com/chrisleekr/github-app-playground/compare/v1.6.0...v1.6.1) (2026-04-27)
 
 
