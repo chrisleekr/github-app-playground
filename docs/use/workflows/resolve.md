@@ -33,7 +33,7 @@ All four classifications use the same shape so bot replies look consistent acros
 ```markdown
 <STATUS_LINE>
 
-**<One-line title summarising what was done or concluded.>**
+**<One-line title summarizing what was done or concluded.>**
 
 <1–3 sentences of reasoning: why the fix was applied, why the reviewer was right/wrong, or what specifically needs clarifying. Cite file:line where relevant. No diff — the commit link covers that.>
 ```

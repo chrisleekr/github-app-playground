@@ -62,8 +62,11 @@ jobs:
       # on GitHub (see issue #86 for an example), and prompt-only rules
       # alone did not hold.
       - name: Install mermaid-cli for diagram validation
+        # Pinned to a specific version so the validation gate behaves
+        # reproducibly across runs. Bump deliberately — see
+        # https://github.com/mermaid-js/mermaid-cli/releases.
         run: |
-          npm install -g @mermaid-js/mermaid-cli
+          npm install -g @mermaid-js/mermaid-cli@11.14.0
           mmdc --version
 
       # User input passed via env: (never interpolated into run:) and validated
@@ -348,8 +351,15 @@ jobs:
               body.
             - DO NOT create test, smoke, or placeholder issues under any
               circumstances. Specifically forbidden:
-                * Titles containing the literal word "test", "smoke",
-                  "wip", "todo", "delete me", "can-delete", or "scratch".
+                * Standalone or single-word titles built around "test"
+                  (e.g. "test", "test-can-delete", "smoke test", "heredoc
+                  test"). The conventional-commit `test(<scope>): ...`
+                  form (e.g. `test(webhook): no test for the
+                  concurrent-trigger rejection path`) is a LEGITIMATE
+                  finding type per the type list above and is NOT
+                  covered by this rule.
+                * Placeholder titles such as "smoke", "wip", "todo",
+                  "delete me", "can-delete", or "scratch".
                 * Single-word or cryptic titles (e.g. "test-can-delete" —
                   see issue #73 for an example of what NOT to file).
                 * Empty or near-empty bodies (anything under ~500 chars

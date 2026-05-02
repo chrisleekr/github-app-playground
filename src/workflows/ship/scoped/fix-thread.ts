@@ -26,6 +26,7 @@ import type { Octokit } from "octokit";
 import type { Logger } from "pino";
 
 import { logger as rootLogger } from "../../../logger";
+import { formatReply } from "../../format-reply";
 
 const DESIGN_DISCUSSION_PHRASES = [
   "let's discuss",
@@ -150,6 +151,7 @@ export async function runFixThread(input: RunFixThreadInput): Promise<FixThreadO
     return { kind: "skipped", reply_id: reply.data.id, reason };
   }
 
+  const trimmedReasoning = result.reasoning?.trim() ?? "";
   const reply = await input.octokit.rest.pulls.createReplyForReviewComment({
     owner: input.owner,
     repo: input.repo,
@@ -160,9 +162,7 @@ export async function runFixThread(input: RunFixThreadInput): Promise<FixThreadO
       meta: ` — commit \`${result.commit_sha}\``,
       title: "Mechanical fix pushed.",
       reasoning:
-        result.reasoning?.trim() !== undefined && result.reasoning.trim().length > 0
-          ? result.reasoning.trim()
-          : "See the linked commit for the change.",
+        trimmedReasoning.length > 0 ? trimmedReasoning : "See the linked commit for the change.",
     }),
   });
 
@@ -176,24 +176,4 @@ export async function runFixThread(input: RunFixThreadInput): Promise<FixThreadO
 
   log.info({ reply_id: reply.data.id, commit_sha: result.commit_sha }, "fix_thread applied");
   return { kind: "applied", commit_sha: result.commit_sha, reply_id: reply.data.id };
-}
-
-/**
- * Bot reply formatter — produces the CodeRabbit-style 3-block layout used
- * across all bot reply surfaces (resolve, review, fix-thread,
- * explain-thread). Format: `<status>[meta]` line, blank, bold title,
- * blank, prose reasoning. The same shape is required of the LLM agent
- * in `buildResolvePrompt` / `buildReviewPrompt`; if you change this
- * here, mirror the example in those prompts so agent output stays
- * consistent with handler-emitted output.
- */
-function formatReply(opts: {
-  readonly status: string;
-  readonly meta?: string;
-  readonly title: string;
-  readonly reasoning: string;
-}): string {
-  const header = opts.meta !== undefined ? `${opts.status}${opts.meta}` : opts.status;
-  const titleLine = `**${opts.title}**`;
-  return [header, "", titleLine, "", opts.reasoning.trim()].join("\n");
 }

@@ -16,14 +16,16 @@ import { logger as rootLogger } from "../../../logger";
 export const EXPLAIN_THREAD_SYSTEM_PROMPT = `You explain code in the context of a GitHub review thread.
 The reader is a reviewer who asked for clarification on a specific code region.
 
-Return Markdown in this EXACT three-block layout (CodeRabbit-style):
+Return Markdown in this EXACT three-block layout (CodeRabbit-style); the
+template below has NO leading whitespace — emit it flush-left so the first
+line is exactly "_💡 Explanation_" with no extra characters:
 
-  _💡 Explanation_
+_💡 Explanation_
 
-  **<one-sentence summary of what the code does>**
+**<one-sentence summary of what the code does>**
 
-  <prose: short bulleted list of mechanics worth noting, then any caveats
-  (edge cases, invariants, gotchas) on a new paragraph>
+<prose: short bulleted list of mechanics worth noting, then any caveats
+(edge cases, invariants, gotchas) on a new paragraph>
 
 Rules:
   - The first line MUST be exactly "_💡 Explanation_" (no extra text).

@@ -255,7 +255,7 @@ function buildReviewPrompt(input: {
     `    **Suggested fix:** <one or two sentences with a concrete, actionable recommendation.>`,
     `    \`\`\``,
     ``,
-    `    STATUS_LINE per severity (copy verbatim — these strings drive both presentation and the REVIEW.md severity counts):`,
+    `    STATUS_LINE per severity (copy verbatim — these strings drive inline-comment presentation only; REVIEW.md severity counts come from the bracketed \`[blocker]\` / \`[major]\` / \`[minor]\` / \`[nit]\` tags described later):`,
     `    - Blocker: \`_⚠️ Potential issue_ | _🔴 Blocker_\` — must fix before merge (broken correctness, security)`,
     `    - Major:   \`_⚠️ Potential issue_ | _🟠 Major_\`   — should fix before merge (likely bug, missing test)`,
     `    - Minor:   \`_💭 Suggestion_      | _🟡 Minor_\`   — nice to fix (readability, small inefficiency)`,
