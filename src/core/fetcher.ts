@@ -8,6 +8,12 @@ import type {
   FetchedData,
   ReviewCommentData,
 } from "../types";
+import { retryWithBackoff } from "../utils/retry";
+
+/** Bound on per-review overflow fan-out — prevents one large PR from
+ *  spawning hundreds of concurrent GraphQL calls and tripping abuse limits.
+ *  5 mirrors what `octokit.graphql.paginate` itself does for top-level pages. */
+const REVIEW_OVERFLOW_CONCURRENCY = 5;
 
 /**
  * GraphQL queries for pull-request and issue data.
@@ -362,6 +368,10 @@ export async function fetchGitHubData(ctx: BotContext): Promise<FetchedData> {
  *
  * Emits a structured warning whenever truncation fires so operators can
  * tell that a `MAX_FETCHED_*` cap is materially clipping context.
+ *
+ * Caller is responsible for filtering (isMinimized, TOCTOU) BEFORE invoking
+ * this — the cap measures items that will actually reach the prompt, not
+ * raw GraphQL nodes that the next step is about to drop.
  */
 function applyCap<T>(
   items: T[],
@@ -378,22 +388,69 @@ function applyCap<T>(
 }
 
 /**
+ * Run `fn` over `items` with at most `concurrency` in-flight at any time.
+ * Preserves input order in the result. Used to bound the per-review overflow
+ * fan-out (see `REVIEW_OVERFLOW_CONCURRENCY`) so a 500-review PR does not
+ * spawn 500 simultaneous GraphQL pagination calls.
+ */
+async function pMap<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from(
+    { length: Math.min(Math.max(concurrency, 1), items.length) },
+    async () => {
+      for (;;) {
+        const idx = next;
+        next += 1;
+        if (idx >= items.length) return;
+        // eslint-disable-next-line security/detect-object-injection, @typescript-eslint/no-non-null-assertion, no-await-in-loop
+        results[idx] = await fn(items[idx]!);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
+}
+
+/**
  * Walk the remaining pages of a single review's inline comments after
  * the top-level PR_REVIEWS_QUERY's first page. The plugin can't paginate
  * the nested connection on its own (it only follows ONE pageInfo per
  * query), so we issue a follow-up query keyed on the review's GraphQL
  * node ID with `$cursor` named per the plugin's contract.
+ *
+ * Wrapped in `retryWithBackoff` so a transient 5xx / 429 on one review's
+ * follow-up doesn't fail the entire fetch. After all retries exhaust we
+ * log a warn and return an empty page — the agent will see the first 100
+ * inline comments for that review with no further degradation.
  */
 async function fetchRemainingReviewComments(
   octokit: Octokit,
   reviewId: string,
   startCursor: string | null,
+  log: BotContext["log"],
 ): Promise<GqlReviewComment[]> {
-  const result = await octokit.graphql.paginate<ReviewCommentsQueryResult>(REVIEW_COMMENTS_QUERY, {
-    reviewId,
-    cursor: startCursor,
-  });
-  return result.node?.comments.nodes ?? [];
+  try {
+    const result = await retryWithBackoff(
+      () =>
+        octokit.graphql.paginate<ReviewCommentsQueryResult>(REVIEW_COMMENTS_QUERY, {
+          reviewId,
+          cursor: startCursor,
+        }),
+      { log },
+    );
+    return result.node?.comments.nodes ?? [];
+  } catch (err) {
+    log.warn(
+      { reviewId, err: err instanceof Error ? err.message : String(err) },
+      "Failed to fetch remaining review comments after retries; degrading gracefully",
+    );
+    return [];
+  }
 }
 
 async function fetchPRData({
@@ -408,11 +465,14 @@ async function fetchPRData({
   // and uses `$cursor`, satisfying the plugin's contract. Top-level PR
   // fields ride along on PR_FIRST_QUERY because mergeResponses preserves
   // non-paginated fields from the first page.
-  const vars = { owner, repo, number };
+  //
+  // Each call gets its OWN parameters object literal — the plugin mutates
+  // `parameters.cursor` between pages, so a shared object would race
+  // across the three concurrent paginations and corrupt cursors.
   const [first, commentsResult, reviewsResult] = await Promise.all([
-    octokit.graphql.paginate<PrFirstQueryResult>(PR_FIRST_QUERY, vars),
-    octokit.graphql.paginate<PrCommentsQueryResult>(PR_COMMENTS_QUERY, vars),
-    octokit.graphql.paginate<PrReviewsQueryResult>(PR_REVIEWS_QUERY, vars),
+    octokit.graphql.paginate<PrFirstQueryResult>(PR_FIRST_QUERY, { owner, repo, number }),
+    octokit.graphql.paginate<PrCommentsQueryResult>(PR_COMMENTS_QUERY, { owner, repo, number }),
+    octokit.graphql.paginate<PrReviewsQueryResult>(PR_REVIEWS_QUERY, { owner, repo, number }),
   ]);
 
   const pr = first.repository.pullRequest;
@@ -436,30 +496,31 @@ async function fetchPRData({
 
   const truncated: NonNullable<FetchedData["truncated"]> = {};
 
-  const cappedComments = applyCap(prComments, config.maxFetchedComments, "comments", log);
-  if (cappedComments.truncated) truncated.comments = true;
-
+  // Reviews cap is applied here (pre-fan-out) because its purpose is to
+  // bound the cost of the follow-up REVIEW_COMMENTS_QUERY fan-out, not to
+  // shape user-visible output. Reviews themselves don't appear in
+  // FetchedData — only their nested inline comments do, and those are
+  // filtered + capped separately below.
   const cappedReviews = applyCap(prReviews, config.maxFetchedReviews, "reviews", log);
   if (cappedReviews.truncated) truncated.reviews = true;
 
-  const cappedFiles = applyCap(pr.files.nodes, config.maxFetchedFiles, "changedFiles", log);
-  if (cappedFiles.truncated) truncated.changedFiles = true;
-
   // Walk nested review-comments pages: any review reporting hasNextPage
-  // on its first page needs a follow-up paginate call. Issued in parallel
-  // — these are independent GraphQL requests keyed on review node IDs.
+  // on its first page needs a follow-up paginate call. Bounded concurrency
+  // (REVIEW_OVERFLOW_CONCURRENCY) prevents a 500-review PR from spawning
+  // 500 simultaneous GraphQL requests; each call is wrapped in
+  // retryWithBackoff so transient 5xx/429s degrade per-review instead of
+  // failing the whole fetch.
   // pageInfo is always selected by PR_REVIEWS_QUERY, but legacy test
   // fixtures elide it — `?.` keeps those tests working without forcing a
   // sweep, at the cost of one redundant chain in production.
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   const overflowReviews = cappedReviews.items.filter((r) => r.comments.pageInfo?.hasNextPage);
-  const overflowResults = await Promise.all(
-    overflowReviews.map((r) =>
-      fetchRemainingReviewComments(octokit, r.id, r.comments.pageInfo.endCursor),
-    ),
+  const overflowResults = await pMap(overflowReviews, REVIEW_OVERFLOW_CONCURRENCY, (r) =>
+    fetchRemainingReviewComments(octokit, r.id, r.comments.pageInfo.endCursor, log),
   );
   const overflowByReviewId = new Map<string, GqlReviewComment[]>();
   overflowReviews.forEach((r, i) => {
+    // eslint-disable-next-line security/detect-object-injection
     overflowByReviewId.set(r.id, overflowResults[i] ?? []);
   });
 
@@ -467,35 +528,42 @@ async function fetchPRData({
     ...review.comments.nodes,
     ...(overflowByReviewId.get(review.id) ?? []),
   ]);
+
+  // Filter BEFORE capping so the cap reflects items that actually reach
+  // the prompt: minimized comments and post-trigger items (TOCTOU) never
+  // count toward MAX_FETCHED_*. Without this, a busy PR with hundreds of
+  // post-trigger comments would fill the cap with items the next step
+  // drops, leaving little or no pre-trigger context for the agent.
+  const filteredComments = filterByTriggerTime(
+    prComments.filter((c) => !c.isMinimized),
+    triggerTime,
+  );
+  const filteredReviewComments = filterByTriggerTime(
+    allReviewComments.filter((c) => !c.isMinimized),
+    triggerTime,
+  );
+
+  const cappedComments = applyCap(filteredComments, config.maxFetchedComments, "comments", log);
+  if (cappedComments.truncated) truncated.comments = true;
+
   const cappedReviewComments = applyCap(
-    allReviewComments,
+    filteredReviewComments,
     config.maxFetchedReviewComments,
     "reviewComments",
     log,
   );
-  if (cappedReviewComments.truncated) {
-    truncated.reviewComments = true;
-  }
+  if (cappedReviewComments.truncated) truncated.reviewComments = true;
 
-  // TOCTOU filter — runs AFTER pagination merges + cap, so the agent sees
-  // the newest pre-trigger items rather than the oldest 100 (which is
-  // what the un-paginated version surfaced).
-  const filteredComments = filterByTriggerTime(
-    cappedComments.items.filter((c) => !c.isMinimized),
-    triggerTime,
-  );
-  const filteredReviewComments = filterByTriggerTime(
-    cappedReviewComments.items.filter((c) => !c.isMinimized),
-    triggerTime,
-  );
+  const cappedFiles = applyCap(pr.files.nodes, config.maxFetchedFiles, "changedFiles", log);
+  if (cappedFiles.truncated) truncated.changedFiles = true;
 
-  const comments: CommentData[] = filteredComments.map((c) => ({
+  const comments: CommentData[] = cappedComments.items.map((c) => ({
     author: c.author.login,
     body: c.body,
     createdAt: c.createdAt,
   }));
 
-  const reviewComments: ReviewCommentData[] = filteredReviewComments.map((c) => {
+  const reviewComments: ReviewCommentData[] = cappedReviewComments.items.map((c) => {
     const comment: ReviewCommentData = {
       author: c.author.login,
       body: c.body,
@@ -556,15 +624,15 @@ async function fetchIssueData({
 
   const truncated: NonNullable<FetchedData["truncated"]> = {};
 
-  const capped = applyCap(issue.comments.nodes, config.maxFetchedComments, "comments", log);
-  if (capped.truncated) truncated.comments = true;
-
   const filteredComments = filterByTriggerTime(
-    capped.items.filter((c) => !c.isMinimized),
+    issue.comments.nodes.filter((c) => !c.isMinimized),
     triggerTime,
   );
 
-  const comments: CommentData[] = filteredComments.map((c) => ({
+  const cappedComments = applyCap(filteredComments, config.maxFetchedComments, "comments", log);
+  if (cappedComments.truncated) truncated.comments = true;
+
+  const comments: CommentData[] = cappedComments.items.map((c) => ({
     author: c.author.login,
     body: c.body,
     createdAt: c.createdAt,

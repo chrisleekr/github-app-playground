@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
+import { config } from "../../src/config";
 import { fetchGitHubData, filterByTriggerTime } from "../../src/core/fetcher";
 import type { BotContext } from "../../src/types";
 import { makeBotContext, makeOctokit, makeSilentLogger } from "../factories";
@@ -655,8 +656,9 @@ describe("fetchGitHubData — pagination merge", () => {
 
   it("trips truncated.comments and warns when the safety cap fires", async () => {
     const log = makeSilentLogger();
-    // Default cap is 500 — overshoot it by enough that the cap fires.
-    const total = 600;
+    // Overshoot the configured cap by enough that the cap fires.
+    const cap = config.maxFetchedComments;
+    const total = cap + 100;
     const ctx = makeCtx({
       isPR: false,
       triggerTimestamp: new Date(Date.UTC(2099, 0, 1)).toISOString(),
@@ -686,24 +688,28 @@ describe("fetchGitHubData — pagination merge", () => {
 
     const result = await fetchGitHubData(ctx);
     expect(result.truncated?.comments).toBe(true);
-    // Cap default is 500 — the merged result should be exactly 500.
-    expect(result.comments.length).toBe(500);
+    // The merged result should equal the configured cap.
+    expect(result.comments.length).toBe(cap);
     // The cap MUST keep the newest items, not the oldest. Comments arrive
     // ASC by createdAt from the GraphQL connection, so dropping the head
     // (the regression this guards against) would silently lose the most
-    // recent 100 comments — including, very likely, the trigger comment.
-    // After the cap, the surviving range is users 100..599; user-0 must be
-    // gone and user-599 must be present.
+    // recent items — including, very likely, the trigger comment.
+    // After the cap, the surviving range is users (total - cap)..(total - 1);
+    // user-0 must be gone and user-(total - 1) must be present.
+    const firstSurvivor = total - cap;
+    const lastSurvivor = total - 1;
     expect(result.comments.some((c) => c.author === "user-0")).toBe(false);
-    expect(result.comments.some((c) => c.author === "user-599")).toBe(true);
-    expect(result.comments[0]?.author).toBe("user-100");
-    expect(result.comments[result.comments.length - 1]?.author).toBe("user-599");
+    expect(result.comments.some((c) => c.author === `user-${String(lastSurvivor)}`)).toBe(true);
+    expect(result.comments[0]?.author).toBe(`user-${String(firstSurvivor)}`);
+    expect(result.comments[result.comments.length - 1]?.author).toBe(
+      `user-${String(lastSurvivor)}`,
+    );
     // log.warn must have been called with the structured shape callers rely on.
     const warnCalls = log.warn.mock.calls as [Record<string, unknown>, string][];
     const capWarn = warnCalls.find((c) => c[0]["connection"] === "comments");
     expect(capWarn).toBeDefined();
     expect(capWarn?.[0]["fetched"]).toBe(total);
-    expect(capWarn?.[0]["cap"]).toBe(500);
+    expect(capWarn?.[0]["cap"]).toBe(cap);
   });
 
   it("merges nested per-review comments via the follow-up paginate call", async () => {

@@ -110,7 +110,7 @@ Call them from an internal admin endpoint, a scheduled job, or `bun repl`.
 
 ## Data fetching safety caps
 
-`src/core/fetcher.ts` walks every `pageInfo { hasNextPage endCursor }` connection it receives via `octokit.graphql.paginate(...)`, so PRs/issues with hundreds of comments, reviews, inline review comments, or changed files are no longer silently truncated to the first 100. The four `MAX_FETCHED_*` env vars (see [`configuration.md`](configuration.md)) bound the merged result so a single pathological PR cannot exhaust the agent's input window or the host's memory.
+`src/core/fetcher.ts` walks every `pageInfo { hasNextPage endCursor }` connection it receives via `octokit.graphql.paginate(...)`, so PRs/issues with hundreds of comments, reviews, inline review comments, or changed files are no longer silently truncated to the first 100. The four `MAX_FETCHED_*` env vars (see [`configuration.md`](configuration.md)) bound the **merged result** that reaches the agent prompt — they do not bound how much data is fetched and held in memory during pagination. The fetcher walks every page first, then trims the array to the most recent `cap` items; fetch-time memory is bounded by GitHub API limits (max items per connection), not these caps. Operators tuning for cost/latency should narrow entity selection (e.g. close noisy issues) rather than rely on the cap to cut request volume.
 
 When a cap fires the fetcher emits a single structured warn line per affected connection and flags the connection on the returned `FetchedData` so downstream code can surface it:
 
