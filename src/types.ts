@@ -118,6 +118,19 @@ export interface FetchedData {
   baseBranch?: string;
   /** Head SHA (PRs only) */
   headSha?: string;
+  /**
+   * Per-connection truncation flags. A flag is set to `true` when the fetcher
+   * stopped paginating because the matching `MAX_FETCHED_*` cap was reached
+   * (i.e. the underlying connection has more items than what is in this
+   * payload). The prompt builder reads these to warn the agent that its
+   * pre-fetched context is incomplete.
+   */
+  truncated?: {
+    comments?: boolean;
+    reviewComments?: boolean;
+    reviews?: boolean;
+    changedFiles?: boolean;
+  };
 }
 
 export interface CommentData {

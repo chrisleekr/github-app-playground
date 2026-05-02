@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 
 import { fetchGitHubData, filterByTriggerTime } from "../../src/core/fetcher";
 import type { BotContext } from "../../src/types";
-import { makeBotContext, makeOctokit } from "../factories";
+import { makeBotContext, makeOctokit, makeSilentLogger } from "../factories";
 import { expectToReject } from "../utils/assertions";
 
 const TRIGGER = "2025-06-01T12:00:00Z";
@@ -531,5 +531,292 @@ describe("fetchGitHubData — PR path", () => {
     });
 
     await expectToReject(fetchGitHubData(ctx), "Bad credentials");
+  });
+});
+
+// ─── Pagination + safety-cap behaviour ─────────────────────────────────────
+
+/**
+ * Builds N issue-comment-shaped GraphQL nodes with sequential ISO timestamps.
+ * `triggerOffset` is the index whose `createdAt` matches `triggerTime` exactly
+ * — items below it are pre-trigger (kept by `filterByTriggerTime`), items at
+ * or above are post-trigger (filtered out).
+ */
+function buildIssueComments(
+  n: number,
+  _triggerOffset: number,
+): {
+  body: string;
+  author: { login: string };
+  createdAt: string;
+  updatedAt: string;
+  lastEditedAt: null;
+  isMinimized: boolean;
+}[] {
+  const start = Date.UTC(2025, 4, 1); // 2025-05-01
+  return Array.from({ length: n }, (_, i) => {
+    const ts = new Date(start + i * 60_000).toISOString(); // one comment per minute
+    return {
+      body: `comment-${String(i)}`,
+      author: { login: `user-${String(i)}` },
+      createdAt: ts,
+      updatedAt: ts,
+      lastEditedAt: null,
+      isMinimized: false,
+    };
+  });
+}
+
+describe("fetchGitHubData — pagination merge", () => {
+  it("merges paginated issue comments into FetchedData (length > 100)", async () => {
+    const total = 250;
+    // Trigger offset is 999 so every fixture comment is pre-trigger and
+    // survives the TOCTOU filter — proves pagination merged correctly.
+    const ctx = makeCtx({
+      isPR: false,
+      // Trigger far in the future so all 250 fixture comments survive.
+      triggerTimestamp: new Date(Date.UTC(2099, 0, 1)).toISOString(),
+      octokit: makeOctokit({
+        graphqlPaginateResponses: {
+          // Top-level issue query is matched by the `issue(number:` selection.
+          "issue(number:": {
+            repository: {
+              issue: {
+                title: "Long thread",
+                body: "Lots of comments",
+                author: { login: "reporter" },
+                createdAt: "2025-04-30T00:00:00Z",
+                updatedAt: "2025-04-30T00:00:00Z",
+                lastEditedAt: null,
+                state: "OPEN",
+                comments: {
+                  nodes: buildIssueComments(total, total),
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                },
+              },
+            },
+          },
+        },
+      }),
+    });
+
+    const result = await fetchGitHubData(ctx);
+    expect(result.comments.length).toBe(total);
+    expect(result.truncated).toBeUndefined();
+  });
+
+  it("filterByTriggerTime runs after the merge — newest pre-trigger items survive", async () => {
+    // 250 comments, trigger at the 240th — items 0..239 must be kept and
+    // 240..249 dropped. Critically: comment 239 (the newest pre-trigger
+    // item) MUST be in the result. Under the old un-paginated fetcher
+    // this was the failure mode the issue reported: GraphQL would return
+    // only the oldest 100, so comment 239 would be silently lost.
+    const total = 250;
+    const triggerOffset = 240;
+    const start = Date.UTC(2025, 4, 1);
+    const triggerIso = new Date(start + triggerOffset * 60_000).toISOString();
+
+    const ctx = makeCtx({
+      isPR: false,
+      triggerTimestamp: triggerIso,
+      octokit: makeOctokit({
+        graphqlPaginateResponses: {
+          "issue(number:": {
+            repository: {
+              issue: {
+                title: "T",
+                body: "B",
+                author: { login: "u" },
+                createdAt: "2025-04-30T00:00:00Z",
+                updatedAt: "2025-04-30T00:00:00Z",
+                lastEditedAt: null,
+                state: "OPEN",
+                comments: {
+                  nodes: buildIssueComments(total, triggerOffset),
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                },
+              },
+            },
+          },
+        },
+      }),
+    });
+
+    const result = await fetchGitHubData(ctx);
+    expect(result.comments.length).toBe(triggerOffset);
+    // comment at index 239 (the newest pre-trigger item) is preserved
+    expect(result.comments[triggerOffset - 1]?.author).toBe(`user-${String(triggerOffset - 1)}`);
+    // post-trigger comments are dropped — no comment from index 240 onwards
+    const postTriggerKept = result.comments.some(
+      (c) => c.author === `user-${String(triggerOffset)}`,
+    );
+    expect(postTriggerKept).toBe(false);
+  });
+
+  it("trips truncated.comments and warns when the safety cap fires", async () => {
+    const log = makeSilentLogger();
+    // Default cap is 500 — overshoot it by enough that the cap fires.
+    const total = 600;
+    const ctx = makeCtx({
+      isPR: false,
+      triggerTimestamp: new Date(Date.UTC(2099, 0, 1)).toISOString(),
+      log,
+      octokit: makeOctokit({
+        graphqlPaginateResponses: {
+          "issue(number:": {
+            repository: {
+              issue: {
+                title: "T",
+                body: "B",
+                author: { login: "u" },
+                createdAt: "2025-04-30T00:00:00Z",
+                updatedAt: "2025-04-30T00:00:00Z",
+                lastEditedAt: null,
+                state: "OPEN",
+                comments: {
+                  nodes: buildIssueComments(total, total),
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                },
+              },
+            },
+          },
+        },
+      }),
+    });
+
+    const result = await fetchGitHubData(ctx);
+    expect(result.truncated?.comments).toBe(true);
+    // Cap default is 500 — the merged result should be exactly 500.
+    expect(result.comments.length).toBe(500);
+    // log.warn must have been called with the structured shape callers rely on.
+    const warnCalls = log.warn.mock.calls as [Record<string, unknown>, string][];
+    const capWarn = warnCalls.find((c) => c[0]["connection"] === "comments");
+    expect(capWarn).toBeDefined();
+    expect(capWarn?.[0]["fetched"]).toBe(total);
+    expect(capWarn?.[0]["cap"]).toBe(500);
+  });
+
+  it("merges nested per-review comments via the follow-up paginate call", async () => {
+    // First page (returned by PR_QUERY) carries 100 comments + hasNextPage=true.
+    // The follow-up REVIEW_COMMENTS_QUERY returns the remaining 50.
+    const reviewCommentsPage1 = Array.from({ length: 100 }, (_, i) => ({
+      body: `inline-${String(i)}`,
+      author: { login: "rev" },
+      createdAt: "2025-05-02T00:00:00Z",
+      updatedAt: "2025-05-02T00:00:00Z",
+      lastEditedAt: null,
+      isMinimized: false,
+      path: `src/f${String(i)}.ts`,
+      line: i + 1,
+    }));
+    const reviewCommentsPage2 = Array.from({ length: 50 }, (_, i) => ({
+      body: `inline-${String(100 + i)}`,
+      author: { login: "rev" },
+      createdAt: "2025-05-02T00:00:00Z",
+      updatedAt: "2025-05-02T00:00:00Z",
+      lastEditedAt: null,
+      isMinimized: false,
+      path: `src/g${String(i)}.ts`,
+      line: i + 1,
+    }));
+
+    const ctx = makeCtx({
+      isPR: true,
+      triggerTimestamp: new Date(Date.UTC(2099, 0, 1)).toISOString(),
+      octokit: makeOctokit({
+        graphqlPaginateResponses: {
+          // Top-level PR query — hand back one review with a partial first
+          // page of nested comments.
+          "pullRequest(number:": {
+            repository: {
+              pullRequest: {
+                title: "Big review",
+                body: "PR",
+                author: { login: "dev" },
+                baseRefName: "main",
+                headRefName: "feat/x",
+                headRefOid: "sha",
+                createdAt: "2025-05-01T00:00:00Z",
+                updatedAt: "2025-05-01T00:00:00Z",
+                lastEditedAt: null,
+                additions: 0,
+                deletions: 0,
+                state: "OPEN",
+                commits: { totalCount: 1 },
+                files: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+                comments: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+                reviews: {
+                  nodes: [
+                    {
+                      id: "REVIEW_NODE_ID_1",
+                      author: { login: "rev" },
+                      body: "",
+                      state: "COMMENTED",
+                      submittedAt: "2025-05-02T00:00:00Z",
+                      updatedAt: "2025-05-02T00:00:00Z",
+                      lastEditedAt: null,
+                      comments: {
+                        nodes: reviewCommentsPage1,
+                        pageInfo: { hasNextPage: true, endCursor: "cursor-1" },
+                      },
+                    },
+                  ],
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                },
+              },
+            },
+          },
+          // Follow-up paginate of the nested review-comments connection —
+          // matched by the `... on PullRequestReview` selection unique to
+          // REVIEW_COMMENTS_QUERY.
+          PullRequestReview: {
+            node: {
+              comments: {
+                nodes: reviewCommentsPage2,
+                pageInfo: { hasNextPage: false, endCursor: null },
+              },
+            },
+          },
+        },
+      }),
+    });
+
+    const result = await fetchGitHubData(ctx);
+    expect(result.reviewComments.length).toBe(150);
+    // First-page item present
+    expect(result.reviewComments.some((c) => c.body === "inline-0")).toBe(true);
+    // Second-page item present — proves the follow-up paginate call ran
+    expect(result.reviewComments.some((c) => c.body === "inline-149")).toBe(true);
+  });
+});
+
+describe("FetchedData.truncated → prompt banner", () => {
+  // The prompt builder is exercised by its own test file; this assertion
+  // pins the contract that fetcher tests rely on: a truncated payload
+  // produces a non-empty banner string the agent will see.
+  it("buildPrompt includes a WARNING line when fetcher capped a connection", async () => {
+    const { buildPrompt } = await import("../../src/core/prompt-builder");
+    const ctx = makeBotContext({
+      isPR: true,
+      headBranch: "feat/x",
+      baseBranch: "main",
+    });
+    const data = {
+      title: "T",
+      body: "",
+      state: "OPEN",
+      author: "a",
+      comments: [],
+      reviewComments: [],
+      changedFiles: [],
+      headBranch: "feat/x",
+      baseBranch: "main",
+      headSha: "sha",
+      truncated: { comments: true, reviewComments: true },
+    };
+    const prompt = buildPrompt(ctx, data, undefined);
+    expect(prompt).toContain("WARNING: pre-fetched context is incomplete");
+    expect(prompt).toContain("comments");
+    expect(prompt).toContain("review comments");
   });
 });

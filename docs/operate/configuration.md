@@ -33,21 +33,25 @@ Server mode only. If `ORCHESTRATOR_URL` is set, the process runs in daemon mode 
 
 ## HTTP server
 
-| Variable                  | Default                      | Notes                                                                                                   |
-| ------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `PORT`                    | `3000`                       | HTTP webhook listener.                                                                                  |
-| `LOG_LEVEL`               | `info`                       | Pino level: `fatal`, `error`, `warn`, `info`, `debug`, `trace`. `debug` surfaces full webhook payloads. |
-| `NODE_ENV`                | `production`                 | `production`, `development`, `test`.                                                                    |
-| `TRIGGER_PHRASE`          | `@chrisleekr-bot`            | Mention text that triggers the bot. Local dev typically sets `@chrisleekr-bot-dev`.                     |
-| `BOT_APP_LOGIN`           | `chrisleekr-bot[bot]`        | Bot's GitHub login. Used by the loop-prevention check.                                                  |
-| `MAX_CONCURRENT_REQUESTS` | `3`                          | Ceiling on simultaneous Claude executions across the fleet.                                             |
-| `AGENT_TIMEOUT_MS`        | `3600000`                    | Wall-clock budget for one agent execution (60 min). Lower only when the job is bounded.                 |
-| `AGENT_MAX_TURNS`         | unset                        | Optional Claude SDK turn cap. Unset = no cap. Overrides `DEFAULT_MAXTURNS`.                             |
-| `DEFAULT_MAXTURNS`        | unset                        | Process-wide turn cap. Set only if ops needs a hard ceiling.                                            |
-| `CLAUDE_CODE_PATH`        | resolved from `node_modules` | Absolute path to the Claude Code CLI `cli.js`.                                                          |
-| `CLONE_BASE_DIR`          | `/tmp/bot-workspaces`        | Parent directory for per-delivery clones.                                                               |
-| `CLONE_DEPTH`             | `50`                         | Shallow-clone depth. Increase for deeply-diverged PRs.                                                  |
-| `CONTEXT7_API_KEY`        | unset                        | Lifts Context7 MCP rate limiting. No other effect.                                                      |
+| Variable                      | Default                      | Notes                                                                                                                                                                                                                |
+| ----------------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                        | `3000`                       | HTTP webhook listener.                                                                                                                                                                                               |
+| `LOG_LEVEL`                   | `info`                       | Pino level: `fatal`, `error`, `warn`, `info`, `debug`, `trace`. `debug` surfaces full webhook payloads.                                                                                                              |
+| `NODE_ENV`                    | `production`                 | `production`, `development`, `test`.                                                                                                                                                                                 |
+| `TRIGGER_PHRASE`              | `@chrisleekr-bot`            | Mention text that triggers the bot. Local dev typically sets `@chrisleekr-bot-dev`.                                                                                                                                  |
+| `BOT_APP_LOGIN`               | `chrisleekr-bot[bot]`        | Bot's GitHub login. Used by the loop-prevention check.                                                                                                                                                               |
+| `MAX_CONCURRENT_REQUESTS`     | `3`                          | Ceiling on simultaneous Claude executions across the fleet.                                                                                                                                                          |
+| `MAX_FETCHED_COMMENTS`        | `500`                        | Per-PR/issue cap on comments merged from the GraphQL fetcher (`src/core/fetcher.ts`). When the cap fires the fetcher emits `log.warn({ connection: "comments", … })` and sets `FetchedData.truncated.comments=true`. |
+| `MAX_FETCHED_REVIEWS`         | `500`                        | Per-PR cap on reviews merged from the fetcher. Sets `FetchedData.truncated.reviews=true` on cap fire.                                                                                                                |
+| `MAX_FETCHED_REVIEW_COMMENTS` | `500`                        | Per-PR cap on inline review comments merged across all reviews (top-level + nested follow-up paginate). Sets `truncated.reviewComments=true`.                                                                        |
+| `MAX_FETCHED_FILES`           | `500`                        | Per-PR cap on changed files merged from the fetcher. Sets `truncated.changedFiles=true` on cap fire.                                                                                                                 |
+| `AGENT_TIMEOUT_MS`            | `3600000`                    | Wall-clock budget for one agent execution (60 min). Lower only when the job is bounded.                                                                                                                              |
+| `AGENT_MAX_TURNS`             | unset                        | Optional Claude SDK turn cap. Unset = no cap. Overrides `DEFAULT_MAXTURNS`.                                                                                                                                          |
+| `DEFAULT_MAXTURNS`            | unset                        | Process-wide turn cap. Set only if ops needs a hard ceiling.                                                                                                                                                         |
+| `CLAUDE_CODE_PATH`            | resolved from `node_modules` | Absolute path to the Claude Code CLI `cli.js`.                                                                                                                                                                       |
+| `CLONE_BASE_DIR`              | `/tmp/bot-workspaces`        | Parent directory for per-delivery clones.                                                                                                                                                                            |
+| `CLONE_DEPTH`                 | `50`                         | Shallow-clone depth. Increase for deeply-diverged PRs.                                                                                                                                                               |
+| `CONTEXT7_API_KEY`            | unset                        | Lifts Context7 MCP rate limiting. No other effect.                                                                                                                                                                   |
 
 ## Postgres
 

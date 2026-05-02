@@ -1,5 +1,6 @@
 import type { Octokit } from "octokit";
 
+import { config } from "../config";
 import type {
   BotContext,
   ChangedFileData,
@@ -9,18 +10,36 @@ import type {
 } from "../types";
 
 /**
- * GraphQL query for pull request data.
- * Ported from claude-code-action's src/github/api/queries/github.ts
+ * GraphQL queries for pull-request and issue data.
  *
- * LIMITATION: All connection fields use `first: 100` without cursor-based
- * pagination. PRs/issues with >100 comments, files, or reviews will have
- * data silently truncated. This matches the upstream claude-code-action
- * behavior. For very active PRs, consider implementing cursor-based
- * pagination using `pageInfo { hasNextPage endCursor }`.
+ * Pagination strategy: every connection field selects
+ * `pageInfo { hasNextPage endCursor }` and accepts an `$after*: String`
+ * cursor variable so `octokit.graphql.paginate()` (bundled in the
+ * `octokit ^5` package via `@octokit/plugin-paginate-graphql`) can walk
+ * pages automatically. The fetcher stops paginating once a connection
+ * reaches the matching `MAX_FETCHED_*` safety cap, then sets the
+ * corresponding `FetchedData.truncated.*` flag and emits a structured
+ * `log.warn({ connection, fetched, cap })`. The prompt builder surfaces
+ * the truncation flags so the agent does not silently reason over a
+ * partial payload.
+ *
+ * Nested per-review comments are paginated separately: the top-level
+ * `PR_QUERY` fetches the first page of inline comments per review (up to
+ * 100, GitHub's hard maximum) plus a `pageInfo`; if any review reports
+ * `hasNextPage`, `REVIEW_COMMENTS_QUERY` is run per review to walk the
+ * remainder.
+ *
  * See: https://docs.github.com/en/graphql/guides/using-pagination-in-the-graphql-api
  */
 const PR_QUERY = `
-  query($owner: String!, $repo: String!, $number: Int!) {
+  query(
+    $owner: String!
+    $repo: String!
+    $number: Int!
+    $afterFiles: String
+    $afterComments: String
+    $afterReviews: String
+  ) {
     repository(owner: $owner, name: $repo) {
       pullRequest(number: $number) {
         title
@@ -36,15 +55,16 @@ const PR_QUERY = `
         deletions
         state
         commits(first: 100) { totalCount }
-        files(first: 100) {
+        files(first: 100, after: $afterFiles) {
           nodes {
             path
             additions
             deletions
             changeType
           }
+          pageInfo { hasNextPage endCursor }
         }
-        comments(first: 100) {
+        comments(first: 100, after: $afterComments) {
           nodes {
             id
             databaseId
@@ -55,8 +75,9 @@ const PR_QUERY = `
             lastEditedAt
             isMinimized
           }
+          pageInfo { hasNextPage endCursor }
         }
-        reviews(first: 100) {
+        reviews(first: 100, after: $afterReviews) {
           nodes {
             id
             databaseId
@@ -79,19 +100,23 @@ const PR_QUERY = `
                 lastEditedAt
                 isMinimized
               }
+              pageInfo { hasNextPage endCursor }
             }
           }
+          pageInfo { hasNextPage endCursor }
         }
       }
     }
   }
 `;
 
-/**
- * GraphQL query for issue data.
- */
 const ISSUE_QUERY = `
-  query($owner: String!, $repo: String!, $number: Int!) {
+  query(
+    $owner: String!
+    $repo: String!
+    $number: Int!
+    $afterComments: String
+  ) {
     repository(owner: $owner, name: $repo) {
       issue(number: $number) {
         title
@@ -101,7 +126,7 @@ const ISSUE_QUERY = `
         updatedAt
         lastEditedAt
         state
-        comments(first: 100) {
+        comments(first: 100, after: $afterComments) {
           nodes {
             id
             databaseId
@@ -112,6 +137,39 @@ const ISSUE_QUERY = `
             lastEditedAt
             isMinimized
           }
+          pageInfo { hasNextPage endCursor }
+        }
+      }
+    }
+  }
+`;
+
+/**
+ * Walks the remaining pages of a single review's inline comments. Used
+ * after the top-level PR_QUERY when a review reports `hasNextPage` on
+ * its `comments` connection.
+ */
+const REVIEW_COMMENTS_QUERY = `
+  query(
+    $reviewId: ID!
+    $afterComments: String
+  ) {
+    node(id: $reviewId) {
+      ... on PullRequestReview {
+        comments(first: 100, after: $afterComments) {
+          nodes {
+            id
+            databaseId
+            body
+            path
+            line
+            author { login }
+            createdAt
+            updatedAt
+            lastEditedAt
+            isMinimized
+          }
+          pageInfo { hasNextPage endCursor }
         }
       }
     }
@@ -133,14 +191,27 @@ interface GqlReviewComment extends GqlComment {
   line: number | null;
 }
 
+interface GqlChangedFile {
+  path: string;
+  additions: number;
+  deletions: number;
+  changeType: string;
+}
+
+interface GqlPageInfo {
+  hasNextPage: boolean;
+  endCursor: string | null;
+}
+
 interface GqlReview {
+  id: string;
   author: { login: string };
   body: string;
   state: string;
   submittedAt: string;
   updatedAt?: string;
   lastEditedAt?: string;
-  comments: { nodes: GqlReviewComment[] };
+  comments: { nodes: GqlReviewComment[]; pageInfo: GqlPageInfo };
 }
 
 interface PrQueryResult {
@@ -160,16 +231,9 @@ interface PrQueryResult {
       deletions: number;
       state: string;
       commits: { totalCount: number };
-      files: {
-        nodes: {
-          path: string;
-          additions: number;
-          deletions: number;
-          changeType: string;
-        }[];
-      };
-      comments: { nodes: GqlComment[] };
-      reviews: { nodes: GqlReview[] };
+      files: { nodes: GqlChangedFile[]; pageInfo: GqlPageInfo };
+      comments: { nodes: GqlComment[]; pageInfo: GqlPageInfo };
+      reviews: { nodes: GqlReview[]; pageInfo: GqlPageInfo };
     } | null;
   };
 }
@@ -185,9 +249,15 @@ interface IssueQueryResult {
       updatedAt: string;
       lastEditedAt: string | null;
       state: string;
-      comments: { nodes: GqlComment[] };
+      comments: { nodes: GqlComment[]; pageInfo: GqlPageInfo };
     } | null;
   };
+}
+
+interface ReviewCommentsQueryResult {
+  node: {
+    comments: { nodes: GqlReviewComment[]; pageInfo: GqlPageInfo };
+  } | null;
 }
 
 /**
@@ -215,12 +285,6 @@ export function filterByTriggerTime<
   });
 }
 
-/**
- * Fetch PR or issue data via GitHub GraphQL API.
- * Returns a unified FetchedData shape for the formatter.
- *
- * Ported from claude-code-action's fetchGitHubData()
- */
 interface FetchParams {
   octokit: Octokit;
   owner: string;
@@ -230,6 +294,10 @@ interface FetchParams {
   log: BotContext["log"];
 }
 
+/**
+ * Fetch PR or issue data via GitHub GraphQL API.
+ * Returns a unified FetchedData shape for the formatter.
+ */
 export async function fetchGitHubData(ctx: BotContext): Promise<FetchedData> {
   const { octokit, owner, repo, entityNumber, isPR, triggerTimestamp, log } = ctx;
   const params: FetchParams = {
@@ -247,6 +315,67 @@ export async function fetchGitHubData(ctx: BotContext): Promise<FetchedData> {
   return fetchIssueData(params);
 }
 
+/**
+ * Cap the array to `max` elements, return whether truncation occurred,
+ * and emit a structured warning. Connections never grow unbounded — once
+ * the cap is hit we stop merging further pages.
+ */
+function applyCap<T>(
+  items: T[],
+  cap: number,
+  connection: string,
+  log: BotContext["log"],
+): { items: T[]; truncated: boolean } {
+  if (items.length <= cap) return { items, truncated: false };
+  log.warn(
+    { connection, fetched: items.length, cap },
+    `Fetched ${connection} exceeded MAX_FETCHED cap; truncating to ${String(cap)}`,
+  );
+  return { items: items.slice(0, cap), truncated: true };
+}
+
+/**
+ * graphql.paginate response shape for a single connection: every page is
+ * merged into one root by the plugin, but `pageInfo` reflects the last page.
+ * We use the merged `nodes.length` against the originally-requested page
+ * size to detect when the server stopped early.
+ */
+async function paginatePR(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  number: number,
+): Promise<PrQueryResult> {
+  return octokit.graphql.paginate<PrQueryResult>(PR_QUERY, { owner, repo, number });
+}
+
+async function paginateIssue(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  number: number,
+): Promise<IssueQueryResult> {
+  return octokit.graphql.paginate<IssueQueryResult>(ISSUE_QUERY, { owner, repo, number });
+}
+
+/**
+ * Walk the remaining pages of a single review's inline comments after
+ * the top-level PR_QUERY's first page. The plugin can't paginate the
+ * nested connection on its own (it only follows ONE pageInfo), so we
+ * issue a follow-up query keyed on the review's GraphQL node ID.
+ */
+async function fetchRemainingReviewComments(
+  octokit: Octokit,
+  reviewId: string,
+  startCursor: string | null,
+): Promise<GqlReviewComment[]> {
+  const result = await octokit.graphql.paginate<ReviewCommentsQueryResult>(REVIEW_COMMENTS_QUERY, {
+    reviewId,
+    afterComments: startCursor,
+  });
+  return result.node?.comments.nodes ?? [];
+}
+
 async function fetchPRData({
   octokit,
   owner,
@@ -255,28 +384,79 @@ async function fetchPRData({
   triggerTime,
   log,
 }: FetchParams): Promise<FetchedData> {
-  const result = await octokit.graphql<PrQueryResult>(PR_QUERY, {
-    owner,
-    repo,
-    number,
-  });
+  const result = await paginatePR(octokit, owner, repo, number);
 
   const pr = result.repository.pullRequest;
   if (pr === null) throw new Error(`PR #${number} not found`);
 
-  log.info({ prNumber: number }, "Fetched PR data via GraphQL");
+  log.info(
+    {
+      prNumber: number,
+      comments: pr.comments.nodes.length,
+      reviews: pr.reviews.nodes.length,
+      changedFiles: pr.files.nodes.length,
+    },
+    "Fetched PR data via GraphQL",
+  );
 
-  // Filter comments and reviews by trigger time (TOCTOU protection)
+  const truncated: NonNullable<FetchedData["truncated"]> = {};
+
+  // Apply per-connection safety caps. A cap firing means the underlying
+  // connection has more items than the prompt should carry.
+  const cappedComments = applyCap(pr.comments.nodes, config.maxFetchedComments, "comments", log);
+  if (cappedComments.truncated) truncated.comments = true;
+
+  const cappedReviews = applyCap(pr.reviews.nodes, config.maxFetchedReviews, "reviews", log);
+  if (cappedReviews.truncated) truncated.reviews = true;
+
+  const cappedFiles = applyCap(pr.files.nodes, config.maxFetchedFiles, "changedFiles", log);
+  if (cappedFiles.truncated) truncated.changedFiles = true;
+
+  // Walk the nested review-comments pages: any review that returned
+  // hasNextPage on its first page needs a follow-up paginate call. We
+  // only do this for reviews surviving the reviews-cap above, and we
+  // accumulate against the per-review-comments cap once flattened.
+  let allReviewComments: GqlReviewComment[] = [];
+  let reviewCommentsCapHit = false;
+  for (const review of cappedReviews.items) {
+    let merged = review.comments.nodes;
+    // pageInfo is selected by the new query but may be absent when a test
+    // fixture predates the pagination wiring — treat as "no more pages".
+    if (review.comments.pageInfo?.hasNextPage) {
+      const remaining = await fetchRemainingReviewComments(
+        octokit,
+        review.id,
+        review.comments.pageInfo.endCursor,
+      );
+      merged = [...merged, ...remaining];
+    }
+    allReviewComments = [...allReviewComments, ...merged];
+    if (allReviewComments.length >= config.maxFetchedReviewComments) {
+      reviewCommentsCapHit = true;
+      break;
+    }
+  }
+  const cappedReviewComments = applyCap(
+    allReviewComments,
+    config.maxFetchedReviewComments,
+    "reviewComments",
+    log,
+  );
+  if (cappedReviewComments.truncated || reviewCommentsCapHit) {
+    truncated.reviewComments = true;
+  }
+
+  // TOCTOU filter — runs AFTER pagination merges, so the agent sees the
+  // newest pre-trigger items (rather than the oldest 100, which is what
+  // the un-paginated version surfaced).
   const filteredComments = filterByTriggerTime(
-    pr.comments.nodes.filter((c) => !c.isMinimized),
+    cappedComments.items.filter((c) => !c.isMinimized),
     triggerTime,
   );
-
-  // Extract review comments from all reviews
-  const allReviewComments = pr.reviews.nodes.flatMap((r) =>
-    r.comments.nodes.filter((c) => !c.isMinimized),
+  const filteredReviewComments = filterByTriggerTime(
+    cappedReviewComments.items.filter((c) => !c.isMinimized),
+    triggerTime,
   );
-  const filteredReviewComments = filterByTriggerTime(allReviewComments, triggerTime);
 
   const comments: CommentData[] = filteredComments.map((c) => ({
     author: c.author.login,
@@ -298,14 +478,14 @@ async function fetchPRData({
     return comment;
   });
 
-  const changedFiles: ChangedFileData[] = pr.files.nodes.map((f) => ({
+  const changedFiles: ChangedFileData[] = cappedFiles.items.map((f) => ({
     filename: f.path,
     status: f.changeType,
     additions: f.additions,
     deletions: f.deletions,
   }));
 
-  return {
+  const data: FetchedData = {
     title: pr.title,
     body: pr.body ?? "",
     state: pr.state,
@@ -317,6 +497,8 @@ async function fetchPRData({
     baseBranch: pr.baseRefName,
     headSha: pr.headRefOid,
   };
+  if (Object.keys(truncated).length > 0) data.truncated = truncated;
+  return data;
 }
 
 async function fetchIssueData({
@@ -327,19 +509,23 @@ async function fetchIssueData({
   triggerTime,
   log,
 }: FetchParams): Promise<FetchedData> {
-  const result = await octokit.graphql<IssueQueryResult>(ISSUE_QUERY, {
-    owner,
-    repo,
-    number,
-  });
+  const result = await paginateIssue(octokit, owner, repo, number);
 
   const issue = result.repository.issue;
   if (issue === null) throw new Error(`Issue #${number} not found`);
 
-  log.info({ issueNumber: number }, "Fetched issue data via GraphQL");
+  log.info(
+    { issueNumber: number, comments: issue.comments.nodes.length },
+    "Fetched issue data via GraphQL",
+  );
+
+  const truncated: NonNullable<FetchedData["truncated"]> = {};
+
+  const capped = applyCap(issue.comments.nodes, config.maxFetchedComments, "comments", log);
+  if (capped.truncated) truncated.comments = true;
 
   const filteredComments = filterByTriggerTime(
-    issue.comments.nodes.filter((c) => !c.isMinimized),
+    capped.items.filter((c) => !c.isMinimized),
     triggerTime,
   );
 
@@ -349,7 +535,7 @@ async function fetchIssueData({
     createdAt: c.createdAt,
   }));
 
-  return {
+  const data: FetchedData = {
     title: issue.title,
     body: issue.body ?? "",
     state: issue.state,
@@ -358,4 +544,6 @@ async function fetchIssueData({
     reviewComments: [],
     changedFiles: [],
   };
+  if (Object.keys(truncated).length > 0) data.truncated = truncated;
+  return data;
 }
