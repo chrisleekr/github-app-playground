@@ -54,6 +54,13 @@ export interface ApplyMechanicalFixResult {
   readonly applied: boolean;
   readonly commit_sha?: string;
   readonly skip_reason?: string;
+  /**
+   * One-paragraph explanation of WHY the fix was applied (or what was
+   * deferred). Surfaced verbatim in the CR-style reply body so the
+   * reviewer can read the reasoning without opening the commit.
+   * Optional for back-compat; falls back to a generic line.
+   */
+  readonly reasoning?: string;
 }
 
 export interface RunFixThreadInput {
@@ -86,9 +93,12 @@ export async function runFixThread(input: RunFixThreadInput): Promise<FixThreadO
 
   // Conservatism gate (FR-004) — refuse design-discussion requests.
   if (isDesignDiscussion(input.thread.thread_body)) {
-    const body =
-      "I'm not going to push a fix here — the thread reads like a design discussion " +
-      "(FR-004). A maintainer should weigh in before this becomes a code change.";
+    const body = formatReply({
+      status: "_💬 Design discussion_",
+      title: "Refusing to push a mechanical fix.",
+      reasoning:
+        "This thread reads like a design discussion (FR-004). The bot only applies mechanical fixes; design changes are a maintainer call. Please weigh in before this becomes a code change.",
+    });
     const reply = await input.octokit.rest.pulls.createReplyForReviewComment({
       owner: input.owner,
       repo: input.repo,
@@ -109,7 +119,11 @@ export async function runFixThread(input: RunFixThreadInput): Promise<FixThreadO
       repo: input.repo,
       pull_number: input.pr_number,
       comment_id: input.comment_id,
-      body: `I couldn't apply a mechanical fix here — ${reason}.`,
+      body: formatReply({
+        status: "_⏭️ Skipped_",
+        title: "No mechanical fix applied.",
+        reasoning: `I couldn't apply a mechanical fix here — ${reason}.`,
+      }),
     });
     log.info({ reply_id: reply.data.id, reason }, "fix_thread skipped");
     return { kind: "skipped", reply_id: reply.data.id, reason };
@@ -126,7 +140,11 @@ export async function runFixThread(input: RunFixThreadInput): Promise<FixThreadO
       repo: input.repo,
       pull_number: input.pr_number,
       comment_id: input.comment_id,
-      body: `I couldn't apply a mechanical fix here — ${reason}.`,
+      body: formatReply({
+        status: "_⏭️ Skipped_",
+        title: "No mechanical fix applied.",
+        reasoning: `I couldn't apply a mechanical fix here — ${reason}.`,
+      }),
     });
     log.warn({ reply_id: reply.data.id, reason }, "fix_thread skipped (partial success)");
     return { kind: "skipped", reply_id: reply.data.id, reason };
@@ -137,7 +155,15 @@ export async function runFixThread(input: RunFixThreadInput): Promise<FixThreadO
     repo: input.repo,
     pull_number: input.pr_number,
     comment_id: input.comment_id,
-    body: `Pushed mechanical fix as \`${result.commit_sha}\`.`,
+    body: formatReply({
+      status: "_✅ Fix applied_",
+      meta: ` — commit \`${result.commit_sha}\``,
+      title: "Mechanical fix pushed.",
+      reasoning:
+        result.reasoning?.trim() !== undefined && result.reasoning.trim().length > 0
+          ? result.reasoning.trim()
+          : "See the linked commit for the change.",
+    }),
   });
 
   // Best-effort thread resolution (FR-005). A failure here does not undo
@@ -150,4 +176,24 @@ export async function runFixThread(input: RunFixThreadInput): Promise<FixThreadO
 
   log.info({ reply_id: reply.data.id, commit_sha: result.commit_sha }, "fix_thread applied");
   return { kind: "applied", commit_sha: result.commit_sha, reply_id: reply.data.id };
+}
+
+/**
+ * Bot reply formatter — produces the CodeRabbit-style 3-block layout used
+ * across all bot reply surfaces (resolve, review, fix-thread,
+ * explain-thread). Format: `<status>[meta]` line, blank, bold title,
+ * blank, prose reasoning. The same shape is required of the LLM agent
+ * in `buildResolvePrompt` / `buildReviewPrompt`; if you change this
+ * here, mirror the example in those prompts so agent output stays
+ * consistent with handler-emitted output.
+ */
+function formatReply(opts: {
+  readonly status: string;
+  readonly meta?: string;
+  readonly title: string;
+  readonly reasoning: string;
+}): string {
+  const header = opts.meta !== undefined ? `${opts.status}${opts.meta}` : opts.status;
+  const titleLine = `**${opts.title}**`;
+  return [header, "", titleLine, "", opts.reasoning.trim()].join("\n");
 }

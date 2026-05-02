@@ -17,12 +17,33 @@ Fixes failing CI, replies to existing review threads, and pushes new commits.
 For each open reviewer comment the agent classifies as **Valid**, **Partially Valid**, **Invalid**, or **Needs Clarification**, then:
 
 - Fixes valid ones with new commits.
-- Replies to all four classes appropriately.
+- Replies to all four classes appropriately, in the same CodeRabbit-style three-block layout (status line, bold one-line title, prose reasoning).
+- Marks the thread resolved (Valid / Partially Valid only) via the `resolve-review-thread` MCP tool after the reply lands.
 - Fixes failing CI when there is a clear root cause.
+- Polls CI after the final commit and does not exit until all checks return to green (or the per-iteration `FIX_ATTEMPTS_CAP=3` is exhausted, in which case the unresolved failure is recorded under `## Outstanding` in `RESOLVE.md`).
 
 Branch refresh happens first if the head is stale (same logic as `review`).
 
 Reviewer-thread replies are posted via `gh api repos/<owner>/<repo>/pulls/<num>/comments/<id>/replies -X POST`. The bot's `gh` and `git` calls authenticate via `GH_TOKEN` and `GITHUB_TOKEN`, injected from the GitHub App installation token by `buildProviderEnv` in `src/core/executor.ts`.
+
+### Reply body format
+
+All four classifications use the same shape so bot replies look consistent across `resolve`, `review`, `bot:fix-thread`, and `bot:explain-thread`:
+
+```markdown
+<STATUS_LINE>
+
+**<One-line title summarising what was done or concluded.>**
+
+<1–3 sentences of reasoning: why the fix was applied, why the reviewer was right/wrong, or what specifically needs clarifying. Cite file:line where relevant. No diff — the commit link covers that.>
+```
+
+| Classification      | Status line                                   | Resolves thread?     |
+| ------------------- | --------------------------------------------- | -------------------- |
+| Valid               | `_✅ Addressed_ — commit \`<sha>\``           | Yes                  |
+| Partially Valid     | `_⚠️ Partially addressed_ — commit \`<sha>\`` | Yes                  |
+| Invalid             | `_❌ Not applicable_`                         | No (reviewer closes) |
+| Needs Clarification | `_❓ Need clarification_`                     | No                   |
 
 ## Outputs
 

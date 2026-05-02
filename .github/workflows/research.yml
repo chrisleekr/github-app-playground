@@ -55,6 +55,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Pre-install mermaid-cli so the agent can validate every Mermaid
+      # block in /tmp/issue-body.md BEFORE calling `gh issue create`.
+      # See the "Mermaid validation" step in the agent prompt — invalid
+      # diagrams used to slip through and render as a parse error block
+      # on GitHub (see issue #86 for an example), and prompt-only rules
+      # alone did not hold.
+      - name: Install mermaid-cli for diagram validation
+        run: |
+          npm install -g @mermaid-js/mermaid-cli
+          mmdc --version
+
       # User input passed via env: (never interpolated into run:) and validated
       # against a strict regex. Rejected values fall back to a random pick and
       # log only their length, never the value itself.
@@ -99,7 +110,7 @@ jobs:
           claude_args: |
             --model opus
             --max-turns 80
-            --allowedTools "WebSearch,WebFetch,Read,Glob,Grep,Bash(gh issue create:*),Bash(gh issue list:*),Bash(gh label create:*),Bash(git log:*),Bash(cat:*),Bash(date:*)"
+            --allowedTools "WebSearch,WebFetch,Read,Glob,Grep,Bash(gh issue create:*),Bash(gh issue list:*),Bash(gh label create:*),Bash(git log:*),Bash(cat:*),Bash(date:*),Bash(mmdc:*),Bash(awk:*),Bash(grep:*)"
             --disallowedTools ""
           prompt: |
             REPO: ${{ github.repository }}
@@ -190,6 +201,45 @@ jobs:
             Use WebSearch / WebFetch to find current best practices for the
             FOCUS_AREA. Look for: new patterns, libraries, security
             advisories, performance techniques, recent CVEs, etc.
+
+            ### Step 4.5 — Validate every Mermaid block (HARD GATE)
+
+            BEFORE calling `gh issue create`, every ```mermaid``` block in
+            /tmp/issue-body.md MUST validate via `mmdc`. The workflow
+            pre-installs `@mermaid-js/mermaid-cli` so `mmdc` is on PATH.
+
+            Procedure:
+
+            1. As you write the issue body in Step 5, ALSO write each Mermaid
+               block to its own file using a heredoc. Number them
+               sequentially: `/tmp/diag-1.mmd`, `/tmp/diag-2.mmd`, etc. The
+               file content is JUST the diagram — NOT wrapped in
+               ` ```mermaid ` fences.
+            2. Validate each one:
+               `mmdc -i /tmp/diag-N.mmd -o /tmp/diag-N.svg --quiet`
+            3. If `mmdc` exits non-zero: read its stderr, fix the Mermaid
+               source in BOTH /tmp/diag-N.mmd and the corresponding block
+               in /tmp/issue-body.md, then re-run validation. Loop up to
+               3 times per block.
+            4. If a block STILL fails after 3 attempts: DISCARD the issue
+               entirely. Do NOT call `gh issue create`. Output a `## No
+               Finding` block to your final reply with the last `mmdc`
+               stderr — this counts as a "no finding qualified" run.
+            5. Only proceed to `gh issue create` when EVERY block has
+               validated cleanly.
+
+            Common Mermaid pitfalls that trip GitHub's renderer (and
+            `mmdc` agrees with):
+              - `classDef foo fill:#xxx,color:#yyy` — comma between
+                properties is invalid; use SEMICOLON: `fill:#xxx;color:#yyy`.
+              - Literal `\n` inside node labels — use `<br/>`.
+              - Unicode/control characters silently injected by heredoc
+                quoting — if `mmdc` reports a parse error with weird
+                characters in the offending line, re-write the block
+                from scratch using only ASCII for syntax (hex colours
+                and labels are still ASCII).
+              - Parentheses inside node labels.
+              - Node IDs shorter than 3 chars or matching reserved words.
 
             ### Step 5 — Create the issue (3-5 turns)
 
@@ -296,8 +346,24 @@ jobs:
             - ALWAYS include a Mermaid diagram in the body.
             - ALWAYS include BOTH internal AND external references in the
               body.
-            - DO NOT create test or placeholder issues. Only the final issue
-              with the complete body via `--body-file /tmp/issue-body.md`.
+            - DO NOT create test, smoke, or placeholder issues under any
+              circumstances. Specifically forbidden:
+                * Titles containing the literal word "test", "smoke",
+                  "wip", "todo", "delete me", "can-delete", or "scratch".
+                * Single-word or cryptic titles (e.g. "test-can-delete" —
+                  see issue #73 for an example of what NOT to file).
+                * Empty or near-empty bodies (anything under ~500 chars
+                  that is not a fully-templated finding).
+                * "Heredoc test" or "gh CLI smoke test" issues — if you
+                  need to verify your shell environment, use
+                  `gh --version` or `gh auth status`, NEVER `gh issue
+                  create`.
+              Every created issue MUST contain ALL seven sections from
+              the Issue Body Template above, with REAL content in each.
+              The Mermaid validation gate (Step 4.5) is independent of
+              this rule — both must pass.
+            - Only the final issue with the complete body via
+              `--body-file /tmp/issue-body.md`.
 
       # FR-018 (structured outcome log) + FR-015 enforcement (technical guard
       # against the agent creating more than one issue per run). Outcome
