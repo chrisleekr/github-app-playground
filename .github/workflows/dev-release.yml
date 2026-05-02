@@ -93,8 +93,16 @@ jobs:
           # Slug derivation must match release.config.mjs PRERELEASE_TEMPLATE
           # (`name.replace(/[^a-zA-Z0-9-]/g, '-')`).
           BRANCH_SLUG=$(printf '%s' "$BRANCH_REF" | sed 's/[^a-zA-Z0-9-]/-/g')
-          PATTERN="v*-${BRANCH_SLUG}.*"
-          STALE_TAGS=$(git tag -l "$PATTERN" || true)
+          # `git tag -l <glob>` matches via fnmatch(3), where `*` matches
+          # any characters including hyphens with backtracking. For slug
+          # `fix-test`, the glob `v*-fix-test.*` would over-match the
+          # unrelated tag `v0.4.0-fix-some-other-fix-test.1`, deleting
+          # another branch's dev tags. Use an anchored ERE instead so
+          # only this slug's dev pre-release tags match. BRANCH_SLUG is
+          # already sanitised to `[a-zA-Z0-9-]` above (sed strips every-
+          # thing else), so it is safe to interpolate without regex
+          # escaping.
+          STALE_TAGS=$(git tag -l | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+-${BRANCH_SLUG}\.[0-9]+$" || true)
           if [ -z "$STALE_TAGS" ]; then
             echo "No stale dev pre-release tags for branch '${BRANCH_SLUG}'"
             exit 0

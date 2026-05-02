@@ -480,6 +480,40 @@ async function maybeEarlyWakeShipIntent(childRunId: string, log: pino.Logger): P
   const intentId = extractShipIntentId(child.state);
   if (intentId === undefined) return;
 
+  // Resolve intent state up-front: the same terminal-state guard must
+  // gate both the immediate cascade and the deferred-quota retry. A
+  // late failed child can otherwise re-arm an already terminal intent
+  // (`aborted_by_user`, `merged_externally`, …) via the deferred ZADD
+  // and reprocess a session that should stay dead.
+  let intent: Awaited<ReturnType<typeof getIntentById>>;
+  try {
+    intent = await getIntentById(intentId);
+  } catch (err) {
+    log.warn(
+      {
+        err: err instanceof Error ? err.message : String(err),
+        intent_id: intentId,
+        child_run_id: childRunId,
+      },
+      "ship-tickle early-wake skipped — intent lookup failed (non-fatal — periodic scan will catch up)",
+    );
+    return;
+  }
+  if (intent === null) {
+    log.warn(
+      { event: "ship.tickle.skip_terminal", intent_id: intentId, reason: "intent_not_found" },
+      "ship-tickle early-wake skipped — intent not found",
+    );
+    return;
+  }
+  if (isSessionTerminalState(intent.status)) {
+    log.info(
+      { event: "ship.tickle.skip_terminal", intent_id: intentId, status: intent.status },
+      "ship-tickle early-wake skipped — intent already terminal",
+    );
+    return;
+  }
+
   // Only succeeded children fire the cascade immediately. A failed child
   // should not auto-spin the next iteration — the iteration cap would
   // eventually catch it, but until then the loop burns budget on a
@@ -533,25 +567,6 @@ async function maybeEarlyWakeShipIntent(childRunId: string, log: pino.Logger): P
   }
 
   try {
-    const intent = await getIntentById(intentId);
-    if (intent === null) {
-      log.warn(
-        { event: "ship.tickle.skip_terminal", intent_id: intentId, reason: "intent_not_found" },
-        "ship-tickle early-wake skipped — intent not found",
-      );
-      return;
-    }
-    if (isSessionTerminalState(intent.status)) {
-      log.info(
-        {
-          event: "ship.tickle.skip_terminal",
-          intent_id: intentId,
-          status: intent.status,
-        },
-        "ship-tickle early-wake skipped — intent already terminal",
-      );
-      return;
-    }
     const valkey = requireValkeyClient();
     await valkey.send("ZADD", [TICKLE_KEY, "0", intentId]);
     log.info(

@@ -16,7 +16,7 @@
  */
 
 import { SQL } from "bun";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 import type pino from "pino";
 
 const TEST_DATABASE_URL =
@@ -688,52 +688,64 @@ describe.skipIf(sql === null)("orchestrator.onStepComplete", () => {
     const { onStepComplete } = await import("../../src/workflows/orchestrator");
     const { insertIntent } = await import("../../src/db/queries/ship");
 
-    const intent = await insertIntent(
-      {
-        installation_id: 103,
-        owner: "acme",
-        repo: "quota-defer-repo",
-        pr_number: 9400,
-        target_base_sha: "base",
-        target_head_sha: "head",
-        deadline_at: new Date(Date.now() + 60 * 60 * 1000),
-        created_by_user: "tester",
-        tracking_comment_marker: "<!-- ship-intent: pending -->",
-      },
-      requireSql(),
-    );
+    // Freeze the clock at 2026-05-02 10:00:00 UTC so the parsed
+    // "resets 6pm (UTC)" boundary lands at a known instant
+    // (2026-05-02 18:00:30 UTC). Asserting the exact score guards
+    // against silent regression to the +1h fallback or any other
+    // future-but-wrong timestamp.
+    const frozenNowMs = Date.UTC(2026, 4, 2, 10, 0, 0);
+    const expectedRetryAtMs = Date.UTC(2026, 4, 2, 18, 0, 30);
+    const dateNowSpy = spyOn(Date, "now").mockReturnValue(frozenNowMs);
+    try {
+      const intent = await insertIntent(
+        {
+          installation_id: 103,
+          owner: "acme",
+          repo: "quota-defer-repo",
+          pr_number: 9400,
+          target_base_sha: "base",
+          target_head_sha: "head",
+          deadline_at: new Date(frozenNowMs + 60 * 60 * 1000),
+          created_by_user: "tester",
+          tracking_comment_marker: "<!-- ship-intent: pending -->",
+        },
+        requireSql(),
+      );
 
-    const run = await insertQueued(
-      {
-        workflowName: "implement",
-        target: { type: "pr", owner: "acme", repo: "quota-defer-repo", number: 9400 },
-        ownerKind: "orchestrator",
-        ownerId: "test-orchestrator",
-      },
-      requireSql(),
-    );
-    const quotaReason =
-      "Claude Code returned an error result: You've hit your limit · resets 6pm (UTC)";
-    await markFailed(run.id, quotaReason, { shipIntentId: intent.id }, requireSql());
+      const run = await insertQueued(
+        {
+          workflowName: "implement",
+          target: { type: "pr", owner: "acme", repo: "quota-defer-repo", number: 9400 },
+          ownerKind: "orchestrator",
+          ownerId: "test-orchestrator",
+        },
+        requireSql(),
+      );
+      const quotaReason =
+        "Claude Code returned an error result: You've hit your limit · resets 6pm (UTC)";
+      await markFailed(run.id, quotaReason, { shipIntentId: intent.id }, requireSql());
 
-    mockValkeySend.mockClear();
-    await onStepComplete({ octokit: {} as never, logger: silentLogger() }, run.id, {
-      status: "failed",
-      reason: quotaReason,
-    });
+      mockValkeySend.mockClear();
+      await onStepComplete({ octokit: {} as never, logger: silentLogger() }, run.id, {
+        status: "failed",
+        reason: quotaReason,
+      });
 
-    const zaddCalls = mockValkeySend.mock.calls.filter(
-      (c) => c[0] === "ZADD" && Array.isArray(c[1]) && c[1][0] === "ship:tickle",
-    );
-    expect(zaddCalls).toHaveLength(1);
-    const args = zaddCalls[0]?.[1] as [string, string, string];
-    expect(args[0]).toBe("ship:tickle");
-    expect(args[2]).toBe(intent.id);
-    // Score is a future-ms timestamp at the next 18:00:30 UTC boundary,
-    // not 0 (which is the immediate-cascade score).
-    const score = Number(args[1]);
-    expect(Number.isFinite(score)).toBe(true);
-    expect(score).toBeGreaterThan(Date.now());
+      const zaddCalls = mockValkeySend.mock.calls.filter(
+        (c) => c[0] === "ZADD" && Array.isArray(c[1]) && c[1][0] === "ship:tickle",
+      );
+      expect(zaddCalls).toHaveLength(1);
+      const args = zaddCalls[0]?.[1] as [string, string, string];
+      expect(args[0]).toBe("ship:tickle");
+      expect(args[2]).toBe(intent.id);
+      // Exact assertion: the parsed reset path must produce
+      // 2026-05-02T18:00:30Z (== expectedRetryAtMs). A regression to the
+      // +1h fallback (frozenNowMs + 3600_000) or any other future-ish
+      // value would silently pass an "in the future" check.
+      expect(Number(args[1])).toBe(expectedRetryAtMs);
+    } finally {
+      dateNowSpy.mockRestore();
+    }
   });
 });
 
