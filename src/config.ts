@@ -201,12 +201,16 @@ const configSchema = z
     maxConcurrentRequests: z.coerce.number().int().positive().default(3),
 
     // Per-connection safety caps applied during PR/issue GraphQL fetches in
-    // src/core/fetcher.ts. The fetcher uses cursor-based pagination (octokit
-    // graphql.paginate) but stops walking pages once any one of these caps is
-    // reached, then sets the matching flag on `FetchedData.truncated` and
-    // emits a structured `log.warn({ connection, fetched, cap })`. Defaults
-    // are sized so a 99th-percentile PR/issue still fits without truncation;
-    // raise only when the prompt budget can absorb the larger context.
+    // src/core/fetcher.ts. The fetcher walks every page via cursor-based
+    // pagination (octokit graphql.paginate) and then trims the merged result
+    // to the most recent `cap` items — newest survives, oldest drops. When
+    // truncation fires the matching flag on `FetchedData.truncated` is set
+    // and a structured `log.warn({ connection, fetched, cap })` is emitted.
+    // Defaults are sized so a 99th-percentile PR/issue still fits without
+    // truncation; raise only when the prompt budget can absorb the larger
+    // context. NOTE: pagination is bounded by GitHub API limits, not by
+    // these caps — operators tuning for cost should prefer narrower entity
+    // selection over a smaller cap.
     maxFetchedComments: z.coerce.number().int().positive().default(500),
     maxFetchedReviews: z.coerce.number().int().positive().default(500),
     maxFetchedReviewComments: z.coerce.number().int().positive().default(500),

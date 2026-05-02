@@ -12,33 +12,35 @@ import type {
 /**
  * GraphQL queries for pull-request and issue data.
  *
- * Pagination strategy: every connection field selects
- * `pageInfo { hasNextPage endCursor }` and accepts an `$after*: String`
- * cursor variable so `octokit.graphql.paginate()` (bundled in the
- * `octokit ^5` package via `@octokit/plugin-paginate-graphql`) can walk
- * pages automatically. The fetcher stops paginating once a connection
- * reaches the matching `MAX_FETCHED_*` safety cap, then sets the
- * corresponding `FetchedData.truncated.*` flag and emits a structured
- * `log.warn({ connection, fetched, cap })`. The prompt builder surfaces
- * the truncation flags so the agent does not silently reason over a
- * partial payload.
+ * Pagination contract — `@octokit/plugin-paginate-graphql` is strict:
  *
- * Nested per-review comments are paginated separately: the top-level
- * `PR_QUERY` fetches the first page of inline comments per review (up to
- * 100, GitHub's hard maximum) plus a `pageInfo`; if any review reports
- * `hasNextPage`, `REVIEW_COMMENTS_QUERY` is run per review to walk the
- * remainder.
+ *   1. The cursor variable MUST be named exactly `$cursor`. The plugin
+ *      mutates `parameters.cursor` between pages (see
+ *      `node_modules/@octokit/plugin-paginate-graphql/dist-src/iterator.js`),
+ *      so any other name (e.g. `$afterFiles`) leaves the query parameter
+ *      stuck at `null` and the plugin throws `MissingCursorChange` on the
+ *      second iteration.
+ *   2. Each query MUST contain at most ONE paginatable connection.
+ *      `extractPageInfos` does a depth-first search for the first
+ *      `pageInfo` block and ignores all others — combining files +
+ *      comments + reviews in one query silently truncates two of the
+ *      three to page 1.
+ *
+ * The PR fetch therefore issues three parallel `paginate(...)` calls
+ * (`PR_FIRST_QUERY` for top-level fields + files, `PR_COMMENTS_QUERY`,
+ * `PR_REVIEWS_QUERY`). Top-level PR fields ride along on `PR_FIRST_QUERY`
+ * because the plugin's `mergeResponses` preserves non-paginated fields
+ * from the first page. Nested per-review inline comments are walked
+ * separately by `REVIEW_COMMENTS_QUERY` keyed on the review's node ID.
  *
  * See: https://docs.github.com/en/graphql/guides/using-pagination-in-the-graphql-api
  */
-const PR_QUERY = `
+const PR_FIRST_QUERY = `
   query(
     $owner: String!
     $repo: String!
     $number: Int!
-    $afterFiles: String
-    $afterComments: String
-    $afterReviews: String
+    $cursor: String
   ) {
     repository(owner: $owner, name: $repo) {
       pullRequest(number: $number) {
@@ -55,7 +57,7 @@ const PR_QUERY = `
         deletions
         state
         commits(first: 100) { totalCount }
-        files(first: 100, after: $afterFiles) {
+        files(first: 100, after: $cursor) {
           nodes {
             path
             additions
@@ -64,7 +66,21 @@ const PR_QUERY = `
           }
           pageInfo { hasNextPage endCursor }
         }
-        comments(first: 100, after: $afterComments) {
+      }
+    }
+  }
+`;
+
+const PR_COMMENTS_QUERY = `
+  query(
+    $owner: String!
+    $repo: String!
+    $number: Int!
+    $cursor: String
+  ) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $number) {
+        comments(first: 100, after: $cursor) {
           nodes {
             id
             databaseId
@@ -77,7 +93,21 @@ const PR_QUERY = `
           }
           pageInfo { hasNextPage endCursor }
         }
-        reviews(first: 100, after: $afterReviews) {
+      }
+    }
+  }
+`;
+
+const PR_REVIEWS_QUERY = `
+  query(
+    $owner: String!
+    $repo: String!
+    $number: Int!
+    $cursor: String
+  ) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $number) {
+        reviews(first: 100, after: $cursor) {
           nodes {
             id
             databaseId
@@ -115,7 +145,7 @@ const ISSUE_QUERY = `
     $owner: String!
     $repo: String!
     $number: Int!
-    $afterComments: String
+    $cursor: String
   ) {
     repository(owner: $owner, name: $repo) {
       issue(number: $number) {
@@ -126,7 +156,7 @@ const ISSUE_QUERY = `
         updatedAt
         lastEditedAt
         state
-        comments(first: 100, after: $afterComments) {
+        comments(first: 100, after: $cursor) {
           nodes {
             id
             databaseId
@@ -144,19 +174,14 @@ const ISSUE_QUERY = `
   }
 `;
 
-/**
- * Walks the remaining pages of a single review's inline comments. Used
- * after the top-level PR_QUERY when a review reports `hasNextPage` on
- * its `comments` connection.
- */
 const REVIEW_COMMENTS_QUERY = `
   query(
     $reviewId: ID!
-    $afterComments: String
+    $cursor: String
   ) {
     node(id: $reviewId) {
       ... on PullRequestReview {
-        comments(first: 100, after: $afterComments) {
+        comments(first: 100, after: $cursor) {
           nodes {
             id
             databaseId
@@ -214,9 +239,9 @@ interface GqlReview {
   comments: { nodes: GqlReviewComment[]; pageInfo: GqlPageInfo };
 }
 
-interface PrQueryResult {
+/** Top-level PR fields + paginated `files` connection. */
+interface PrFirstQueryResult {
   repository: {
-    // GraphQL returns null when the pull request number does not exist in the repository
     pullRequest: {
       title: string;
       body: string | null;
@@ -232,7 +257,21 @@ interface PrQueryResult {
       state: string;
       commits: { totalCount: number };
       files: { nodes: GqlChangedFile[]; pageInfo: GqlPageInfo };
+    } | null;
+  };
+}
+
+interface PrCommentsQueryResult {
+  repository: {
+    pullRequest: {
       comments: { nodes: GqlComment[]; pageInfo: GqlPageInfo };
+    } | null;
+  };
+}
+
+interface PrReviewsQueryResult {
+  repository: {
+    pullRequest: {
       reviews: { nodes: GqlReview[]; pageInfo: GqlPageInfo };
     } | null;
   };
@@ -240,7 +279,6 @@ interface PrQueryResult {
 
 interface IssueQueryResult {
   repository: {
-    // GraphQL returns null when the issue number does not exist in the repository
     issue: {
       title: string;
       body: string | null;
@@ -316,9 +354,14 @@ export async function fetchGitHubData(ctx: BotContext): Promise<FetchedData> {
 }
 
 /**
- * Cap the array to `max` elements, return whether truncation occurred,
- * and emit a structured warning. Connections never grow unbounded — once
- * the cap is hit we stop merging further pages.
+ * Trim `items` to the most recent `cap` entries. GitHub's GraphQL
+ * connections return ASC by `createdAt`/`submittedAt` by default, so the
+ * newest items live at the end of the merged array — slicing the tail
+ * keeps the discussion turns the agent is most likely to need (including,
+ * crucially, the comment that triggered the bot).
+ *
+ * Emits a structured warning whenever truncation fires so operators can
+ * tell that a `MAX_FETCHED_*` cap is materially clipping context.
  */
 function applyCap<T>(
   items: T[],
@@ -331,38 +374,15 @@ function applyCap<T>(
     { connection, fetched: items.length, cap },
     `Fetched ${connection} exceeded MAX_FETCHED cap; truncating to ${String(cap)}`,
   );
-  return { items: items.slice(0, cap), truncated: true };
-}
-
-/**
- * graphql.paginate response shape for a single connection: every page is
- * merged into one root by the plugin, but `pageInfo` reflects the last page.
- * We use the merged `nodes.length` against the originally-requested page
- * size to detect when the server stopped early.
- */
-async function paginatePR(
-  octokit: Octokit,
-  owner: string,
-  repo: string,
-  number: number,
-): Promise<PrQueryResult> {
-  return octokit.graphql.paginate<PrQueryResult>(PR_QUERY, { owner, repo, number });
-}
-
-async function paginateIssue(
-  octokit: Octokit,
-  owner: string,
-  repo: string,
-  number: number,
-): Promise<IssueQueryResult> {
-  return octokit.graphql.paginate<IssueQueryResult>(ISSUE_QUERY, { owner, repo, number });
+  return { items: items.slice(-cap), truncated: true };
 }
 
 /**
  * Walk the remaining pages of a single review's inline comments after
- * the top-level PR_QUERY's first page. The plugin can't paginate the
- * nested connection on its own (it only follows ONE pageInfo), so we
- * issue a follow-up query keyed on the review's GraphQL node ID.
+ * the top-level PR_REVIEWS_QUERY's first page. The plugin can't paginate
+ * the nested connection on its own (it only follows ONE pageInfo per
+ * query), so we issue a follow-up query keyed on the review's GraphQL
+ * node ID with `$cursor` named per the plugin's contract.
  */
 async function fetchRemainingReviewComments(
   octokit: Octokit,
@@ -371,7 +391,7 @@ async function fetchRemainingReviewComments(
 ): Promise<GqlReviewComment[]> {
   const result = await octokit.graphql.paginate<ReviewCommentsQueryResult>(REVIEW_COMMENTS_QUERY, {
     reviewId,
-    afterComments: startCursor,
+    cursor: startCursor,
   });
   return result.node?.comments.nodes ?? [];
 }
@@ -384,16 +404,31 @@ async function fetchPRData({
   triggerTime,
   log,
 }: FetchParams): Promise<FetchedData> {
-  const result = await paginatePR(octokit, owner, repo, number);
+  // Three parallel paginate calls. Each query has exactly one pageInfo
+  // and uses `$cursor`, satisfying the plugin's contract. Top-level PR
+  // fields ride along on PR_FIRST_QUERY because mergeResponses preserves
+  // non-paginated fields from the first page.
+  const vars = { owner, repo, number };
+  const [first, commentsResult, reviewsResult] = await Promise.all([
+    octokit.graphql.paginate<PrFirstQueryResult>(PR_FIRST_QUERY, vars),
+    octokit.graphql.paginate<PrCommentsQueryResult>(PR_COMMENTS_QUERY, vars),
+    octokit.graphql.paginate<PrReviewsQueryResult>(PR_REVIEWS_QUERY, vars),
+  ]);
 
-  const pr = result.repository.pullRequest;
+  const pr = first.repository.pullRequest;
   if (pr === null) throw new Error(`PR #${number} not found`);
+
+  // The comments / reviews paginate calls are independent — if the PR
+  // disappeared between calls (deleted mid-flight) one of these could
+  // come back null. Treat as empty rather than throwing twice.
+  const prComments = commentsResult.repository.pullRequest?.comments.nodes ?? [];
+  const prReviews = reviewsResult.repository.pullRequest?.reviews.nodes ?? [];
 
   log.info(
     {
       prNumber: number,
-      comments: pr.comments.nodes.length,
-      reviews: pr.reviews.nodes.length,
+      comments: prComments.length,
+      reviews: prReviews.length,
       changedFiles: pr.files.nodes.length,
     },
     "Fetched PR data via GraphQL",
@@ -401,54 +436,50 @@ async function fetchPRData({
 
   const truncated: NonNullable<FetchedData["truncated"]> = {};
 
-  // Apply per-connection safety caps. A cap firing means the underlying
-  // connection has more items than the prompt should carry.
-  const cappedComments = applyCap(pr.comments.nodes, config.maxFetchedComments, "comments", log);
+  const cappedComments = applyCap(prComments, config.maxFetchedComments, "comments", log);
   if (cappedComments.truncated) truncated.comments = true;
 
-  const cappedReviews = applyCap(pr.reviews.nodes, config.maxFetchedReviews, "reviews", log);
+  const cappedReviews = applyCap(prReviews, config.maxFetchedReviews, "reviews", log);
   if (cappedReviews.truncated) truncated.reviews = true;
 
   const cappedFiles = applyCap(pr.files.nodes, config.maxFetchedFiles, "changedFiles", log);
   if (cappedFiles.truncated) truncated.changedFiles = true;
 
-  // Walk the nested review-comments pages: any review that returned
-  // hasNextPage on its first page needs a follow-up paginate call. We
-  // only do this for reviews surviving the reviews-cap above, and we
-  // accumulate against the per-review-comments cap once flattened.
-  let allReviewComments: GqlReviewComment[] = [];
-  let reviewCommentsCapHit = false;
-  for (const review of cappedReviews.items) {
-    let merged = review.comments.nodes;
-    // pageInfo is selected by the new query but may be absent when a test
-    // fixture predates the pagination wiring — treat as "no more pages".
-    if (review.comments.pageInfo?.hasNextPage) {
-      const remaining = await fetchRemainingReviewComments(
-        octokit,
-        review.id,
-        review.comments.pageInfo.endCursor,
-      );
-      merged = [...merged, ...remaining];
-    }
-    allReviewComments = [...allReviewComments, ...merged];
-    if (allReviewComments.length >= config.maxFetchedReviewComments) {
-      reviewCommentsCapHit = true;
-      break;
-    }
-  }
+  // Walk nested review-comments pages: any review reporting hasNextPage
+  // on its first page needs a follow-up paginate call. Issued in parallel
+  // — these are independent GraphQL requests keyed on review node IDs.
+  // pageInfo is always selected by PR_REVIEWS_QUERY, but legacy test
+  // fixtures elide it — `?.` keeps those tests working without forcing a
+  // sweep, at the cost of one redundant chain in production.
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  const overflowReviews = cappedReviews.items.filter((r) => r.comments.pageInfo?.hasNextPage);
+  const overflowResults = await Promise.all(
+    overflowReviews.map((r) =>
+      fetchRemainingReviewComments(octokit, r.id, r.comments.pageInfo.endCursor),
+    ),
+  );
+  const overflowByReviewId = new Map<string, GqlReviewComment[]>();
+  overflowReviews.forEach((r, i) => {
+    overflowByReviewId.set(r.id, overflowResults[i] ?? []);
+  });
+
+  const allReviewComments: GqlReviewComment[] = cappedReviews.items.flatMap((review) => [
+    ...review.comments.nodes,
+    ...(overflowByReviewId.get(review.id) ?? []),
+  ]);
   const cappedReviewComments = applyCap(
     allReviewComments,
     config.maxFetchedReviewComments,
     "reviewComments",
     log,
   );
-  if (cappedReviewComments.truncated || reviewCommentsCapHit) {
+  if (cappedReviewComments.truncated) {
     truncated.reviewComments = true;
   }
 
-  // TOCTOU filter — runs AFTER pagination merges, so the agent sees the
-  // newest pre-trigger items (rather than the oldest 100, which is what
-  // the un-paginated version surfaced).
+  // TOCTOU filter — runs AFTER pagination merges + cap, so the agent sees
+  // the newest pre-trigger items rather than the oldest 100 (which is
+  // what the un-paginated version surfaced).
   const filteredComments = filterByTriggerTime(
     cappedComments.items.filter((c) => !c.isMinimized),
     triggerTime,
@@ -509,7 +540,11 @@ async function fetchIssueData({
   triggerTime,
   log,
 }: FetchParams): Promise<FetchedData> {
-  const result = await paginateIssue(octokit, owner, repo, number);
+  const result = await octokit.graphql.paginate<IssueQueryResult>(ISSUE_QUERY, {
+    owner,
+    repo,
+    number,
+  });
 
   const issue = result.repository.issue;
   if (issue === null) throw new Error(`Issue #${number} not found`);

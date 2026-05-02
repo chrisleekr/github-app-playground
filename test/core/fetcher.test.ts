@@ -688,6 +688,16 @@ describe("fetchGitHubData — pagination merge", () => {
     expect(result.truncated?.comments).toBe(true);
     // Cap default is 500 — the merged result should be exactly 500.
     expect(result.comments.length).toBe(500);
+    // The cap MUST keep the newest items, not the oldest. Comments arrive
+    // ASC by createdAt from the GraphQL connection, so dropping the head
+    // (the regression this guards against) would silently lose the most
+    // recent 100 comments — including, very likely, the trigger comment.
+    // After the cap, the surviving range is users 100..599; user-0 must be
+    // gone and user-599 must be present.
+    expect(result.comments.some((c) => c.author === "user-0")).toBe(false);
+    expect(result.comments.some((c) => c.author === "user-599")).toBe(true);
+    expect(result.comments[0]?.author).toBe("user-100");
+    expect(result.comments[result.comments.length - 1]?.author).toBe("user-599");
     // log.warn must have been called with the structured shape callers rely on.
     const warnCalls = log.warn.mock.calls as [Record<string, unknown>, string][];
     const capWarn = warnCalls.find((c) => c[0]["connection"] === "comments");
@@ -787,6 +797,210 @@ describe("fetchGitHubData — pagination merge", () => {
     expect(result.reviewComments.some((c) => c.body === "inline-0")).toBe(true);
     // Second-page item present — proves the follow-up paginate call ran
     expect(result.reviewComments.some((c) => c.body === "inline-149")).toBe(true);
+  });
+});
+
+describe("fetchGitHubData — real paginate-graphql plugin contract", () => {
+  // These tests wire the actual `@octokit/plugin-paginate-graphql` against a
+  // stubbed `octokit.graphql` so the plugin's contract is enforced — the
+  // canned-merged-response path used elsewhere cannot tell a working
+  // implementation apart from one that violates the cursor-name or
+  // single-pageInfo invariants. If the queries in src/core/fetcher.ts ever
+  // regress on either invariant, the plugin throws here.
+  function commentsPage(
+    n: number,
+    startIndex: number,
+    pageInfo: { hasNextPage: boolean; endCursor: string | null },
+  ): {
+    repository: {
+      issue: {
+        title: string;
+        body: string;
+        author: { login: string };
+        createdAt: string;
+        updatedAt: string;
+        lastEditedAt: null;
+        state: string;
+        comments: {
+          nodes: ReturnType<typeof buildIssueComments>;
+          pageInfo: typeof pageInfo;
+        };
+      };
+    };
+  } {
+    const all = buildIssueComments(startIndex + n, startIndex + n);
+    return {
+      repository: {
+        issue: {
+          title: "T",
+          body: "B",
+          author: { login: "u" },
+          createdAt: "2025-04-30T00:00:00Z",
+          updatedAt: "2025-04-30T00:00:00Z",
+          lastEditedAt: null,
+          state: "OPEN",
+          comments: {
+            nodes: all.slice(startIndex, startIndex + n),
+            pageInfo,
+          },
+        },
+      },
+    };
+  }
+
+  it("walks issue comments across two real pages via $cursor", async () => {
+    // Page 1 returns 100 comments + hasNextPage=true; page 2 returns 50.
+    // The real plugin will only advance the cursor if the query declares
+    // `$cursor` (renaming it to `$afterComments` would deadlock on an
+    // unchanging cursor and throw `MissingCursorChange`).
+    const ctx = makeBotContext({
+      isPR: false,
+      triggerTimestamp: new Date(Date.UTC(2099, 0, 1)).toISOString(),
+      octokit: makeOctokit({
+        useRealPaginatePlugin: true,
+        graphqlPagesByQuery: {
+          "issue(number:": [
+            commentsPage(100, 0, { hasNextPage: true, endCursor: "cursor-1" }),
+            commentsPage(50, 100, { hasNextPage: false, endCursor: null }),
+          ],
+        },
+      }),
+    });
+
+    const result = await fetchGitHubData(ctx);
+    expect(result.comments.length).toBe(150);
+    // Page-1 first item AND page-2 last item must both be present —
+    // proves both pages were merged.
+    expect(result.comments[0]?.author).toBe("user-0");
+    expect(result.comments[149]?.author).toBe("user-149");
+  });
+
+  it("walks PR connections (files/comments/reviews) independently across real pages", async () => {
+    // Three independent paginate calls each chain their own `$cursor`.
+    // If the queries ever collapse multiple pageInfo blocks into one,
+    // the second connection silently truncates to page 1 — this test
+    // surfaces that.
+    const filesP1 = Array.from({ length: 100 }, (_, i) => ({
+      path: `f${String(i)}.ts`,
+      additions: 1,
+      deletions: 0,
+      changeType: "MODIFIED",
+    }));
+    const filesP2 = Array.from({ length: 30 }, (_, i) => ({
+      path: `f${String(100 + i)}.ts`,
+      additions: 1,
+      deletions: 0,
+      changeType: "ADDED",
+    }));
+    const commentsP1 = Array.from({ length: 100 }, (_, i) => ({
+      body: `pr-comment-${String(i)}`,
+      author: { login: `u${String(i)}` },
+      createdAt: "2025-05-01T00:00:00Z",
+      updatedAt: "2025-05-01T00:00:00Z",
+      lastEditedAt: null,
+      isMinimized: false,
+    }));
+    const commentsP2 = Array.from({ length: 20 }, (_, i) => ({
+      body: `pr-comment-${String(100 + i)}`,
+      author: { login: `u${String(100 + i)}` },
+      createdAt: "2025-05-01T00:00:00Z",
+      updatedAt: "2025-05-01T00:00:00Z",
+      lastEditedAt: null,
+      isMinimized: false,
+    }));
+
+    const prBaseP1 = {
+      repository: {
+        pullRequest: {
+          title: "Big PR",
+          body: "PR body",
+          author: { login: "dev" },
+          baseRefName: "main",
+          headRefName: "feat/x",
+          headRefOid: "sha",
+          createdAt: "2025-05-01T00:00:00Z",
+          updatedAt: "2025-05-01T00:00:00Z",
+          lastEditedAt: null,
+          additions: 0,
+          deletions: 0,
+          state: "OPEN",
+          commits: { totalCount: 1 },
+          files: { nodes: filesP1, pageInfo: { hasNextPage: true, endCursor: "files-1" } },
+        },
+      },
+    };
+    const prBaseP2 = {
+      repository: {
+        pullRequest: {
+          title: "Big PR",
+          body: "PR body",
+          author: { login: "dev" },
+          baseRefName: "main",
+          headRefName: "feat/x",
+          headRefOid: "sha",
+          createdAt: "2025-05-01T00:00:00Z",
+          updatedAt: "2025-05-01T00:00:00Z",
+          lastEditedAt: null,
+          additions: 0,
+          deletions: 0,
+          state: "OPEN",
+          commits: { totalCount: 1 },
+          files: { nodes: filesP2, pageInfo: { hasNextPage: false, endCursor: null } },
+        },
+      },
+    };
+
+    const ctx = makeBotContext({
+      isPR: true,
+      triggerTimestamp: new Date(Date.UTC(2099, 0, 1)).toISOString(),
+      octokit: makeOctokit({
+        useRealPaginatePlugin: true,
+        graphqlPagesByQuery: {
+          // PR_FIRST_QUERY — `commits(first: 100)` is unique to it.
+          "commits(first: 100)": [prBaseP1, prBaseP2],
+          // PR_COMMENTS_QUERY — uses `comments(first: 100, after: $cursor)`.
+          "comments(first: 100, after: $cursor)": [
+            {
+              repository: {
+                pullRequest: {
+                  comments: {
+                    nodes: commentsP1,
+                    pageInfo: { hasNextPage: true, endCursor: "comments-1" },
+                  },
+                },
+              },
+            },
+            {
+              repository: {
+                pullRequest: {
+                  comments: {
+                    nodes: commentsP2,
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                  },
+                },
+              },
+            },
+          ],
+          // PR_REVIEWS_QUERY — single page, empty.
+          "reviews(first: 100, after: $cursor)": [
+            {
+              repository: {
+                pullRequest: {
+                  reviews: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+                },
+              },
+            },
+          ],
+        },
+      }),
+    });
+
+    const result = await fetchGitHubData(ctx);
+    expect(result.changedFiles.length).toBe(130);
+    expect(result.comments.length).toBe(120);
+    // Both page boundaries crossed — last item of each connection survived.
+    expect(result.changedFiles[129]?.filename).toBe("f129.ts");
+    expect(result.comments[119]?.body).toBe("pr-comment-119");
   });
 });
 

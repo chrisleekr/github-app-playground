@@ -11,6 +11,7 @@
  * structures only — no module-mock side effects.
  */
 
+import { paginateGraphQL } from "@octokit/plugin-paginate-graphql";
 import { mock } from "bun:test";
 import type { Octokit } from "octokit";
 
@@ -60,11 +61,19 @@ export function makeSilentLogger(): MockLogger {
  *   does in production: it merges every page into a single object and hands
  *   that to the caller, so tests need only describe the merged result, not
  *   per-page chunks.
+ * - `useRealPaginatePlugin` wires the real `@octokit/plugin-paginate-graphql`
+ *   on top of the mocked `graphql()` so cursor-name + single-pageInfo
+ *   contract violations actually throw. Use with `graphqlPagesByQuery` to
+ *   describe per-page chunks the stubbed `graphql()` returns; the plugin
+ *   walks them via the `cursor` parameter exactly as it does in production.
  */
 export interface MakeOctokitOptions {
   graphqlResponse?: unknown;
   graphqlError?: Error;
   graphqlPaginateResponses?: Record<string, unknown>;
+  useRealPaginatePlugin?: boolean;
+  /** Per-query page sequences. Keys are matched as substrings of the query string. */
+  graphqlPagesByQuery?: Record<string, unknown[]>;
 }
 
 /**
@@ -76,6 +85,42 @@ export interface MakeOctokitOptions {
  * after construction.
  */
 export function makeOctokit(opts: MakeOctokitOptions = {}): Octokit {
+  // Real-plugin path: stubbed `graphql()` returns one page at a time per
+  // query, the real `@octokit/plugin-paginate-graphql` walks the cursor.
+  // This catches contract regressions (wrong `$cursor` name, multiple
+  // `pageInfo` blocks per query) that the canned-merged-response path
+  // cannot distinguish from a correct implementation.
+  if (opts.useRealPaginatePlugin === true) {
+    const pageIndexByKey = new Map<string, number>();
+    const graphqlFn = mock((query: string) => {
+      if (opts.graphqlError !== undefined) {
+        return Promise.reject(opts.graphqlError);
+      }
+      if (opts.graphqlPagesByQuery !== undefined) {
+        for (const [key, pages] of Object.entries(opts.graphqlPagesByQuery)) {
+          if (typeof query === "string" && query.includes(key)) {
+            const idx = pageIndexByKey.get(key) ?? 0;
+            const page = pages[Math.min(idx, pages.length - 1)];
+            pageIndexByKey.set(key, idx + 1);
+            return Promise.resolve(page);
+          }
+        }
+      }
+      return Promise.resolve(opts.graphqlResponse);
+    }) as unknown as Octokit["graphql"];
+    const stub = { graphql: graphqlFn } as unknown as Octokit;
+    const { graphql: paginatingGraphql } = paginateGraphQL(stub);
+    return {
+      graphql: paginatingGraphql,
+      rest: {
+        issues: {
+          createComment: mock(() => Promise.resolve({ data: { id: 1 } })),
+          listComments: mock(() => Promise.resolve({ data: [] })),
+        },
+      },
+    } as unknown as Octokit;
+  }
+
   const graphqlFn = mock((query: string) => {
     if (opts.graphqlError !== undefined) {
       return Promise.reject(opts.graphqlError);
