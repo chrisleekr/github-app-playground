@@ -2,6 +2,18 @@
 
 Structured JSON logs via [pino](https://getpino.io) are the primary signal. Every dispatch decision and every pipeline step carries a `deliveryId` so you can reconstruct a request end-to-end from a single log query. When `DATABASE_URL` is configured, the same information is persisted to `executions` and `triage_results` for aggregate reporting.
 
+## Log redaction
+
+The exported `logger` in `src/logger.ts` is the canonical chokepoint for secret scrubbing — every child logger inherits its `redact.paths` list and its custom `err` serializer, so individual call sites do not need to remember to scrub. Two layers run on every emitted line:
+
+1. **Path-based redaction** — the exported `REDACT_PATHS` constant in `src/logger.ts` lists every field pino should replace with `[Redacted]` before the JSON is serialised. Paths covered: `authorization` and its `*.authorization` / `headers.authorization` / `*.headers.authorization` / `req.headers.authorization` / `request.headers.authorization` variants; the webhook signature header `x-hub-signature-256` (also wildcard-prefixed); `response.data.token`; and the named credential fields `token`, `installationToken`, `privateKey`, `webhookSecret`, `anthropicApiKey`, `claudeCodeOauthToken`, `daemonAuthToken`, `awsSecretAccessKey`, `awsSessionToken`, `awsBearerTokenBedrock`, `*.password`. The list is `Object.freeze`d so an accidental `push` from another module cannot silently weaken the policy.
+
+2. **`errSerializer` scrubbing** — the exported `errSerializer` in `src/logger.ts` defers to pino's `stdSerializers.err` and then runs the result's `message`, `stack`, `request.headers`, and `response.data` through `redactGitHubTokens` (`src/utils/sanitize.ts`) plus an inline credential-URL scrubber that mirrors `redactValkeyUrl` (`src/orchestrator/valkey.ts`). The walker recurses through nested objects/arrays and replaces any key matching the sensitive-field-name set wholesale, so `err.response.data.meta.token` and `err.request.headers.forwarded.authorization` are caught at any depth — this is necessary because pino's path-based rules cannot match four-or-more segments deep on `err.*`. It also catches `ghs_…` installation tokens and App JWTs echoed inside `err.message` / `err.stack`.
+
+The serializer operates on a copy, so the original Error instance is never mutated.
+
+If you add a new secret-bearing config field to `src/config.ts`, add its property name to `REDACT_PATHS` in the same PR. The point helpers `redactGitHubTokens` and `redactValkeyUrl` remain in place for their non-log call sites (prompt sanitisation and the Valkey startup info log respectively); the logger config is the system-wide default.
+
 ## Common log fields
 
 | Field                                | Meaning                                                                                               |
