@@ -746,6 +746,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#auto-defer-on-anthropic-usage-limit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Auto-defer on Anthropic usage-limit
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1604,6 +1615,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#auto-defer-on-anthropic-usage-limit" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Auto-defer on Anthropic usage-limit
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1806,6 +1828,14 @@
 <li><code>merge-conflict-needs-human</code> — the rebase produced conflicts the bot would not resolve confidently.</li>
 </ul>
 <p>For Day-2 SQL and the other terminal categories, see <a href="../../../operate/runbooks/stuck-ship-intent/"><code>operate/runbooks/stuck-ship-intent.md</code></a>.</p>
+<h2 id="auto-defer-on-anthropic-usage-limit">Auto-defer on Anthropic usage-limit<a class="headerlink" href="#auto-defer-on-anthropic-usage-limit" title="Permanent link">&para;</a></h2>
+<p>A child workflow run that fails because the Claude Agent SDK reported <code>"You've hit your limit · resets &lt;time&gt; UTC"</code> (subscription-token quota or per-tier rate limit) is treated as a <strong>transient</strong> failure rather than a permanent one. The orchestrator's <code>maybeEarlyWakeShipIntent</code> cascade:</p>
+<ol>
+<li>Reads <code>state.failedReason</code> from the failed <code>workflow_runs</code> row.</li>
+<li><code>detectTransientQuotaError</code> matches the usage-limit signature and parses the <code>resets …</code> clock (handles <code>6pm (UTC)</code>, <code>18:30 UTC</code>, etc.; falls back to a <code>+1h</code> deferral when the clock is unparseable).</li>
+<li><code>ZADD ship:tickle &lt;retryAtMs&gt; &lt;intent_id&gt;</code> so the periodic tickle scanner re-fires the iteration once the quota window resets, instead of leaving the intent stalled until an operator re-arms it.</li>
+</ol>
+<p>Non-quota failures still take the original <code>ship.tickle.skip_failed_child</code> path — the iteration cap remains the safety net for permanently broken intents.</p>
 
 
 

@@ -786,6 +786,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#failure-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Failure handling
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1516,6 +1527,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#failure-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Failure handling
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1625,6 +1647,12 @@
 <li>Pipeline fails → handler reports the underlying error.</li>
 </ul>
 <p>The handler does <strong>not</strong> poll CI or reviewer state — that is <code>resolve</code>'s job, after <code>review</code> has run.</p>
+<h2 id="failure-handling">Failure handling<a class="headerlink" href="#failure-handling" title="Permanent link">&para;</a></h2>
+<p>The handler treats public and operator surfaces separately so the public tracking comment never carries the raw underlying error. Both the <code>runPipeline</code> failure path and the outer handler <code>catch</code> set the same safe <code>humanMessage</code>:</p>
+<ul>
+<li><strong>Public tracking comment</strong> — a safe constant: <code>"implement pipeline execution failed — see server logs for details."</code> Octokit error stacks embed the installation token in the request URL, so the bot must never inline <code>err.message</code> into a comment body.</li>
+<li><strong>Operator surfaces (DB + logs)</strong> — the SDK error is propagated as <code>ExecutionResult.errorMessage</code> and persisted as <code>state.failedReason</code> on the <code>workflow_runs</code> row. <code>pino</code> logs the full <code>err</code> object on the daemon. The orchestrator's quota-detection helper reads <code>state.failedReason</code> to decide whether to auto-defer the next ship iteration; see <a href="../ship/"><code>ship.md</code></a>.</li>
+</ul>
 
 
 

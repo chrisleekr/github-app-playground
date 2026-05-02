@@ -820,6 +820,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#failure-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Failure handling
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1472,6 +1483,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#failure-handling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Failure handling
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1588,6 +1610,12 @@
 <li><code>FIX_ATTEMPTS_CAP = 3</code> — maximum consecutive CI-fix attempts per run.</li>
 <li><code>POLL_WAIT_SECS_CAP = 900</code> (15 min) — reviewer-patience window before the run terminates.</li>
 <li>The handler <strong>never</strong> calls <code>octokit.rest.pulls.merge</code> — merging is a human action.</li>
+</ul>
+<h2 id="failure-handling">Failure handling<a class="headerlink" href="#failure-handling" title="Permanent link">&para;</a></h2>
+<p>Public-comment and operator surfaces are separated so a raw SDK or octokit error never reaches the public PR thread. Both the <code>runPipeline</code> failure path and the outer handler <code>catch</code> apply the same separation:</p>
+<ul>
+<li><strong>Public tracking comment</strong> — a safe constant: <code>"resolve pipeline execution failed — see server logs for details."</code> The actual error string remains internal because octokit error stacks include <code>https://x-access-token:GHS_xxx@…</code> in the request URL.</li>
+<li><strong>Operator surfaces</strong> — <code>state.failedReason</code> on the <code>workflow_runs</code> row, <code>pino</code> log lines on the daemon, and <code>ExecutionResult.errorMessage</code> returned to the orchestrator. The orchestrator's transient-quota detector reads <code>state.failedReason</code> and auto-defers the ship loop's next iteration when the SDK reports <code>"You've hit your limit · resets … UTC"</code>.</li>
 </ul>
 
 
