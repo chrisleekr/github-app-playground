@@ -71,10 +71,10 @@ docker build -f Dockerfile.orchestrator \
 
 Every published tag — both `-orchestrator` and `-daemon` variants and the bare `<version>` / `latest` aliases — ships with two Sigstore-signed attestations bound to the manifest-list digest:
 
-| Predicate type                   | What it proves                                                                                                              | Source                                                                                   |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `https://slsa.dev/provenance/v1` | The image was built by `.github/workflows/docker-build.yml` from a specific commit, with the recorded BuildKit invocation.  | [`actions/attest-build-provenance`](https://github.com/actions/attest-build-provenance)  |
-| `https://cyclonedx.org/bom`      | A CycloneDX SBOM enumerating every package layered into the merged image (orchestrator runtime, daemon toolchain, OS libs). | [`actions/attest-sbom`](https://github.com/actions/attest-sbom) (Anchore-generated SBOM) |
+| Predicate type                   | What it proves                                                                                                                                                                                                              | Source                                                                                   |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `https://slsa.dev/provenance/v1` | The image was built by `.github/workflows/docker-build.yml` from a specific commit, with the recorded BuildKit invocation.                                                                                                  | [`actions/attest-build-provenance`](https://github.com/actions/attest-build-provenance)  |
+| `https://cyclonedx.org/bom`      | A CycloneDX SBOM of the **amd64 packages** layered into the merged image (orchestrator runtime, daemon toolchain, OS libs). Syft scans the runner's native architecture; for arm64 audits use the per-arch BuildKit SBOM ↓. | [`actions/attest-sbom`](https://github.com/actions/attest-sbom) (Anchore-generated SBOM) |
 
 Verify before pulling into production. `gh attestation verify` checks the attestation against GitHub's transparency log and the Sigstore trust root:
 
@@ -94,7 +94,7 @@ gh attestation verify \
 
 The same commands apply to the `-daemon` tags. The `scan` job in `docker-build.yml` runs both calls before Trivy on every release, so any future regression that drops an attestation fails the workflow at the verify step.
 
-You can also pull the BuildKit-emitted SPDX SBOM and SLSA provenance attached to each per-arch leaf manifest directly via the registry — useful for offline supply-chain audits:
+You can also pull the BuildKit-emitted SPDX SBOM and SLSA provenance attached to each per-arch leaf manifest directly via the registry — useful for offline supply-chain audits and the only source for arm64 package coverage (the Sigstore CycloneDX flavour above is amd64-only):
 
 ```bash
 # Provenance JSON (per platform)
