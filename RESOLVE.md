@@ -1,34 +1,38 @@
 # Resolve iteration — PR #94
 
-_Iteration date: 2026-05-02_
+_Iteration date: 2026-05-02 (second resolve pass, post-review iteration #2)_
 
 ## Summary
 
-PR #94 (`feat(workflows): publish SLSA provenance + SBOM attestations on every release tag (closes #58)`) had **0 failing checks** and **1 open review-comment thread** entering this resolve. The branch was already up-to-date with `main` (2 commits ahead, 0 behind), so no rebase was needed. The single review thread was a documentation-accuracy finding from the prior `review` workflow, classified as **Valid** and addressed via the doc-tightening option (option a) the reviewer suggested. After the fix commit `0f7fe9e`, CI is back to all-green and the review thread is resolved. Ready for maintainer merge.
+PR #94 (`feat(workflows): publish SLSA provenance + SBOM attestations on every release tag (closes #58)`) entered this resolve with **0 failing checks** and **3 review threads** (per the trigger header). GraphQL inspection showed only **2 threads were actually open**: the line-277 thread was already resolved by the prior resolve iteration in commit `0f7fe9e`. Branch was 0 behind / 6 ahead of `main`, so no rebase was needed. Both open threads are bot-authored review-iteration findings against `.github/workflows/docker-build.yml` — both classified **Valid** but **environment-policy-blocked** (the resolve agent cannot modify files under `.github/workflows/`, same constraint the prior iteration documented). Replies were posted with the exact maintainer-action diffs and threads left **open** so the maintainer sees the deferred work. No commits pushed this iteration; CI state is unchanged from `d85a748` (all green).
 
 ## CI status
 
-No failing checks at the start of this iteration. The follow-up commit `0f7fe9e` re-triggered the suite; final post-fix state below.
+No failing checks at the start of this iteration. No commits pushed, so CI was not re-triggered — final state is the same all-green ledger from `d85a748`:
 
-| Check                             | Workflow        | State on `0f7fe9e`                               |
-| --------------------------------- | --------------- | ------------------------------------------------ |
-| `Lint & Test`                     | CI              | pass                                             |
-| `build`                           | Docs            | pass (mkdocs `--strict` exercised the doc edits) |
-| `Analyze (actions)`               | CodeQL          | pass                                             |
-| `Analyze (javascript-typescript)` | CodeQL          | pass                                             |
-| `CodeQL`                          | CodeQL          | pass                                             |
-| `Gitleaks` (push + PR)            | Secrets Scan    | pass                                             |
-| `Label PR based on title`         | Generate Labels | pass                                             |
+| Check                             | Workflow        | State on `d85a748` |
+| --------------------------------- | --------------- | ------------------ |
+| `Lint & Test`                     | CI              | pass               |
+| `build`                           | Docs            | pass               |
+| `Analyze (actions)`               | CodeQL          | pass               |
+| `Analyze (javascript-typescript)` | CodeQL          | pass               |
+| `CodeQL`                          | CodeQL          | pass               |
+| `Gitleaks` (push + PR)            | Secrets Scan    | pass               |
+| `Label PR based on title`         | Generate Labels | pass               |
 
-No fix attempts consumed (start state was already 0 fail; the polling loop simply waited for the re-runs of the post-push suite).
+Zero fix attempts consumed against the FIX_ATTEMPTS_CAP=3 budget.
 
 ## Review comments
 
-| Comment ID                                                                                         | File:line                                | Classification | Action                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Reply                                                                                              | Thread resolved?                       |
-| -------------------------------------------------------------------------------------------------- | ---------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- | -------------------------------------- |
-| [`3176252148`](https://github.com/chrisleekr/github-app-playground/pull/94#discussion_r3176252148) | `.github/workflows/docker-build.yml:277` | **Valid**      | Tightened doc copy in `docs/operate/deployment.md` (predicate-table row at L77 + the trailing-paragraph hint above the `imagetools inspect` snippet at L97) and `docs/operate/observability.md` (storage-matrix `Format` column at L125) to scope the Sigstore-signed CycloneDX SBOM claim to amd64 and direct arm64 audits to the per-arch BuildKit-attached SPDX SBOM. Took option (a) from the suggested fix — Syft per-platform looping (option b) would restructure the merge job for coverage the BuildKit SPDX SBOM already provides on each per-arch leaf manifest. Workflow file (`.github/workflows/docker-build.yml`) intentionally **not** modified because this resolve agent is environment-policy-blocked from editing under `.github/workflows/`. Commit [`0f7fe9e`](https://github.com/chrisleekr/github-app-playground/commit/0f7fe9e537e568260c615ce6c1b4f8efe83965ae). | [`3176256894`](https://github.com/chrisleekr/github-app-playground/pull/94#discussion_r3176256894) | ✅ Yes (GraphQL `resolveReviewThread`) |
+| Comment ID                                                                                         | File:line                                | Classification                         | Action                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Reply                                                                                                                     | Thread resolved?                           |
+| -------------------------------------------------------------------------------------------------- | ---------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| [`3176252148`](https://github.com/chrisleekr/github-app-playground/pull/94#discussion_r3176252148) | `.github/workflows/docker-build.yml:277` | **Valid** (already addressed)          | Resolved in the prior iteration via doc tightening in commit [`0f7fe9e`](https://github.com/chrisleekr/github-app-playground/commit/0f7fe9e537e568260c615ce6c1b4f8efe83965ae). No action this iteration.                                                                                                                                                                                                                                                                                                                                                | n/a (prior iteration: [`3176256894`](https://github.com/chrisleekr/github-app-playground/pull/94#discussion_r3176256894)) | ✅ Yes (resolved by prior iteration)       |
+| [`3176271719`](https://github.com/chrisleekr/github-app-playground/pull/94#discussion_r3176271719) | `.github/workflows/docker-build.yml:293` | **Valid — maintainer action required** | `actions/attest-sbom@v4` is upstream-deprecated (composite shim around `actions/attest@v4.1.0` that prints `::warning::actions/attest-sbom has been deprecated`). Recommended one-step swap to `actions/attest@v4` with explicit `predicate-type: https://cyclonedx.org/bom`. Workflow edit deferred — environment-policy-blocked from editing files under `.github/workflows/` (same constraint as prior iteration). Reply contains the exact YAML diff for the maintainer.                                                                            | [`3176312123`](https://github.com/chrisleekr/github-app-playground/pull/94#discussion_r3176312123)                        | ❌ No — left open for maintainer follow-up |
+| [`3176305901`](https://github.com/chrisleekr/github-app-playground/pull/94#discussion_r3176305901) | `.github/workflows/docker-build.yml:343` | **Valid — maintainer action required** | `gh attestation verify` only covers Sigstore-signed predicates and won't catch a regression that drops BuildKit's `provenance: mode=max` / `sbom: true` on the per-arch builds — yet `docs/operate/deployment.md:97` directs arm64 audits at exactly those BuildKit-attached SPDX SBOMs. Recommended fix: add a sibling `docker buildx imagetools inspect` step asserting non-empty `.SBOM` + `.Provenance` for both `linux/amd64` and `linux/arm64`. Workflow edit deferred — same env-policy block. Reply contains the exact YAML for the maintainer. | [`3176312364`](https://github.com/chrisleekr/github-app-playground/pull/94#discussion_r3176312364)                        | ❌ No — left open for maintainer follow-up |
 
 ## Commits pushed
+
+None this iteration. Prior iterations' commits remain in place:
 
 | SHA                                                                                                              | Subject                                                                  |
 | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
@@ -36,9 +40,14 @@ No fix attempts consumed (start state was already 0 fail; the polling loop simpl
 
 ## Outstanding
 
-Nothing blocks merge from a resolve perspective:
+Two **maintainer-action items** block "ready to merge" from a strict resolve-clean perspective. Both are valid review findings that this resolve agent classified Valid but couldn't action because they require editing `.github/workflows/docker-build.yml`, which is outside this agent's edit allowlist:
 
-- Single review thread classified Valid, fixed, replied, and marked resolved.
-- All CI checks green on `0f7fe9e`.
-- `bun run scripts/check-docs-citations.ts`, `bun run scripts/check-docs-versions.ts`, and `bunx prettier --check 'docs/**/*.md'` all green locally; `mkdocs --strict` runs in `Docs / build` (also green).
+1. **`docker-build.yml:293` — `actions/attest-sbom@v4` deprecation.** Swap to `actions/attest@v4` with `predicate-type: https://cyclonedx.org/bom`. Cosmetic in steady state (every release prints a deprecation `::warning::`); becomes blocking when upstream removes the shim. See reply [`3176312123`](https://github.com/chrisleekr/github-app-playground/pull/94#discussion_r3176312123) for the exact diff.
+
+2. **`docker-build.yml:343` — Sigstore-only regression gate.** Add a `docker buildx imagetools inspect` sibling check that asserts BuildKit per-arch attestations are non-empty for both `linux/amd64` and `linux/arm64`. Closes the BuildKit half of the gate without depending on Sigstore. See reply [`3176312364`](https://github.com/chrisleekr/github-app-playground/pull/94#discussion_r3176312364) for the exact step YAML.
+
+Other notes:
+
+- All CI checks green on `d85a748`. No fix-attempts consumed against the cap.
 - This bot can post inline replies but cannot submit a formal `APPROVE` review decision (FR-017). Final approval and `gh pr merge` remain a human action.
+- Both unresolved threads are intentionally left open so the maintainer's PR view surfaces the deferred work.
