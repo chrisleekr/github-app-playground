@@ -114,3 +114,17 @@ Call them from an internal admin endpoint, a scheduled job, or `bun repl`.
 | ---------- | ---------------------------------------------------------------------------------------------------- |
 | `/healthz` | Liveness — returns 200 once the HTTP server is bound.                                                |
 | `/readyz`  | Readiness — 200 once config is validated and the data layer is reachable; flips to 503 on `SIGTERM`. |
+
+## Supply-chain attestations
+
+`docker-build.yml` publishes two attestation flavours per release tag — same image, different storage and verification surface. Operators investigating a CVE alert or auditing what shipped to production reach for these instead of re-running Trivy from scratch.
+
+| Storage                                                                | Format                                  | Bound to                                              | How to inspect                                                                                                  |
+| ---------------------------------------------------------------------- | --------------------------------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Registry — OCI subject descriptor on the per-arch leaf manifest        | SLSA v1 provenance + SPDX 2.3 SBOM      | Each per-arch image manifest (the BuildKit defaults). | `docker buildx imagetools inspect <ref> --format '{{ json .Provenance }}'` / `{{ json .SBOM }}`                 |
+| Registry — Sigstore bundle attached to the merged manifest-list digest | SLSA v1 provenance + CycloneDX 1.5 SBOM | The published tag (orchestrator + daemon variants).   | `gh attestation verify oci://<ref> --repo chrisleekr/github-app-playground --predicate-type <slsa\|cyclonedx>`  |
+| GitHub Attestations API                                                | Same Sigstore bundles as above          | Same tag digest.                                      | Repo `Actions ▸ Attestations` tab; surfaces under the GitHub Releases "Verified" badge once a tag is published. |
+
+Docker Hub renders a "Build attestations" badge on the tag page once the Sigstore-signed flavour is detected. The full source/predicate of every signature is replayable via the [Sigstore transparency log (Rekor)](https://search.sigstore.dev/) using the digest from `gh attestation verify`.
+
+The `scan` job in `.github/workflows/docker-build.yml` calls `gh attestation verify` for both predicate types before running Trivy — a regression-gate against silent attestation drops in any future refactor of the build / merge jobs. Consumer-side verification commands live in [`deployment.md`](deployment.md#verifying-image-attestations).

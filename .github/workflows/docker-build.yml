@@ -54,6 +54,11 @@ on:
 permissions:
   contents: read
   security-events: write
+  # Read-only attestations grant lets the `scan` job verify SLSA / SBOM
+  # attestations via `gh attestation verify` before scanning. The `merge`
+  # job overrides locally to add the `id-token: write` + `attestations: write`
+  # scopes required to publish Sigstore-signed attestations.
+  attestations: read
 
 env:
   IMAGE_NAME: chrisleekr/github-app-playground
@@ -152,6 +157,16 @@ jobs:
             }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=${{ matrix.arch }}-${{ matrix.variant }}
           cache-to: type=gha,mode=max,scope=${{ matrix.arch }}-${{ matrix.variant }}
+          # SLSA v1 provenance (full BuildKit invocation) + SPDX SBOM.
+          # build-push-action defaults `provenance` to false when
+          # `push-by-digest=true` (the leaf-attestation problem), so set both
+          # explicitly. BuildKit emits an attestation-manifest descriptor
+          # alongside each leaf image; the merge step's index digest
+          # references both, so `imagetools create` carries the descriptors
+          # into the published manifest list automatically.
+          # https://docs.docker.com/build/ci/github-actions/multi-platform/
+          provenance: mode=max
+          sbom: true
           build-args: |
             PACKAGE_VERSION=${{ steps.meta.outputs.package_version }}
             GIT_HASH=${{ steps.meta.outputs.git_hash }}
@@ -176,7 +191,15 @@ jobs:
     name: Merge manifest (${{ matrix.variant }})
     needs: build
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
+    # Least-privilege override: this job is the only one that publishes
+    # Sigstore-signed attestations, so it gets `id-token: write` (Sigstore
+    # OIDC) + `attestations: write` (GitHub Attestations API). Build / scan
+    # keep the top-level read-only set.
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
@@ -223,16 +246,56 @@ jobs:
         env:
           IMAGE: ${{ env.IMAGE_NAME }}
         run: |
+          # The leaf digests below are *index* digests emitted by BuildKit
+          # when `provenance: mode=max` + `sbom: true` are set on the build
+          # step — each index references both the per-arch image manifest
+          # AND its `vnd.docker.reference.type=attestation-manifest`
+          # sibling. `imagetools create` walks each index and copies all
+          # descriptors into the merged list, so SBOM + provenance survive
+          # the merge without any extra CLI plumbing here.
           # shellcheck disable=SC2046
           docker buildx imagetools create \
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
             $(printf "${IMAGE}@sha256:%s " *)
 
-      - name: Inspect image
+      - name: Inspect merged image and capture digest
+        id: inspect
         env:
           IMAGE: ${{ env.IMAGE_NAME }}
           TAG: ${{ steps.tag.outputs.variant_tag }}
-        run: docker buildx imagetools inspect "${IMAGE}:${TAG}"
+        run: |
+          docker buildx imagetools inspect "${IMAGE}:${TAG}"
+          DIGEST=$(docker buildx imagetools inspect "${IMAGE}:${TAG}" \
+            --format '{{ .Manifest.Digest }}')
+          if ! [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "ERROR: failed to parse merged manifest digest: $DIGEST" >&2
+            exit 1
+          fi
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate CycloneDX SBOM for merged image
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.IMAGE_NAME }}@${{ steps.inspect.outputs.digest }}
+          format: cyclonedx-json
+          output-file: "sbom-${{ matrix.variant }}.cyclonedx.json"
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.inspect.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest SBOM
+        uses: actions/attest-sbom@v4
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.inspect.outputs.digest }}
+          sbom-path: "sbom-${{ matrix.variant }}.cyclonedx.json"
+          push-to-registry: true
 
   scan:
     name: Trivy scan (${{ matrix.variant }} / ${{ matrix.arch }})
@@ -262,6 +325,22 @@ jobs:
         run: |
           PACKAGE_VERSION="${TAG_NAME#v}"
           echo "tag=${PACKAGE_VERSION}-${VARIANT}" >> "$GITHUB_OUTPUT"
+
+      # Regression gate: fail the workflow if the published image is missing
+      # its Sigstore-signed SLSA provenance + SBOM attestations. Catches
+      # silent drops from future refactors of the build / merge jobs.
+      - name: Verify image attestations
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_REF: oci://${{ env.IMAGE_NAME }}:${{ steps.imgtag.outputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Two separate calls: each fails if the requested predicate type is
+          # absent, so this catches a regression that drops EITHER attestation.
+          gh attestation verify "$IMAGE_REF" --repo "$REPO" \
+            --predicate-type https://slsa.dev/provenance/v1
+          gh attestation verify "$IMAGE_REF" --repo "$REPO" \
+            --predicate-type https://cyclonedx.org/bom
 
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@v0.35.0
