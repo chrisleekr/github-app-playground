@@ -1611,33 +1611,44 @@
 <li>Runs <code>bun test</code>, <code>bun run typecheck</code>, <code>bun run lint</code> when uncertain.</li>
 <li>Only posts findings it can defend with evidence.</li>
 </ul>
-<p>Each finding carries a severity prefix:</p>
+<p>Each finding is posted as an inline comment in a CodeRabbit-style three-block layout (status line, bold one-line title, prose reasoning, then a <code>**Suggested fix:**</code> line). The same shape is used by <code>resolve</code>, <code>bot:fix-thread</code>, and <code>bot:explain-thread</code> so all bot output reads consistently.</p>
 <table>
 <thead>
 <tr>
 <th>Severity</th>
+<th>Inline-comment status line</th>
+<th>REVIEW.md tag</th>
 <th>Meaning</th>
 </tr>
 </thead>
 <tbody>
 <tr>
+<td>Blocker</td>
+<td><code>_⚠️ Potential issue_ \| _🔴 Blocker_</code></td>
 <td><code>[blocker]</code></td>
 <td>Must fix before merge — correctness or security.</td>
 </tr>
 <tr>
+<td>Major</td>
+<td><code>_⚠️ Potential issue_ \| _🟠 Major_</code></td>
 <td><code>[major]</code></td>
 <td>Should fix before merge — likely bug, missing test.</td>
 </tr>
 <tr>
+<td>Minor</td>
+<td><code>_💭 Suggestion_      \| _🟡 Minor_</code></td>
 <td><code>[minor]</code></td>
 <td>Nice to fix — readability.</td>
 </tr>
 <tr>
+<td>Nit</td>
+<td><code>_💭 Suggestion_      \| _🔵 Nit_</code></td>
 <td><code>[nit]</code></td>
 <td>Taste, optional. Not counted in <code>findings.total</code>.</td>
 </tr>
 </tbody>
 </table>
+<p>The bracketed REVIEW.md tags drive the <code>countFindings</code> parser (see <code>src/workflows/handlers/review.ts</code>); the inline status-line emojis drive presentation. Both are required.</p>
 <p>Findings are posted <strong>one MCP call per finding</strong>, never as a single bundled review. This guarantees each finding lands on the right line with its own resolvable thread.</p>
 <h2 id="no-findings-case">No-findings case<a class="headerlink" href="#no-findings-case" title="Permanent link">&para;</a></h2>
 <p>The agent must still post a top-level review body listing exactly what was checked (files read, classes of issue scanned, tests run) and why no issues were flagged. Silence is indistinguishable from "didn't actually look".</p>

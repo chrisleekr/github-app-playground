@@ -796,6 +796,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Method">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reply-body-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reply body format
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1459,6 +1476,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Method">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#reply-body-format" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reply body format
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1563,11 +1597,52 @@
 <p>For each open reviewer comment the agent classifies as <strong>Valid</strong>, <strong>Partially Valid</strong>, <strong>Invalid</strong>, or <strong>Needs Clarification</strong>, then:</p>
 <ul>
 <li>Fixes valid ones with new commits.</li>
-<li>Replies to all four classes appropriately.</li>
+<li>Replies to all four classes appropriately, in the same CodeRabbit-style three-block layout (status line, bold one-line title, prose reasoning).</li>
+<li>Marks the thread resolved (Valid / Partially Valid only) via the <code>resolve-review-thread</code> MCP tool after the reply lands.</li>
 <li>Fixes failing CI when there is a clear root cause.</li>
+<li>Polls CI after the final commit and does not exit until all checks return to green (or the per-iteration <code>FIX_ATTEMPTS_CAP=3</code> is exhausted, in which case the unresolved failure is recorded under <code>## Outstanding</code> in <code>RESOLVE.md</code>).</li>
 </ul>
 <p>Branch refresh happens first if the head is stale (same logic as <code>review</code>).</p>
 <p>Reviewer-thread replies are posted via <code>gh api repos/&lt;owner&gt;/&lt;repo&gt;/pulls/&lt;num&gt;/comments/&lt;id&gt;/replies -X POST</code>. The bot's <code>gh</code> and <code>git</code> calls authenticate via <code>GH_TOKEN</code> and <code>GITHUB_TOKEN</code>, injected from the GitHub App installation token by <code>buildProviderEnv</code> in <code>src/core/executor.ts</code>.</p>
+<h3 id="reply-body-format">Reply body format<a class="headerlink" href="#reply-body-format" title="Permanent link">&para;</a></h3>
+<p>All four classifications use the same shape so bot replies look consistent across <code>resolve</code>, <code>review</code>, <code>bot:fix-thread</code>, and <code>bot:explain-thread</code>:</p>
+<div class="language-markdown highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>&lt;STATUS_LINE&gt;
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="gs">**&lt;One-line title summarizing what was done or concluded.&gt;**</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>&lt;1–3 sentences of reasoning: why the fix was applied, why the reviewer was right/wrong, or what specifically needs clarifying. Cite file:line where relevant. No diff — the commit link covers that.&gt;
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Classification</th>
+<th>Status line</th>
+<th>Resolves thread?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Valid</td>
+<td><code>_✅ Addressed_ — commit \</code><sha>``</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Partially Valid</td>
+<td><code>_⚠️ Partially addressed_ — commit \</code><sha>``</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td>Invalid</td>
+<td><code>_❌ Not applicable_</code></td>
+<td>No (reviewer closes)</td>
+</tr>
+<tr>
+<td>Needs Clarification</td>
+<td><code>_❓ Need clarification_</code></td>
+<td>No</td>
+</tr>
+</tbody>
+</table>
 <h2 id="outputs">Outputs<a class="headerlink" href="#outputs" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
