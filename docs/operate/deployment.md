@@ -67,6 +67,47 @@ docker build -f Dockerfile.orchestrator \
   .
 ```
 
+### Verifying image attestations
+
+Every published tag — both `-orchestrator` and `-daemon` variants and the bare `<version>` / `latest` aliases — ships with two Sigstore-signed attestations bound to the manifest-list digest:
+
+| Predicate type                   | What it proves                                                                                                                                                                                                              | Source                                                                                   |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `https://slsa.dev/provenance/v1` | The image was built by `.github/workflows/docker-build.yml` from a specific commit, with the recorded BuildKit invocation.                                                                                                  | [`actions/attest-build-provenance`](https://github.com/actions/attest-build-provenance)  |
+| `https://cyclonedx.org/bom`      | A CycloneDX SBOM of the **amd64 packages** layered into the merged image (orchestrator runtime, daemon toolchain, OS libs). Syft scans the runner's native architecture; for arm64 audits use the per-arch BuildKit SBOM ↓. | [`actions/attest-sbom`](https://github.com/actions/attest-sbom) (Anchore-generated SBOM) |
+
+Verify before pulling into production. `gh attestation verify` checks the attestation against GitHub's transparency log and the Sigstore trust root:
+
+```bash
+# Provenance — fails if missing or signed by anything other than this repo's workflow
+gh attestation verify \
+  oci://chrisleekr/github-app-playground:1.3.0-orchestrator \
+  --repo chrisleekr/github-app-playground \
+  --predicate-type https://slsa.dev/provenance/v1
+
+# SBOM — same shape, different predicate
+gh attestation verify \
+  oci://chrisleekr/github-app-playground:1.3.0-orchestrator \
+  --repo chrisleekr/github-app-playground \
+  --predicate-type https://cyclonedx.org/bom
+```
+
+The same commands apply to the `-daemon` tags. The `scan` job in `docker-build.yml` runs both calls before Trivy on every release, so any future regression that drops an attestation fails the workflow at the verify step.
+
+You can also pull the BuildKit-emitted SPDX SBOM and SLSA provenance attached to each per-arch leaf manifest directly via the registry — useful for offline supply-chain audits and the only source for arm64 package coverage (the Sigstore CycloneDX flavour above is amd64-only):
+
+```bash
+# Provenance JSON (per platform)
+docker buildx imagetools inspect chrisleekr/github-app-playground:1.3.0-orchestrator \
+  --format '{{ json .Provenance }}'
+
+# SBOM JSON (per platform — SPDX 2.3, distinct from the CycloneDX one above)
+docker buildx imagetools inspect chrisleekr/github-app-playground:1.3.0-orchestrator \
+  --format '{{ json .SBOM }}'
+```
+
+`mode=max` provenance + `sbom: true` are set on the build step in `.github/workflows/docker-build.yml`; the merge job's `imagetools create` walks each per-arch index digest so the descriptors survive the manifest-list assembly.
+
 ## Run
 
 ### Orchestrator
