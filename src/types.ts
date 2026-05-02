@@ -63,6 +63,13 @@ export interface BotContext {
 export interface ExecutionResult {
   /** Whether the execution completed successfully */
   success: boolean;
+  /**
+   * Human-readable failure detail when `success` is false. Carries the
+   * underlying SDK / pipeline error (e.g. "Claude Code returned an error
+   * result: You've hit your limit · resets 6pm (UTC)") so callers can
+   * surface actionable text instead of a generic stand-in.
+   */
+  errorMessage?: string;
   /** Total API cost in USD */
   costUsd?: number;
   /** Total execution duration in milliseconds */

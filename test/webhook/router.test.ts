@@ -387,7 +387,11 @@ describe("dispatch", () => {
     expect(createComment).toHaveBeenCalledTimes(1);
     const body = (createComment.mock.calls[0] as [{ body: string }])[0].body;
     expect(body).toContain("Kubernetes infrastructure");
-    expect(body).toContain("api-unavailable: boom");
+    // Must NOT inline the raw spawnError into the public comment — k8s
+    // exception strings can carry API URLs, RBAC detail, or other
+    // operational info. The structured spawnError remains on the log
+    // line and in the executions row.
+    expect(body).not.toContain("api-unavailable: boom");
   });
 
   it("enqueues to daemon when no claimable daemon is ready", async () => {

@@ -66,6 +66,58 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN }}
 
+      # Why this step exists:
+      # dev-release re-runs on every push to a feature branch — including
+      # force-pushes (rebase, amend, --force-with-lease). semantic-release
+      # computes the next pre-release counter by walking tags *reachable
+      # from HEAD*; an orphaned tag (one pointing at a commit that was
+      # force-pushed away) is invisible to that walk, so semantic-release
+      # picks the SAME version number again and the subsequent `git tag
+      # <name>` (semantic-release/lib/git.js does NOT pass `-f`) fails
+      # with `fatal: tag already exists`. Without this cleanup, any
+      # rebase/amend on a feature branch wedges the dev pipeline until
+      # the stale tag is manually deleted.
+      #
+      # Dev tags are ephemeral by contract — release.config.mjs publishes
+      # NO GitHub Release and NO CHANGELOG entry in dev mode, so nothing
+      # downstream pins to a specific `.N`. Resetting the counter on each
+      # force-push is correct semantics, not data loss.
+      #
+      # github.ref_name is normalised to a branch slug via env (defense
+      # in depth — ref_name is already constrained by Git ref grammar).
+      - name: Clean stale dev pre-release tags for this branch
+        env:
+          BRANCH_REF: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # Slug derivation must match release.config.mjs PRERELEASE_TEMPLATE
+          # (`name.replace(/[^a-zA-Z0-9-]/g, '-')`).
+          BRANCH_SLUG=$(printf '%s' "$BRANCH_REF" | sed 's/[^a-zA-Z0-9-]/-/g')
+          # `git tag -l <glob>` matches via fnmatch(3), where `*` matches
+          # any characters including hyphens with backtracking. For slug
+          # `fix-test`, the glob `v*-fix-test.*` would over-match the
+          # unrelated tag `v0.4.0-fix-some-other-fix-test.1`, deleting
+          # another branch's dev tags. Use an anchored ERE instead so
+          # only this slug's dev pre-release tags match. BRANCH_SLUG is
+          # already sanitised to `[a-zA-Z0-9-]` above (sed strips every-
+          # thing else), so it is safe to interpolate without regex
+          # escaping.
+          STALE_TAGS=$(git tag -l | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+-${BRANCH_SLUG}\.[0-9]+$" || true)
+          if [ -z "$STALE_TAGS" ]; then
+            echo "No stale dev pre-release tags for branch '${BRANCH_SLUG}'"
+            exit 0
+          fi
+          echo "Deleting stale dev pre-release tags for branch '${BRANCH_SLUG}':"
+          echo "$STALE_TAGS"
+          # Local delete is the load-bearing one (semantic-release fails
+          # on the local `git tag` call). Origin delete is best-effort
+          # so a tag already cleaned up out-of-band does not wedge CI.
+          echo "$STALE_TAGS" | xargs git tag -d
+          while IFS= read -r tag; do
+            [ -z "$tag" ] && continue
+            git push origin --delete "$tag" || echo "warn: origin delete failed for ${tag}"
+          done <<< "$STALE_TAGS"
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:

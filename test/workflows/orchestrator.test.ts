@@ -16,7 +16,7 @@
  */
 
 import { SQL } from "bun";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 import type pino from "pino";
 
 const TEST_DATABASE_URL =
@@ -676,5 +676,160 @@ describe.skipIf(sql === null)("orchestrator.onStepComplete", () => {
       (c) => c[0] === "ZADD" && Array.isArray(c[1]) && c[1][0] === "ship:tickle",
     );
     expect(zaddCalls).toHaveLength(0);
+  });
+
+  // H2: a failed child whose state.failedReason matches the Anthropic
+  // usage-limit signature must defer the next ship iteration to the
+  // parsed reset boundary instead of stalling the intent. Guards the
+  // wiring between extractFailedReason → detectTransientQuotaError →
+  // ZADD with a future score.
+  it("ZADDs ship:tickle at the parsed reset time when child failed with a quota error (H2)", async () => {
+    const { insertQueued, markFailed } = await import("../../src/workflows/runs-store");
+    const { onStepComplete } = await import("../../src/workflows/orchestrator");
+    const { insertIntent } = await import("../../src/db/queries/ship");
+
+    // Freeze the clock at 2026-05-02 10:00:00 UTC so the parsed
+    // "resets 6pm (UTC)" boundary lands at a known instant
+    // (2026-05-02 18:00:30 UTC). Asserting the exact score guards
+    // against silent regression to the +1h fallback or any other
+    // future-but-wrong timestamp.
+    const frozenNowMs = Date.UTC(2026, 4, 2, 10, 0, 0);
+    const expectedRetryAtMs = Date.UTC(2026, 4, 2, 18, 0, 30);
+    const dateNowSpy = spyOn(Date, "now").mockReturnValue(frozenNowMs);
+    try {
+      const intent = await insertIntent(
+        {
+          installation_id: 103,
+          owner: "acme",
+          repo: "quota-defer-repo",
+          pr_number: 9400,
+          target_base_sha: "base",
+          target_head_sha: "head",
+          deadline_at: new Date(frozenNowMs + 60 * 60 * 1000),
+          created_by_user: "tester",
+          tracking_comment_marker: "<!-- ship-intent: pending -->",
+        },
+        requireSql(),
+      );
+
+      const run = await insertQueued(
+        {
+          workflowName: "implement",
+          target: { type: "pr", owner: "acme", repo: "quota-defer-repo", number: 9400 },
+          ownerKind: "orchestrator",
+          ownerId: "test-orchestrator",
+        },
+        requireSql(),
+      );
+      const quotaReason =
+        "Claude Code returned an error result: You've hit your limit · resets 6pm (UTC)";
+      await markFailed(run.id, quotaReason, { shipIntentId: intent.id }, requireSql());
+
+      mockValkeySend.mockClear();
+      await onStepComplete({ octokit: {} as never, logger: silentLogger() }, run.id, {
+        status: "failed",
+        reason: quotaReason,
+      });
+
+      const zaddCalls = mockValkeySend.mock.calls.filter(
+        (c) => c[0] === "ZADD" && Array.isArray(c[1]) && c[1][0] === "ship:tickle",
+      );
+      expect(zaddCalls).toHaveLength(1);
+      const args = zaddCalls[0]?.[1] as [string, string, string];
+      expect(args[0]).toBe("ship:tickle");
+      expect(args[2]).toBe(intent.id);
+      // Exact assertion: the parsed reset path must produce
+      // 2026-05-02T18:00:30Z (== expectedRetryAtMs). A regression to the
+      // +1h fallback (frozenNowMs + 3600_000) or any other future-ish
+      // value would silently pass an "in the future" check.
+      expect(Number(args[1])).toBe(expectedRetryAtMs);
+    } finally {
+      dateNowSpy.mockRestore();
+    }
+  });
+});
+
+describe("orchestrator helpers (pure)", () => {
+  it("extractFailedReason reads state.failedReason set by markFailed", async () => {
+    const { extractFailedReason } = await import("../../src/workflows/orchestrator");
+    expect(extractFailedReason({ failedReason: "implement crashed" })).toBe("implement crashed");
+    expect(extractFailedReason({ failedReason: "" })).toBeUndefined();
+    expect(extractFailedReason({ other: "x" })).toBeUndefined();
+    expect(extractFailedReason(null)).toBeUndefined();
+    expect(extractFailedReason(undefined)).toBeUndefined();
+    expect(extractFailedReason("not an object")).toBeUndefined();
+  });
+
+  it("detectTransientQuotaError returns null when reason is absent or unrelated", async () => {
+    const { detectTransientQuotaError } = await import("../../src/workflows/orchestrator");
+    expect(detectTransientQuotaError(undefined)).toBeNull();
+    expect(detectTransientQuotaError("")).toBeNull();
+    expect(detectTransientQuotaError("git clone failed: timeout")).toBeNull();
+    expect(detectTransientQuotaError("review pipeline execution failed")).toBeNull();
+  });
+
+  // Regression guard for the tightened signature: a bare "rate limit"
+  // or "usage limit" phrase without "hit your limit" AND without a
+  // "resets ... UTC" clock must NOT auto-defer — it could be a GitHub
+  // secondary rate limit or unrelated upstream throttling. Auto-deferring
+  // those would burn the iteration cap re-firing on a non-recoverable
+  // failure.
+  it("detectTransientQuotaError returns null for bare 'rate limit'/'usage limit' without resets clock", async () => {
+    const { detectTransientQuotaError } = await import("../../src/workflows/orchestrator");
+    expect(detectTransientQuotaError("github secondary rate limit exceeded")).toBeNull();
+    expect(detectTransientQuotaError("API usage limit reached for this hour")).toBeNull();
+    expect(detectTransientQuotaError("upstream returned 429 rate-limit response")).toBeNull();
+  });
+
+  it("detectTransientQuotaError parses 'resets 6pm (UTC)' to today 18:00:30 UTC when in future", async () => {
+    const { detectTransientQuotaError } = await import("../../src/workflows/orchestrator");
+    // 2026-05-02T05:00:00Z → reset is later today at 18:00:30 UTC.
+    const nowMs = Date.UTC(2026, 4, 2, 5, 0, 0);
+    const result = detectTransientQuotaError(
+      "Claude Code returned an error result: You've hit your limit · resets 6pm (UTC)",
+      nowMs,
+    );
+    expect(result).not.toBeNull();
+    expect(result!.retryAtMs).toBe(Date.UTC(2026, 4, 2, 18, 0, 30));
+    expect(result!.resetPhrase).toMatch(/resets/i);
+  });
+
+  it("detectTransientQuotaError rolls reset to next day when boundary already passed", async () => {
+    const { detectTransientQuotaError } = await import("../../src/workflows/orchestrator");
+    // 2026-05-02T20:00:00Z is past 18:00 UTC — next reset is tomorrow.
+    const nowMs = Date.UTC(2026, 4, 2, 20, 0, 0);
+    const result = detectTransientQuotaError("You've hit your limit · resets 6pm UTC", nowMs);
+    expect(result).not.toBeNull();
+    expect(result!.retryAtMs).toBe(Date.UTC(2026, 4, 3, 18, 0, 30));
+  });
+
+  it("detectTransientQuotaError parses 24h '18:30 UTC' form", async () => {
+    const { detectTransientQuotaError } = await import("../../src/workflows/orchestrator");
+    const nowMs = Date.UTC(2026, 4, 2, 5, 0, 0);
+    const result = detectTransientQuotaError("usage limit hit · resets 18:30 UTC", nowMs);
+    expect(result).not.toBeNull();
+    expect(result!.retryAtMs).toBe(Date.UTC(2026, 4, 2, 18, 30, 30));
+  });
+
+  it("detectTransientQuotaError falls back to +1h when reset clock is unparseable", async () => {
+    const { detectTransientQuotaError } = await import("../../src/workflows/orchestrator");
+    const nowMs = Date.UTC(2026, 4, 2, 5, 0, 0);
+    const result = detectTransientQuotaError("You've hit your limit (no time mentioned)", nowMs);
+    expect(result).not.toBeNull();
+    expect(result!.retryAtMs).toBe(nowMs + 60 * 60 * 1000);
+    expect(result!.resetPhrase).toBe("fallback_1h");
+  });
+
+  it("detectTransientQuotaError treats ambiguous 'resets 6 UTC' (no am/pm, no minute) as fallback, not 06:00", async () => {
+    const { detectTransientQuotaError } = await import("../../src/workflows/orchestrator");
+    // now = 14:00 UTC, "resets 6 UTC" without meridiem/minute is ambiguous.
+    // Without the guard, parseResetsClock would interpret it as 06:00, see
+    // it has already passed, and roll +24h → wake at next-day 06:00:30.
+    // With the guard it falls through to the +1h fallback (15:00 UTC).
+    const nowMs = Date.UTC(2026, 4, 2, 14, 0, 0);
+    const result = detectTransientQuotaError("You've hit your limit · resets 6 UTC", nowMs);
+    expect(result).not.toBeNull();
+    expect(result!.retryAtMs).toBe(nowMs + 60 * 60 * 1000);
+    expect(result!.resetPhrase).toBe("fallback_1h");
   });
 });

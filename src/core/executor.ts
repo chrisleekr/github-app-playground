@@ -239,6 +239,11 @@ export async function executeAgent({
     return {
       success: false,
       durationMs,
+      errorMessage: timedOut
+        ? `Agent execution timed out after ${String(durationMs)}ms`
+        : error instanceof Error
+          ? error.message
+          : String(error),
     };
   } finally {
     clearTimeout(timer);
@@ -267,8 +272,9 @@ function buildExecutionResult(
   result: SDKResultMessage | undefined,
   durationMs: number,
 ): ExecutionResult {
+  const success = result?.subtype === "success";
   const executionResult: ExecutionResult = {
-    success: result?.subtype === "success",
+    success,
     durationMs: result?.duration_ms ?? durationMs,
   };
   if (result?.total_cost_usd !== undefined) {
@@ -276,6 +282,21 @@ function buildExecutionResult(
   }
   if (result?.num_turns !== undefined) {
     executionResult.numTurns = result.num_turns;
+  }
+  // SDK returned a non-success terminal result (e.g. error_max_turns,
+  // error_max_budget_usd) without throwing. Surface the subtype + any
+  // structured error strings the SDK emitted; the executor catch path
+  // owns the throw case separately.
+  if (!success) {
+    const subtype = result?.subtype ?? "unknown";
+    const errors =
+      result !== undefined && "errors" in result && Array.isArray(result.errors)
+        ? (result.errors as readonly string[]).filter((s) => typeof s === "string" && s !== "")
+        : [];
+    executionResult.errorMessage =
+      errors.length > 0
+        ? `SDK ${subtype}: ${errors.join("; ")}`
+        : `SDK terminal subtype: ${subtype}`;
   }
   return executionResult;
 }
