@@ -19,7 +19,7 @@ function buildCapturingLogger(): { logger: pino.Logger; lines: Record<string, un
   const logger = pino(
     {
       level: "info",
-      redact: { paths: REDACT_PATHS },
+      redact: { paths: [...REDACT_PATHS] },
       serializers: { err: errSerializer },
     },
     dest as pino.DestinationStream,
@@ -148,5 +148,116 @@ describe("logger redaction", () => {
     expect(errSerializer("not an error")).toBe("not an error");
     expect(errSerializer(null)).toBeNull();
     expect(errSerializer(42)).toBe(42);
+  });
+
+  it("redacts non-token sensitive keys directly under err.response.data", () => {
+    const { logger, lines } = buildCapturingLogger();
+    const pem = "MIIEowIBAAKCAQEA_SECRET_PEM_CONTENT";
+    const err = Object.assign(new Error("Unauthorized"), {
+      name: "RequestError",
+      response: {
+        status: 401,
+        data: {
+          privateKey: pem,
+          installationToken: "ghs_should_not_appear_in_data",
+          webhookSecret: "whsec_top_secret",
+          message: "Bad",
+        },
+      },
+    });
+    logger.error({ err }, "auth check");
+
+    const raw = JSON.stringify(lines);
+    expect(raw).not.toContain("MIIEowIBAAKCAQEA");
+    expect(raw).not.toContain("whsec_top_secret");
+    expect(raw).not.toContain("ghs_should_not_appear_in_data");
+    const data = (
+      lines[0] as {
+        err: {
+          response: {
+            data: {
+              privateKey: string;
+              installationToken: string;
+              webhookSecret: string;
+              message: string;
+            };
+          };
+        };
+      }
+    ).err.response.data;
+    expect(data.privateKey).toBe("[Redacted]");
+    expect(data.installationToken).toBe("[Redacted]");
+    expect(data.webhookSecret).toBe("[Redacted]");
+    expect(data.message).toBe("Bad");
+  });
+
+  it("recurses into nested objects under err.response.data", () => {
+    const { logger, lines } = buildCapturingLogger();
+    const nestedToken = `ghs_${"B".repeat(36)}`;
+    const err = Object.assign(new Error("Unauthorized"), {
+      name: "RequestError",
+      response: {
+        status: 401,
+        data: {
+          meta: {
+            token: nestedToken,
+            privateKey: "DEEPLY_NESTED_PEM",
+            details: { awsSecretAccessKey: "AKIAEXAMPLENESTED" },
+          },
+        },
+      },
+    });
+    logger.error({ err }, "deep auth check");
+
+    const raw = JSON.stringify(lines);
+    expect(raw).not.toContain(nestedToken);
+    expect(raw).not.toContain("DEEPLY_NESTED_PEM");
+    expect(raw).not.toContain("AKIAEXAMPLENESTED");
+    const meta = (
+      lines[0] as {
+        err: {
+          response: {
+            data: {
+              meta: {
+                token: string;
+                privateKey: string;
+                details: { awsSecretAccessKey: string };
+              };
+            };
+          };
+        };
+      }
+    ).err.response.data.meta;
+    expect(meta.token).toBe("[Redacted]");
+    expect(meta.privateKey).toBe("[Redacted]");
+    expect(meta.details.awsSecretAccessKey).toBe("[Redacted]");
+  });
+
+  it("recurses into nested objects under err.request.headers", () => {
+    const { logger, lines } = buildCapturingLogger();
+    const err = Object.assign(new Error("boom"), {
+      name: "RequestError",
+      request: {
+        headers: {
+          accept: "application/json",
+          forwarded: { authorization: "Bearer NESTED_PROXY_BEARER" },
+        },
+      },
+    });
+    logger.error({ err }, "proxy chain failed");
+
+    const raw = JSON.stringify(lines);
+    expect(raw).not.toContain("NESTED_PROXY_BEARER");
+    const headers = (
+      lines[0] as {
+        err: { request: { headers: { forwarded: { authorization: string }; accept: string } } };
+      }
+    ).err.request.headers;
+    expect(headers.forwarded.authorization).toBe("[Redacted]");
+    expect(headers.accept).toBe("application/json");
+  });
+
+  it("freezes the exported REDACT_PATHS list at runtime", () => {
+    expect(Object.isFrozen(REDACT_PATHS)).toBe(true);
   });
 });

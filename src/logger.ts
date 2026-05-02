@@ -14,7 +14,7 @@ import { redactGitHubTokens } from "./utils/sanitize";
  * The `err` serializer below handles the *free-text* leak surface
  * (secrets embedded in error messages and stacks).
  */
-export const REDACT_PATHS: string[] = [
+export const REDACT_PATHS: readonly string[] = Object.freeze([
   // Generic auth tokens — Octokit RequestError carries these on err.request.headers
   "authorization",
   "*.authorization",
@@ -41,7 +41,32 @@ export const REDACT_PATHS: string[] = [
   "awsSessionToken",
   "awsBearerTokenBedrock",
   "*.password",
-];
+]);
+
+/**
+ * Sensitive key names checked by the structural walker that runs inside
+ * the `err` serializer (lowercase for case-insensitive comparison).
+ *
+ * Pino's path-based `redact.paths` cannot match these when they sit
+ * nested under `err.request.headers.*` or `err.response.data.*` (and
+ * deeper) — the walker fills that gap. Keep this list in sync with the
+ * bare-name entries in `REDACT_PATHS` above.
+ */
+const SENSITIVE_FIELD_NAMES_LC: ReadonlySet<string> = new Set([
+  "authorization",
+  "token",
+  "installationtoken",
+  "privatekey",
+  "webhooksecret",
+  "anthropicapikey",
+  "claudecodeoauthtoken",
+  "daemonauthtoken",
+  "awssecretaccesskey",
+  "awssessiontoken",
+  "awsbearertokenbedrock",
+  "password",
+  "x-hub-signature-256",
+]);
 
 /**
  * Strip user:pass credentials from any URL in free-text. Mirrors the
@@ -56,60 +81,44 @@ function redactCredentialUrls(text: string): string {
 /** Censor placeholder — matches pino's default so output is uniform. */
 const CENSOR = "[Redacted]";
 
-/**
- * Header names that always carry a secret on Octokit / webhook errors and
- * must be replaced wholesale rather than scrubbed for embedded tokens.
- * Compared lower-case because Node lowercases incoming header names.
- */
-const SENSITIVE_HEADER_NAMES = new Set(["authorization", "x-hub-signature-256"]);
-
 /** Compose all string-scrubbers applied to free-text fields. */
 function scrubString(value: string): string {
   return redactCredentialUrls(redactGitHubTokens(value));
 }
 
 /**
- * Scrub a `headers` object: replace known-sensitive header values with the
- * censor placeholder and run the GitHub-token / URL-credential regex over
- * the rest. Returns a new object so the original Error is never mutated.
+ * Recursively scrub a structured value (string / array / plain object).
  *
- * This duplicates the intent of pino's path-based redaction for the
- * `err.request.headers.*` namespace because pino's path syntax does not
- * traverse arbitrary depth — `*.headers.authorization` matches a 3-segment
- * path but `err.request.headers.authorization` is 4 segments deep.
+ * - Strings pass through `scrubString` (GitHub-token + credential-URL regex).
+ * - Arrays recurse element-wise.
+ * - Plain objects recurse: keys whose lower-cased name is in
+ *   `SENSITIVE_FIELD_NAMES_LC` are replaced with `CENSOR` wholesale; other
+ *   values recurse so a nested `token` / `privateKey` / etc. still gets
+ *   caught at any depth.
+ *
+ * Used by the `err` serializer to scrub `request.headers` and
+ * `response.data` because pino's path-based `redact.paths` cannot reach
+ * fields four-or-more segments deep on `err.*` (see the surrounding
+ * doc-comment on `errSerializer`). Returns fresh objects/arrays so the
+ * original Error is never mutated.
  */
-function scrubHeaders(obj: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(obj)) {
-    /* eslint-disable security/detect-object-injection -- key originates from Object.entries on a header object the pino err serializer just produced; not user-controlled. */
-    if (SENSITIVE_HEADER_NAMES.has(k.toLowerCase())) {
-      out[k] = CENSOR;
-    } else {
-      out[k] = typeof v === "string" ? scrubString(v) : v;
-    }
-    /* eslint-enable security/detect-object-injection */
+function scrubStructured(value: unknown): unknown {
+  if (typeof value === "string") {
+    return scrubString(value);
   }
-  return out;
-}
-
-/**
- * Scrub a `response.data` object on an Octokit error: `data.token` is
- * replaced wholesale (mirrors the path-based `response.data.token` rule
- * for the err-namespace case), and other string values are passed through
- * the GitHub-token / URL-credential regex.
- */
-function scrubResponseData(data: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(data)) {
-    /* eslint-disable security/detect-object-injection -- key originates from Object.entries on the err serializer output; not user-controlled. */
-    if (k === "token") {
-      out[k] = CENSOR;
-    } else {
-      out[k] = typeof v === "string" ? scrubString(v) : v;
-    }
-    /* eslint-enable security/detect-object-injection */
+  if (Array.isArray(value)) {
+    return value.map(scrubStructured);
   }
-  return out;
+  if (value !== null && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      /* eslint-disable security/detect-object-injection -- key originates from Object.entries on an object the pino err serializer just produced; not user-controlled. */
+      out[k] = SENSITIVE_FIELD_NAMES_LC.has(k.toLowerCase()) ? CENSOR : scrubStructured(v);
+      /* eslint-enable security/detect-object-injection */
+    }
+    return out;
+  }
+  return value;
 }
 
 /**
@@ -133,7 +142,7 @@ function scrubRequest(request: object): Record<string, unknown> {
   const reqObj = request as { headers?: unknown } & Record<string, unknown>;
   const headers = reqObj.headers;
   if (headers !== null && typeof headers === "object") {
-    return { ...reqObj, headers: scrubHeaders(headers as Record<string, unknown>) };
+    return { ...reqObj, headers: scrubStructured(headers) as Record<string, unknown> };
   }
   return { ...reqObj };
 }
@@ -144,7 +153,7 @@ function scrubResponse(response: object): Record<string, unknown> {
     return { ...resObj, data: scrubString(resObj.data) };
   }
   if (resObj.data !== null && typeof resObj.data === "object") {
-    return { ...resObj, data: scrubResponseData(resObj.data as Record<string, unknown>) };
+    return { ...resObj, data: scrubStructured(resObj.data) };
   }
   return { ...resObj };
 }
@@ -192,7 +201,10 @@ export function errSerializer(err: unknown): unknown {
  */
 export const logger = pino({
   level: config.logLevel,
-  redact: { paths: REDACT_PATHS },
+  // Pino's `redact.paths` is typed as `string[]` (mutable); spread the
+  // frozen exported list into a fresh array so the runtime value pino
+  // owns is independent of the canonical export.
+  redact: { paths: [...REDACT_PATHS] },
   serializers: { err: errSerializer },
   ...(config.nodeEnv === "development" ? { transport: { target: "pino-pretty" } } : {}),
 });
