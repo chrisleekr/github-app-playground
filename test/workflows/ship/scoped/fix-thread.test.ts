@@ -44,7 +44,11 @@ describe("runFixThread", () => {
   it("applies a mechanical fix, replies with SHA, and resolves the thread", async () => {
     const fake = buildOctokit();
     const applyMechanicalFix = mock(() =>
-      Promise.resolve({ applied: true, commit_sha: "deadbeef" }),
+      Promise.resolve({
+        applied: true,
+        commit_sha: "deadbeef",
+        reasoning: "Renamed `foo` to `fooBar` across the module for naming consistency.",
+      }),
     );
     const resolveThread = mock(() => Promise.resolve());
     const out = await runFixThread({
@@ -65,6 +69,30 @@ describe("runFixThread", () => {
     expect(fake.createReply).toHaveBeenCalledTimes(1);
     const replyBody = (fake.createReply.mock.calls[0]?.[0] as { body: string }).body;
     expect(replyBody).toContain("deadbeef");
+    expect(replyBody).toContain("_✅ Fix applied_");
+    expect(replyBody).toContain("**Mechanical fix pushed.**");
+    expect(replyBody).toContain("Renamed `foo` to `fooBar`");
+  });
+
+  it("falls back to a generic reasoning line when the callback omits one", async () => {
+    const fake = buildOctokit();
+    const applyMechanicalFix = mock(() =>
+      Promise.resolve({ applied: true, commit_sha: "cafef00d" }),
+    );
+    const resolveThread = mock(() => Promise.resolve());
+    await runFixThread({
+      octokit: fake.octokit,
+      owner: "o",
+      repo: "r",
+      pr_number: 1,
+      comment_id: 11,
+      thread_node_id: "PRRC_x",
+      thread: baseThread,
+      applyMechanicalFix,
+      resolveThread,
+    });
+    const replyBody = (fake.createReply.mock.calls[0]?.[0] as { body: string }).body;
+    expect(replyBody).toContain("See the linked commit");
   });
 
   it("refuses on design-discussion threads (FR-004)", async () => {
@@ -87,6 +115,8 @@ describe("runFixThread", () => {
     expect(resolveThread).not.toHaveBeenCalled();
     const replyBody = (fake.createReply.mock.calls[0]?.[0] as { body: string }).body;
     expect(replyBody).toContain("FR-004");
+    expect(replyBody).toContain("_💬 Design discussion_");
+    expect(replyBody).toContain("**Refusing to push a mechanical fix.**");
   });
 
   it("skips with a clear reason when no mechanical fix is applicable", async () => {
@@ -111,6 +141,8 @@ describe("runFixThread", () => {
     expect(resolveThread).not.toHaveBeenCalled();
     const replyBody = (fake.createReply.mock.calls[0]?.[0] as { body: string }).body;
     expect(replyBody).toContain("ambiguous");
+    expect(replyBody).toContain("_⏭️ Skipped_");
+    expect(replyBody).toContain("**No mechanical fix applied.**");
   });
 
   it("skips with a default reason when applyMechanicalFix returns no skip_reason", async () => {

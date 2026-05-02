@@ -21,14 +21,16 @@ The agent operates as a senior engineer:
 - Runs `bun test`, `bun run typecheck`, `bun run lint` when uncertain.
 - Only posts findings it can defend with evidence.
 
-Each finding carries a severity prefix:
+Each finding is posted as an inline comment in a CodeRabbit-style three-block layout (status line, bold one-line title, prose reasoning, then a `**Suggested fix:**` line). The same shape is used by `resolve`, `bot:fix-thread`, and `bot:explain-thread` so all bot output reads consistently.
 
-| Severity    | Meaning                                             |
-| ----------- | --------------------------------------------------- |
-| `[blocker]` | Must fix before merge — correctness or security.    |
-| `[major]`   | Should fix before merge — likely bug, missing test. |
-| `[minor]`   | Nice to fix — readability.                          |
-| `[nit]`     | Taste, optional. Not counted in `findings.total`.   |
+| Severity | Inline-comment status line             | REVIEW.md tag | Meaning                                             |
+| -------- | -------------------------------------- | ------------- | --------------------------------------------------- |
+| Blocker  | `_⚠️ Potential issue_ \| _🔴 Blocker_` | `[blocker]`   | Must fix before merge — correctness or security.    |
+| Major    | `_⚠️ Potential issue_ \| _🟠 Major_`   | `[major]`     | Should fix before merge — likely bug, missing test. |
+| Minor    | `_💭 Suggestion_      \| _🟡 Minor_`   | `[minor]`     | Nice to fix — readability.                          |
+| Nit      | `_💭 Suggestion_      \| _🔵 Nit_`     | `[nit]`       | Taste, optional. Not counted in `findings.total`.   |
+
+The bracketed REVIEW.md tags drive the `countFindings` parser (see `src/workflows/handlers/review.ts`); the inline status-line emojis drive presentation. Both are required.
 
 Findings are posted **one MCP call per finding**, never as a single bundled review. This guarantees each finding lands on the right line with its own resolvable thread.
 

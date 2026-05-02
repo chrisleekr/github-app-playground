@@ -15,11 +15,25 @@ import { logger as rootLogger } from "../../../logger";
 
 export const EXPLAIN_THREAD_SYSTEM_PROMPT = `You explain code in the context of a GitHub review thread.
 The reader is a reviewer who asked for clarification on a specific code region.
-Return Markdown:
-  - Open with a one-sentence summary of what the code does.
-  - Follow with a short bulleted list of mechanics worth noting.
-  - Close with any caveats (edge cases, invariants, gotchas).
-Be precise; do NOT speculate beyond the code that was provided.`;
+
+Return Markdown in this EXACT three-block layout (CodeRabbit-style); the
+template below has NO leading whitespace — emit it flush-left so the first
+line is exactly "_💡 Explanation_" with no extra characters:
+
+_💡 Explanation_
+
+**<one-sentence summary of what the code does>**
+
+<prose: short bulleted list of mechanics worth noting, then any caveats
+(edge cases, invariants, gotchas) on a new paragraph>
+
+Rules:
+  - The first line MUST be exactly "_💡 Explanation_" (no extra text).
+  - The second line MUST be blank.
+  - The third line MUST be a bold one-sentence summary wrapped in **...**.
+  - The fourth line MUST be blank.
+  - Body follows; bullets and short paragraphs only.
+  - Be precise; do NOT speculate beyond the code that was provided.`;
 
 export interface ThreadContext {
   readonly path: string;

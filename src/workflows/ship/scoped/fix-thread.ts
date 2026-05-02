@@ -26,6 +26,7 @@ import type { Octokit } from "octokit";
 import type { Logger } from "pino";
 
 import { logger as rootLogger } from "../../../logger";
+import { formatReply } from "../../format-reply";
 
 const DESIGN_DISCUSSION_PHRASES = [
   "let's discuss",
@@ -54,6 +55,13 @@ export interface ApplyMechanicalFixResult {
   readonly applied: boolean;
   readonly commit_sha?: string;
   readonly skip_reason?: string;
+  /**
+   * One-paragraph explanation of WHY the fix was applied (or what was
+   * deferred). Surfaced verbatim in the CR-style reply body so the
+   * reviewer can read the reasoning without opening the commit.
+   * Optional for back-compat; falls back to a generic line.
+   */
+  readonly reasoning?: string;
 }
 
 export interface RunFixThreadInput {
@@ -86,9 +94,12 @@ export async function runFixThread(input: RunFixThreadInput): Promise<FixThreadO
 
   // Conservatism gate (FR-004) — refuse design-discussion requests.
   if (isDesignDiscussion(input.thread.thread_body)) {
-    const body =
-      "I'm not going to push a fix here — the thread reads like a design discussion " +
-      "(FR-004). A maintainer should weigh in before this becomes a code change.";
+    const body = formatReply({
+      status: "_💬 Design discussion_",
+      title: "Refusing to push a mechanical fix.",
+      reasoning:
+        "This thread reads like a design discussion (FR-004). The bot only applies mechanical fixes; design changes are a maintainer call. Please weigh in before this becomes a code change.",
+    });
     const reply = await input.octokit.rest.pulls.createReplyForReviewComment({
       owner: input.owner,
       repo: input.repo,
@@ -109,7 +120,11 @@ export async function runFixThread(input: RunFixThreadInput): Promise<FixThreadO
       repo: input.repo,
       pull_number: input.pr_number,
       comment_id: input.comment_id,
-      body: `I couldn't apply a mechanical fix here — ${reason}.`,
+      body: formatReply({
+        status: "_⏭️ Skipped_",
+        title: "No mechanical fix applied.",
+        reasoning: `I couldn't apply a mechanical fix here — ${reason}.`,
+      }),
     });
     log.info({ reply_id: reply.data.id, reason }, "fix_thread skipped");
     return { kind: "skipped", reply_id: reply.data.id, reason };
@@ -126,18 +141,29 @@ export async function runFixThread(input: RunFixThreadInput): Promise<FixThreadO
       repo: input.repo,
       pull_number: input.pr_number,
       comment_id: input.comment_id,
-      body: `I couldn't apply a mechanical fix here — ${reason}.`,
+      body: formatReply({
+        status: "_⏭️ Skipped_",
+        title: "No mechanical fix applied.",
+        reasoning: `I couldn't apply a mechanical fix here — ${reason}.`,
+      }),
     });
     log.warn({ reply_id: reply.data.id, reason }, "fix_thread skipped (partial success)");
     return { kind: "skipped", reply_id: reply.data.id, reason };
   }
 
+  const trimmedReasoning = result.reasoning?.trim() ?? "";
   const reply = await input.octokit.rest.pulls.createReplyForReviewComment({
     owner: input.owner,
     repo: input.repo,
     pull_number: input.pr_number,
     comment_id: input.comment_id,
-    body: `Pushed mechanical fix as \`${result.commit_sha}\`.`,
+    body: formatReply({
+      status: "_✅ Fix applied_",
+      meta: ` — commit \`${result.commit_sha}\``,
+      title: "Mechanical fix pushed.",
+      reasoning:
+        trimmedReasoning.length > 0 ? trimmedReasoning : "See the linked commit for the change.",
+    }),
   });
 
   // Best-effort thread resolution (FR-005). A failure here does not undo
