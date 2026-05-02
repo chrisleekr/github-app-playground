@@ -415,6 +415,11 @@ function parseResetsClock(
   const matches = reason.matchAll(/resets\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*\(?\s*UTC\s*\)?/gi);
   const match = matches.next().value;
   if (match === undefined) return null;
+  // Reject ambiguous bare-hour formats like "resets 6 UTC" (no am/pm and
+  // no minute). Treating them as 06:00 risks the next-day rollover at
+  // line 437 pushing the wake out by ~24h when now is past the hour —
+  // strictly worse than the caller's +1h fallback for unparseable clocks.
+  if (match[2] === undefined && match[3] === undefined) return null;
   const hourRaw = Number(match[1]);
   const minute = match[2] !== undefined ? Number(match[2]) : 0;
   const meridiem = match[3]?.toLowerCase();

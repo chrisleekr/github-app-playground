@@ -807,4 +807,17 @@ describe("orchestrator helpers (pure)", () => {
     expect(result!.retryAtMs).toBe(nowMs + 60 * 60 * 1000);
     expect(result!.resetPhrase).toBe("fallback_1h");
   });
+
+  it("detectTransientQuotaError treats ambiguous 'resets 6 UTC' (no am/pm, no minute) as fallback, not 06:00", async () => {
+    const { detectTransientQuotaError } = await import("../../src/workflows/orchestrator");
+    // now = 14:00 UTC, "resets 6 UTC" without meridiem/minute is ambiguous.
+    // Without the guard, parseResetsClock would interpret it as 06:00, see
+    // it has already passed, and roll +24h → wake at next-day 06:00:30.
+    // With the guard it falls through to the +1h fallback (15:00 UTC).
+    const nowMs = Date.UTC(2026, 4, 2, 14, 0, 0);
+    const result = detectTransientQuotaError("You've hit your limit · resets 6 UTC", nowMs);
+    expect(result).not.toBeNull();
+    expect(result!.retryAtMs).toBe(nowMs + 60 * 60 * 1000);
+    expect(result!.resetPhrase).toBe("fallback_1h");
+  });
 });
