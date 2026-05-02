@@ -43,9 +43,7 @@ on every release tag — two separate calls so each predicate must exist.
 - `docs/operate/observability.md` · new "Supply-chain attestations" section
   documenting the registry / Sigstore / GitHub-API storage matrix and
   pointing operators at the consumer commands in `deployment.md` (T8).
-- `CLAUDE.md` · "Owns" cell for `docker-build.yml` updated to mention SLSA
-  - SBOM attestations and the `gh attestation verify` regression gate;
-    one-line `20260502-supply-chain-attestations` entry in "Recent Changes" (T9).
+- `CLAUDE.md` · "Owns" cell for `docker-build.yml` updated to mention SLSA + SBOM attestations and the `gh attestation verify` regression gate; one-line `20260502-supply-chain-attestations` entry in "Recent Changes" (T9).
 
 ## Commits
 
