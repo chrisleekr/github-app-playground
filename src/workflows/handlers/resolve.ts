@@ -150,7 +150,14 @@ export const handler: WorkflowHandler = async (ctx) => {
       ...(topLevelComments.length > 0 ? { enableResolveReviewThread: true } : {}),
     });
     if (!result.success) {
-      return { status: "failed", reason: "resolve pipeline execution failed" };
+      // `reason` is internal (DB state.failedReason → orchestrator quota
+      // detection + operator logs); `humanMessage` is the public tracking
+      // comment text and MUST NOT carry the raw error.
+      return {
+        status: "failed",
+        reason: result.errorMessage ?? "resolve pipeline execution failed",
+        humanMessage: "resolve pipeline execution failed — see server logs for details.",
+      };
     }
 
     const report = result.capturedFiles?.["RESOLVE.md"]?.trim() ?? "";
@@ -199,7 +206,11 @@ export const handler: WorkflowHandler = async (ctx) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     log.warn({ err }, "resolve handler caught error");
-    return { status: "failed", reason: `resolve failed: ${message}` };
+    return {
+      status: "failed",
+      reason: `resolve failed: ${message}`,
+      humanMessage: "resolve pipeline execution failed — see server logs for details.",
+    };
   }
 };
 

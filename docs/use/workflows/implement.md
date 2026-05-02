@@ -41,3 +41,10 @@ The agent reads `.github/PULL_REQUEST_TEMPLATE/bot-implement.md` and fills every
 - Pipeline fails → handler reports the underlying error.
 
 The handler does **not** poll CI or reviewer state — that is `resolve`'s job, after `review` has run.
+
+## Failure handling
+
+The handler treats public and operator surfaces separately so the public tracking comment never carries the raw underlying error. Both the `runPipeline` failure path and the outer handler `catch` set the same safe `humanMessage`:
+
+- **Public tracking comment** — a safe constant: `"implement pipeline execution failed — see server logs for details."` Octokit error stacks embed the installation token in the request URL, so the bot must never inline `err.message` into a comment body.
+- **Operator surfaces (DB + logs)** — the SDK error is propagated as `ExecutionResult.errorMessage` and persisted as `state.failedReason` on the `workflow_runs` row. `pino` logs the full `err` object on the daemon. The orchestrator's quota-detection helper reads `state.failedReason` to decide whether to auto-defer the next ship iteration; see [`ship.md`](./ship.md).

@@ -112,7 +112,15 @@ export const handler: WorkflowHandler = async (ctx) => {
         : {}),
     });
     if (!result.success) {
-      return { status: "failed", reason: "review pipeline execution failed" };
+      // `reason` is internal (DB state.failedReason → orchestrator quota
+      // detection + operator logs); `humanMessage` is the public tracking
+      // comment text and MUST NOT carry the raw error (it can include
+      // installation tokens, file paths, or other credentials).
+      return {
+        status: "failed",
+        reason: result.errorMessage ?? "review pipeline execution failed",
+        humanMessage: "review pipeline execution failed — see server logs for details.",
+      };
     }
 
     const report = result.capturedFiles?.["REVIEW.md"]?.trim() ?? "";
@@ -161,7 +169,11 @@ export const handler: WorkflowHandler = async (ctx) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     log.warn({ err }, "review handler caught error");
-    return { status: "failed", reason: `review failed: ${message}` };
+    return {
+      status: "failed",
+      reason: `review failed: ${message}`,
+      humanMessage: "review pipeline execution failed — see server logs for details.",
+    };
   }
 };
 

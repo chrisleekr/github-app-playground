@@ -106,7 +106,14 @@ export const handler: WorkflowHandler = async (ctx) => {
 
     const result = await runPipeline(botCtx, { captureFiles: ["IMPLEMENT.md"] });
     if (!result.success) {
-      return { status: "failed", reason: "implement pipeline execution failed" };
+      // `reason` is internal (DB state.failedReason → orchestrator quota
+      // detection + operator logs); `humanMessage` is the public tracking
+      // comment text and MUST NOT carry the raw error.
+      return {
+        status: "failed",
+        reason: result.errorMessage ?? "implement pipeline execution failed",
+        humanMessage: "implement pipeline execution failed — see server logs for details.",
+      };
     }
 
     const opened = await findRecentOpenedPr(octokit, target.owner, target.repo, since);
@@ -149,7 +156,11 @@ export const handler: WorkflowHandler = async (ctx) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     log.warn({ err }, "implement handler caught error");
-    return { status: "failed", reason: `implement failed: ${message}` };
+    return {
+      status: "failed",
+      reason: `implement failed: ${message}`,
+      humanMessage: "implement pipeline execution failed — see server logs for details.",
+    };
   }
 };
 
