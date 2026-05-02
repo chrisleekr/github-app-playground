@@ -1,3 +1,16 @@
+# [1.8.0](https://github.com/chrisleekr/github-app-playground/compare/v1.7.0...v1.8.0) (2026-05-02)
+
+
+### Bug Fixes
+
+* **logger:** redact paths and scrub err.* before pino emits (closes [#52](https://github.com/chrisleekr/github-app-playground/issues/52)) ([#89](https://github.com/chrisleekr/github-app-playground/issues/89)) ([641f138](https://github.com/chrisleekr/github-app-playground/commit/641f1385a8ccbd9d549609e42859858c9ea1c8ea))
+* **security:** redact raw error messages from public PR comments ([#90](https://github.com/chrisleekr/github-app-playground/issues/90)) ([cc70949](https://github.com/chrisleekr/github-app-playground/commit/cc709494e117c8d41f72e56e017dbeeaf3d71d83))
+
+
+### Features
+
+* **workflows:** unify bot reply format and harden research/resolve guards ([#91](https://github.com/chrisleekr/github-app-playground/issues/91)) ([7d39fb4](https://github.com/chrisleekr/github-app-playground/commit/7d39fb498fa9fd60079d57a564d44ec3345589e5))
+
 # [1.7.0](https://github.com/chrisleekr/github-app-playground/compare/v1.6.1...v1.7.0) (2026-05-01)
 
 
