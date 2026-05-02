@@ -1018,6 +1018,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#log-redaction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Log redaction
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#common-log-fields" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1499,6 +1510,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#log-redaction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Log redaction
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#common-log-fields" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1619,6 +1641,18 @@
 
 <h1 id="observability">Observability<a class="headerlink" href="#observability" title="Permanent link">&para;</a></h1>
 <p>Structured JSON logs via <a href="https://getpino.io">pino</a> are the primary signal. Every dispatch decision and every pipeline step carries a <code>deliveryId</code> so you can reconstruct a request end-to-end from a single log query. When <code>DATABASE_URL</code> is configured, the same information is persisted to <code>executions</code> and <code>triage_results</code> for aggregate reporting.</p>
+<h2 id="log-redaction">Log redaction<a class="headerlink" href="#log-redaction" title="Permanent link">&para;</a></h2>
+<p>The exported <code>logger</code> in <code>src/logger.ts</code> is the canonical chokepoint for secret scrubbing — every child logger inherits its <code>redact.paths</code> list and its custom <code>err</code> serializer, so individual call sites do not need to remember to scrub. Two layers run on every emitted line:</p>
+<ol>
+<li>
+<p><strong>Path-based redaction</strong> — the exported <code>REDACT_PATHS</code> constant in <code>src/logger.ts</code> lists every field pino should replace with <code>[Redacted]</code> before the JSON is serialised. Paths covered: <code>authorization</code> and its <code>*.authorization</code> / <code>headers.authorization</code> / <code>*.headers.authorization</code> / <code>req.headers.authorization</code> / <code>request.headers.authorization</code> variants; the webhook signature header <code>x-hub-signature-256</code> (also wildcard-prefixed); <code>response.data.token</code>; and the named credential fields <code>token</code>, <code>installationToken</code>, <code>privateKey</code>, <code>webhookSecret</code>, <code>anthropicApiKey</code>, <code>claudeCodeOauthToken</code>, <code>daemonAuthToken</code>, <code>awsSecretAccessKey</code>, <code>awsSessionToken</code>, <code>awsBearerTokenBedrock</code>, <code>*.password</code>. The list is <code>Object.freeze</code>d so an accidental <code>push</code> from another module cannot silently weaken the policy.</p>
+</li>
+<li>
+<p><strong><code>errSerializer</code> scrubbing</strong> — the exported <code>errSerializer</code> in <code>src/logger.ts</code> defers to pino's <code>stdSerializers.err</code> and then runs the result's <code>message</code>, <code>stack</code>, <code>request.headers</code>, and <code>response.data</code> through <code>redactGitHubTokens</code> (<code>src/utils/sanitize.ts</code>) plus an inline credential-URL scrubber that mirrors <code>redactValkeyUrl</code> (<code>src/orchestrator/valkey.ts</code>). The walker recurses through nested objects/arrays and replaces any key matching the sensitive-field-name set wholesale, so <code>err.response.data.meta.token</code> and <code>err.request.headers.forwarded.authorization</code> are caught at any depth — this is necessary because pino's path-based rules cannot match four-or-more segments deep on <code>err.*</code>. It also catches <code>ghs_…</code> installation tokens and App JWTs echoed inside <code>err.message</code> / <code>err.stack</code>.</p>
+</li>
+</ol>
+<p>The serializer operates on a copy, so the original Error instance is never mutated.</p>
+<p>If you add a new secret-bearing config field to <code>src/config.ts</code>, add its property name to <code>REDACT_PATHS</code> in the same PR. The point helpers <code>redactGitHubTokens</code> and <code>redactValkeyUrl</code> remain in place for their non-log call sites (prompt sanitisation and the Valkey startup info log respectively); the logger config is the system-wide default.</p>
 <h2 id="common-log-fields">Common log fields<a class="headerlink" href="#common-log-fields" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
