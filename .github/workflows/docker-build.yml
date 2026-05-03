@@ -275,31 +275,6 @@ jobs:
           fi
           echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
 
-      # To prevent SBOM bloat from BuildKit's full-evidence mode (which includes the entire build context as source evidence), write a custom Syft config that disables source + package evidence collection. It should reduce SBOM file size under 16777216 bytes.
-      - name: Write Syft config to reduce SBOM size
-        run: |
-          cat > "${RUNNER_TEMP}/.syft.yaml" <<'EOF'
-          scope: "squashed"
-          license:
-            content: "none"
-          file:
-            metadata:
-              selection: "owned-by-package"
-              digests:
-                - "sha256"
-            content:
-              skip-files-above-size: 0
-              globs: []
-          relationships:
-            package-file-ownership: false
-            package-file-ownership-overlap: false
-            exclude-binary-overlap-by-ownership: false
-          select-catalogers:
-            - "-file-metadata"
-            - "-file-content"
-            - "-file-executable"
-          EOF
-
       - name: Generate CycloneDX SBOM for merged image
         uses: anchore/sbom-action@v0
         with:
@@ -308,7 +283,7 @@ jobs:
           output-file: "sbom-${{ matrix.variant }}.cyclonedx.json"
           upload-artifact: false
           upload-release-assets: false
-          config: ${{ runner.temp }}/.syft.yaml
+          config: .syft.yaml
 
       - name: Attest build provenance
         uses: actions/attest@v4
