@@ -282,7 +282,14 @@ jobs:
           upload-artifact: false
           upload-release-assets: false
 
-      - name: Attest build provenance & SBOM
+      - name: Attest build provenance
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.inspect.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest SBOM
         uses: actions/attest@v4
         with:
           subject-name: ${{ env.IMAGE_NAME }}
