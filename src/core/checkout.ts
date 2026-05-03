@@ -80,6 +80,11 @@ export async function checkoutRepo(
       );
       try {
         await $`git -C ${workDir} remote set-branches --add origin ${baseBranch}`;
+        // Both sides of the diff are bounded by CLONE_DEPTH. If head/base diverge by
+        // more than that on long-lived branches, the merge base may not be reachable
+        // locally and `git diff origin/<base>...HEAD` silently widens to the closest
+        // shallow-boundary commit — bump CLONE_DEPTH or `git fetch --unshallow` if
+        // an agent reports a noisy diff for a long-history base.
         await $`git -C ${workDir} fetch --depth=${config.cloneDepth} origin ${baseBranch}`;
       } catch (err) {
         log.warn(

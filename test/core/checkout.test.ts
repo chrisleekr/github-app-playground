@@ -69,7 +69,10 @@ beforeAll(async () => {
     GIT_CONFIG_VALUE_0: process.env["GIT_CONFIG_VALUE_0"],
   };
   process.env["GIT_CONFIG_COUNT"] = "1";
-  process.env["GIT_CONFIG_KEY_0"] = `url.${bareRepoPath}.insteadOf`;
+  // file:// (rather than a bare path) so git treats the redirect as a non-local
+  // clone — local-path clones silently ignore --depth, which would mask any
+  // future regression in the supplemental fetch's shallow-fetch behaviour.
+  process.env["GIT_CONFIG_KEY_0"] = `url.file://${bareRepoPath}.insteadOf`;
   process.env["GIT_CONFIG_VALUE_0"] = FIXTURE_URL;
 
   originalCloneBaseDir = config.cloneBaseDir;
@@ -167,5 +170,76 @@ describe("checkoutRepo supplemental base-branch fetch", () => {
 
     const refs = await listRemoteRefs(workDir);
     expect(refs).toEqual(["origin/feat/x"]);
+  });
+
+  it("PR with non-existent baseBranch — fetch fails best-effort, head ref intact", async () => {
+    const ctx = makeCtx({ isPR: true, headBranch: "feat/x" });
+
+    // Should NOT throw — supplemental fetch failure is wrapped in try/catch + warn
+    const { workDir, cleanup } = await checkoutRepo(ctx, "ignored-token", "ghost-branch");
+    cleanups.push(cleanup);
+
+    const refs = await listRemoteRefs(workDir);
+    expect(refs).toContain("origin/feat/x");
+    expect(refs).not.toContain("origin/ghost-branch");
+    // Head ref is still resolvable for downstream operations
+    await $`git -C ${workDir} rev-parse origin/feat/x`.quiet();
+  });
+
+  it("set-branches --add persists — later `git fetch origin` updates origin/<base>", async () => {
+    const ctx = makeCtx({ isPR: true, headBranch: "feat/x" });
+
+    const { workDir, cleanup } = await checkoutRepo(ctx, "ignored-token", "main");
+    cleanups.push(cleanup);
+
+    const beforeSha = (await $`git -C ${workDir} rev-parse origin/main`.text()).trim();
+
+    // Advance the upstream main via a separate clone, then push back
+    const pusher = await mkdtemp(join(fixturesRoot, "pusher-"));
+    await $`git clone -q ${bareRepoPath} ${pusher}`;
+    await $`git -C ${pusher} config user.email test@example.com`;
+    await $`git -C ${pusher} config user.name test`;
+    await $`git -C ${pusher} checkout -q main`;
+    await $`git -C ${pusher} commit --allow-empty -m advance-main -q`;
+    await $`git -C ${pusher} push -q origin main`;
+    await rm(pusher, { recursive: true, force: true });
+
+    // A plain `git fetch origin` (the form `branch-refresh.ts` uses) must pick up
+    // the new commit — proves `remote set-branches --add origin <base>` persisted.
+    await $`git -C ${workDir} fetch -q origin`;
+    const afterSha = (await $`git -C ${workDir} rev-parse origin/main`.text()).trim();
+    expect(afterSha).not.toEqual(beforeSha);
+  });
+
+  it("supplemental fetch honours --depth (file:// fixture, depth=1)", async () => {
+    // Push extra commits onto main so a depth=1 fetch is observable
+    const seeder = await mkdtemp(join(fixturesRoot, "depth-seeder-"));
+    await $`git clone -q ${bareRepoPath} ${seeder}`;
+    await $`git -C ${seeder} config user.email test@example.com`;
+    await $`git -C ${seeder} config user.name test`;
+    await $`git -C ${seeder} checkout -q main`;
+    for (let i = 0; i < 5; i += 1) {
+      await $`git -C ${seeder} commit --allow-empty -m extra-${i} -q`;
+    }
+    await $`git -C ${seeder} push -q origin main`;
+    await rm(seeder, { recursive: true, force: true });
+
+    const originalDepth = config.cloneDepth;
+    (config as { cloneDepth: number }).cloneDepth = 1;
+    try {
+      const ctx = makeCtx({ isPR: true, headBranch: "feat/x" });
+      const { workDir, cleanup } = await checkoutRepo(ctx, "ignored-token", "main");
+      cleanups.push(cleanup);
+
+      // Both clone and supplemental fetch ran with --depth=1 against a non-local
+      // (file://) URL — git's "warning: --depth is ignored in local clones"
+      // doesn't apply, so each ref must resolve to exactly 1 reachable commit.
+      const headCount = (await $`git -C ${workDir} rev-list --count origin/feat/x`.text()).trim();
+      const baseCount = (await $`git -C ${workDir} rev-list --count origin/main`.text()).trim();
+      expect(Number(headCount)).toBe(1);
+      expect(Number(baseCount)).toBe(1);
+    } finally {
+      (config as { cloneDepth: number }).cloneDepth = originalDepth;
+    }
   });
 });
