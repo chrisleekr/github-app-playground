@@ -10,7 +10,11 @@ on:
   workflow_dispatch:
     inputs:
       focus_area:
-        description: "Optional focus area for this manual run. Leave blank for a randomly chosen area. Constrained free-text: lowercase letters, digits, and hyphens only; must start with a letter; 1–32 characters. See the predefined list in research.md §12 for the conventional values."
+        description: "Optional focus area for this manual run. Leave blank for a
+          randomly chosen area. Constrained free-text: lowercase letters,
+          digits, and hyphens only; must start with a letter; 1–32 characters.
+          See the predefined list in research.md §12 for the conventional
+          values."
         required: false
         type: string
         default: ""
@@ -112,7 +116,7 @@ jobs:
           allowed_bots: "*"
           claude_args: |
             --model opus
-            --max-turns 80
+            --max-turns 200
             --allowedTools "WebSearch,WebFetch,Read,Glob,Grep,Bash(gh issue create:*),Bash(gh issue list:*),Bash(gh label create:*),Bash(git log:*),Bash(cat:*),Bash(date:*),Bash(mmdc:*),Bash(awk:*),Bash(grep:*)"
             --disallowedTools ""
           prompt: |
@@ -157,7 +161,7 @@ jobs:
 
             ## Strict Workflow — Follow In Order
 
-            You have a LIMITED turn budget (~80 turns). Do NOT read every file.
+            You have a LIMITED turn budget (~200 turns). Do NOT read every file.
 
             ### Step 1 — Architecture overview (2-3 turns max)
 
