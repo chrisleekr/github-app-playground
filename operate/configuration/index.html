@@ -1810,6 +1810,26 @@
 <td>Ceiling on simultaneous Claude executions across the fleet.</td>
 </tr>
 <tr>
+<td><code>MAX_FETCHED_COMMENTS</code></td>
+<td><code>500</code></td>
+<td>Per-PR/issue cap on comments merged from the GraphQL fetcher (<code>src/core/fetcher.ts</code>). When the cap fires the fetcher emits <code>log.warn({ connection: "comments", … })</code> and sets <code>FetchedData.truncated.comments=true</code>.</td>
+</tr>
+<tr>
+<td><code>MAX_FETCHED_REVIEWS</code></td>
+<td><code>500</code></td>
+<td>Per-PR cap on reviews merged from the fetcher. Sets <code>FetchedData.truncated.reviews=true</code> on cap fire.</td>
+</tr>
+<tr>
+<td><code>MAX_FETCHED_REVIEW_COMMENTS</code></td>
+<td><code>500</code></td>
+<td>Per-PR cap on inline review comments merged across all reviews (top-level + nested follow-up paginate). Sets <code>truncated.reviewComments=true</code>.</td>
+</tr>
+<tr>
+<td><code>MAX_FETCHED_FILES</code></td>
+<td><code>500</code></td>
+<td>Per-PR cap on changed files merged from the fetcher. Sets <code>truncated.changedFiles=true</code> on cap fire.</td>
+</tr>
+<tr>
 <td><code>AGENT_TIMEOUT_MS</code></td>
 <td><code>3600000</code></td>
 <td>Wall-clock budget for one agent execution (60 min). Lower only when the job is bounded.</td>

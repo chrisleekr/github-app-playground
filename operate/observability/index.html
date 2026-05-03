@@ -1112,6 +1112,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#data-fetching-safety-caps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data fetching safety caps
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#health-probes" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1615,6 +1626,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#data-fetching-safety-caps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data fetching safety caps
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#health-probes" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1941,6 +1963,20 @@
 <li><strong>OOM / crash loops.</strong> Standard infra alerts. Durable idempotency means a restart will not replay a processed event.</li>
 <li><strong>Ship terminal-blocker rate.</strong> A spike in <code>ship.intent.transition</code> events with <code>to_status:human_took_over</code> and <code>terminal_blocker_category:flake-cap</code> points at PR-flake regressions, not bot misbehaviour.</li>
 </ul>
+<h2 id="data-fetching-safety-caps">Data fetching safety caps<a class="headerlink" href="#data-fetching-safety-caps" title="Permanent link">&para;</a></h2>
+<p><code>src/core/fetcher.ts</code> walks every <code>pageInfo { hasNextPage endCursor }</code> connection it receives via <code>octokit.graphql.paginate(...)</code>, so PRs/issues with hundreds of comments, reviews, inline review comments, or changed files are no longer silently truncated to the first 100. The four <code>MAX_FETCHED_*</code> env vars (see <a href="../configuration/"><code>configuration.md</code></a>) bound the <strong>merged result</strong> that reaches the agent prompt — they do not bound how much data is fetched and held in memory during pagination. The fetcher walks every page first, then trims the array to the most recent <code>cap</code> items; fetch-time memory is bounded by GitHub API limits (max items per connection), not these caps. Operators tuning for cost/latency should narrow entity selection (e.g. close noisy issues) rather than rely on the cap to cut request volume.</p>
+<p>When a cap fires the fetcher emits a single structured warn line per affected connection and flags the connection on the returned <code>FetchedData</code> so downstream code can surface it:</p>
+<div class="language-json highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">&quot;level&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;warn&quot;</span><span class="p">,</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">&quot;msg&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Fetched comments exceeded MAX_FETCHED cap; truncating to 500&quot;</span><span class="p">,</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">&quot;connection&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;comments&quot;</span><span class="p">,</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="nt">&quot;fetched&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">642</span><span class="p">,</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="nt">&quot;cap&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">500</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="p">}</span>
+</span></code></pre></div>
+<p><code>connection</code> is one of <code>comments</code>, <code>reviews</code>, <code>reviewComments</code>, <code>changedFiles</code>. The matching boolean lands on <code>FetchedData.truncated.&lt;connection&gt;</code> (<code>src/types.ts</code>).</p>
+<p><code>buildPrompt</code> (<code>src/core/prompt-builder.ts</code>) reads <code>data.truncated</code> and, when at least one flag is set, prepends a <code>WARNING: pre-fetched context is incomplete…</code> line to the agent's instructions naming the affected connections and instructing it to reach for the GitHub CLI / API directly when full context matters. Operators reading agent transcripts can grep for that banner to confirm a cap fired without re-querying logs.</p>
+<p>Alert rule: any <code>level=warn msg~"exceeded MAX_FETCHED cap"</code> occurrence is interesting. A steady stream from the same <code>repo</code> over several deliveries usually means the cap should be raised for that tenant; a one-off on a notoriously huge PR is expected and not actionable.</p>
 <h2 id="health-probes">Health probes<a class="headerlink" href="#health-probes" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
