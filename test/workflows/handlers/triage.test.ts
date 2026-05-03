@@ -254,6 +254,52 @@ describe("triage handler (SDK-driven)", () => {
     }
   });
 
+  it("accepts evidence entries with note but no file (cross-cutting observations)", async () => {
+    triageVerdict = JSON.stringify({
+      valid: true,
+      confidence: 0.9,
+      summary: "Reproduced — non-constant-time bearer comparison.",
+      recommendedNext: "plan",
+      evidence: [
+        { file: "src/orchestrator/ws-server.ts", line: 52, note: "plain !== check" },
+        { note: "grep timingSafeEqual src/ returns 0 hits" },
+      ],
+      reproduction: {
+        attempted: true,
+        reproduced: true,
+        details: "Code inspection confirms structural defect at cited line.",
+      },
+    });
+    const ctx = buildCtx();
+
+    const result = await triageHandler(ctx);
+
+    expect(result.status).toBe("succeeded");
+    if (result.status === "succeeded") {
+      const state = result.state as { evidence: unknown[] };
+      expect(state.evidence).toHaveLength(2);
+    }
+  });
+
+  it("rejects evidence entries that have neither file nor note", async () => {
+    triageVerdict = JSON.stringify({
+      valid: true,
+      confidence: 0.9,
+      summary: "x",
+      recommendedNext: "plan",
+      evidence: [{ line: 10 }],
+      reproduction: { attempted: false, reproduced: null, details: "skipped" },
+    });
+    const ctx = buildCtx();
+
+    const result = await triageHandler(ctx);
+
+    expect(result.status).toBe("failed");
+    if (result.status === "failed") {
+      expect(result.reason).toContain("TRIAGE_VERDICT.json failed validation");
+    }
+  });
+
   it("fails when target is a PR rather than an issue", async () => {
     const ctx = buildCtx();
     const prCtx: WorkflowRunContext = { ...ctx, target: { ...ctx.target, type: "pr" } };

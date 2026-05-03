@@ -75,11 +75,15 @@ const verdictSchema = z
     recommendedNext: z.enum(["plan", "stop"]),
     evidence: z
       .array(
-        z.object({
-          file: z.string().min(1),
-          line: z.number().int().nonnegative().optional(),
-          note: z.string().min(1).optional(),
-        }),
+        z
+          .object({
+            file: z.string().min(1).optional(),
+            line: z.number().int().nonnegative().optional(),
+            note: z.string().min(1).optional(),
+          })
+          .refine((e) => e.file !== undefined || e.note !== undefined, {
+            message: "evidence entry must have at least one of `file` or `note`",
+          }),
       )
       .default([]),
     reproduction: reproductionSchema,
@@ -337,9 +341,10 @@ function buildTriagePrompt(input: {
     `      "summary": "<as long as needed to faithfully convey the verdict>",`,
     `      "recommendedNext": "plan" | "stop",`,
     `      "evidence": [`,
-    `        { "file": "<path>", "line": <int|omit>, "note": "<short>" },`,
+    `        { "file": "<path|omit>", "line": <int|omit>, "note": "<short|omit>" },`,
     `        ...`,
     `      ],`,
+    `    (every evidence entry MUST have at least one of \`file\` or \`note\`. Prefer \`file\`+\`line\` citations; use \`note\`-only for cross-cutting observations like negative grep results.)`,
     `      "reproduction": {`,
     `        "attempted": true | false,`,
     `        "reproduced": true | false | null,`,
