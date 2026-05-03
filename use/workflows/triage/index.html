@@ -1604,8 +1604,8 @@
 </tr>
 <tr>
 <td><code>state.evidence</code></td>
-<td><code>Array&lt;{file, line?, note?}&gt;</code></td>
-<td>—</td>
+<td><code>Array&lt;{file?, line?, note?}&gt;</code></td>
+<td>Each entry must have at least one of <code>file</code> or <code>note</code>. Prefer <code>file</code>+<code>line</code> citations; <code>note</code>-only is for cross-cutting evidence (e.g. a negative grep result that has no single-file pointer).</td>
 </tr>
 <tr>
 <td><code>state.reproduction</code></td>
