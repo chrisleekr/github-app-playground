@@ -279,16 +279,24 @@ jobs:
       - name: Write Syft config to reduce SBOM size
         run: |
           cat > "${RUNNER_TEMP}/.syft.yaml" <<'EOF'
-          package:
-            cataloger:
-              scope: "squashed" # default is "all-layers", squashed deduplicates
+          scope: "squashed"
+          license:
+            content: "none"
           file:
             metadata:
-              selection: "owned-by-package" # only files owned by a package, not all files
+              selection: "owned-by-package"
+              digests:
+                - "sha256"
             content:
-              skip-files-above-size: 0 # skip embedded file content entirely
-            cataloger:
-              enabled: false # disable standalone file cataloger
+              skip-files-above-size: 0
+              globs: []
+          relationships:
+            package-file-ownership: false
+            package-file-ownership-overlap: false
+          select-catalogers:
+            - "-file-metadata"
+            - "-file-content"
+            - "-file-executable"
           EOF
 
       - name: Generate CycloneDX SBOM for merged image
