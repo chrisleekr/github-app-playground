@@ -200,6 +200,8 @@ jobs:
       contents: read
       id-token: write
       attestations: write
+    env:
+      REGISTRY: docker.io
     strategy:
       fail-fast: false
       matrix:
