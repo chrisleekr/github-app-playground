@@ -200,6 +200,22 @@ const configSchema = z
     // and resource saturation. Set via MAX_CONCURRENT_REQUESTS env var.
     maxConcurrentRequests: z.coerce.number().int().positive().default(3),
 
+    // Per-connection safety caps applied during PR/issue GraphQL fetches in
+    // src/core/fetcher.ts. The fetcher walks every page via cursor-based
+    // pagination (octokit graphql.paginate) and then trims the merged result
+    // to the most recent `cap` items — newest survives, oldest drops. When
+    // truncation fires the matching flag on `FetchedData.truncated` is set
+    // and a structured `log.warn({ connection, fetched, cap })` is emitted.
+    // Defaults are sized so a 99th-percentile PR/issue still fits without
+    // truncation; raise only when the prompt budget can absorb the larger
+    // context. NOTE: pagination is bounded by GitHub API limits, not by
+    // these caps — operators tuning for cost should prefer narrower entity
+    // selection over a smaller cap.
+    maxFetchedComments: z.coerce.number().int().positive().default(500),
+    maxFetchedReviews: z.coerce.number().int().positive().default(500),
+    maxFetchedReviewComments: z.coerce.number().int().positive().default(500),
+    maxFetchedFiles: z.coerce.number().int().positive().default(500),
+
     // Wall-clock timeout for a single Claude agent execution in milliseconds.
     // Guards against resource exhaustion from hung model responses or MCP servers.
     // Default 60 minutes — implement / review steps on non-trivial issues
@@ -726,6 +742,10 @@ function loadConfig(): Config {
     logLevel: process.env["LOG_LEVEL"],
     nodeEnv: process.env.NODE_ENV,
     maxConcurrentRequests: process.env["MAX_CONCURRENT_REQUESTS"],
+    maxFetchedComments: process.env["MAX_FETCHED_COMMENTS"],
+    maxFetchedReviews: process.env["MAX_FETCHED_REVIEWS"],
+    maxFetchedReviewComments: process.env["MAX_FETCHED_REVIEW_COMMENTS"],
+    maxFetchedFiles: process.env["MAX_FETCHED_FILES"],
     agentTimeoutMs: process.env["AGENT_TIMEOUT_MS"],
     agentMaxTurns: process.env["AGENT_MAX_TURNS"],
     claudeCodePath: process.env["CLAUDE_CODE_PATH"],

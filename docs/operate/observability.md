@@ -108,6 +108,28 @@ Call them from an internal admin endpoint, a scheduled job, or `bun repl`.
 - **OOM / crash loops.** Standard infra alerts. Durable idempotency means a restart will not replay a processed event.
 - **Ship terminal-blocker rate.** A spike in `ship.intent.transition` events with `to_status:human_took_over` and `terminal_blocker_category:flake-cap` points at PR-flake regressions, not bot misbehaviour.
 
+## Data fetching safety caps
+
+`src/core/fetcher.ts` walks every `pageInfo { hasNextPage endCursor }` connection it receives via `octokit.graphql.paginate(...)`, so PRs/issues with hundreds of comments, reviews, inline review comments, or changed files are no longer silently truncated to the first 100. The four `MAX_FETCHED_*` env vars (see [`configuration.md`](configuration.md)) bound the **merged result** that reaches the agent prompt — they do not bound how much data is fetched and held in memory during pagination. The fetcher walks every page first, then trims the array to the most recent `cap` items; fetch-time memory is bounded by GitHub API limits (max items per connection), not these caps. Operators tuning for cost/latency should narrow entity selection (e.g. close noisy issues) rather than rely on the cap to cut request volume.
+
+When a cap fires the fetcher emits a single structured warn line per affected connection and flags the connection on the returned `FetchedData` so downstream code can surface it:
+
+```json
+{
+  "level": "warn",
+  "msg": "Fetched comments exceeded MAX_FETCHED cap; truncating to 500",
+  "connection": "comments",
+  "fetched": 642,
+  "cap": 500
+}
+```
+
+`connection` is one of `comments`, `reviews`, `reviewComments`, `changedFiles`. The matching boolean lands on `FetchedData.truncated.<connection>` (`src/types.ts`).
+
+`buildPrompt` (`src/core/prompt-builder.ts`) reads `data.truncated` and, when at least one flag is set, prepends a `WARNING: pre-fetched context is incomplete…` line to the agent's instructions naming the affected connections and instructing it to reach for the GitHub CLI / API directly when full context matters. Operators reading agent transcripts can grep for that banner to confirm a cap fired without re-querying logs.
+
+Alert rule: any `level=warn msg~"exceeded MAX_FETCHED cap"` occurrence is interesting. A steady stream from the same `repo` over several deliveries usually means the cap should be raised for that tenant; a one-off on a notoriously huge PR is expected and not actionable.
+
 ## Health probes
 
 | Path       | Purpose                                                                                              |
