@@ -29,6 +29,8 @@ If you add a new secret-bearing config field to `src/config.ts`, add its propert
 | `cost_usd`                           | Agent-reported total cost from the SDK.                                                               |
 | `workflowRunId`, `workflowName`      | UUID of the `workflow_runs` row + workflow name. Stable per run.                                      |
 | `intentWorkflow`, `intentConfidence` | Intent-classifier verdict and confidence for comment triggers.                                        |
+| `branch`, `depth`                    | Initial clone target — emitted by `checkout.ts` on the `Cloning repository` line.                     |
+| `baseBranch`, `headBranch`           | PR base + head ref — emitted on `Fetching PR base branch` (info) and the matching warn on fetch fail. |
 
 ## Ship workflow log fields
 
