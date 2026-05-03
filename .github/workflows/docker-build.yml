@@ -200,6 +200,8 @@ jobs:
       contents: read
       id-token: write
       attestations: write
+    env:
+      REGISTRY: docker.io
     strategy:
       fail-fast: false
       matrix:
@@ -281,18 +283,19 @@ jobs:
           output-file: "sbom-${{ matrix.variant }}.cyclonedx.json"
           upload-artifact: false
           upload-release-assets: false
+          config: .syft.yaml
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest@v4
         with:
-          subject-name: ${{ env.IMAGE_NAME }}
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.inspect.outputs.digest }}
           push-to-registry: true
 
       - name: Attest SBOM
-        uses: actions/attest-sbom@v4
+        uses: actions/attest@v4
         with:
-          subject-name: ${{ env.IMAGE_NAME }}
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.inspect.outputs.digest }}
           sbom-path: "sbom-${{ matrix.variant }}.cyclonedx.json"
           push-to-registry: true
