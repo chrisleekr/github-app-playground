@@ -293,6 +293,7 @@ jobs:
           relationships:
             package-file-ownership: false
             package-file-ownership-overlap: false
+            exclude-binary-overlap-by-ownership: false
           select-catalogers:
             - "-file-metadata"
             - "-file-content"
