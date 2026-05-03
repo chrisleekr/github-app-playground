@@ -35,6 +35,7 @@ permissions:
   contents: write # semantic-release: push git tag (no GitHub release in dev)
   security-events: write
   id-token: write
+  attestations: write # Required by the nested 'merge' job
 
 jobs:
   ci:

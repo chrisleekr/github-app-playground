@@ -23,6 +23,7 @@ permissions:
   contents: write # semantic-release: tags, release commit, GitHub release
   security-events: write
   id-token: write
+  attestations: write # Required by the nested 'merge' job
 
 jobs:
   ci:
