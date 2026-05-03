@@ -21,6 +21,7 @@ concurrency:
 
 permissions:
   contents: write # semantic-release: tags, release commit, GitHub release
+  attestations: write # Required by the nested 'merge' job
   security-events: write
   id-token: write
 
