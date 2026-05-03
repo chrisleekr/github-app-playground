@@ -353,7 +353,7 @@ function buildTriagePrompt(input: {
     `    }`,
     ``,
     `Rules:`,
-    `- Be ruthless about evidence. A claim without a file:line citation is a guess.`,
+    `- Be ruthless about evidence. Prefer \`file:line\` citations; a claim with neither a citation nor a concrete cross-cutting observation (e.g. a negative grep result) is a guess.`,
     `- For bug issues, a verdict without an honest reproduction attempt is a failure of your job.`,
     `- It is OK to report \`reproduced=null\` if the bug genuinely can't be reproduced in this environment — but you MUST explain WHY honestly. Never lie about reproduction status.`,
     `- Do NOT modify any source files in the repo (writing temporary scripts under /tmp is fine; running tests is fine; do not stage or commit anything).`,
