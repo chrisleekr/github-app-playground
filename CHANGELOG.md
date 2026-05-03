@@ -1,3 +1,18 @@
+# [1.9.0](https://github.com/chrisleekr/github-app-playground/compare/v1.8.0...v1.9.0) (2026-05-03)
+
+
+### Bug Fixes
+
+* **checkout:** fetch PR base branch so origin/<baseBranch> resolves (closes [#74](https://github.com/chrisleekr/github-app-playground/issues/74)) ([#96](https://github.com/chrisleekr/github-app-playground/issues/96)) ([71f83a6](https://github.com/chrisleekr/github-app-playground/commit/71f83a6600e4a49b45295e0886b6c9072af21e88))
+* **fetcher:** paginate GraphQL connections + MAX_FETCHED_* caps (closes [#66](https://github.com/chrisleekr/github-app-playground/issues/66)) ([#95](https://github.com/chrisleekr/github-app-playground/issues/95)) ([f728ecd](https://github.com/chrisleekr/github-app-playground/commit/f728ecdf16fd31feefa78aba0cbacf61a7292129))
+* **triage:** accept note-only evidence; raise research max-turns to 200 ([#97](https://github.com/chrisleekr/github-app-playground/issues/97)) ([3b6036c](https://github.com/chrisleekr/github-app-playground/commit/3b6036cffa5b73aefcd8fb0b788bb526ac401df3))
+* **workflow:** fix release.yml ([#98](https://github.com/chrisleekr/github-app-playground/issues/98)) ([cb43d69](https://github.com/chrisleekr/github-app-playground/commit/cb43d69064e9ed8fe4061525287ac0cb7b969314))
+
+
+### Features
+
+* **workflows:** publish SLSA provenance + SBOM attestations on every release tag (closes [#58](https://github.com/chrisleekr/github-app-playground/issues/58)) ([#94](https://github.com/chrisleekr/github-app-playground/issues/94)) ([95856bc](https://github.com/chrisleekr/github-app-playground/commit/95856bc2768694ed7b6da8103f5e8261b199bfa6))
+
 # [1.8.0](https://github.com/chrisleekr/github-app-playground/compare/v1.7.0...v1.8.0) (2026-05-02)
 
 
