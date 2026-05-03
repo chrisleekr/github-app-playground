@@ -1,56 +1,44 @@
-# Implement: issue #66 — paginate GraphQL fetcher + MAX_FETCHED\_\* caps
+# Implement: issue #74 — supplemental fetch of PR base branch in checkout
+
+Closes #74 (`fix(pipeline): shallow single-branch clone omits origin/baseBranch, breaking PR diffs and auto-rebase`).
 
 ## Summary
 
-Closes #66 (`fix(pipeline): GraphQL fetcher silently truncates PR/issue context past 100 items`).
+The pipeline's PR checkout uses `git clone --single-branch --branch=<headBranch>`, which rewrites `remote.origin.fetch` so only the head branch is fetched. The agent prompt then directs the agent to use `origin/<baseBranch>` for diffs, and the auto-rebase handler tells the agent to `git rebase origin/<baseRef>` — both fail because the base branch's remote-tracking ref was never created. This change adds a small additive supplemental fetch in `checkoutRepo` (`git remote set-branches --add` + `git fetch --depth=<cloneDepth>`) that runs only on PR events when `baseBranch` is non-empty and differs from the cloned head branch. Failures are best-effort (warn-and-continue) so a missing base ref never aborts an unrelated request.
 
-`src/core/fetcher.ts` previously issued single-page GraphQL requests with `first: 100` on every connection (issue/PR comments, reviews, the inline comments nested under each review, and changed files). Anything past the first 100 items was silently dropped before the data ever reached the agent — the prompt looked complete but was missing context, which is the failure mode the issue calls out.
+## Files changed (path · one-line rationale)
 
-The fix:
+- `src/core/checkout.ts` · Accept optional `baseBranch` parameter; on PR events with head ≠ base, run `git remote set-branches --add origin <baseBranch>` + `git fetch --depth=<cloneDepth> origin <baseBranch>` after the initial clone. Wraps in try/catch with Pino warn (no abort). Adds a Pino info log anchored on the existing "Cloning repository" line.
+- `src/core/pipeline.ts` · Forward `enrichedCtx.baseBranch` (already populated from GraphQL at L229) into `checkoutRepo` via the new explicit parameter.
+- `src/core/prompt-builder.ts` · Trim now-redundant defensive prose `(NOT 'main' or 'master')` from the PR diff instructions and the IMPORTANT-CLARIFICATIONS line — `origin/<baseBranch>` now resolves first try so the agent doesn't need the warning.
+- `test/core/checkout.test.ts` · New unit test using `git init --bare` + `GIT_CONFIG_COUNT/KEY/VALUE` `insteadOf` redirect to drive `checkoutRepo` against a local fixture. Four cases: PR head ≠ base (both refs present), PR head == base (no duplicate fetch), issue event (no supplemental fetch), PR with no `baseBranch` supplied.
+- `CLAUDE.md` · Pipeline step 5 now notes the supplemental base-branch fetch on PR events.
+- `docs/build/architecture.md` · "One request, one clone" bullet mentions the supplemental fetch with one clarifying sentence.
 
-1. Every paginated query exposes a single cursor variable named exactly `$cursor` and selects `pageInfo { hasNextPage endCursor }` on its one paginated connection. Both names are part of `@octokit/plugin-paginate-graphql`'s contract: the plugin hard-codes the cursor parameter name (`iterator.js`) and runs a depth-first search for the first `pageInfo` it finds (`object-helpers.js`), so multi-connection / aliased-cursor queries silently truncate or throw. The PR fetch is therefore split into three parallel `paginate(...)` calls (`PR_FIRST_QUERY` for top-level scalars + files, `PR_COMMENTS_QUERY`, `PR_REVIEWS_QUERY`); the issue fetch uses one. The plugin is bundled with `octokit ^5.0.5` and exposed on every `octokit.graphql` instance.
-2. A separate `REVIEW_COMMENTS_QUERY` walks each review's overflow inline comments keyed on the review node ID — the nested per-review pagination cannot ride along on `PR_REVIEWS_QUERY` because of contract-rule #1.
-3. Four new env vars (`MAX_FETCHED_COMMENTS` / `_REVIEWS` / `_REVIEW_COMMENTS` / `_FILES`, default `500` each) cap the merged result. When a cap fires the fetcher emits `log.warn({ connection, fetched, cap })` and sets `FetchedData.truncated.<connection> = true`.
-4. `buildPrompt` in `src/core/prompt-builder.ts` reads `data.truncated` and prepends a `WARNING: pre-fetched context is incomplete…` banner naming the affected connections, so the agent knows to reach for the GitHub CLI when it needs the missing items.
-5. The TOCTOU filter (`filterByTriggerTime`) runs after the paginate merge, so its semantics are unchanged.
+## Commits (sha · subject)
 
-## Plan deviations
+Single conventional-commit on this branch — see `git log main..HEAD --oneline`. Subject: `fix(checkout): fetch PR base branch so origin/<baseBranch> resolves (closes #74)`.
 
-- **T1 / T2 (install + thread plugin) skipped as no-ops.** `octokit ^5.0.5` already bundles `@octokit/plugin-paginate-graphql` and exposes `octokit.graphql.paginate` on every existing instance. Verified via lockfile inspection and a runtime probe. Threading a shared factory through 11 instantiation sites would have been pure churn for zero behaviour change.
+## Tests run (command · result)
 
-## Files changed
-
-- `src/core/fetcher.ts` · rewrote both queries to select `pageInfo`, switched to `graphql.paginate`, added `applyCap()` + nested review-comment follow-up; emits structured warn logs and sets `FetchedData.truncated` flags.
-- `src/types.ts` · extended `FetchedData` with `truncated?: { comments?, reviews?, reviewComments?, changedFiles? }`.
-- `src/config.ts` · added 4 zod fields + env wiring (`MAX_FETCHED_COMMENTS` / `_REVIEWS` / `_REVIEW_COMMENTS` / `_FILES`, default `500`).
-- `src/core/prompt-builder.ts` · added `buildTruncationBanner` and injected it into the prompt when any flag is set.
-- `test/core/fetcher.test.ts` · new tests covering pagination merge (length > 100), TOCTOU after merge, cap fire (log + flag), nested review-comment pagination, and banner injection.
-- `test/factories.ts` · extended `makeOctokit` with `graphqlPaginateResponses` (substring-keyed routing on the paginate fn).
-- `docs/operate/configuration.md` · 4 new rows documenting the env vars.
-- `docs/operate/observability.md` · new "Data fetching safety caps" section documenting the warn log shape and prompt banner.
-
-## Commits
-
-- `fix(fetcher): paginate GraphQL connections + MAX_FETCHED_* caps (closes #66)` — single commit, branch `fix/issue-66-paginate-graphql`.
-
-## Tests run
-
-- `bun run typecheck` · clean.
-- `NODE_OPTIONS='--max-old-space-size=4096' bunx eslint .` · 0 errors / 291 warnings (all pre-existing return-type warnings in unrelated files).
-- `bun run format` · clean.
-- `bun test test/core/fetcher.test.ts` · 30 pass / 0 fail / 64 expect calls.
-- `bun run scripts/check-docs-citations.ts` · clean.
-- `bun run scripts/check-docs-versions.ts` · clean.
-- `bun run docs:build` · skipped locally (`mkdocs` not installed in workspace); runs in CI via `.github/workflows/docs.yml`.
-- `bun run test` (isolated runner): 78 files passed, 25 files skipped because Postgres / Valkey are not running in this workspace (pre-existing infrastructure dependency, none of the skipped files were touched by this PR).
+- `bun run typecheck` · pass (clean exit)
+- `NODE_OPTIONS='--max-old-space-size=4096' bun run lint` · 0 errors / 291 pre-existing warnings
+- `bun test test/core/checkout.test.ts test/core/prompt-builder.test.ts` · **33 pass / 0 fail / 94 expect()**
+- `bun test` (full suite) · **530 pass / 153 skip / 194 fail** vs. **530 pass / 153 skip / 195 fail on `main` with this branch's test file present** — net zero new failures (in fact one fewer, since the new checkout test passes here and would fail on `main`). All 194 remaining failures are pre-existing and infra-bound (Postgres / Valkey / removed `finalizeTrackingComment` & `requireDb` test imports) — unrelated to this change.
+- `bun run scripts/check-docs-citations.ts` · OK
+- `bun run scripts/check-docs-versions.ts` · OK
 
 ## Verification
 
-- **Acceptance criterion: PRs/issues with > 100 comments / reviews / changed files no longer truncate silently.** New test "merges paginated issue comments into FetchedData (length > 100)" proves the merge for 250 comments; "merges paginated review comments across nested pageInfo" proves the nested review-comment merge (100 + 50 = 150).
-- **Acceptance criterion: a hard cap protects the prompt window.** `applyCap` clamps to `config.maxFetchedComments` (etc.), emits a structured warn, and sets `truncated.<connection> = true`. Test "logs warn and sets truncated flag when MAX_FETCHED cap fires" asserts all three (length, log fields, flag).
-- **Acceptance criterion: the agent must know when context is incomplete.** `buildPrompt` injects a `WARNING: pre-fetched context is incomplete…` banner naming the affected connections. Test "buildPrompt includes truncation banner when truncated flag is set" asserts the banner.
-- **TOCTOU semantics preserved.** Test "applies filterByTriggerTime AFTER pagination merge" sets `triggerTimestamp` to comment-240 of 600 and asserts comment-239 (newest pre-trigger) survives while comments 240+ are dropped.
-
-### Intentionally NOT done
-
-- T1 / T2 (paginate-graphql install + threaded factory). Plugin is already bundled with `octokit ^5.0.5` and `octokit.graphql.paginate` is present on every existing instance. Documented above under "Plan deviations".
+1. **T1 satisfied** — `src/core/checkout.ts` adds the supplemental `git remote set-branches --add origin <baseBranch>` + `git fetch --depth=<cloneDepth> origin <baseBranch>` after the initial clone, gated on `ctx.isPR && baseBranch !== undefined && baseBranch !== "" && baseBranch !== branch`. Wrapped in try/catch with Pino `warn` carrying `{baseBranch, headBranch, err}` — a missing base ref degrades gracefully to a warn log instead of aborting checkout. Pino info log added before the supplemental fetch with `{baseBranch, headBranch, depth}`.
+2. **T2 satisfied** — `src/core/pipeline.ts` now passes `enrichedCtx.baseBranch` as the third argument to `checkoutRepo`. `EnrichedBotContext.baseBranch` is required (typed in `src/types.ts:166`), populated from GraphQL at `src/core/pipeline.ts:229`.
+3. **T3 satisfied** — `test/core/checkout.test.ts` builds a real bare upstream with `main` + `feat/x`, redirects the hardcoded `https://github.com/...` URL via `GIT_CONFIG_COUNT/KEY_0/VALUE_0` `insteadOf`, and asserts `git branch -r` against the workDir. Cases:
+   - PR head ≠ base → both `origin/feat/x` and `origin/main` resolvable via `git rev-parse`.
+   - PR head == base → only `origin/main` (no duplicate fetch attempted).
+   - Issue event (`isPR=false`) → only `origin/main` (supplemental fetch gated on `isPR`).
+   - PR with `baseBranch` undefined → only `origin/feat/x` (gate also covers absence).
+4. **T4 satisfied** — `(NOT 'main' or 'master')` removed from `src/core/prompt-builder.ts:56` and L140; the actual `git diff origin/<baseBranch>...HEAD` directives are intact.
+5. **T5 satisfied** — `test/core/prompt-builder.test.ts` had no assertions matching the trimmed substring (verified by grep); 29/29 prompt-builder tests still pass.
+6. **T6 satisfied** — `CLAUDE.md` Pipeline step 5 + `docs/build/architecture.md` "One request, one clone" bullet both note the supplemental base-branch fetch in one sentence each.
+7. **Manual smoke not run** — the live-PR trigger check requires the deployed daemon (out of scope for the implement workflow). Verification 3 in the plan is covered structurally by the new unit test, which exercises the exact code path with a real `git clone --single-branch` + supplemental fetch against a real local upstream.
+8. **No new dependencies, no schema changes, no API surface changes** — checkout signature gained one optional parameter; all existing callers (triage handler, plan handler) continue to work unchanged because they don't pass it.

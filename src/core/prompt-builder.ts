@@ -53,7 +53,7 @@ export function buildPrompt(
   const diffInstructions =
     ctx.isPR && data.baseBranch !== undefined
       ? `
-   - For PR reviews: The PR base branch is 'origin/${data.baseBranch}' (NOT 'main' or 'master')
+   - For PR reviews: the PR base branch is 'origin/${data.baseBranch}'
    - To see PR changes: use 'git diff origin/${data.baseBranch}...HEAD' or 'git log origin/${data.baseBranch}..HEAD'`
       : "";
 
@@ -137,7 +137,7 @@ ${ctx.repoMemory.map((m) => `[id:${m.id}] [${m.category}]${m.pinned ? " [pinned]
 Your task is to analyze the context, understand the request, and provide helpful responses and/or implement code changes as needed.
 
 IMPORTANT CLARIFICATIONS:
-- When asked to "review" code, read the code and provide review feedback (do not implement changes unless explicitly asked)${ctx.isPR ? "\n- For PR reviews: Your review will be posted when you update the comment. Focus on providing comprehensive review feedback." : ""}${ctx.isPR && data.baseBranch !== undefined ? `\n- When comparing PR changes, use 'origin/${data.baseBranch}' as the base reference (NOT 'main' or 'master')` : ""}
+- When asked to "review" code, read the code and provide review feedback (do not implement changes unless explicitly asked)${ctx.isPR ? "\n- For PR reviews: Your review will be posted when you update the comment. Focus on providing comprehensive review feedback." : ""}${ctx.isPR && data.baseBranch !== undefined ? `\n- When comparing PR changes, use 'origin/${data.baseBranch}' as the base reference` : ""}
 - Your console outputs and tool results are NOT visible to the user
 - ALL communication happens through your GitHub comment - that's how users see your feedback, answers, and progress. Your normal responses are not seen.
 

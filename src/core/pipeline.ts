@@ -239,7 +239,11 @@ export async function runPipeline(
       return { success: true, durationMs: 0, costUsd: 0, numTurns: 0, dryRun: true };
     }
 
-    const { workDir, cleanup } = await checkoutRepo(enrichedCtx, installationToken);
+    const { workDir, cleanup } = await checkoutRepo(
+      enrichedCtx,
+      installationToken,
+      enrichedCtx.baseBranch,
+    );
     overrides.onWorkDirReady?.(workDir);
 
     try {
