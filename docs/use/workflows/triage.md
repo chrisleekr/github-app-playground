@@ -29,15 +29,15 @@ The agent classifies the issue (bug, feature, refactor, docs, unclear). For bugs
 
 ## Outputs
 
-| Field                   | Type                               | Notes                                                                                                                                         |
-| ----------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `state.valid`           | boolean                            | Verdict.                                                                                                                                      |
-| `state.confidence`      | float `[0, 1]`                     | Agent's self-assessment.                                                                                                                      |
-| `state.summary`         | string                             | Verdict rationale; uncapped. Embedded into the failed-cascade reason when `valid = false`.                                                    |
-| `state.recommendedNext` | `'plan'` \| `'stop'`               | —                                                                                                                                             |
-| `state.evidence`        | `Array<{file, line?, note?}>`      | —                                                                                                                                             |
-| `state.reproduction`    | `{attempted, reproduced, details}` | `attempted=false` for non-bug class. `reproduced=null` is allowed only after the harness ladder is walked AND an invariant test is ruled out. |
-| `state.report`          | markdown                           | The full `TRIAGE.md`. Embedded verbatim in the tracking comment.                                                                              |
+| Field                   | Type                               | Notes                                                                                                                                                                                           |
+| ----------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `state.valid`           | boolean                            | Verdict.                                                                                                                                                                                        |
+| `state.confidence`      | float `[0, 1]`                     | Agent's self-assessment.                                                                                                                                                                        |
+| `state.summary`         | string                             | Verdict rationale; uncapped. Embedded into the failed-cascade reason when `valid = false`.                                                                                                      |
+| `state.recommendedNext` | `'plan'` \| `'stop'`               | —                                                                                                                                                                                               |
+| `state.evidence`        | `Array<{file?, line?, note?}>`     | Each entry must have at least one of `file` or `note`. Prefer `file`+`line` citations; `note`-only is for cross-cutting evidence (e.g. a negative grep result that has no single-file pointer). |
+| `state.reproduction`    | `{attempted, reproduced, details}` | `attempted=false` for non-bug class. `reproduced=null` is allowed only after the harness ladder is walked AND an invariant test is ruled out.                                                   |
+| `state.report`          | markdown                           | The full `TRIAGE.md`. Embedded verbatim in the tracking comment.                                                                                                                                |
 
 ## Stop conditions
 
