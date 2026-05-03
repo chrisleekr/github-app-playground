@@ -40,7 +40,7 @@ Single HTTP server (`src/app.ts`) using `octokit` App class. Webhook events arri
 2. Get installation token
 3. Fetch PR/issue data via GraphQL
 4. Build prompt with full context
-5. Clone repo to temp directory, checkout PR/default branch
+5. Clone repo to temp directory, checkout PR/default branch (and supplementally fetch the PR base branch when it differs from head, so `origin/<baseBranch>` resolves for diffs/rebases)
 6. Resolve MCP servers and allowed tools
 7. Run Claude Agent SDK with `cwd` set to cloned repo
 8. Finalize tracking comment (success/error/cost)

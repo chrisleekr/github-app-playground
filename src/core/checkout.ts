@@ -21,6 +21,7 @@ import type { BotContext, CheckoutResult } from "../types";
 export async function checkoutRepo(
   ctx: BotContext,
   installationToken: string,
+  baseBranch?: string,
 ): Promise<CheckoutResult> {
   // Ensure base directory exists. Path is Zod-validated at startup (not user input).
   // eslint-disable-next-line security/detect-non-literal-fs-filename
@@ -66,6 +67,27 @@ export async function checkoutRepo(
     const botEmail = `${config.appId}+${botName}@users.noreply.github.com`;
     await $`git -C ${workDir} config user.name ${botName}`;
     await $`git -C ${workDir} config user.email ${botEmail}`;
+
+    // PR events: --single-branch above narrowed remote.origin.fetch to the head ref
+    // only, so origin/<baseBranch> is absent. The agent prompt and the auto-rebase
+    // directive both reference it for diffs / rebases — a missing ref burns recovery
+    // turns or silently falls back to `git diff HEAD`. Widen the refspec and pull
+    // the base ref in. Best-effort: a missing base ref shouldn't break the request.
+    if (ctx.isPR && baseBranch !== undefined && baseBranch !== "" && baseBranch !== branch) {
+      log.info(
+        { baseBranch, headBranch: branch, depth: config.cloneDepth },
+        "Fetching PR base branch",
+      );
+      try {
+        await $`git -C ${workDir} remote set-branches --add origin ${baseBranch}`;
+        await $`git -C ${workDir} fetch --depth=${config.cloneDepth} origin ${baseBranch}`;
+      } catch (err) {
+        log.warn(
+          { baseBranch, headBranch: branch, err },
+          "Failed to fetch PR base branch — agent diff/rebase commands may fail",
+        );
+      }
+    }
 
     log.info("Repository checked out and git configured");
 
