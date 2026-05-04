@@ -285,7 +285,12 @@ const configSchema = z
     // to the old value during a rolling rotation, then drop it once every
     // daemon has restarted with the new primary. Daemon-side this value is
     // ignored — daemons always send the primary `daemonAuthToken`.
-    daemonAuthTokenPrevious: z.string().optional(),
+    //
+    // Uses `nonEmptyOptionalString` so a whitespace-only env value (e.g. a
+    // Secret key whose decrypted value is "" or "   ") is coerced to
+    // `undefined` rather than surviving as a "valid" but empty Bearer
+    // credential after `Bearer ` is prepended.
+    daemonAuthTokenPrevious: nonEmptyOptionalString,
 
     // Presence of ORCHESTRATOR_URL flips the process from SERVER mode to
     // DAEMON mode: the webhook HTTP server does NOT start and GitHub App

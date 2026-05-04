@@ -4,7 +4,7 @@ Closes #76 (`security(orchestrator): non-constant-time bearer-token check expose
 
 ## Summary
 
-The orchestrator's daemon WebSocket upgrade handler in `src/orchestrator/ws-server.ts` previously authenticated with `authHeader !== \`Bearer ${authToken}\``. JavaScript string equality short-circuits on the first mismatched byte, so response latency leaked the matching prefix length and a network-adjacent attacker could recover `DAEMON_AUTH_TOKEN`byte-by-byte. A recovered token would let the attacker register a malicious daemon and harvest per-job GitHub App installation tokens (which carry`contents:write`/`issues:write`).
+The orchestrator's daemon WebSocket upgrade handler in `src/orchestrator/ws-server.ts` previously authenticated with a plain string `!==` comparison against the expected `Bearer <token>` value. JavaScript string equality short-circuits on the first mismatched byte, so response latency leaked the matching prefix length and a network-adjacent attacker could recover the daemon auth token one byte at a time. A recovered token would let the attacker register a malicious daemon and harvest per-job GitHub App installation tokens (which carry `contents:write` and `issues:write` permissions).
 
 This PR replaces the comparison with a length-padded `crypto.timingSafeEqual`-based comparator, adds an optional `DAEMON_AUTH_TOKEN_PREVIOUS` rotation slot so operators can rotate the secret without a synchronised fleet restart, extends the existing `test/orchestrator/ws-server.test.ts` with six regression cases, and documents the rotation procedure in the configuration reference + daemon-fleet runbook.
 

@@ -28,52 +28,90 @@ export interface WsConnectionData {
 let server: ReturnType<typeof Bun.serve<WsConnectionData>> | null = null;
 
 /**
- * Constant-time bearer-token comparator. JavaScript's `===`/`!==` short-circuits
- * on the first mismatched byte, leaking the matching prefix length through
- * response latency — a known timing-attack surface for bearer-token auth (#76).
- *
- * Always does work proportional to the longest expected token, regardless of
- * whether the header is missing, shorter, longer, or wrong-content. Accepts
- * either the primary or the optional rotation-window previous token; both
- * branches are evaluated unconditionally and the results are combined with a
- * bitwise OR so a caller cannot distinguish "rejected by primary" from
- * "rejected by previous" via timing.
+ * Precomputed expected `Authorization` header values for the comparator.
+ * Built once in `startWebSocketServer()` and reused per request so each
+ * upgrade attempt does only `O(padLength)` allocation/copy work instead of
+ * re-encoding two `Bearer …` strings on every call. Also caps auth-flood
+ * amplification: a malicious client with a very long `Authorization`
+ * header still triggers only fixed-size work in the comparator.
  */
-function isAuthHeaderValid(
-  authHeader: string | null | undefined,
+interface AuthExpectations {
+  readonly primaryPadded: Buffer;
+  readonly primaryLength: number;
+  readonly previousPadded: Buffer | null;
+  readonly previousLength: number;
+  readonly padLength: number;
+}
+
+function buildAuthExpectations(
   primaryToken: string,
   previousToken: string | undefined,
-): boolean {
+): AuthExpectations {
   const expectedPrimary = Buffer.from(`Bearer ${primaryToken}`, "utf8");
   const expectedPrevious =
     previousToken !== undefined && previousToken.length > 0
       ? Buffer.from(`Bearer ${previousToken}`, "utf8")
       : null;
-
-  // Pad every buffer to the same length before calling timingSafeEqual so
-  // it never throws on a length mismatch and the wrong-length path does the
-  // same amount of work as the equal-length path. The additional explicit
-  // length-equality check below ensures a header longer than the expected
-  // (which would be truncated when copying into the padded buffer) is still
-  // rejected.
   const padLength = Math.max(expectedPrimary.length, expectedPrevious?.length ?? 0);
-
-  const actualRaw = Buffer.from(authHeader ?? "", "utf8");
-  const actual = Buffer.alloc(padLength);
-  actualRaw.copy(actual, 0, 0, Math.min(actualRaw.length, padLength));
 
   const primaryPadded = Buffer.alloc(padLength);
   expectedPrimary.copy(primaryPadded);
-  const primaryEq = timingSafeEqual(actual, primaryPadded);
-  const primaryLenEq = actualRaw.length === expectedPrimary.length;
+
+  let previousPadded: Buffer | null = null;
+  if (expectedPrevious !== null) {
+    previousPadded = Buffer.alloc(padLength);
+    expectedPrevious.copy(previousPadded);
+  }
+
+  return {
+    primaryPadded,
+    primaryLength: expectedPrimary.length,
+    previousPadded,
+    previousLength: expectedPrevious?.length ?? 0,
+    padLength,
+  };
+}
+
+/**
+ * Constant-time bearer-token comparator. JavaScript's `===`/`!==` short-circuits
+ * on the first mismatched byte, leaking the matching prefix length through
+ * response latency — a known timing-attack surface for bearer-token auth (#76).
+ *
+ * Work is bounded by `padLength`, regardless of how long the incoming header
+ * is — `actual.write(..., padLength, ...)` copies at most `padLength` bytes
+ * even when the header is megabytes long, and we use `Buffer.byteLength` for
+ * the length-equality check instead of allocating a buffer sized to the
+ * header. Accepts either the primary or the optional rotation-window
+ * previous token; both branches are evaluated unconditionally and the
+ * results are combined with a bitwise OR so a caller cannot distinguish
+ * "rejected by primary" from "rejected by previous" via timing.
+ */
+function isAuthHeaderValid(
+  authHeader: string | null | undefined,
+  expectations: AuthExpectations,
+): boolean {
+  const headerStr = authHeader ?? "";
+  // Compute the original byte length without allocating a buffer sized to
+  // the (potentially attacker-controlled) header. The length-equality
+  // checks below use this to reject longer-with-correct-prefix attacks
+  // even though we only copy `padLength` bytes into `actual`.
+  const headerByteLength = Buffer.byteLength(headerStr, "utf8");
+
+  // Pad to `padLength` so timingSafeEqual never throws on a length
+  // mismatch and the wrong-length path does the same amount of work as
+  // the equal-length path. `.write(..., padLength, ...)` truncates input
+  // longer than `padLength`, bounding per-request work to a constant.
+  const actual = Buffer.alloc(expectations.padLength);
+  actual.write(headerStr, 0, expectations.padLength, "utf8");
+
+  const primaryEq = timingSafeEqual(actual, expectations.primaryPadded);
+  const primaryLenEq = headerByteLength === expectations.primaryLength;
 
   let previousEq = false;
   let previousLenEq = false;
-  if (expectedPrevious !== null) {
-    const previousPadded = Buffer.alloc(padLength);
-    expectedPrevious.copy(previousPadded);
-    previousEq = timingSafeEqual(actual, previousPadded);
-    previousLenEq = actualRaw.length === expectedPrevious.length;
+  if (expectations.previousPadded !== null) {
+    previousEq = timingSafeEqual(actual, expectations.previousPadded);
+    previousLenEq = headerByteLength === expectations.previousLength;
   }
 
   // Bitwise OR avoids the JS `||` short-circuit so both branches always run.
@@ -95,6 +133,7 @@ export function startWebSocketServer(): ReturnType<typeof Bun.serve<WsConnection
     throw new Error("DAEMON_AUTH_TOKEN is required for WebSocket server");
   }
   const previousAuthToken = config.daemonAuthTokenPrevious;
+  const authExpectations = buildAuthExpectations(authToken, previousAuthToken);
 
   server = Bun.serve<WsConnectionData>({
     port: config.wsPort,
@@ -109,7 +148,7 @@ export function startWebSocketServer(): ReturnType<typeof Bun.serve<WsConnection
       // optional rotation-window `_PREVIOUS` token. Comparison is constant-time
       // to avoid leaking the secret via response-latency side channels (#76).
       const authHeader = req.headers.get("authorization");
-      if (!isAuthHeaderValid(authHeader, authToken, previousAuthToken)) {
+      if (!isAuthHeaderValid(authHeader, authExpectations)) {
         logger.warn(
           { remoteAddr: srv.requestIP(req)?.address },
           "WebSocket auth failed — invalid token",
