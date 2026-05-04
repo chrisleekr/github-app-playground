@@ -1,3 +1,4 @@
+# Note: As SBOM file size is over 16MB, temporary disable SBOM attestations.
 # To prevent SBOM bloat from BuildKit's full-evidence mode (which includes the entire build context as source evidence), write a custom Syft config that disables source + package evidence collection. It should reduce SBOM file size under 16777216 bytes.
 scope: "squashed"
 license:
