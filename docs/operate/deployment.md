@@ -69,6 +69,8 @@ docker build -f Dockerfile.orchestrator \
 
 ### Verifying image attestations
 
+> Note: As SBOM file size is over 16MB, temporary disable SBOM attestations.
+
 Every published tag — both `-orchestrator` and `-daemon` variants and the bare `<version>` / `latest` aliases — ships with two Sigstore-signed attestations bound to the manifest-list digest:
 
 | Predicate type                   | What it proves                                                                                                                                                                                                              | Source                                                |
