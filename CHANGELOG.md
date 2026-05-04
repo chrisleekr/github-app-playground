@@ -1,3 +1,10 @@
+## [1.9.1](https://github.com/chrisleekr/github-app-playground/compare/v1.9.0...v1.9.1) (2026-05-04)
+
+
+### Reverts
+
+* **workflow:** revert SLSA provenance + SBOM attestations ([#99](https://github.com/chrisleekr/github-app-playground/issues/99)) ([9696492](https://github.com/chrisleekr/github-app-playground/commit/96964920a490e076b3866ba0916687ccb8bfd055))
+
 # [1.9.0](https://github.com/chrisleekr/github-app-playground/compare/v1.8.0...v1.9.0) (2026-05-03)
 
 
