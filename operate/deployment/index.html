@@ -2108,6 +2108,9 @@
 </span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span>.
 </span></code></pre></div>
 <h3 id="verifying-image-attestations">Verifying image attestations<a class="headerlink" href="#verifying-image-attestations" title="Permanent link">&para;</a></h3>
+<blockquote>
+<p>Note: As SBOM file size is over 16MB, temporary disable SBOM attestations.</p>
+</blockquote>
 <p>Every published tag — both <code>-orchestrator</code> and <code>-daemon</code> variants and the bare <code>&lt;version&gt;</code> / <code>latest</code> aliases — ships with two Sigstore-signed attestations bound to the manifest-list digest:</p>
 <table>
 <thead>
@@ -2121,12 +2124,12 @@
 <tr>
 <td><code>https://slsa.dev/provenance/v1</code></td>
 <td>The image was built by <code>.github/workflows/docker-build.yml</code> from a specific commit, with the recorded BuildKit invocation.</td>
-<td><a href="https://github.com/actions/attest-build-provenance"><code>actions/attest-build-provenance</code></a></td>
+<td><a href="https://github.com/actions/attest"><code>actions/attest</code></a></td>
 </tr>
 <tr>
 <td><code>https://cyclonedx.org/bom</code></td>
 <td>A CycloneDX SBOM of the <strong>amd64 packages</strong> layered into the merged image (orchestrator runtime, daemon toolchain, OS libs). Syft scans the runner's native architecture; for arm64 audits use the per-arch BuildKit SBOM ↓.</td>
-<td><a href="https://github.com/actions/attest-sbom"><code>actions/attest-sbom</code></a> (Anchore-generated SBOM)</td>
+<td><a href="https://github.com/actions/attest"><code>actions/attest</code></a></td>
 </tr>
 </tbody>
 </table>

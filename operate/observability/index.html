@@ -2005,6 +2005,9 @@
 </tbody>
 </table>
 <h2 id="supply-chain-attestations">Supply-chain attestations<a class="headerlink" href="#supply-chain-attestations" title="Permanent link">&para;</a></h2>
+<blockquote>
+<p>Note: As SBOM file size is over 16MB, temporary disable SBOM attestations.</p>
+</blockquote>
 <p><code>docker-build.yml</code> publishes two attestation flavours per release tag — same image, different storage and verification surface. Operators investigating a CVE alert or auditing what shipped to production reach for these instead of re-running Trivy from scratch.</p>
 <table>
 <thead>
