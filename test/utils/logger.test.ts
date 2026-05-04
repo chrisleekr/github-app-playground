@@ -260,4 +260,47 @@ describe("logger redaction", () => {
   it("freezes the exported REDACT_PATHS list at runtime", () => {
     expect(Object.isFrozen(REDACT_PATHS)).toBe(true);
   });
+
+  it("redacts both halves of the daemon auth-token rotation pair (#76 follow-up)", () => {
+    const { logger, lines } = buildCapturingLogger();
+    logger.info(
+      {
+        daemonAuthToken: "PRIMARY_DAEMON_SECRET",
+        daemonAuthTokenPrevious: "PREVIOUS_DAEMON_SECRET",
+      },
+      "Loaded config",
+    );
+
+    const raw = JSON.stringify(lines);
+    expect(raw).not.toContain("PRIMARY_DAEMON_SECRET");
+    expect(raw).not.toContain("PREVIOUS_DAEMON_SECRET");
+    const line = lines[0]!;
+    expect(line["daemonAuthToken"]).toBe("[Redacted]");
+    expect(line["daemonAuthTokenPrevious"]).toBe("[Redacted]");
+  });
+
+  it("redacts daemonAuthTokenPrevious nested under err.response.data (structural walker, #76 follow-up)", () => {
+    const { logger, lines } = buildCapturingLogger();
+    const err = Object.assign(new Error("Unauthorized"), {
+      name: "RequestError",
+      response: {
+        status: 401,
+        data: {
+          daemonAuthTokenPrevious: "NESTED_PREVIOUS_SECRET",
+          message: "Bad",
+        },
+      },
+    });
+    logger.error({ err }, "auth check");
+
+    const raw = JSON.stringify(lines);
+    expect(raw).not.toContain("NESTED_PREVIOUS_SECRET");
+    const data = (
+      lines[0] as {
+        err: { response: { data: { daemonAuthTokenPrevious: string; message: string } } };
+      }
+    ).err.response.data;
+    expect(data.daemonAuthTokenPrevious).toBe("[Redacted]");
+    expect(data.message).toBe("Bad");
+  });
 });
