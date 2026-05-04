@@ -71,24 +71,25 @@ Required whenever the orchestrator role is active.
 
 ## Orchestrator and daemon
 
-| Variable                       | Default               | Notes                                                                                                 |
-| ------------------------------ | --------------------- | ----------------------------------------------------------------------------------------------------- |
-| `WS_PORT`                      | `3002`                | Orchestrator WebSocket listener. Must differ from `PORT`.                                             |
-| `ORCHESTRATOR_URL`             | —                     | Presence flips the process to daemon mode. Use `wss://` in production; `ws://` emits a warning.       |
-| `ORCHESTRATOR_PUBLIC_URL`      | —                     | Public WebSocket URL the spawner injects into ephemeral Pods.                                         |
-| `DAEMON_AUTH_TOKEN`            | —                     | Shared secret for the daemon ⇄ orchestrator handshake. Required on both sides.                        |
-| `HEARTBEAT_INTERVAL_MS`        | `30000`               | Daemon → orchestrator ping cadence.                                                                   |
-| `HEARTBEAT_TIMEOUT_MS`         | `90000`               | Eviction threshold. Keep `≥ 2 × HEARTBEAT_INTERVAL_MS`.                                               |
-| `STALE_EXECUTION_THRESHOLD_MS` | `3600000`             | How long a `running` execution may sit before the watcher fails it. Set `≥ AGENT_TIMEOUT_MS`.         |
-| `DAEMON_DRAIN_TIMEOUT_MS`      | `300000`              | Post-`SIGTERM` window to finish in-flight work. Raise to `≥ AGENT_TIMEOUT_MS` for zero mid-run kills. |
-| `JOB_MAX_RETRIES`              | `3`                   | Retries for transient daemon dispatch failures.                                                       |
-| `OFFER_TIMEOUT_MS`             | `5000`                | How long the orchestrator waits for a daemon to claim an offer.                                       |
-| `QUEUE_WORKER_BACKOFF_MAX_MS`  | `5000`                | Upper bound on the queue-worker's sleep when no local daemon can take a job.                          |
-| `LIVENESS_REAPER_INTERVAL_MS`  | `30000` (min `20000`) | Cadence of the heartbeat-based reaper.                                                                |
-| `DAEMON_UPDATE_STRATEGY`       | `exit`                | `exit`, `pull`, or `notify`. Advisory hint reported in the update response.                           |
-| `DAEMON_UPDATE_DELAY_MS`       | `0`                   | Delay before graceful shutdown after an update signal.                                                |
-| `DAEMON_MEMORY_FLOOR_MB`       | `512`                 | Minimum free memory the orchestrator requires before dispatching.                                     |
-| `DAEMON_DISK_FLOOR_MB`         | `1024`                | Minimum free disk the orchestrator requires before dispatching.                                       |
+| Variable                       | Default               | Notes                                                                                                                                                                                                              |
+| ------------------------------ | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `WS_PORT`                      | `3002`                | Orchestrator WebSocket listener. Must differ from `PORT`.                                                                                                                                                          |
+| `ORCHESTRATOR_URL`             | —                     | Presence flips the process to daemon mode. Use `wss://` in production; `ws://` emits a warning.                                                                                                                    |
+| `ORCHESTRATOR_PUBLIC_URL`      | —                     | Public WebSocket URL the spawner injects into ephemeral Pods.                                                                                                                                                      |
+| `DAEMON_AUTH_TOKEN`            | —                     | Shared secret for the daemon ⇄ orchestrator handshake. Required on both sides. Compared in constant time.                                                                                                          |
+| `DAEMON_AUTH_TOKEN_PREVIOUS`   | —                     | Optional rotation overlap. Orchestrator accepts either the primary or this previous token; daemons always send the primary. See [`runbooks/daemon-fleet.md`](runbooks/daemon-fleet.md#rotating-daemon_auth_token). |
+| `HEARTBEAT_INTERVAL_MS`        | `30000`               | Daemon → orchestrator ping cadence.                                                                                                                                                                                |
+| `HEARTBEAT_TIMEOUT_MS`         | `90000`               | Eviction threshold. Keep `≥ 2 × HEARTBEAT_INTERVAL_MS`.                                                                                                                                                            |
+| `STALE_EXECUTION_THRESHOLD_MS` | `3600000`             | How long a `running` execution may sit before the watcher fails it. Set `≥ AGENT_TIMEOUT_MS`.                                                                                                                      |
+| `DAEMON_DRAIN_TIMEOUT_MS`      | `300000`              | Post-`SIGTERM` window to finish in-flight work. Raise to `≥ AGENT_TIMEOUT_MS` for zero mid-run kills.                                                                                                              |
+| `JOB_MAX_RETRIES`              | `3`                   | Retries for transient daemon dispatch failures.                                                                                                                                                                    |
+| `OFFER_TIMEOUT_MS`             | `5000`                | How long the orchestrator waits for a daemon to claim an offer.                                                                                                                                                    |
+| `QUEUE_WORKER_BACKOFF_MAX_MS`  | `5000`                | Upper bound on the queue-worker's sleep when no local daemon can take a job.                                                                                                                                       |
+| `LIVENESS_REAPER_INTERVAL_MS`  | `30000` (min `20000`) | Cadence of the heartbeat-based reaper.                                                                                                                                                                             |
+| `DAEMON_UPDATE_STRATEGY`       | `exit`                | `exit`, `pull`, or `notify`. Advisory hint reported in the update response.                                                                                                                                        |
+| `DAEMON_UPDATE_DELAY_MS`       | `0`                   | Delay before graceful shutdown after an update signal.                                                                                                                                                             |
+| `DAEMON_MEMORY_FLOOR_MB`       | `512`                 | Minimum free memory the orchestrator requires before dispatching.                                                                                                                                                  |
+| `DAEMON_DISK_FLOOR_MB`         | `1024`                | Minimum free disk the orchestrator requires before dispatching.                                                                                                                                                    |
 
 ## Ephemeral daemons
 
