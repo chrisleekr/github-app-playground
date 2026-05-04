@@ -69,12 +69,14 @@ docker build -f Dockerfile.orchestrator \
 
 ### Verifying image attestations
 
+> Note: As SBOM file size is over 16MB, temporary disable SBOM attestations.
+
 Every published tag — both `-orchestrator` and `-daemon` variants and the bare `<version>` / `latest` aliases — ships with two Sigstore-signed attestations bound to the manifest-list digest:
 
-| Predicate type                   | What it proves                                                                                                                                                                                                              | Source                                                                                   |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `https://slsa.dev/provenance/v1` | The image was built by `.github/workflows/docker-build.yml` from a specific commit, with the recorded BuildKit invocation.                                                                                                  | [`actions/attest-build-provenance`](https://github.com/actions/attest-build-provenance)  |
-| `https://cyclonedx.org/bom`      | A CycloneDX SBOM of the **amd64 packages** layered into the merged image (orchestrator runtime, daemon toolchain, OS libs). Syft scans the runner's native architecture; for arm64 audits use the per-arch BuildKit SBOM ↓. | [`actions/attest-sbom`](https://github.com/actions/attest-sbom) (Anchore-generated SBOM) |
+| Predicate type                   | What it proves                                                                                                                                                                                                              | Source                                                |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `https://slsa.dev/provenance/v1` | The image was built by `.github/workflows/docker-build.yml` from a specific commit, with the recorded BuildKit invocation.                                                                                                  | [`actions/attest`](https://github.com/actions/attest) |
+| `https://cyclonedx.org/bom`      | A CycloneDX SBOM of the **amd64 packages** layered into the merged image (orchestrator runtime, daemon toolchain, OS libs). Syft scans the runner's native architecture; for arm64 audits use the per-arch BuildKit SBOM ↓. | [`actions/attest`](https://github.com/actions/attest) |
 
 Verify before pulling into production. `gh attestation verify` checks the attestation against GitHub's transparency log and the Sigstore trust root:
 

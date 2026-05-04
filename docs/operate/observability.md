@@ -141,6 +141,8 @@ Alert rule: any `level=warn msg~"exceeded MAX_FETCHED cap"` occurrence is intere
 
 ## Supply-chain attestations
 
+> Note: As SBOM file size is over 16MB, temporary disable SBOM attestations.
+
 `docker-build.yml` publishes two attestation flavours per release tag — same image, different storage and verification surface. Operators investigating a CVE alert or auditing what shipped to production reach for these instead of re-running Trivy from scratch.
 
 | Storage                                                                | Format                                                                                                                                                      | Bound to                                              | How to inspect                                                                                                  |
