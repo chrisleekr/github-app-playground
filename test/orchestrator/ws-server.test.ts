@@ -364,14 +364,16 @@ describe("WebSocket auth (constant-time bearer comparator, #76)", () => {
 
   it("accepts the primary token via the upgrade handler", async () => {
     await withServer("primary-secret-32chars-aaaaaaaaa", undefined, async (port) => {
-      // A non-upgrade GET with valid auth still goes through the fetch
-      // handler. Bun returns 500 ("WebSocket upgrade failed") because the
-      // request lacks Upgrade headers — anything other than 401 proves the
-      // auth check passed.
+      // A non-upgrade GET with valid auth passes the auth check and reaches
+      // `srv.upgrade()`, which fails because the request lacks Upgrade
+      // headers — the fetch handler then returns the 500 fallback. Pinning
+      // to 500 (rather than `.not.toBe(401)`) catches a regression where a
+      // refactored upgrade path returns a different status while still
+      // accepting bad credentials.
       const res = await fetch(`http://localhost:${port}/ws`, {
         headers: { Authorization: "Bearer primary-secret-32chars-aaaaaaaaa" },
       });
-      expect(res.status).not.toBe(401);
+      expect(res.status).toBe(500);
     });
   });
 
@@ -380,17 +382,19 @@ describe("WebSocket auth (constant-time bearer comparator, #76)", () => {
       "new-primary-32chars-aaaaaaaaaaaaa",
       "old-primary-32chars-bbbbbbbbbbbbb",
       async (port) => {
-        // Old token still works while the rotation overlap is open.
+        // Old token still works while the rotation overlap is open — see
+        // the upgrade-fallback note on the previous test for why we expect
+        // 500.
         const resOld = await fetch(`http://localhost:${port}/ws`, {
           headers: { Authorization: "Bearer old-primary-32chars-bbbbbbbbbbbbb" },
         });
-        expect(resOld.status).not.toBe(401);
+        expect(resOld.status).toBe(500);
 
         // New token also works.
         const resNew = await fetch(`http://localhost:${port}/ws`, {
           headers: { Authorization: "Bearer new-primary-32chars-aaaaaaaaaaaaa" },
         });
-        expect(resNew.status).not.toBe(401);
+        expect(resNew.status).toBe(500);
 
         // An unrelated token is still rejected.
         const resBad = await fetch(`http://localhost:${port}/ws`, {

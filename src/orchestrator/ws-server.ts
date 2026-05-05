@@ -38,7 +38,13 @@ let server: ReturnType<typeof Bun.serve<WsConnectionData>> | null = null;
 interface AuthExpectations {
   readonly primaryPadded: Buffer;
   readonly primaryLength: number;
-  readonly previousPadded: Buffer | null;
+  readonly previousPadded: Buffer;
+  /**
+   * Original (un-padded) byte length of `Bearer ${previousToken}`, or `-1`
+   * when no previous token is configured. The sentinel is chosen so the
+   * length-equality guard rejects unconditionally — `Buffer.byteLength` is
+   * always non-negative.
+   */
   readonly previousLength: number;
   readonly padLength: number;
 }
@@ -57,17 +63,25 @@ function buildAuthExpectations(
   const primaryPadded = Buffer.alloc(padLength);
   expectedPrimary.copy(primaryPadded);
 
-  let previousPadded: Buffer | null = null;
+  // Always allocate `previousPadded` (zero-filled sentinel when no rotation
+  // token is configured) and use `previousLength = -1` as a sentinel that
+  // can never equal `Buffer.byteLength(headerStr, "utf8")` (which is always
+  // ≥ 0). This lets `isAuthHeaderValid` run exactly two `timingSafeEqual`
+  // calls per request regardless of whether `_PREVIOUS` is set, eliminating
+  // the timing asymmetry between rotation-active and rotation-inactive
+  // deployments.
+  const previousPadded = Buffer.alloc(padLength);
+  let previousLength = -1;
   if (expectedPrevious !== null) {
-    previousPadded = Buffer.alloc(padLength);
     expectedPrevious.copy(previousPadded);
+    previousLength = expectedPrevious.length;
   }
 
   return {
     primaryPadded,
     primaryLength: expectedPrimary.length,
     previousPadded,
-    previousLength: expectedPrevious?.length ?? 0,
+    previousLength,
     padLength,
   };
 }
@@ -77,14 +91,22 @@ function buildAuthExpectations(
  * on the first mismatched byte, leaking the matching prefix length through
  * response latency — a known timing-attack surface for bearer-token auth (#76).
  *
- * Work is bounded by `padLength`, regardless of how long the incoming header
- * is — `actual.write(..., padLength, ...)` copies at most `padLength` bytes
- * even when the header is megabytes long, and we use `Buffer.byteLength` for
- * the length-equality check instead of allocating a buffer sized to the
- * header. Accepts either the primary or the optional rotation-window
- * previous token; both branches are evaluated unconditionally and the
- * results are combined with a bitwise OR so a caller cannot distinguish
- * "rejected by primary" from "rejected by previous" via timing.
+ * Per-request copy work is bounded by `padLength`: `actual.write(..., padLength,
+ * ...)` truncates input longer than `padLength` and `Buffer.alloc(padLength)`
+ * gives a fixed-size comparison buffer. Total work additionally includes one
+ * `Buffer.byteLength` walk of the incoming header — bounded in practice by
+ * Bun's HTTP header limit, not by `padLength`. The byte-length is used (rather
+ * than `actual.length`) so the length-equality guard still rejects
+ * longer-with-correct-prefix headers that the truncating `write` would
+ * otherwise paper over.
+ *
+ * Accepts either the primary or the optional rotation-window previous token.
+ * Both `timingSafeEqual` calls run unconditionally (the previous slot uses a
+ * zero-buffer sentinel + `previousLength = -1` when not configured) so a
+ * caller cannot distinguish "rejected by primary" from "rejected by previous"
+ * — or "rotation active" from "rotation inactive" — via timing. The two
+ * length-equality checks are combined with bitwise `&` and the per-token
+ * results with bitwise `|` to avoid the JS `&&`/`||` short-circuit.
  */
 function isAuthHeaderValid(
   authHeader: string | null | undefined,
@@ -104,17 +126,17 @@ function isAuthHeaderValid(
   const actual = Buffer.alloc(expectations.padLength);
   actual.write(headerStr, 0, expectations.padLength, "utf8");
 
+  // Both `timingSafeEqual` calls always run — when no `_PREVIOUS` token is
+  // configured, `previousPadded` is a zero-filled sentinel and
+  // `previousLength === -1`, so the length-equality guard rejects
+  // unconditionally without taking a different code path.
   const primaryEq = timingSafeEqual(actual, expectations.primaryPadded);
   const primaryLenEq = headerByteLength === expectations.primaryLength;
+  const previousEq = timingSafeEqual(actual, expectations.previousPadded);
+  const previousLenEq = headerByteLength === expectations.previousLength;
 
-  let previousEq = false;
-  let previousLenEq = false;
-  if (expectations.previousPadded !== null) {
-    previousEq = timingSafeEqual(actual, expectations.previousPadded);
-    previousLenEq = headerByteLength === expectations.previousLength;
-  }
-
-  // Bitwise OR avoids the JS `||` short-circuit so both branches always run.
+  // Bitwise `&`/`|` avoid the JS `&&`/`||` short-circuit so every operand
+  // is evaluated regardless of earlier results.
   const matchPrimary = Number(primaryEq) & Number(primaryLenEq);
   const matchPrevious = Number(previousEq) & Number(previousLenEq);
   return (matchPrimary | matchPrevious) === 1;
@@ -133,6 +155,14 @@ export function startWebSocketServer(): ReturnType<typeof Bun.serve<WsConnection
     throw new Error("DAEMON_AUTH_TOKEN is required for WebSocket server");
   }
   const previousAuthToken = config.daemonAuthTokenPrevious;
+  if (previousAuthToken !== undefined && previousAuthToken === authToken) {
+    // Misconfiguration: rotation overlap is a no-op when both slots hold the
+    // same value. Warn loudly so the operator notices before assuming the
+    // rolling-rotation procedure in `runbooks/daemon-fleet.md` is in flight.
+    logger.warn(
+      "DAEMON_AUTH_TOKEN_PREVIOUS equals DAEMON_AUTH_TOKEN — rotation slot has no effect. Drop _PREVIOUS once rotation completes, or set it to the prior token while rolling daemons.",
+    );
+  }
   const authExpectations = buildAuthExpectations(authToken, previousAuthToken);
 
   server = Bun.serve<WsConnectionData>({
