@@ -281,6 +281,131 @@ describe("startWebSocketServer", () => {
   });
 });
 
+// Constant-time bearer-token regression cases (#76). The vulnerable
+// implementation used `!==` which short-circuits and leaks the matching
+// prefix length via response latency. The fix uses `crypto.timingSafeEqual`
+// on length-padded buffers and supports an optional `_PREVIOUS` rotation
+// slot. These tests verify all the auth-header-shape decisions through the
+// real Bun.serve fetch handler.
+describe("WebSocket auth (constant-time bearer comparator, #76)", () => {
+  async function withServer(
+    primary: string,
+    previous: string | undefined,
+    fn: (port: number) => Promise<void>,
+  ): Promise<void> {
+    const { config } = await import("../../src/config");
+    const originalToken = config.daemonAuthToken;
+    const originalPrevious = config.daemonAuthTokenPrevious;
+    const originalPort = config.wsPort;
+
+    try {
+      (config as { daemonAuthToken: string | undefined }).daemonAuthToken = primary;
+      (config as { daemonAuthTokenPrevious: string | undefined }).daemonAuthTokenPrevious =
+        previous;
+      (config as { wsPort: number }).wsPort = 0;
+
+      const { stopWebSocketServer, startWebSocketServer } =
+        await import("../../src/orchestrator/ws-server");
+      await stopWebSocketServer();
+      const srv = startWebSocketServer();
+
+      try {
+        await fn(srv.port);
+      } finally {
+        await stopWebSocketServer();
+      }
+    } finally {
+      (config as { daemonAuthToken: string | undefined }).daemonAuthToken = originalToken;
+      (config as { daemonAuthTokenPrevious: string | undefined }).daemonAuthTokenPrevious =
+        originalPrevious;
+      (config as { wsPort: number }).wsPort = originalPort;
+    }
+  }
+
+  it("rejects when the Authorization header is missing entirely", async () => {
+    await withServer("primary-secret-32chars-aaaaaaaaa", undefined, async (port) => {
+      const res = await fetch(`http://localhost:${port}/ws`);
+      expect(res.status).toBe(401);
+    });
+  });
+
+  it("rejects when the header is shorter than expected", async () => {
+    await withServer("primary-secret-32chars-aaaaaaaaa", undefined, async (port) => {
+      const res = await fetch(`http://localhost:${port}/ws`, {
+        headers: { Authorization: "Bearer short" },
+      });
+      expect(res.status).toBe(401);
+    });
+  });
+
+  it("rejects when the header length matches but bytes differ", async () => {
+    const primary = "primary-secret-32chars-aaaaaaaaa";
+    const wrong = "primary-secret-32chars-bbbbbbbbb"; // same length, different bytes
+    expect(wrong.length).toBe(primary.length);
+    await withServer(primary, undefined, async (port) => {
+      const res = await fetch(`http://localhost:${port}/ws`, {
+        headers: { Authorization: `Bearer ${wrong}` },
+      });
+      expect(res.status).toBe(401);
+    });
+  });
+
+  it("rejects when the header is longer than expected (prefix collision)", async () => {
+    // A header that begins with the correct token followed by extra bytes
+    // would have authenticated under a buggy length-prefix comparator. The
+    // explicit length-equality guard rejects it.
+    await withServer("primary-secret-32chars-aaaaaaaaa", undefined, async (port) => {
+      const res = await fetch(`http://localhost:${port}/ws`, {
+        headers: { Authorization: "Bearer primary-secret-32chars-aaaaaaaaa-EXTRA" },
+      });
+      expect(res.status).toBe(401);
+    });
+  });
+
+  it("accepts the primary token via the upgrade handler", async () => {
+    await withServer("primary-secret-32chars-aaaaaaaaa", undefined, async (port) => {
+      // A non-upgrade GET with valid auth passes the auth check and reaches
+      // `srv.upgrade()`, which fails because the request lacks Upgrade
+      // headers — the fetch handler then returns the 500 fallback. Pinning
+      // to 500 (rather than `.not.toBe(401)`) catches a regression where a
+      // refactored upgrade path returns a different status while still
+      // accepting bad credentials.
+      const res = await fetch(`http://localhost:${port}/ws`, {
+        headers: { Authorization: "Bearer primary-secret-32chars-aaaaaaaaa" },
+      });
+      expect(res.status).toBe(500);
+    });
+  });
+
+  it("accepts the previous token during a rotation window", async () => {
+    await withServer(
+      "new-primary-32chars-aaaaaaaaaaaaa",
+      "old-primary-32chars-bbbbbbbbbbbbb",
+      async (port) => {
+        // Old token still works while the rotation overlap is open — see
+        // the upgrade-fallback note on the previous test for why we expect
+        // 500.
+        const resOld = await fetch(`http://localhost:${port}/ws`, {
+          headers: { Authorization: "Bearer old-primary-32chars-bbbbbbbbbbbbb" },
+        });
+        expect(resOld.status).toBe(500);
+
+        // New token also works.
+        const resNew = await fetch(`http://localhost:${port}/ws`, {
+          headers: { Authorization: "Bearer new-primary-32chars-aaaaaaaaaaaaa" },
+        });
+        expect(resNew.status).toBe(500);
+
+        // An unrelated token is still rejected.
+        const resBad = await fetch(`http://localhost:${port}/ws`, {
+          headers: { Authorization: "Bearer unrelated-token-xxxxxxxxxxxxxxxx" },
+        });
+        expect(resBad.status).toBe(401);
+      },
+    );
+  });
+});
+
 describe("stopWebSocketServer", () => {
   it("is a no-op when no server is running", async () => {
     const { stopWebSocketServer } = await import("../../src/orchestrator/ws-server");

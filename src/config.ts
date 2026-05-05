@@ -279,6 +279,19 @@ const configSchema = z
     // on either side rejects the connection. Required on both sides.
     daemonAuthToken: z.string().optional(),
 
+    // Optional rotation-window predecessor of `daemonAuthToken`. When set, the
+    // orchestrator accepts daemons whose Bearer header matches EITHER the
+    // primary or the previous token (still constant-time). Operators set this
+    // to the old value during a rolling rotation, then drop it once every
+    // daemon has restarted with the new primary. Daemon-side this value is
+    // ignored — daemons always send the primary `daemonAuthToken`.
+    //
+    // Uses `nonEmptyOptionalString` so a whitespace-only env value (e.g. a
+    // Secret key whose decrypted value is "" or "   ") is coerced to
+    // `undefined` rather than surviving as a "valid" but empty Bearer
+    // credential after `Bearer ` is prepended.
+    daemonAuthTokenPrevious: nonEmptyOptionalString,
+
     // Presence of ORCHESTRATOR_URL flips the process from SERVER mode to
     // DAEMON mode: the webhook HTTP server does NOT start and GitHub App
     // credentials are not required. Must be ws:// or wss:// (validated below).
@@ -760,6 +773,7 @@ function loadConfig(): Config {
 
     // Group 8 — Daemon / Orchestrator WebSocket
     daemonAuthToken: process.env["DAEMON_AUTH_TOKEN"],
+    daemonAuthTokenPrevious: process.env["DAEMON_AUTH_TOKEN_PREVIOUS"],
     orchestratorUrl: process.env["ORCHESTRATOR_URL"],
     heartbeatIntervalMs: process.env["HEARTBEAT_INTERVAL_MS"],
     heartbeatTimeoutMs: process.env["HEARTBEAT_TIMEOUT_MS"],

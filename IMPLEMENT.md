@@ -1,44 +1,53 @@
-# Implement: issue #74 — supplemental fetch of PR base branch in checkout
+# Implement: issue #76 — constant-time daemon bearer-token check + rotation slot
 
-Closes #74 (`fix(pipeline): shallow single-branch clone omits origin/baseBranch, breaking PR diffs and auto-rebase`).
+Closes #76 (`security(orchestrator): non-constant-time bearer-token check exposes DAEMON_AUTH_TOKEN to timing attacks`).
 
 ## Summary
 
-The pipeline's PR checkout uses `git clone --single-branch --branch=<headBranch>`, which rewrites `remote.origin.fetch` so only the head branch is fetched. The agent prompt then directs the agent to use `origin/<baseBranch>` for diffs, and the auto-rebase handler tells the agent to `git rebase origin/<baseRef>` — both fail because the base branch's remote-tracking ref was never created. This change adds a small additive supplemental fetch in `checkoutRepo` (`git remote set-branches --add` + `git fetch --depth=<cloneDepth>`) that runs only on PR events when `baseBranch` is non-empty and differs from the cloned head branch. Failures are best-effort (warn-and-continue) so a missing base ref never aborts an unrelated request.
+The orchestrator's daemon WebSocket upgrade handler in `src/orchestrator/ws-server.ts` previously authenticated with a plain string `!==` comparison against the expected `Bearer <token>` value. JavaScript string equality short-circuits on the first mismatched byte, so response latency leaked the matching prefix length and a network-adjacent attacker could recover the daemon auth token one byte at a time. A recovered token would let the attacker register a malicious daemon and harvest per-job GitHub App installation tokens (which carry `contents:write` and `issues:write` permissions).
+
+This PR replaces the comparison with a length-padded `crypto.timingSafeEqual`-based comparator, adds an optional `DAEMON_AUTH_TOKEN_PREVIOUS` rotation slot so operators can rotate the secret without a synchronised fleet restart, extends the existing `test/orchestrator/ws-server.test.ts` with six regression cases, and documents the rotation procedure in the configuration reference + daemon-fleet runbook.
 
 ## Files changed (path · one-line rationale)
 
-- `src/core/checkout.ts` · Accept optional `baseBranch` parameter; on PR events with head ≠ base, run `git remote set-branches --add origin <baseBranch>` + `git fetch --depth=<cloneDepth> origin <baseBranch>` after the initial clone. Wraps in try/catch with Pino warn (no abort). Adds a Pino info log anchored on the existing "Cloning repository" line.
-- `src/core/pipeline.ts` · Forward `enrichedCtx.baseBranch` (already populated from GraphQL at L229) into `checkoutRepo` via the new explicit parameter.
-- `src/core/prompt-builder.ts` · Trim now-redundant defensive prose `(NOT 'main' or 'master')` from the PR diff instructions and the IMPORTANT-CLARIFICATIONS line — `origin/<baseBranch>` now resolves first try so the agent doesn't need the warning.
-- `test/core/checkout.test.ts` · New unit test using `git init --bare` + `GIT_CONFIG_COUNT/KEY/VALUE` `insteadOf` redirect to drive `checkoutRepo` against a local fixture. Four cases: PR head ≠ base (both refs present), PR head == base (no duplicate fetch), issue event (no supplemental fetch), PR with no `baseBranch` supplied.
-- `CLAUDE.md` · Pipeline step 5 now notes the supplemental base-branch fetch on PR events.
-- `docs/build/architecture.md` · "One request, one clone" bullet mentions the supplemental fetch with one clarifying sentence.
+- `src/orchestrator/ws-server.ts` · Adds an internal `isAuthHeaderValid()` helper that pads buffers to a fixed length, calls `timingSafeEqual` for both primary and previous tokens unconditionally, and combines results with bitwise OR (no JS short-circuit). Wires it into the upgrade handler in place of `!==`.
+- `src/config.ts` · Adds optional `daemonAuthTokenPrevious` (zod) and the `DAEMON_AUTH_TOKEN_PREVIOUS` env mapping. `validateDataLayerConfig` already only requires the primary, so no validation change is needed.
+- `test/orchestrator/ws-server.test.ts` · Six new regression cases covering missing header, shorter header, equal-length-different-bytes, longer prefix-collision, primary accept, and previous-token rotation accept — all driven through the real `Bun.serve` fetch handler via `await fetch(...)`.
+- `docs/operate/configuration.md` · Adds a `DAEMON_AUTH_TOKEN_PREVIOUS` row to the orchestrator/daemon env table, notes the constant-time comparison on the primary, and links to the rotation runbook.
+- `docs/operate/runbooks/daemon-fleet.md` · New "Rotating `DAEMON_AUTH_TOKEN`" section with a sequence diagram and step-by-step overlap-window procedure (90-day cadence per OWASP Secrets Management cheat sheet).
+- `.env.example` · Documents the new `DAEMON_AUTH_TOKEN_PREVIOUS` variable.
 
 ## Commits (sha · subject)
 
-Single conventional-commit on this branch — see `git log main..HEAD --oneline`. Subject: `fix(checkout): fetch PR base branch so origin/<baseBranch> resolves (closes #74)`.
+- `cdc4834` · `fix(orchestrator): constant-time bearer-token check + rotation slot (#76)`
 
 ## Tests run (command · result)
 
-- `bun run typecheck` · pass (clean exit)
-- `NODE_OPTIONS='--max-old-space-size=4096' bun run lint` · 0 errors / 291 pre-existing warnings
-- `bun test test/core/checkout.test.ts test/core/prompt-builder.test.ts` · **33 pass / 0 fail / 94 expect()**
-- `bun test` (full suite) · **530 pass / 153 skip / 194 fail** vs. **530 pass / 153 skip / 195 fail on `main` with this branch's test file present** — net zero new failures (in fact one fewer, since the new checkout test passes here and would fail on `main`). All 194 remaining failures are pre-existing and infra-bound (Postgres / Valkey / removed `finalizeTrackingComment` & `requireDb` test imports) — unrelated to this change.
-- `bun run scripts/check-docs-citations.ts` · OK
-- `bun run scripts/check-docs-versions.ts` · OK
+- `bun run typecheck` · **pass** (clean exit)
+- `NODE_OPTIONS='--max-old-space-size=4096' bunx eslint src/orchestrator/ws-server.ts src/config.ts test/orchestrator/ws-server.test.ts` · **0 errors / 10 pre-existing warnings** (all `@typescript-eslint/explicit-function-return-type` on inline-arrow `new Promise<T>(resolve => …)` callbacks that predate this PR — same pattern, just shifted line numbers)
+- `bun run format` · **all files pass Prettier**
+- `bun test test/orchestrator/ws-server.test.ts` · **17 pass / 0 fail** (11 pre-existing + 6 new). Per-file coverage table reports `src/orchestrator/ws-server.ts` at **100% line / 100% function** coverage.
+- `bun test test/config.test.ts` · **40 pass / 0 fail**
+- `bun run scripts/check-docs-versions.ts` · **OK**
+- `bun run scripts/check-docs-citations.ts` · **OK**
+- `bun test` (full suite) · 535 pass / 153 skip / 194 fail. Verified by `git stash` + re-run that all 194 failures exist on `main` unaffected by this PR — they are pre-existing infra-bound failures (Postgres / Valkey / removed test imports). Net zero new failures introduced.
+- `bun run docs:build` · **not run locally** — `mkdocs` (Python) is not installed in the bot sandbox. The two project-specific gates that run ahead of `mkdocs build --strict` in CI (`check:docs-versions`, `check:docs-citations`) both pass, and the `docs.yml` PR pipeline will exercise the strict build.
 
 ## Verification
 
-1. **T1 satisfied** — `src/core/checkout.ts` adds the supplemental `git remote set-branches --add origin <baseBranch>` + `git fetch --depth=<cloneDepth> origin <baseBranch>` after the initial clone, gated on `ctx.isPR && baseBranch !== undefined && baseBranch !== "" && baseBranch !== branch`. Wrapped in try/catch with Pino `warn` carrying `{baseBranch, headBranch, err}` — a missing base ref degrades gracefully to a warn log instead of aborting checkout. Pino info log added before the supplemental fetch with `{baseBranch, headBranch, depth}`.
-2. **T2 satisfied** — `src/core/pipeline.ts` now passes `enrichedCtx.baseBranch` as the third argument to `checkoutRepo`. `EnrichedBotContext.baseBranch` is required (typed in `src/types.ts:166`), populated from GraphQL at `src/core/pipeline.ts:229`.
-3. **T3 satisfied** — `test/core/checkout.test.ts` builds a real bare upstream with `main` + `feat/x`, redirects the hardcoded `https://github.com/...` URL via `GIT_CONFIG_COUNT/KEY_0/VALUE_0` `insteadOf`, and asserts `git branch -r` against the workDir. Cases:
-   - PR head ≠ base → both `origin/feat/x` and `origin/main` resolvable via `git rev-parse`.
-   - PR head == base → only `origin/main` (no duplicate fetch attempted).
-   - Issue event (`isPR=false`) → only `origin/main` (supplemental fetch gated on `isPR`).
-   - PR with `baseBranch` undefined → only `origin/feat/x` (gate also covers absence).
-4. **T4 satisfied** — `(NOT 'main' or 'master')` removed from `src/core/prompt-builder.ts:56` and L140; the actual `git diff origin/<baseBranch>...HEAD` directives are intact.
-5. **T5 satisfied** — `test/core/prompt-builder.test.ts` had no assertions matching the trimmed substring (verified by grep); 29/29 prompt-builder tests still pass.
-6. **T6 satisfied** — `CLAUDE.md` Pipeline step 5 + `docs/build/architecture.md` "One request, one clone" bullet both note the supplemental base-branch fetch in one sentence each.
-7. **Manual smoke not run** — the live-PR trigger check requires the deployed daemon (out of scope for the implement workflow). Verification 3 in the plan is covered structurally by the new unit test, which exercises the exact code path with a real `git clone --single-branch` + supplemental fetch against a real local upstream.
-8. **No new dependencies, no schema changes, no API surface changes** — checkout signature gained one optional parameter; all existing callers (triage handler, plan handler) continue to work unchanged because they don't pass it.
+1. **T1 + T2 satisfied** — `src/orchestrator/ws-server.ts:30-82` introduces `isAuthHeaderValid()`, a constant-time bearer-token comparator. `src/orchestrator/ws-server.ts:111` replaces the vulnerable `authHeader !== \`Bearer ${authToken}\``with a call to the new helper. The 401 response shape and`logger.warn` payload are preserved verbatim, so the daemon reconnect path and any log-shipping consumers are unaffected.
+2. **T3 satisfied** — `src/config.ts:282-289` adds `daemonAuthTokenPrevious: z.string().optional()` with an explanatory comment. `src/config.ts:763` maps `process.env["DAEMON_AUTH_TOKEN_PREVIOUS"]`. `validateDataLayerConfig` continues to only require the primary token (verified `src/config.ts:629-665`), so existing deployments are unaffected. The previous slot is consumed exclusively by the orchestrator; daemons (`src/daemon/ws-client.ts`) keep sending the primary `daemonAuthToken` value.
+3. **T4 satisfied** — six new regression cases at the end of `test/orchestrator/ws-server.test.ts` under `describe("WebSocket auth (constant-time bearer comparator, #76)")`:
+   - Missing `Authorization` header → 401
+   - Header shorter than expected → 401
+   - Header equal-length but different bytes → 401
+   - Header longer than expected (prefix-collision attack) → 401 (this case would have authenticated under a buggy length-prefix comparator; the explicit length-equality guard rejects it)
+   - Primary token accepted → not 401 (Bun returns 500 on a non-upgrade request, proving the auth check passed)
+   - With `DAEMON_AUTH_TOKEN_PREVIOUS` set: both primary and previous tokens accepted; an unrelated token still rejected
+4. **T5 satisfied** — `docs/operate/configuration.md:80` adds the `DAEMON_AUTH_TOKEN_PREVIOUS` env row with a link to the runbook section. `docs/operate/runbooks/daemon-fleet.md` adds a "Rotating `DAEMON_AUTH_TOKEN`" subsection with a 5-step procedure, a sequence diagram, and a 90-day cadence reference (OWASP Secrets Management).
+5. **No new npm dependencies.** `node:crypto` is built-in; `Buffer` is a Bun/Node global. No package.json change.
+6. **Vulnerable line gone.** `grep -n "Bearer" src/orchestrator/ws-server.ts` shows only the two `Buffer.from(\`Bearer ${...}\`, "utf8")`lines inside the comparator — no`!==`Bearer comparison remains.`grep -rn "timingSafeEqual" src/`now returns 3 hits inside`src/orchestrator/ws-server.ts` (was 0 before).
+7. **No timing leak between primary/previous slots.** Both `timingSafeEqual` calls run unconditionally when `expectedPrevious !== null`, and the results are combined with bitwise `|` (Number coercion, no JS `||` short-circuit), so an attacker cannot tell which slot rejected them via timing.
+8. **Bot pre-commit hook green.** `gitleaks` ran clean (`no leaks found`); lint-staged ran prettier + eslint clean.
+
+Closes #76

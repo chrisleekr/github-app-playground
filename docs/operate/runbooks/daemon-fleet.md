@@ -122,6 +122,41 @@ On every event the orchestrator evaluates:
 - `EPHEMERAL_DAEMON_IDLE_TIMEOUT_MS` should be longer than typical heartbeat cadence so a short lull between back-to-back jobs does not cause a premature exit.
 - `terminationGracePeriodSeconds` on the daemon Pod should match `DAEMON_DRAIN_TIMEOUT_MS`.
 
+## Rotating `DAEMON_AUTH_TOKEN`
+
+`DAEMON_AUTH_TOKEN` is a long-lived shared secret. Treat it like any other production credential: rotate on a defined cadence (OWASP guidance is **at least every 90 days**) and immediately on suspected compromise. The orchestrator's bearer-token comparison is constant-time (`crypto.timingSafeEqual`) but the secret itself still needs hygiene.
+
+The `DAEMON_AUTH_TOKEN_PREVIOUS` slot exists so rotation does not require a synchronised fleet restart — the orchestrator accepts either token while you roll daemons one at a time.
+
+```mermaid
+sequenceDiagram
+    participant Op as Operator
+    participant Orch as Orchestrator
+    participant Pool as Daemon Pool
+    Op->>Orch: deploy with DAEMON_AUTH_TOKEN=NEW + DAEMON_AUTH_TOKEN_PREVIOUS=OLD
+    Note over Orch: Accepts OLD or NEW (constant-time)
+    loop For each daemon Pod
+      Op->>Pool: roll Pod with DAEMON_AUTH_TOKEN=NEW
+      Pool->>Orch: reconnect with NEW
+    end
+    Op->>Orch: redeploy without DAEMON_AUTH_TOKEN_PREVIOUS
+    Note over Orch: Accepts NEW only
+```
+
+Step-by-step:
+
+1. **Generate** a new secret: `openssl rand -hex 32`. Persist it in your secret store next to the existing value.
+2. **Stage the overlap.** Update the orchestrator Deployment's `daemon-secrets` to set `DAEMON_AUTH_TOKEN=<NEW>` **and** `DAEMON_AUTH_TOKEN_PREVIOUS=<OLD>`. Roll the orchestrator. Existing daemon connections (still presenting the old token) keep authenticating, and any daemons that come up with the new token also pass.
+3. **Roll daemons.** Update the daemon Deployment's `daemon-secrets` to set `DAEMON_AUTH_TOKEN=<NEW>` (no `_PREVIOUS` needed — daemons only ever send the primary). Roll daemons one by one (`kubectl rollout restart deployment/github-app-playground-daemon`). Watch `auth-failed` warn-logs in the orchestrator — they should stay flat.
+4. **Drop the previous slot.** Once every connected daemon presents the new token, redeploy the orchestrator with `DAEMON_AUTH_TOKEN_PREVIOUS` removed (or empty). The old secret is now dead.
+5. **Verify.** A `curl` with the old Bearer should now return `401`; a curl with the new Bearer should hit the upgrade-failed path (`500 WebSocket upgrade failed`).
+
+Operational notes:
+
+- The previous-token slot is **orchestrator-only**. Daemons always send the value of their own `DAEMON_AUTH_TOKEN`; setting `DAEMON_AUTH_TOKEN_PREVIOUS` on a daemon Pod has no effect.
+- Keep the overlap window short (hours, not days). The longer two tokens authenticate, the longer a leaked old token remains usable.
+- The rotation does **not** require restarting daemons simultaneously, but you do need to redeploy the orchestrator twice (once to add `_PREVIOUS`, once to remove it).
+
 ## Common Day-2 issues
 
 | Symptom                                      | Likely cause                                                                                                  |
