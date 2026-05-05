@@ -28,7 +28,7 @@ describe("resolveModelId", () => {
   });
 
   it("MODEL_MAP is a frozen-shape snapshot (no accidental growth in tests)", () => {
-    expect(Object.keys(MODEL_MAP).sort()).toEqual(["haiku-3-5", "haiku-4-5"]);
+    expect(Object.keys(MODEL_MAP).sort()).toEqual(["haiku-3-5", "haiku-4-5", "sonnet-4-6"]);
   });
 });
 

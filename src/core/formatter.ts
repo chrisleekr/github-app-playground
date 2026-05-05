@@ -3,23 +3,31 @@ import { sanitizeContent } from "../utils/sanitize";
 
 /**
  * Format PR/issue metadata as a context block.
- * Ported from claude-code-action's formatContext()
+ *
+ * All attacker-controllable fields (title, author login, branch names) are
+ * routed through `sanitizeContent` so injected zero-width chars, hidden
+ * HTML attributes, and known-format secrets cannot reach the agent prompt
+ * verbatim. Branch names are particularly load-bearing because they are
+ * also interpolated into git instruction text (`origin/${baseBranch}`)
+ * elsewhere in the prompt.
  */
 export function formatContext(data: FetchedData): string {
   const sanitizedTitle = sanitizeContent(data.title);
+  const sanitizedAuthor = sanitizeContent(data.author);
 
   if (data.headBranch !== undefined) {
-    // PR context
+    const sanitizedHeadBranch = sanitizeContent(data.headBranch);
+    const sanitizedBaseBranch =
+      data.baseBranch !== undefined ? sanitizeContent(data.baseBranch) : "";
     return `PR Title: ${sanitizedTitle}
-PR Author: ${data.author}
-PR Branch: ${data.headBranch} -> ${data.baseBranch}
+PR Author: ${sanitizedAuthor}
+PR Branch: ${sanitizedHeadBranch} -> ${sanitizedBaseBranch}
 PR State: ${data.state}
 Changed Files: ${data.changedFiles.length} files`;
   }
 
-  // Issue context
   return `Issue Title: ${sanitizedTitle}
-Issue Author: ${data.author}
+Issue Author: ${sanitizedAuthor}
 Issue State: ${data.state}`;
 }
 
@@ -55,7 +63,11 @@ export function formatReviewComments(reviewComments: ReviewCommentData[]): strin
   return reviewComments
     .map((c) => {
       const body = sanitizeContent(c.body);
-      return `[Comment on ${c.path}:${c.line ?? "?"}]: ${body}`;
+      // Path is attacker-controllable (PR diff metadata) and was previously
+      // bare-interpolated into the prompt header. Sanitize for parity with
+      // the body to deny zero-width / HTML-attr injection vectors.
+      const path = sanitizeContent(c.path);
+      return `[Comment on ${path}:${c.line ?? "?"}]: ${body}`;
     })
     .join("\n\n");
 }

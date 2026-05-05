@@ -1,6 +1,7 @@
 import { config } from "../config";
 import type { DispatchReason, DispatchTarget } from "../shared/dispatch-types";
 import type { BotContext } from "../types";
+import { safePostToGitHub } from "../utils/github-output-guard";
 
 /** Spinner HTML used by claude-code-action for "in progress" state */
 const SPINNER_HTML = `<img src="https://github.com/user-attachments/assets/5ac382c7-e004-429b-8e35-7feb3e8f9c6f" width="14px" height="14px" style="vertical-align: middle; margin-left: 4px;" />`;
@@ -127,16 +128,29 @@ export async function createTrackingComment(ctx: BotContext): Promise<number> {
   // this marker is the durable fallback.
   const body = `${deliveryMarker(ctx.deliveryId)}\n${SPINNER_HTML} **${config.triggerPhrase}** is working on this...\n\n_Analyzing your request..._`;
 
-  const result = await octokit.rest.issues.createComment({
-    owner,
-    repo,
-    issue_number: entityNumber,
+  const guarded = await safePostToGitHub({
     body,
+    source: "system",
+    callsite: "core.tracking-comment.create",
+    log,
+    deliveryId: ctx.deliveryId,
+    post: (cleanBody) =>
+      octokit.rest.issues.createComment({
+        owner,
+        repo,
+        issue_number: entityNumber,
+        body: cleanBody,
+      }),
   });
+  if (!guarded.posted || guarded.result === undefined) {
+    throw new Error(
+      `core.tracking-comment.create: post skipped after secret redaction (matchCount=${guarded.matchCount})`,
+    );
+  }
 
-  log.info({ trackingCommentId: result.data.id }, "Created tracking comment");
+  log.info({ trackingCommentId: guarded.result.data.id }, "Created tracking comment");
 
-  return result.data.id;
+  return guarded.result.data.id;
 }
 
 /**
@@ -153,14 +167,34 @@ export async function updateTrackingComment(
   trackingCommentId: number,
   body: string,
 ): Promise<void> {
-  const { octokit, owner, repo } = ctx;
+  const { octokit, owner, repo, log } = ctx;
 
-  await octokit.rest.issues.updateComment({
-    owner,
-    repo,
-    comment_id: trackingCommentId,
+  // The body here is composed by `finalizeTrackingComment` from the existing
+  // (agent-updated) comment body plus a system header. Tag as `agent` so the
+  // LLM scanner runs — the agent's MCP-emitted progress text reaches here.
+  const guarded = await safePostToGitHub({
     body,
+    source: "agent",
+    callsite: "core.tracking-comment.update",
+    log,
+    deliveryId: ctx.deliveryId,
+    post: (cleanBody) =>
+      octokit.rest.issues.updateComment({
+        owner,
+        repo,
+        comment_id: trackingCommentId,
+        body: cleanBody,
+      }),
   });
+  // Symmetric with createTrackingComment / scoped-thread executors: surface
+  // a body-emptied skip as a hard error so the finalize path can't silently
+  // leave the comment stuck on its previous (in-progress) text. The error
+  // log inside the helper records the redaction event without matched bytes.
+  if (!guarded.posted) {
+    throw new Error(
+      `core.tracking-comment.update: post skipped after secret redaction (matchCount=${guarded.matchCount})`,
+    );
+  }
 }
 
 /**

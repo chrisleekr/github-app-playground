@@ -73,7 +73,14 @@ export function stripHtmlComments(content: string): string {
   return content.replace(/<!--[\s\S]*?-->/g, "");
 }
 
-/** Redact GitHub tokens to prevent leakage */
+/**
+ * Redact GitHub tokens to prevent leakage (input-side sanitizer).
+ * Uses an inline `[REDACTED_GITHUB_TOKEN]` marker so the downstream LLM can
+ * see that a credential-shaped string was scrubbed and treat the slot as data.
+ * For OUTPUT-side stripping (bytes about to leave us bound for GitHub), use
+ * `redactSecrets` below — that path silently deletes matches to deny an
+ * attacker any probing feedback.
+ */
 export function redactGitHubTokens(content: string): string {
   // GitHub Personal Access Tokens (classic)
   content = content.replace(/\bghp_[A-Za-z0-9]{36}\b/g, "[REDACTED_GITHUB_TOKEN]");
@@ -86,6 +93,82 @@ export function redactGitHubTokens(content: string): string {
   // GitHub fine-grained personal access tokens
   content = content.replace(/\bgithub_pat_[A-Za-z0-9_]{11,221}\b/g, "[REDACTED_GITHUB_TOKEN]");
   return content;
+}
+
+/**
+ * Output-side secret scanner. Silently strips matched bytes (no marker, no
+ * footer, no count surfaced in the body) and returns a structured result so
+ * the caller can log redaction events without ever logging the matched bytes.
+ *
+ * Apply to every body about to be posted to GitHub — see
+ * `src/utils/github-output-guard.ts`.
+ */
+export interface RedactSecretsResult {
+  body: string;
+  matchCount: number;
+  /** Distinct secret kinds detected, in match order, deduplicated. */
+  kinds: string[];
+}
+
+interface SecretPattern {
+  kind: string;
+  re: RegExp;
+}
+
+// Patterns are applied in fixed order. Most-specific first so a value that
+// would match multiple patterns is attributed to its true kind.
+const SECRET_PATTERNS: SecretPattern[] = [
+  // GitHub tokens — same five formats as the input-side redactor.
+  { kind: "GITHUB_TOKEN", re: /\bghp_[A-Za-z0-9]{36}\b/g },
+  { kind: "GITHUB_TOKEN", re: /\bgho_[A-Za-z0-9]{36}\b/g },
+  { kind: "GITHUB_TOKEN", re: /\bghs_[A-Za-z0-9]{36}\b/g },
+  { kind: "GITHUB_TOKEN", re: /\bghr_[A-Za-z0-9]{36}\b/g },
+  { kind: "GITHUB_TOKEN", re: /\bgithub_pat_[A-Za-z0-9_]{11,221}\b/g },
+  // Anthropic API keys and OAuth tokens.
+  { kind: "ANTHROPIC_API_KEY", re: /\bsk-ant-api03-[A-Za-z0-9_-]{80,}\b/g },
+  { kind: "ANTHROPIC_OAUTH", re: /\bsk-ant-oat[0-9]{2}-[A-Za-z0-9_-]{80,}\b/g },
+  // AWS access key IDs (long-lived + STS). The matching secret-access-key is
+  // not regex-detectable (any 40-char base64) without massive false positives.
+  { kind: "AWS_ACCESS_KEY_ID", re: /\bAKIA[0-9A-Z]{16}\b/g },
+  { kind: "AWS_ACCESS_KEY_ID", re: /\bASIA[0-9A-Z]{16}\b/g },
+  // PEM-encoded private keys (RSA, EC, generic, OpenSSH). Multiline.
+  {
+    kind: "PRIVATE_KEY_PEM",
+    re: /-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z]+ )?PRIVATE KEY-----/g,
+  },
+  // Database / cache connection URLs with embedded credentials. Match only
+  // when both user and password components are present — bare URLs are fine.
+  // The trailing class consumes host + port + path + query, but stops at
+  // common markdown delimiters so a URL embedded in `(…)`, `[…]`, or quotes
+  // does not swallow following prose.
+  {
+    kind: "DB_URL_WITH_PASSWORD",
+    re: /\b(?:postgres|postgresql|redis|valkey|rediss|mongodb|mongodb\+srv|mysql):\/\/[^\s:@/]+:[^\s@/]+@[^\s)\]"'`<>]+/g,
+  },
+  // JSON Web Tokens. Three base64url segments separated by `.`. Each segment
+  // requires ≥20 chars to keep us above the noise floor of arbitrary base64
+  // chunks that happen to start with `eyJ` (the literal `{"`). Real-world
+  // JWTs comfortably exceed this; truncated marketing snippets do not.
+  // Operators who see an empty agent reply can attribute via the
+  // `kinds: ["JWT"]` log field.
+  {
+    kind: "JWT",
+    re: /\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\b/g,
+  },
+];
+
+export function redactSecrets(content: string): RedactSecretsResult {
+  let matchCount = 0;
+  const kindSet = new Set<string>();
+  let body = content;
+  for (const { kind, re } of SECRET_PATTERNS) {
+    body = body.replace(re, () => {
+      matchCount++;
+      kindSet.add(kind);
+      return "";
+    });
+  }
+  return { body, matchCount, kinds: [...kindSet] };
 }
 
 /**

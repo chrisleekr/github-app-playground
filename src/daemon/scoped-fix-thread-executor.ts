@@ -23,6 +23,7 @@
 import { Octokit } from "octokit";
 
 import { logger } from "../logger";
+import { safePostToGitHub } from "../utils/github-output-guard";
 import { SHIP_LOG_EVENTS } from "../workflows/ship/log-fields";
 
 export interface ScopedFixThreadExecutorInput {
@@ -71,23 +72,36 @@ export async function executeScopedFixThread(
   // the user-visible state simply prevented the reply. Bubbling these as
   // `failed` would conflate "user deleted the comment" with "executor crashed."
   try {
-    const reply = await octokit.rest.pulls.createReplyForReviewComment({
-      owner: input.owner,
-      repo: input.repo,
-      pull_number: input.prNumber,
-      comment_id: input.threadRef.commentId,
-      body:
-        `\`bot:fix-thread\` daemon-side executor is scaffolded against ` +
-        `\`${input.threadRef.filePath}:${String(input.threadRef.startLine)}-${String(input.threadRef.endLine)}\`. ` +
-        `Multi-turn Agent SDK invocation is the next follow-up.`,
+    const body =
+      `\`bot:fix-thread\` daemon-side executor is scaffolded against ` +
+      `\`${input.threadRef.filePath}:${String(input.threadRef.startLine)}-${String(input.threadRef.endLine)}\`. ` +
+      `Multi-turn Agent SDK invocation is the next follow-up.`;
+    const guarded = await safePostToGitHub({
+      body,
+      source: "system",
+      callsite: "daemon.scoped-fix-thread",
+      log,
+      post: (cleanBody) =>
+        octokit.rest.pulls.createReplyForReviewComment({
+          owner: input.owner,
+          repo: input.repo,
+          pull_number: input.prNumber,
+          comment_id: input.threadRef.commentId,
+          body: cleanBody,
+        }),
     });
+    if (!guarded.posted || guarded.result === undefined) {
+      throw new Error(
+        `daemon.scoped-fix-thread: post skipped after secret redaction (matchCount=${guarded.matchCount})`,
+      );
+    }
     log.info(
-      { event: "ship.scoped.fix_thread.daemon.completed", threadReplyId: reply.data.id },
+      { event: "ship.scoped.fix_thread.daemon.completed", threadReplyId: guarded.result.data.id },
       "scoped-fix-thread reply posted (scaffolding boundary)",
     );
     return {
       status: "halted",
-      threadReplyId: reply.data.id,
+      threadReplyId: guarded.result.data.id,
       reason: "agent-sdk invocation pending follow-up",
     };
   } catch (err) {

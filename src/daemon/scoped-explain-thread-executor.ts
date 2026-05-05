@@ -21,6 +21,7 @@
 import { Octokit } from "octokit";
 
 import { logger } from "../logger";
+import { safePostToGitHub } from "../utils/github-output-guard";
 import { SHIP_LOG_EVENTS } from "../workflows/ship/log-fields";
 
 export interface ScopedExplainThreadExecutorInput {
@@ -63,23 +64,39 @@ export async function executeScopedExplainThread(
   const octokit = new Octokit({ auth: input.installationToken });
   // Octokit-level errors are contractually `halted` (see scoped-fix-thread).
   try {
-    const reply = await octokit.rest.pulls.createReplyForReviewComment({
-      owner: input.owner,
-      repo: input.repo,
-      pull_number: input.prNumber,
-      comment_id: input.threadRef.commentId,
-      body:
-        `\`bot:explain-thread\` daemon-side read-only executor is scaffolded ` +
-        `against \`${input.threadRef.filePath}:${String(input.threadRef.startLine)}-${String(input.threadRef.endLine)}\`. ` +
-        `Agent SDK invocation with write-tool denylist is the next follow-up.`,
+    const body =
+      `\`bot:explain-thread\` daemon-side read-only executor is scaffolded ` +
+      `against \`${input.threadRef.filePath}:${String(input.threadRef.startLine)}-${String(input.threadRef.endLine)}\`. ` +
+      `Agent SDK invocation with write-tool denylist is the next follow-up.`;
+    const guarded = await safePostToGitHub({
+      body,
+      source: "system",
+      callsite: "daemon.scoped-explain-thread",
+      log,
+      post: (cleanBody) =>
+        octokit.rest.pulls.createReplyForReviewComment({
+          owner: input.owner,
+          repo: input.repo,
+          pull_number: input.prNumber,
+          comment_id: input.threadRef.commentId,
+          body: cleanBody,
+        }),
     });
+    if (!guarded.posted || guarded.result === undefined) {
+      throw new Error(
+        `daemon.scoped-explain-thread: post skipped after secret redaction (matchCount=${guarded.matchCount})`,
+      );
+    }
     log.info(
-      { event: "ship.scoped.explain_thread.daemon.completed", threadReplyId: reply.data.id },
+      {
+        event: "ship.scoped.explain_thread.daemon.completed",
+        threadReplyId: guarded.result.data.id,
+      },
       "scoped-explain-thread reply posted (scaffolding boundary)",
     );
     return {
       status: "halted",
-      threadReplyId: reply.data.id,
+      threadReplyId: guarded.result.data.id,
       reason: "agent-sdk read-only invocation pending follow-up",
     };
   } catch (err) {

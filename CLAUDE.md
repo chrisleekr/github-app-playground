@@ -113,6 +113,22 @@ Five workflow files form the pipeline; each owns one responsibility.
 - Multi-arch images: amd64 builds on `ubuntu-24.04`, arm64 builds natively on `ubuntu-24.04-arm` (free for public repos). Both runners are explicitly pinned (not `ubuntu-latest`) so the rolling alias can't silently flip to a new major and break the build — see the header of `.github/workflows/docker-build.yml`. Manifest assembled by `docker buildx imagetools create`. GHA cache scoped per arch.
 - Defense-in-depth on workflow injection: every dynamic input flowing into a `run:` block is passed via `env:` first.
 
+## Security invariants (prompt-injection hardening)
+
+Two contracts contributors MUST preserve when touching the agent execution path or any GitHub-bound write:
+
+1. **Subprocess env allowlist** (`src/core/executor.ts buildProviderEnv()`). The agent CLI receives an explicit allowlist + prefix patterns, NOT `...process.env`. If you add a new env var the CLI needs, extend the allowlist. Banned: `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`, `DAEMON_AUTH_TOKEN`, `DATABASE_URL`, `VALKEY_URL`, `REDIS_URL`, `CONTEXT7_API_KEY`, `GITHUB_PERSONAL_ACCESS_TOKEN`. See `docs/operate/configuration.md` § "Subprocess env allowlist".
+
+2. **Output secret-strip chokepoint** (`src/utils/github-output-guard.ts safePostToGitHub`). Two behaviours:
+   - Regex pass (`redactSecrets()`) silently strips matched bytes. NEVER use the input-side `[REDACTED_X]` marker for output paths — markers leak probing signal to attackers.
+   - LLM scanner (default ON for `source: "agent"`, fail-open on Bedrock outage) catches encoded/obfuscated secrets the regex misses.
+
+   **Coverage status (Phase 1).** Wired through the chokepoint today: `core/tracking-comment.ts` (create + update), `daemon/scoped-explain-thread-executor.ts`, `daemon/scoped-fix-thread-executor.ts`, `workflows/ship/scoped/explain-thread.ts`, `workflows/ship/scoped/fix-thread.ts` (all reply paths via `postReply` helper). Phase 2 (NOT yet wired — tracked separately): `webhook/router.ts` capacity messages, `workflows/ship/tracking-comment.ts`, `workflows/ship/scoped/marker-comment.ts`, `workflows/ship/scoped/open-pr.ts`, `workflows/ship/scoped/rebase.ts`, `workflows/tracking-mirror.ts`, `workflows/ship/lifecycle-commands.ts`, `workflows/ship/session-runner.ts`, `workflows/dispatcher.ts`, `daemon/scoped-open-pr-executor.ts`. When you touch any of those, prefer routing the new write through `safePostToGitHub({ body, source, callsite, log, post })` rather than adding another bypass.
+
+   The MCP servers in `src/mcp/servers/` can't import `safePostToGitHub` directly (no daemon config in subprocess) — they apply `redactSecrets()` inline and log to `console.error` instead.
+
+The `triggerUsername` is rejected (not silently stripped) if it contains whitespace/newline — git commit trailer forging vector. Don't relax that check.
+
 ## Documentation
 
 The `docs/` tree is published as a MkDocs Material site at <https://chrisleekr.github.io/github-app-playground/>. Local preview: `bun run docs:install` once, then `bun run docs:serve` for live reload or `bun run docs:build` for the strict build CI runs.

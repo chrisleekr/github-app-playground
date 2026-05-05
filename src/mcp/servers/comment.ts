@@ -3,7 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { Octokit } from "octokit";
 import { z } from "zod";
 
-import { sanitizeContent } from "../../utils/sanitize";
+import { redactSecrets, sanitizeContent } from "../../utils/sanitize";
 
 /**
  * MCP server for tracking comment updates.
@@ -74,11 +74,28 @@ server.tool(
     try {
       const sanitizedBody = sanitizeContent(body);
 
+      // Output-side secret guard (defense layer 2). Silently strip any
+      // credential-shaped bytes the agent may have included before they
+      // leave for GitHub. Run on the post-sanitize body so we operate on
+      // exactly what would otherwise reach the comment.
+      const guarded = redactSecrets(sanitizedBody);
+      if (guarded.matchCount > 0) {
+        console.error(
+          JSON.stringify({
+            event: "secret_redacted",
+            scanner: "regex",
+            callsite: "mcp.comment.update_claude_comment",
+            kinds: guarded.kinds,
+            matchCount: guarded.matchCount,
+            commentId,
+          }),
+        );
+      }
       // Re-prepend the delivery marker after sanitizeContent strips it (stripHtmlComments).
       // The marker is required for the durable idempotency check in isAlreadyProcessed().
       // DELIVERY_ID is validated non-empty at process startup so the cast is safe.
       const markerPrefix = `<!-- delivery:${DELIVERY_ID} -->`;
-      const bodyWithMarker = `${markerPrefix}\n${sanitizedBody}`;
+      const bodyWithMarker = `${markerPrefix}\n${guarded.body}`;
 
       // Always use issues API -- tracking comment is created via issues.createComment
       const result = await octokit.rest.issues.updateComment({

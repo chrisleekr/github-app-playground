@@ -22,6 +22,7 @@ process.env["CLAUDE_PROVIDER"] = "anthropic";
 // never by relying on ambient process.env.
 delete process.env["ALLOWED_OWNERS"];
 delete process.env["CLAUDE_CODE_OAUTH_TOKEN"];
+delete process.env["GITHUB_PERSONAL_ACCESS_TOKEN"];
 
 // DAEMON_AUTH_TOKEN is required post-dispatch-collapse (validated in
 // validateDataLayerConfig). Individual tests that need to exercise missing
