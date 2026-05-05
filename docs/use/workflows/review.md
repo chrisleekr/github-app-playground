@@ -8,7 +8,7 @@ Reads a PR diff in full, cross-references with the rest of the codebase, and pos
 | Mention         | `@chrisleekr-bot review this PR` · `@chrisleekr-bot do a code review` · `@chrisleekr-bot check for issues`                            |
 | Accepted target | Pull request                                                                                                                          |
 | Requires prior  | —                                                                                                                                     |
-| Artifact        | `REVIEW.md`                                                                                                                           |
+| Artifact        | `$BOT_ARTIFACT_DIR/REVIEW.md` (sibling temp dir, never committed to the repo)                                                         |
 | Side effects    | Inline review comments via `mcp__github_inline_comment__create_inline_comment`; force-push of a clean rebase if branch is behind base |
 | Source          | `src/workflows/handlers/review.ts`                                                                                                    |
 
