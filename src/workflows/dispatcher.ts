@@ -390,7 +390,7 @@ async function postClarifyComment(
       repo: target.repo,
       issue_number: target.number,
       body: [
-        `**@chrisleekr-bot** — I'm not sure which workflow you'd like me to run (confidence \`${verdict.confidence.toFixed(2)}\`).`,
+        `**${config.triggerPhrase}** — I'm not sure which workflow you'd like me to run (confidence \`${verdict.confidence.toFixed(2)}\`).`,
         ``,
         `Reply with one of the \`bot:*\` labels (e.g. \`bot:triage\`, \`bot:plan\`, \`bot:implement\`, \`bot:review\`, \`bot:resolve\`, \`bot:ship\`) or rephrase so the ask is explicit.`,
         ``,

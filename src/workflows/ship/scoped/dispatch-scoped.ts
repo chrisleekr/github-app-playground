@@ -195,9 +195,13 @@ export async function dispatchScopedCommand(
   try {
     await runScopedCommand(command, deps);
   } catch (err) {
+    // Anthropic SDK errors carry circular fetch Response refs that pino's
+    // safe-stable-stringify cannot flatten; flatten to a string so the
+    // actual API error survives. Same pattern as `nl-classifier.ts:99`,
+    // `intent-classifier.ts:143`, and `command-dispatch.ts:159`.
     deps.log?.error(
       {
-        err,
+        err: err instanceof Error ? err.message : String(err),
         intent: command.intent,
         owner: command.pr.owner,
         repo: command.pr.repo,

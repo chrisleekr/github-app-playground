@@ -157,10 +157,16 @@ export async function dispatchCommentSurface(input: {
     }
     return false;
   } catch (err) {
-    // Pass `err` directly so pino's serializer captures the stack and
-    // structured properties; `String(err)` would discard both.
+    // Anthropic SDK errors (the `callLlm` path above) wrap fetch Response
+    // objects with circular refs that defeat pino's safe-stable-stringify
+    // (`[unable to serialize, circular reference is too complex to analyze]`).
+    // Match the same flat-string pattern used in `nl-classifier.ts:99` and
+    // `intent-classifier.ts:143` so the actual API error stays visible.
     (input.log ?? rootLogger).error(
-      { event: "ship.dispatch_comment_surface_failed", err },
+      {
+        event: "ship.dispatch_comment_surface_failed",
+        err: err instanceof Error ? err.message : String(err),
+      },
       "ship dispatchCommentSurface threw — swallowed",
     );
     return false;

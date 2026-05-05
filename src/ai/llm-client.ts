@@ -113,15 +113,21 @@ export function createLLMClient(params: CreateLLMClientParams): LLMClient {
     // leak " " into `new Anthropic({ apiKey })` and produce a confusing 401.
     const apiKey = apiKeyRaw !== undefined && apiKeyRaw.trim().length > 0 ? apiKeyRaw : undefined;
     const oauth = oauthRaw !== undefined && oauthRaw.trim().length > 0 ? oauthRaw : undefined;
-    const chosen = apiKey ?? oauth;
-    if (chosen === undefined) {
+    if (apiKey === undefined && oauth === undefined) {
       const apiKeyState = apiKeyRaw === undefined ? "missing" : "empty";
       const oauthState = oauthRaw === undefined ? "missing" : "empty";
       throw new Error(
         `createLLMClient: provider=anthropic requires a non-empty anthropicApiKey or claudeCodeOauthToken (anthropicApiKey=${apiKeyState}, claudeCodeOauthToken=${oauthState})`,
       );
     }
-    sdk = new Anthropic({ apiKey: chosen }) as unknown as AnthropicLikeSdk;
+    // OAuth tokens (sk-ant-oat-...) authenticate via Authorization: Bearer
+    // (SDK `authToken`), NOT x-api-key. Passing OAuth as `apiKey` produces a
+    // 401 "invalid x-api-key" because the API distinguishes the two headers.
+    // Prefer the API key when both are provided — it's the lower-friction
+    // credential and matches the precedence in config.ts.
+    sdk = (apiKey !== undefined
+      ? new Anthropic({ apiKey })
+      : new Anthropic({ authToken: oauth ?? null })) as unknown as AnthropicLikeSdk;
   } else {
     if (params.awsRegion === undefined || params.awsRegion.length === 0) {
       throw new Error("createLLMClient: provider=bedrock requires awsRegion");

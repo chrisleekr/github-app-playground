@@ -40,7 +40,7 @@ export const ClassifyResultSchema = z.object({
 export type ClassifyResult = z.infer<typeof ClassifyResultSchema>;
 
 const SYSTEM_PROMPT = [
-  "You are an intent classifier for a GitHub bot named @chrisleekr-bot.",
+  `You are an intent classifier for a GitHub bot named ${config.triggerPhrase}.`,
   "Given a user comment, pick ONE workflow that best matches the user's ask.",
   "Valid workflows:",
   "  - triage:     analyse an issue, recommend next step",
@@ -140,7 +140,10 @@ export async function classify(
     });
     rawText = response.text;
   } catch (err) {
-    log.warn({ err }, "intent-classifier LLM call failed — returning clarify fallback");
+    log.warn(
+      { err: String(err) },
+      "intent-classifier LLM call failed — returning clarify fallback",
+    );
     return FALLBACK_CLARIFY;
   }
 
