@@ -1930,7 +1930,12 @@
 <tr>
 <td><code>DAEMON_AUTH_TOKEN</code></td>
 <td>—</td>
-<td>Shared secret for the daemon ⇄ orchestrator handshake. Required on both sides.</td>
+<td>Shared secret for the daemon ⇄ orchestrator handshake. Required on both sides. Compared in constant time.</td>
+</tr>
+<tr>
+<td><code>DAEMON_AUTH_TOKEN_PREVIOUS</code></td>
+<td>—</td>
+<td>Optional rotation overlap. Orchestrator accepts either the primary or this previous token; daemons always send the primary. See <a href="../runbooks/daemon-fleet/#rotating-daemon_auth_token"><code>runbooks/daemon-fleet.md</code></a>.</td>
 </tr>
 <tr>
 <td><code>HEARTBEAT_INTERVAL_MS</code></td>

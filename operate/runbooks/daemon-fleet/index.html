@@ -1186,6 +1186,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#rotating-daemon_auth_token" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rotating DAEMON_AUTH_TOKEN
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#common-day-2-issues" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1595,6 +1606,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#rotating-daemon_auth_token" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rotating DAEMON_AUTH_TOKEN
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#common-day-2-issues" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1809,6 +1831,35 @@
 <li><code>AGENT_TIMEOUT_MS</code> must stay below the GitHub installation-token TTL (3600 s) so the daemon cannot outlive its credentials.</li>
 <li><code>EPHEMERAL_DAEMON_IDLE_TIMEOUT_MS</code> should be longer than typical heartbeat cadence so a short lull between back-to-back jobs does not cause a premature exit.</li>
 <li><code>terminationGracePeriodSeconds</code> on the daemon Pod should match <code>DAEMON_DRAIN_TIMEOUT_MS</code>.</li>
+</ul>
+<h2 id="rotating-daemon_auth_token">Rotating <code>DAEMON_AUTH_TOKEN</code><a class="headerlink" href="#rotating-daemon_auth_token" title="Permanent link">&para;</a></h2>
+<p><code>DAEMON_AUTH_TOKEN</code> is a long-lived shared secret. Treat it like any other production credential: rotate on a defined cadence (OWASP guidance is <strong>at least every 90 days</strong>) and immediately on suspected compromise. The orchestrator's bearer-token comparison is constant-time (<code>crypto.timingSafeEqual</code>) but the secret itself still needs hygiene.</p>
+<p>The <code>DAEMON_AUTH_TOKEN_PREVIOUS</code> slot exists so rotation does not require a synchronised fleet restart — the orchestrator accepts either token while you roll daemons one at a time.</p>
+<pre class="mermaid"><code>sequenceDiagram
+    participant Op as Operator
+    participant Orch as Orchestrator
+    participant Pool as Daemon Pool
+    Op-&gt;&gt;Orch: deploy with DAEMON_AUTH_TOKEN=NEW + DAEMON_AUTH_TOKEN_PREVIOUS=OLD
+    Note over Orch: Accepts OLD or NEW (constant-time)
+    loop For each daemon Pod
+      Op-&gt;&gt;Pool: roll Pod with DAEMON_AUTH_TOKEN=NEW
+      Pool-&gt;&gt;Orch: reconnect with NEW
+    end
+    Op-&gt;&gt;Orch: redeploy without DAEMON_AUTH_TOKEN_PREVIOUS
+    Note over Orch: Accepts NEW only</code></pre>
+<p>Step-by-step:</p>
+<ol>
+<li><strong>Generate</strong> a new secret: <code>openssl rand -hex 32</code>. Persist it in your secret store next to the existing value.</li>
+<li><strong>Stage the overlap.</strong> Update the orchestrator Deployment's <code>daemon-secrets</code> to set <code>DAEMON_AUTH_TOKEN=&lt;NEW&gt;</code> <strong>and</strong> <code>DAEMON_AUTH_TOKEN_PREVIOUS=&lt;OLD&gt;</code>. Roll the orchestrator. Existing daemon connections (still presenting the old token) keep authenticating, and any daemons that come up with the new token also pass.</li>
+<li><strong>Roll daemons.</strong> Update the daemon Deployment's <code>daemon-secrets</code> to set <code>DAEMON_AUTH_TOKEN=&lt;NEW&gt;</code> (no <code>_PREVIOUS</code> needed — daemons only ever send the primary). Roll daemons one by one (<code>kubectl rollout restart deployment/github-app-playground-daemon</code>). Watch <code>auth-failed</code> warn-logs in the orchestrator — they should stay flat.</li>
+<li><strong>Drop the previous slot.</strong> Once every connected daemon presents the new token, redeploy the orchestrator with <code>DAEMON_AUTH_TOKEN_PREVIOUS</code> removed (or empty). The old secret is now dead.</li>
+<li><strong>Verify.</strong> A <code>curl</code> with the old Bearer should now return <code>401</code>; a curl with the new Bearer should hit the upgrade-failed path (<code>500 WebSocket upgrade failed</code>).</li>
+</ol>
+<p>Operational notes:</p>
+<ul>
+<li>The previous-token slot is <strong>orchestrator-only</strong>. Daemons always send the value of their own <code>DAEMON_AUTH_TOKEN</code>; setting <code>DAEMON_AUTH_TOKEN_PREVIOUS</code> on a daemon Pod has no effect.</li>
+<li>Keep the overlap window short (hours, not days). The longer two tokens authenticate, the longer a leaked old token remains usable.</li>
+<li>The rotation does <strong>not</strong> require restarting daemons simultaneously, but you do need to redeploy the orchestrator twice (once to add <code>_PREVIOUS</code>, once to remove it).</li>
 </ul>
 <h2 id="common-day-2-issues">Common Day-2 issues<a class="headerlink" href="#common-day-2-issues" title="Permanent link">&para;</a></h2>
 <table>
