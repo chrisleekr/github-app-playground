@@ -1,3 +1,15 @@
+# [1.10.0](https://github.com/chrisleekr/github-app-playground/compare/v1.9.1...v1.10.0) (2026-05-05)
+
+
+### Bug Fixes
+
+* **orchestrator:** constant-time bearer-token check + rotation slot ([#76](https://github.com/chrisleekr/github-app-playground/issues/76)) ([#103](https://github.com/chrisleekr/github-app-playground/issues/103)) ([cae53bd](https://github.com/chrisleekr/github-app-playground/commit/cae53bdf865c6836ea49fb141750a1099172615c))
+
+
+### Features
+
+* **bot:** PAT override + artifact sandbox + secret-exfil hardening ([#104](https://github.com/chrisleekr/github-app-playground/issues/104)) ([e0d5894](https://github.com/chrisleekr/github-app-playground/commit/e0d5894e5c4d8f38d323f9d4d87a8b56b14cf890))
+
 ## [1.9.1](https://github.com/chrisleekr/github-app-playground/compare/v1.9.0...v1.9.1) (2026-05-04)
 
 
