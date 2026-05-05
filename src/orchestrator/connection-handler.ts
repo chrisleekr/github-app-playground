@@ -1,5 +1,5 @@
 import type { ServerWebSocket } from "bun";
-import { App, type Octokit } from "octokit";
+import { App, Octokit } from "octokit";
 
 import { config } from "../config";
 import { resolveGithubToken } from "../core/github-token";
@@ -252,12 +252,21 @@ async function postOrphanNotification(ancestor: WorkflowRunRow): Promise<void> {
     return;
   }
 
-  const app = getOrCreateApp();
-  const { data: installation } = await app.octokit.rest.apps.getRepoInstallation({
-    owner: ancestor.target_owner,
-    repo: ancestor.target_repo,
-  });
-  const octokit = await app.getInstallationOctokit(installation.id);
+  // PAT mode short-circuit: when GITHUB_PERSONAL_ACCESS_TOKEN is set, the
+  // contract is that the PAT replaces the installation token for ALL GitHub
+  // API calls — orphan-notification comments and reactions included, so the
+  // operator-visible identity stays consistent with other bot replies.
+  let octokit: Awaited<ReturnType<App["getInstallationOctokit"]>> | Octokit;
+  if (config.githubPersonalAccessToken !== undefined) {
+    octokit = new Octokit({ auth: config.githubPersonalAccessToken });
+  } else {
+    const app = getOrCreateApp();
+    const { data: installation } = await app.octokit.rest.apps.getRepoInstallation({
+      owner: ancestor.target_owner,
+      repo: ancestor.target_repo,
+    });
+    octokit = await app.getInstallationOctokit(installation.id);
+  }
 
   const humanMessage = [
     `❌ **Daemon disconnected during execution** — likely an OOM kill on the workflow pod.`,

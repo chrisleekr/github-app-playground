@@ -50,6 +50,19 @@ describe("buildProviderEnv", () => {
     expect(env["BOT_ARTIFACT_DIR"]).toBe("/tmp/work-xyz-artifacts");
   });
 
+  // Negative-path guards for BOT_ARTIFACT_DIR — a future refactor that
+  // accidentally sets the var with an empty/undefined value would point the
+  // agent at `$BOT_ARTIFACT_DIR/...` and dump artifacts at filesystem root.
+  it("does not set BOT_ARTIFACT_DIR when artifactsDir is undefined", () => {
+    const env = buildProviderEnv("ghs_token");
+    expect(env["BOT_ARTIFACT_DIR"]).toBeUndefined();
+  });
+
+  it("does not set BOT_ARTIFACT_DIR when artifactsDir is an empty string", () => {
+    const env = buildProviderEnv("ghs_token", "");
+    expect(env["BOT_ARTIFACT_DIR"]).toBeUndefined();
+  });
+
   it("scrubs blank ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN so the SDK does not select an empty credential", () => {
     // Regression guard for the auth-precedence bug documented in
     // buildProviderEnv: an empty string in either of these env vars wins

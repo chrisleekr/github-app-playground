@@ -124,6 +124,13 @@ void mock.module("octokit", () => ({
     };
     getInstallationOctokit = mockGetInstallationOctokit;
   },
+  // Real `octokit` package re-exports `Octokit` as a value; the
+  // postOrphanNotification PAT short-circuit constructs one directly via
+  // `new Octokit({ auth: pat })`. Mock the constructor as an identity-ish
+  // shape so the import resolves under bun's mock.module.
+  Octokit: class MockOctokit {
+    constructor(public options: unknown) {}
+  },
 }));
 
 // db
