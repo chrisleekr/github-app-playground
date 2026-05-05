@@ -138,10 +138,13 @@ const configSchema = z
     claudeCodeOauthToken: nonEmptyOptionalString,
 
     // Optional: replace the GitHub App installation token with a personal access
-    // token for every GitHub API/git operation. When set, `resolveGithubToken()`
-    // short-circuits the App-token mint and uses this value instead — the bot
-    // then acts as the PAT owner (commits/PR comments are authored by them, not
-    // the App bot). Single-tenant only — must be paired with a single-owner
+    // token for every GitHub API call and `git push`. When set,
+    // `resolveGithubToken()` short-circuits the App-token mint and uses this
+    // value instead. Affects API actions (PR comments, reviews, GraphQL) and
+    // push-side identity, but NOT commit author/committer metadata — that is
+    // pinned to `chrisleekr-bot[bot]` in src/core/checkout.ts via `git config
+    // user.name/user.email` and stays the same regardless of which token mints
+    // the request. Single-tenant only — must be paired with a single-owner
     // ALLOWED_OWNERS, mirroring the CLAUDE_CODE_OAUTH_TOKEN constraint, because
     // a PAT carries a real human identity and per-user rate-limit bucket.
     // Set via GITHUB_PERSONAL_ACCESS_TOKEN env var.

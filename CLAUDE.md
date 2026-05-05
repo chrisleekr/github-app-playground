@@ -81,7 +81,7 @@ The scheduled research workflow in `.github/workflows/research.yml` also uses `C
 
 GitHub-side auth defaults to the App installation token minted on demand from `GITHUB_APP_ID` + `GITHUB_APP_PRIVATE_KEY`. Optional override:
 
-- **`GITHUB_PERSONAL_ACCESS_TOKEN`** — when set, replaces the installation token for every GitHub API call and git operation. Commits, PR comments, and reviews are then attributed to the PAT owner instead of the App bot. **Requires `ALLOWED_OWNERS`** to contain exactly one owner — same single-tenant constraint as `CLAUDE_CODE_OAUTH_TOKEN`, because a PAT carries a real human identity and its per-user rate-limit bucket. Resolution happens in `resolveGithubToken()` (`src/core/github-token.ts`); downstream consumers (git credential helper, executor env, MCP servers) accept the resolved string regardless of source.
+- **`GITHUB_PERSONAL_ACCESS_TOKEN`** — when set, replaces the installation token for every GitHub API call (PR comments, reviews, GraphQL) and `git push` authentication. Those actions are attributed to the PAT owner instead of the App bot. Commit author/committer metadata is **not** affected — `src/core/checkout.ts` hard-codes git `user.name` / `user.email` to `chrisleekr-bot[bot]`, so commit objects still carry the bot identity regardless of the auth token. **Requires `ALLOWED_OWNERS`** to contain exactly one owner — same single-tenant constraint as `CLAUDE_CODE_OAUTH_TOKEN`, because a PAT carries a real human identity and its per-user rate-limit bucket. Resolution happens in `resolveGithubToken()` (`src/core/github-token.ts`); downstream consumers (git credential helper, executor env, MCP servers) accept the resolved string regardless of source.
 
 ## Code Conventions
 

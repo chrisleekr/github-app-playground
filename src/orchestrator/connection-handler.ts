@@ -815,14 +815,22 @@ async function handleAccept(
   const repo = typeof contextJson["repo"] === "string" ? contextJson["repo"] : "";
 
   try {
-    // Mint installation token via cached App singleton (avoid per-request App instantiation)
-    const app = getOrCreateApp();
-    const { data: installation } = await app.octokit.rest.apps.getRepoInstallation({
-      owner,
-      repo,
-    });
-    const octokit = await app.getInstallationOctokit(installation.id);
-    const token = await resolveGithubToken(octokit);
+    // PAT mode short-circuit: skip the per-request App lookup + installation
+    // octokit construction entirely. Both App calls hit the GitHub API and
+    // count against rate limits even though their result is discarded when
+    // GITHUB_PERSONAL_ACCESS_TOKEN is set.
+    let token: string;
+    if (config.githubPersonalAccessToken !== undefined) {
+      token = config.githubPersonalAccessToken;
+    } else {
+      const app = getOrCreateApp();
+      const { data: installation } = await app.octokit.rest.apps.getRepoInstallation({
+        owner,
+        repo,
+      });
+      const octokit = await app.getInstallationOctokit(installation.id);
+      token = await resolveGithubToken(octokit);
+    }
 
     // No turn cap by default: workflows must run end-to-end without losing
     // progress to a mid-run cap. `AGENT_MAX_TURNS` and `DEFAULT_MAXTURNS`
@@ -905,9 +913,16 @@ async function handleScopedAccept(
   const scopedJob: ScopedQueuedJob = reparsed.data;
 
   try {
-    const app = getOrCreateApp();
-    const octokit = await app.getInstallationOctokit(scopedJob.installationId);
-    const token = await resolveGithubToken(octokit);
+    // Same PAT short-circuit as in handleJobOfferAccept — `getInstallationOctokit`
+    // hits the GitHub API to mint a token, which is wasted work in PAT mode.
+    let token: string;
+    if (config.githubPersonalAccessToken !== undefined) {
+      token = config.githubPersonalAccessToken;
+    } else {
+      const app = getOrCreateApp();
+      const octokit = await app.getInstallationOctokit(scopedJob.installationId);
+      token = await resolveGithubToken(octokit);
+    }
 
     handleJobAccept({
       offerId,

@@ -50,7 +50,8 @@ function readDaemonActionsFile(
 }
 
 /**
- * Read agent-written report files from the workspace before cleanup runs.
+ * Read agent-written report files from the sibling artifacts directory
+ * (outside the cloned repo checkout) before cleanup runs.
  * Best-effort: missing files are silently dropped from the returned map.
  * Returns undefined when the caller didn't request anything, so the result
  * shape stays clean (no empty `capturedFiles: {}` for default callers).
@@ -248,12 +249,15 @@ export async function runPipeline(
 
     // Sibling scratch dir for agent-authored summary files (IMPLEMENT.md /
     // REVIEW.md / RESOLVE.md). Sibling rather than child so a stray `git add`
-    // inside the checkout cannot pick it up. Cleaned up alongside `workDir`.
+    // inside the checkout cannot pick it up. Path is computed *outside* the
+    // try block so the finally cleanup can `rm` it unconditionally; mkdirSync
+    // runs *inside* the try so `cleanup()` still fires for `workDir` if the
+    // mkdir throws (permission denied, disk full, etc.).
     const artifactsDir = `${workDir}-artifacts`;
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- artifactsDir is a daemon-owned temp path derived from workDir
-    mkdirSync(artifactsDir, { recursive: true });
 
     try {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- artifactsDir is a daemon-owned temp path derived from workDir
+      mkdirSync(artifactsDir, { recursive: true });
       writeEnvFile(workDir, enrichedCtx.envVars, enrichedCtx.log);
 
       const mcpServers = resolveMcpServers(
