@@ -338,7 +338,6 @@ export async function runPipeline(
         ctx.log.error({ err: cleanupError }, "Failed to cleanup temp directory");
       }
       try {
-         
         await rm(artifactsDir, { recursive: true, force: true });
       } catch (cleanupError) {
         ctx.log.error({ err: cleanupError, artifactsDir }, "Failed to cleanup artifacts directory");
