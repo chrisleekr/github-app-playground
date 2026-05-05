@@ -1099,6 +1099,50 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#llm-based-output-scanner-defense-layer-4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LLM-based output scanner (defense layer 4)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#subprocess-env-allowlist-defense-layer-1a-issue-102" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Subprocess env allowlist (defense layer 1a, issue #102)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#k8s-secret-split-defense-layer-1b-issue-102" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        K8s Secret split (defense layer 1b, issue #102)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#output-secret-stripping-behavior-defense-layer-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Output secret-stripping behavior (defense layer 2)
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1624,6 +1668,50 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#llm-based-output-scanner-defense-layer-4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LLM-based output scanner (defense layer 4)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#subprocess-env-allowlist-defense-layer-1a-issue-102" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Subprocess env allowlist (defense layer 1a, issue #102)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#k8s-secret-split-defense-layer-1b-issue-102" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        K8s Secret split (defense layer 1b, issue #102)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#output-secret-stripping-behavior-defense-layer-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Output secret-stripping behavior (defense layer 2)
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1681,6 +1769,12 @@
 <td>—</td>
 <td>Server mode</td>
 <td>HMAC-SHA256 secret configured in the App settings.</td>
+</tr>
+<tr>
+<td><code>GITHUB_PERSONAL_ACCESS_TOKEN</code></td>
+<td>—</td>
+<td>Optional</td>
+<td>Override App installation token with a PAT — bot acts as the PAT owner. <strong>Requires single-owner <code>ALLOWED_OWNERS</code>.</strong></td>
 </tr>
 </tbody>
 </table>
@@ -1764,8 +1858,8 @@
 <tr>
 <td><code>ALLOWED_OWNERS</code></td>
 <td>—</td>
-<td>OAuth token path</td>
-<td>Comma-separated allowlist. Required when using <code>CLAUDE_CODE_OAUTH_TOKEN</code>.</td>
+<td>OAuth or PAT path</td>
+<td>Comma-separated allowlist. Required (single owner) when using <code>CLAUDE_CODE_OAUTH_TOKEN</code> or <code>GITHUB_PERSONAL_ACCESS_TOKEN</code>.</td>
 </tr>
 </tbody>
 </table>
@@ -2160,6 +2254,74 @@
 </tr>
 </tbody>
 </table>
+<h2 id="llm-based-output-scanner-defense-layer-4">LLM-based output scanner (defense layer 4)<a class="headerlink" href="#llm-based-output-scanner-defense-layer-4" title="Permanent link">&para;</a></h2>
+<p>Per-call LLM scan of every agent-generated GitHub-bound body, after the deterministic regex pass in <code>redactSecrets()</code>. Catches encoded / obfuscated secrets the regex misses.</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LLM_OUTPUT_SCANNER_ENABLED</code></td>
+<td><code>true</code></td>
+<td>Set <code>false</code> to disable. Skipping the scan saves ~1–2s and ~$0.0002 per agent reply but loses the encoded-secret backstop.</td>
+</tr>
+<tr>
+<td><code>LLM_OUTPUT_SCANNER_MODEL</code></td>
+<td><code>haiku-3-5</code></td>
+<td>Operator-friendly alias resolved by <code>src/ai/llm-client.ts MODEL_MAP</code>. Cheapest Haiku that emits the structured JSON schema is sufficient.</td>
+</tr>
+<tr>
+<td><code>LLM_OUTPUT_SCANNER_TIMEOUT_MS</code></td>
+<td><code>3000</code></td>
+<td>Per-call wall-clock cap. On timeout, the helper FAILS OPEN — posts the body that survived the regex pass and emits a <code>warn</code> log.</td>
+</tr>
+</tbody>
+</table>
+<p>System messages (router capacity, marker comments, lifecycle pings) skip the LLM pass — they cannot legitimately contain secrets and the scan is wasted spend.</p>
+<h2 id="subprocess-env-allowlist-defense-layer-1a-issue-102">Subprocess env allowlist (defense layer 1a, issue #102)<a class="headerlink" href="#subprocess-env-allowlist-defense-layer-1a-issue-102" title="Permanent link">&para;</a></h2>
+<p>The Claude Agent SDK CLI subprocess receives an explicit env allowlist — NOT the full <code>process.env</code>. This eliminates the prompt-injection exfiltration path where a successful injection on the agent could <code>cat /proc/self/environ</code> and leak <code>GITHUB_APP_PRIVATE_KEY</code>, <code>DATABASE_URL</code>, <code>DAEMON_AUTH_TOKEN</code>, etc.</p>
+<p>The allowlist (in <code>src/core/executor.ts buildProviderEnv()</code>):</p>
+<ul>
+<li><strong>Allowed exact keys</strong>: <code>HOME</code>, <code>PATH</code>, <code>USER</code>, <code>LANG</code>, <code>LC_ALL</code>, <code>TZ</code>, <code>TMPDIR</code>, <code>NODE_OPTIONS</code>, <code>NODE_PATH</code>, <code>NODE_NO_WARNINGS</code>, <code>NODE_EXTRA_CA_CERTS</code>, <code>SSL_CERT_FILE</code>, <code>SSL_CERT_DIR</code>, <code>HTTP_PROXY</code>/<code>HTTPS_PROXY</code>/<code>NO_PROXY</code> (uppercase + lowercase), <code>NO_COLOR</code>, <code>FORCE_COLOR</code>, <code>TERM</code>, <code>COLORTERM</code>, <code>CI</code>, <code>GH_TOKEN</code>, <code>GITHUB_TOKEN</code>.</li>
+<li><strong>Allowed prefixes</strong> (forward-compatible for vendor knobs): <code>CLAUDE_CODE_*</code>, <code>ANTHROPIC_*</code>, <code>AWS_*</code>, <code>GIT_*</code>, <code>GH_*</code>.</li>
+<li><strong>Denied exact keys</strong> (override allow): <code>GITHUB_APP_ID</code>, <code>GITHUB_APP_PRIVATE_KEY</code>, <code>GITHUB_WEBHOOK_SECRET</code>, <code>GITHUB_PERSONAL_ACCESS_TOKEN</code>, <code>DAEMON_AUTH_TOKEN</code>, <code>DAEMON_AUTH_TOKEN_PREVIOUS</code>, <code>DATABASE_URL</code>, <code>VALKEY_URL</code>, <code>REDIS_URL</code>, <code>CONTEXT7_API_KEY</code>.</li>
+<li><strong>Denied prefixes</strong>: <code>GITHUB_APP_*</code>, <code>GITHUB_WEBHOOK_*</code>.</li>
+<li><strong>Defense-in-depth flag</strong>: <code>CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1</code> is set unconditionally so grandchild subprocesses spawned by the agent's <code>Bash</code> tool inherit no creds.</li>
+</ul>
+<p>If you add a new env var the agent CLI needs, extend the allowlist in <code>buildProviderEnv()</code>. Anything outside the allowlist is silently dropped — verify by running <code>bun test test/core/build-provider-env.test.ts</code> after the change.</p>
+<h2 id="k8s-secret-split-defense-layer-1b-issue-102">K8s Secret split (defense layer 1b, issue #102)<a class="headerlink" href="#k8s-secret-split-defense-layer-1b-issue-102" title="Permanent link">&para;</a></h2>
+<p>The Helm chart MUST split secrets into two K8s Secret objects so the daemon Pod's filesystem/environment never carries orchestrator-only credentials, even if the env allowlist above develops a future bug:</p>
+<table>
+<thead>
+<tr>
+<th>Secret object</th>
+<th>Mounted on</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>orchestrator-secrets</code></td>
+<td>Orchestrator Pod ONLY</td>
+<td><code>GITHUB_APP_ID</code>, <code>GITHUB_APP_PRIVATE_KEY</code>, <code>GITHUB_WEBHOOK_SECRET</code>, <code>DATABASE_URL</code>, <code>VALKEY_URL</code>, <code>CONTEXT7_API_KEY</code>, <code>DAEMON_AUTH_TOKEN[_PREVIOUS]</code> (issuance side).</td>
+</tr>
+<tr>
+<td><code>daemon-secrets</code></td>
+<td>Daemon Pod (incl. ephemeral)</td>
+<td><code>ANTHROPIC_API_KEY</code> or <code>CLAUDE_CODE_OAUTH_TOKEN</code>, <code>AWS_*</code> chain (Bedrock provider), <code>DAEMON_AUTH_TOKEN[_PREVIOUS]</code> (handshake side), <code>GITHUB_PERSONAL_ACCESS_TOKEN</code> (PAT mode only).</td>
+</tr>
+</tbody>
+</table>
+<p>The orchestrator mints short-lived GitHub installation tokens and forwards them via the WebSocket — daemons never see the App private key or webhook secret.</p>
+<p>A startup warning fires if a daemon process detects orchestrator-only env vars at boot — it does NOT crash (a downed daemon is worse than a degraded posture), but the warning surfaces the misconfiguration in operator logs.</p>
+<h2 id="output-secret-stripping-behavior-defense-layer-2">Output secret-stripping behavior (defense layer 2)<a class="headerlink" href="#output-secret-stripping-behavior-defense-layer-2" title="Permanent link">&para;</a></h2>
+<p>Every body posted to GitHub is scanned by <code>redactSecrets()</code> — see <code>src/utils/sanitize.ts</code> for the patterns. Detections are SILENTLY STRIPPED (no marker, no footer, no count surfaced in the body) so attackers get no probing feedback. Operator-side info is logged via Pino <code>warn</code> with <code>event: "secret_redacted"</code> carrying <code>kinds</code>, <code>matchCount</code>, <code>callsite</code>, <code>deliveryId</code> — but never the matched bytes.</p>
+<p>If redaction empties the body entirely, the GitHub call is skipped and <code>event: "secret_redaction_emptied_body"</code> is logged at <code>error</code>.</p>
 
 
 
