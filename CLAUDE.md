@@ -37,14 +37,14 @@ Single HTTP server (`src/app.ts`) using `octokit` App class. Webhook events arri
 **Pipeline** (`src/core/pipeline.ts`, executed by the daemon):
 
 1. Create tracking comment ("Working…")
-2. Get installation token
+2. Resolve GitHub credential (App installation token by default; PAT when `GITHUB_PERSONAL_ACCESS_TOKEN` is set — see "Authentication options")
 3. Fetch PR/issue data via GraphQL
 4. Build prompt with full context
-5. Clone repo to temp directory, checkout PR/default branch (and supplementally fetch the PR base branch when it differs from head, so `origin/<baseBranch>` resolves for diffs/rebases)
+5. Clone repo to temp directory, checkout PR/default branch (and supplementally fetch the PR base branch when it differs from head, so `origin/<baseBranch>` resolves for diffs/rebases). Also create a sibling artifacts directory (`${workDir}-artifacts`) outside the clone, exported to the agent as `BOT_ARTIFACT_DIR` so summary files (IMPLEMENT.md / REVIEW.md / RESOLVE.md) cannot accidentally be `git add`-ed
 6. Resolve MCP servers and allowed tools
 7. Run Claude Agent SDK with `cwd` set to cloned repo
 8. Finalize tracking comment (success/error/cost)
-9. Cleanup temp directory
+9. Cleanup temp directory + sibling artifacts directory
 
 ## Architecture
 
@@ -77,6 +77,12 @@ Default agent execution model when `CLAUDE_MODEL` is unset and `CLAUDE_PROVIDER=
 
 The scheduled research workflow in `.github/workflows/research.yml` also uses `CLAUDE_CODE_OAUTH_TOKEN`, but via `anthropics/claude-code-action@v1` — that path is separately sanctioned for CI and is not subject to the `ALLOWED_OWNERS` requirement.
 
+### GitHub credential
+
+GitHub-side auth defaults to the App installation token minted on demand from `GITHUB_APP_ID` + `GITHUB_APP_PRIVATE_KEY`. Optional override:
+
+- **`GITHUB_PERSONAL_ACCESS_TOKEN`** — when set, replaces the installation token for every GitHub API call (PR comments, reviews, GraphQL) and `git push` authentication. Those actions are attributed to the PAT owner instead of the App bot. Commit author/committer metadata is **not** affected — `src/core/checkout.ts` hard-codes git `user.name` / `user.email` to `chrisleekr-bot[bot]`, so commit objects still carry the bot identity regardless of the auth token. **Requires `ALLOWED_OWNERS`** to contain exactly one owner — same single-tenant constraint as `CLAUDE_CODE_OAUTH_TOKEN`, because a PAT carries a real human identity and its per-user rate-limit bucket. Resolution happens in `resolveGithubToken()` (`src/core/github-token.ts`); downstream consumers (git credential helper, executor env, MCP servers) accept the resolved string regardless of source.
+
 ## Code Conventions
 
 - Runtime is Bun (app) + Node.js (Claude Code CLI).
@@ -106,6 +112,22 @@ Five workflow files form the pipeline; each owns one responsibility.
 - **Prod releases are manual.** Push to main only triggers `ci.yml` (sanity). Cut a release with `gh workflow run release.yml`.
 - Multi-arch images: amd64 builds on `ubuntu-24.04`, arm64 builds natively on `ubuntu-24.04-arm` (free for public repos). Both runners are explicitly pinned (not `ubuntu-latest`) so the rolling alias can't silently flip to a new major and break the build — see the header of `.github/workflows/docker-build.yml`. Manifest assembled by `docker buildx imagetools create`. GHA cache scoped per arch.
 - Defense-in-depth on workflow injection: every dynamic input flowing into a `run:` block is passed via `env:` first.
+
+## Security invariants (prompt-injection hardening)
+
+Two contracts contributors MUST preserve when touching the agent execution path or any GitHub-bound write:
+
+1. **Subprocess env allowlist** (`src/core/executor.ts buildProviderEnv()`). The agent CLI receives an explicit allowlist + prefix patterns, NOT `...process.env`. If you add a new env var the CLI needs, extend the allowlist. Banned: `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`, `DAEMON_AUTH_TOKEN`, `DATABASE_URL`, `VALKEY_URL`, `REDIS_URL`, `CONTEXT7_API_KEY`, `GITHUB_PERSONAL_ACCESS_TOKEN`. See `docs/operate/configuration.md` § "Subprocess env allowlist".
+
+2. **Output secret-strip chokepoint** (`src/utils/github-output-guard.ts safePostToGitHub`). Two behaviours:
+   - Regex pass (`redactSecrets()`) silently strips matched bytes. NEVER use the input-side `[REDACTED_X]` marker for output paths — markers leak probing signal to attackers.
+   - LLM scanner (default ON for `source: "agent"`, fail-open on Bedrock outage) catches encoded/obfuscated secrets the regex misses.
+
+   **Coverage status (Phase 1).** Wired through the chokepoint today: `core/tracking-comment.ts` (create + update), `daemon/scoped-explain-thread-executor.ts`, `daemon/scoped-fix-thread-executor.ts`, `workflows/ship/scoped/explain-thread.ts`, `workflows/ship/scoped/fix-thread.ts` (all reply paths via `postReply` helper). Phase 2 (NOT yet wired — tracked separately): `webhook/router.ts` capacity messages, `workflows/ship/tracking-comment.ts`, `workflows/ship/scoped/marker-comment.ts`, `workflows/ship/scoped/open-pr.ts`, `workflows/ship/scoped/rebase.ts`, `workflows/tracking-mirror.ts`, `workflows/ship/lifecycle-commands.ts`, `workflows/ship/session-runner.ts`, `workflows/dispatcher.ts`, `daemon/scoped-open-pr-executor.ts`. When you touch any of those, prefer routing the new write through `safePostToGitHub({ body, source, callsite, log, post })` rather than adding another bypass.
+
+   The MCP servers in `src/mcp/servers/` can't import `safePostToGitHub` directly (no daemon config in subprocess) — they apply `redactSecrets()` inline and log to `console.error` instead.
+
+The `triggerUsername` is rejected (not silently stripped) if it contains whitespace/newline — git commit trailer forging vector. Don't relax that check.
 
 ## Documentation
 

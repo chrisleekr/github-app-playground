@@ -164,10 +164,20 @@ function buildEphemeralDaemonPodSpec(input: SpawnEphemeralDaemonInput): V1Pod {
           name: "daemon",
           image: input.image,
           command: ["bun", "run", "dist/daemon/main.js"],
-          // DAEMON_AUTH_TOKEN, GitHub App creds, Claude creds, DB/Valkey creds
-          // must live in the `daemon-secrets` K8s Secret — not inline here —
-          // so they are not visible in plaintext via `kubectl get pod -o yaml`
-          // or the cluster's Pod audit log.
+          // The ephemeral-daemon Pod mounts ONLY the `daemon-secrets` Secret
+          // — never `orchestrator-secrets`. The orchestrator/daemon split
+          // (defense layer 1b for prompt-injection hardening, issue #102) is
+          // enforced by the Helm chart: orchestrator-only credentials
+          // (`GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`, `DATABASE_URL`,
+          // `VALKEY_URL`, `CONTEXT7_API_KEY`) live in `orchestrator-secrets`
+          // and never reach a daemon Pod. The daemon needs only:
+          //   - `DAEMON_AUTH_TOKEN[_PREVIOUS]` (WS handshake)
+          //   - `ANTHROPIC_API_KEY` / `CLAUDE_CODE_OAUTH_TOKEN` (Claude auth)
+          //   - `AWS_*` chain (Bedrock provider)
+          //   - `GITHUB_PERSONAL_ACCESS_TOKEN` (PAT mode only; optional)
+          // Inlining these env vars here would expose them in
+          // `kubectl get pod -o yaml` and the cluster's Pod audit log —
+          // hence `envFrom: secretRef`.
           env: [
             { name: "DAEMON_EPHEMERAL", value: "true" },
             { name: "ORCHESTRATOR_URL", value: input.orchestratorUrl },

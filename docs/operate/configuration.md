@@ -8,28 +8,29 @@ Every environment variable the app reads at startup, grouped by concern. The aut
 
 Server mode only. If `ORCHESTRATOR_URL` is set, the process runs in daemon mode and these are not required.
 
-| Variable                 | Default | Required when | Notes                                                             |
-| ------------------------ | ------- | ------------- | ----------------------------------------------------------------- |
-| `GITHUB_APP_ID`          | —       | Server mode   | Numeric App ID from the App settings page.                        |
-| `GITHUB_APP_PRIVATE_KEY` | —       | Server mode   | Full PEM. Literal `\n` sequences are normalised to real newlines. |
-| `GITHUB_WEBHOOK_SECRET`  | —       | Server mode   | HMAC-SHA256 secret configured in the App settings.                |
+| Variable                       | Default | Required when | Notes                                                                                                               |
+| ------------------------------ | ------- | ------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `GITHUB_APP_ID`                | —       | Server mode   | Numeric App ID from the App settings page.                                                                          |
+| `GITHUB_APP_PRIVATE_KEY`       | —       | Server mode   | Full PEM. Literal `\n` sequences are normalised to real newlines.                                                   |
+| `GITHUB_WEBHOOK_SECRET`        | —       | Server mode   | HMAC-SHA256 secret configured in the App settings.                                                                  |
+| `GITHUB_PERSONAL_ACCESS_TOKEN` | —       | Optional      | Override App installation token with a PAT — bot acts as the PAT owner. **Requires single-owner `ALLOWED_OWNERS`.** |
 
 ## AI provider
 
-| Variable                     | Default                                    | Required when                                      | Notes                                                                     |
-| ---------------------------- | ------------------------------------------ | -------------------------------------------------- | ------------------------------------------------------------------------- |
-| `CLAUDE_PROVIDER`            | `anthropic`                                | —                                                  | `anthropic` or `bedrock`.                                                 |
-| `CLAUDE_MODEL`               | `claude-opus-4-7` (anthropic); — (bedrock) | Bedrock                                            | Bedrock requires an explicit Bedrock model ID.                            |
-| `ANTHROPIC_API_KEY`          | —                                          | Anthropic, unless `CLAUDE_CODE_OAUTH_TOKEN` is set | Console pay-as-you-go. Safe for multi-tenant deploys.                     |
-| `CLAUDE_CODE_OAUTH_TOKEN`    | —                                          | Anthropic, unless `ANTHROPIC_API_KEY` is set       | Max/Pro subscription token (`sk-ant-oat…`). Requires `ALLOWED_OWNERS`.    |
-| `AWS_REGION`                 | —                                          | Bedrock                                            | Resolved by the AWS SDK credential chain.                                 |
-| `AWS_PROFILE`                | —                                          | Optional (bedrock)                                 | Local SSO profile for dev.                                                |
-| `AWS_ACCESS_KEY_ID`          | —                                          | Optional (bedrock)                                 | Long-lived credential pair. Prefer profile or OIDC.                       |
-| `AWS_SECRET_ACCESS_KEY`      | —                                          | Optional (bedrock)                                 | Paired with `AWS_ACCESS_KEY_ID`.                                          |
-| `AWS_SESSION_TOKEN`          | —                                          | Optional (bedrock)                                 | Temporary credentials.                                                    |
-| `AWS_BEARER_TOKEN_BEDROCK`   | —                                          | Optional (bedrock, CI)                             | Set automatically by `aws-actions/configure-aws-credentials` OIDC.        |
-| `ANTHROPIC_BEDROCK_BASE_URL` | —                                          | Optional (bedrock)                                 | Override Bedrock runtime endpoint (VPC endpoint / proxy).                 |
-| `ALLOWED_OWNERS`             | —                                          | OAuth token path                                   | Comma-separated allowlist. Required when using `CLAUDE_CODE_OAUTH_TOKEN`. |
+| Variable                     | Default                                    | Required when                                      | Notes                                                                                                                      |
+| ---------------------------- | ------------------------------------------ | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `CLAUDE_PROVIDER`            | `anthropic`                                | —                                                  | `anthropic` or `bedrock`.                                                                                                  |
+| `CLAUDE_MODEL`               | `claude-opus-4-7` (anthropic); — (bedrock) | Bedrock                                            | Bedrock requires an explicit Bedrock model ID.                                                                             |
+| `ANTHROPIC_API_KEY`          | —                                          | Anthropic, unless `CLAUDE_CODE_OAUTH_TOKEN` is set | Console pay-as-you-go. Safe for multi-tenant deploys.                                                                      |
+| `CLAUDE_CODE_OAUTH_TOKEN`    | —                                          | Anthropic, unless `ANTHROPIC_API_KEY` is set       | Max/Pro subscription token (`sk-ant-oat…`). Requires `ALLOWED_OWNERS`.                                                     |
+| `AWS_REGION`                 | —                                          | Bedrock                                            | Resolved by the AWS SDK credential chain.                                                                                  |
+| `AWS_PROFILE`                | —                                          | Optional (bedrock)                                 | Local SSO profile for dev.                                                                                                 |
+| `AWS_ACCESS_KEY_ID`          | —                                          | Optional (bedrock)                                 | Long-lived credential pair. Prefer profile or OIDC.                                                                        |
+| `AWS_SECRET_ACCESS_KEY`      | —                                          | Optional (bedrock)                                 | Paired with `AWS_ACCESS_KEY_ID`.                                                                                           |
+| `AWS_SESSION_TOKEN`          | —                                          | Optional (bedrock)                                 | Temporary credentials.                                                                                                     |
+| `AWS_BEARER_TOKEN_BEDROCK`   | —                                          | Optional (bedrock, CI)                             | Set automatically by `aws-actions/configure-aws-credentials` OIDC.                                                         |
+| `ANTHROPIC_BEDROCK_BASE_URL` | —                                          | Optional (bedrock)                                 | Override Bedrock runtime endpoint (VPC endpoint / proxy).                                                                  |
+| `ALLOWED_OWNERS`             | —                                          | OAuth or PAT path                                  | Comma-separated allowlist. Required (single owner) when using `CLAUDE_CODE_OAUTH_TOKEN` or `GITHUB_PERSONAL_ACCESS_TOKEN`. |
 
 ## HTTP server
 
@@ -137,3 +138,48 @@ The orchestrator also expects a pre-existing `daemon-secrets` Kubernetes Secret 
 | Orchestrator (webhook server)           | GitHub App credentials, one AI provider credential, `VALKEY_URL`, `DATABASE_URL`, `DAEMON_AUTH_TOKEN`.        |
 | Ephemeral-daemon scale-up               | K8s API access + RBAC on `pods` in `EPHEMERAL_DAEMON_NAMESPACE`, `daemon-secrets` Secret.                     |
 | Daemon process (`ORCHESTRATOR_URL` set) | `DAEMON_AUTH_TOKEN`, one AI provider credential. GitHub App credentials and data-layer URLs are NOT required. |
+
+## LLM-based output scanner (defense layer 4)
+
+Per-call LLM scan of every agent-generated GitHub-bound body, after the deterministic regex pass in `redactSecrets()`. Catches encoded / obfuscated secrets the regex misses.
+
+| Variable                        | Default     | Notes                                                                                                                                     |
+| ------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `LLM_OUTPUT_SCANNER_ENABLED`    | `true`      | Set `false` to disable. Skipping the scan saves ~1–2s and ~$0.0002 per agent reply but loses the encoded-secret backstop.                 |
+| `LLM_OUTPUT_SCANNER_MODEL`      | `haiku-3-5` | Operator-friendly alias resolved by `src/ai/llm-client.ts MODEL_MAP`. Cheapest Haiku that emits the structured JSON schema is sufficient. |
+| `LLM_OUTPUT_SCANNER_TIMEOUT_MS` | `3000`      | Per-call wall-clock cap. On timeout, the helper FAILS OPEN — posts the body that survived the regex pass and emits a `warn` log.          |
+
+System messages (router capacity, marker comments, lifecycle pings) skip the LLM pass — they cannot legitimately contain secrets and the scan is wasted spend.
+
+## Subprocess env allowlist (defense layer 1a, issue #102)
+
+The Claude Agent SDK CLI subprocess receives an explicit env allowlist — NOT the full `process.env`. This eliminates the prompt-injection exfiltration path where a successful injection on the agent could `cat /proc/self/environ` and leak `GITHUB_APP_PRIVATE_KEY`, `DATABASE_URL`, `DAEMON_AUTH_TOKEN`, etc.
+
+The allowlist (in `src/core/executor.ts buildProviderEnv()`):
+
+- **Allowed exact keys**: `HOME`, `PATH`, `USER`, `LANG`, `LC_ALL`, `TZ`, `TMPDIR`, `NODE_OPTIONS`, `NODE_PATH`, `NODE_NO_WARNINGS`, `NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE`, `SSL_CERT_DIR`, `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` (uppercase + lowercase), `NO_COLOR`, `FORCE_COLOR`, `TERM`, `COLORTERM`, `CI`, `GH_TOKEN`, `GITHUB_TOKEN`.
+- **Allowed prefixes** (forward-compatible for vendor knobs): `CLAUDE_CODE_*`, `ANTHROPIC_*`, `AWS_*`, `GIT_*`, `GH_*`.
+- **Denied exact keys** (override allow): `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`, `GITHUB_PERSONAL_ACCESS_TOKEN`, `DAEMON_AUTH_TOKEN`, `DAEMON_AUTH_TOKEN_PREVIOUS`, `DATABASE_URL`, `VALKEY_URL`, `REDIS_URL`, `CONTEXT7_API_KEY`.
+- **Denied prefixes**: `GITHUB_APP_*`, `GITHUB_WEBHOOK_*`.
+- **Defense-in-depth flag**: `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` is set unconditionally so grandchild subprocesses spawned by the agent's `Bash` tool inherit no creds.
+
+If you add a new env var the agent CLI needs, extend the allowlist in `buildProviderEnv()`. Anything outside the allowlist is silently dropped — verify by running `bun test test/core/build-provider-env.test.ts` after the change.
+
+## K8s Secret split (defense layer 1b, issue #102)
+
+The Helm chart MUST split secrets into two K8s Secret objects so the daemon Pod's filesystem/environment never carries orchestrator-only credentials, even if the env allowlist above develops a future bug:
+
+| Secret object          | Mounted on                   | Contents                                                                                                                                                                             |
+| ---------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `orchestrator-secrets` | Orchestrator Pod ONLY        | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`, `DATABASE_URL`, `VALKEY_URL`, `CONTEXT7_API_KEY`, `DAEMON_AUTH_TOKEN[_PREVIOUS]` (issuance side).                |
+| `daemon-secrets`       | Daemon Pod (incl. ephemeral) | `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`, `AWS_*` chain (Bedrock provider), `DAEMON_AUTH_TOKEN[_PREVIOUS]` (handshake side), `GITHUB_PERSONAL_ACCESS_TOKEN` (PAT mode only). |
+
+The orchestrator mints short-lived GitHub installation tokens and forwards them via the WebSocket — daemons never see the App private key or webhook secret.
+
+A startup warning fires if a daemon process detects orchestrator-only env vars at boot — it does NOT crash (a downed daemon is worse than a degraded posture), but the warning surfaces the misconfiguration in operator logs.
+
+## Output secret-stripping behavior (defense layer 2)
+
+Every body posted to GitHub is scanned by `redactSecrets()` — see `src/utils/sanitize.ts` for the patterns. Detections are SILENTLY STRIPPED (no marker, no footer, no count surfaced in the body) so attackers get no probing feedback. Operator-side info is logged via Pino `warn` with `event: "secret_redacted"` carrying `kinds`, `matchCount`, `callsite`, `deliveryId` — but never the matched bytes.
+
+If redaction empties the body entirely, the GitHub call is skipped and `event: "secret_redaction_emptied_body"` is logged at `error`.

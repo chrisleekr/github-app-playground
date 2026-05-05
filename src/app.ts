@@ -14,7 +14,7 @@ import type {
   PullRequestReviewEvent,
   PullRequestReviewThreadEvent,
 } from "@octokit/webhooks-types";
-import { App } from "octokit";
+import { App, Octokit } from "octokit";
 
 import { config } from "./config";
 import { closeDb, getDb } from "./db";
@@ -403,9 +403,16 @@ async function runStartupChecks(): Promise<void> {
     onDue: (intent_id) =>
       resumeShipIntent({
         intentId: intent_id,
-        // Reuse the same App singleton bound at module scope; the cached
-        // installation tokens save a JWT mint per resume.
-        octokitFactory: (installationId) => app.getInstallationOctokit(installationId),
+        // PAT mode short-circuit: the PAT replaces the installation token
+        // for ALL GitHub API calls. Resume actions (push, comments, PR
+        // edits) must therefore run as the PAT user, not the App identity,
+        // to honour the contract documented in CLAUDE.md.
+        // Otherwise reuse the App singleton; cached installation tokens
+        // save a JWT mint per resume.
+        octokitFactory: (installationId) =>
+          config.githubPersonalAccessToken !== undefined
+            ? Promise.resolve(new Octokit({ auth: config.githubPersonalAccessToken }))
+            : app.getInstallationOctokit(installationId),
       }),
   });
   await shipTickleScheduler.start();

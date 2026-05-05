@@ -8,7 +8,7 @@ Fixes failing CI, replies to existing review threads, and pushes new commits.
 | Mention         | `@chrisleekr-bot fix the CI failures` · `@chrisleekr-bot address the review comments` · `@chrisleekr-bot respond to the feedback` |
 | Accepted target | Pull request                                                                                                                      |
 | Requires prior  | —                                                                                                                                 |
-| Artifact        | `RESOLVE.md`                                                                                                                      |
+| Artifact        | `$BOT_ARTIFACT_DIR/RESOLVE.md` (sibling temp dir, never committed to the repo)                                                    |
 | Side effects    | New commits on the PR head branch; replies to review threads; force-push of a clean rebase if branch is behind base               |
 | Source          | `src/workflows/handlers/resolve.ts`                                                                                               |
 

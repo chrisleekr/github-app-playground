@@ -137,6 +137,19 @@ const configSchema = z
     anthropicApiKey: nonEmptyOptionalString,
     claudeCodeOauthToken: nonEmptyOptionalString,
 
+    // Optional: replace the GitHub App installation token with a personal access
+    // token for every GitHub API call and `git push`. When set,
+    // `resolveGithubToken()` short-circuits the App-token mint and uses this
+    // value instead. Affects API actions (PR comments, reviews, GraphQL) and
+    // push-side identity, but NOT commit author/committer metadata — that is
+    // pinned to `chrisleekr-bot[bot]` in src/core/checkout.ts via `git config
+    // user.name/user.email` and stays the same regardless of which token mints
+    // the request. Single-tenant only — must be paired with a single-owner
+    // ALLOWED_OWNERS, mirroring the CLAUDE_CODE_OAUTH_TOKEN constraint, because
+    // a PAT carries a real human identity and per-user rate-limit bucket.
+    // Set via GITHUB_PERSONAL_ACCESS_TOKEN env var.
+    githubPersonalAccessToken: nonEmptyOptionalString,
+
     // --- 4. AWS Bedrock credentials ---
 
     // Target AWS region for Bedrock. Required when provider=bedrock.
@@ -431,7 +444,7 @@ const configSchema = z
 
     // Model ID for the single-turn triage call via src/ai/llm-client.ts. Affects
     // triage latency/cost only — does NOT change the main agent's model.
-    triageModel: z.string().default("haiku-3-5"),
+    triageModel: z.string().default("sonnet-4-6"),
 
     // Strict (1.0) on day 1 so only perfectly confident triage decisions are
     // accepted; below threshold, the scaler falls back to persistent-daemon routing.
@@ -451,6 +464,25 @@ const configSchema = z
     // a clarification request instead of dispatching (FR-009). 0.75 matches
     // the SC-005 target accuracy band.
     intentConfidenceThreshold: z.coerce.number().min(0).max(1).default(0.75),
+
+    // --- 10b. LLM-based output scanner (defense layer 4) ---
+
+    // When true, run a second-pass LLM scan on every agent-generated body
+    // about to be posted to GitHub (after the regex pass in
+    // `src/utils/sanitize.ts redactSecrets`). Catches encoded/obfuscated
+    // secrets that escape the deterministic patterns. Default ON; flip OFF
+    // if Bedrock latency or cost is unacceptable for the deployment.
+    llmOutputScannerEnabled: z.boolean().default(true),
+
+    // Model alias for the scanner call. Sonnet 4.6 by default — the
+    // higher-reasoning model materially reduces false-negatives on
+    // obfuscated/encoded secrets vs. Haiku, at the cost of per-call latency.
+    // Operators can downgrade to a Haiku alias if budget pressure dominates.
+    llmOutputScannerModel: z.string().default("sonnet-4-6"),
+
+    // Hard cap per scanner call. Treated as a fail-open failure (post body
+    // that survived the regex pass, log a warn) when exceeded.
+    llmOutputScannerTimeoutMs: z.coerce.number().int().positive().default(3_000),
 
     // --- 11. Agent maxTurns ---
 
@@ -698,6 +730,20 @@ export function assertOauthRequiresAllowlist(cfg: Config): void {
 }
 
 /**
+ * Single-tenant guard for GITHUB_PERSONAL_ACCESS_TOKEN. A PAT inherits the
+ * full identity of one human and their rate-limit bucket — exposing it across
+ * multiple owners' webhooks would impersonate that human on every install.
+ * Hard-fail at startup so the misconfiguration cannot reach a webhook handler.
+ */
+export function assertPatRequiresAllowlist(cfg: Config): void {
+  if ((cfg.githubPersonalAccessToken?.trim().length ?? 0) > 0 && cfg.allowedOwners?.length !== 1) {
+    throw new Error(
+      "ALLOWED_OWNERS must contain exactly one owner when GITHUB_PERSONAL_ACCESS_TOKEN is set.",
+    );
+  }
+}
+
+/**
  * Parse a boolean environment variable strictly.
  * Accepts: true/false, 1/0, yes/no (case-insensitive).
  * Throws on unrecognized values to prevent silent misconfiguration.
@@ -735,6 +781,7 @@ function loadConfig(): Config {
     // Group 3 — Anthropic direct-API credentials
     anthropicApiKey: process.env["ANTHROPIC_API_KEY"],
     claudeCodeOauthToken: process.env["CLAUDE_CODE_OAUTH_TOKEN"],
+    githubPersonalAccessToken: process.env["GITHUB_PERSONAL_ACCESS_TOKEN"],
 
     // Group 4 — AWS Bedrock credentials
     awsRegion: process.env["AWS_REGION"],
@@ -805,6 +852,14 @@ function loadConfig(): Config {
     triageTimeoutMs: process.env["TRIAGE_TIMEOUT_MS"],
     intentConfidenceThreshold: process.env["INTENT_CONFIDENCE_THRESHOLD"],
 
+    // Group 10b — LLM-based output scanner
+    llmOutputScannerEnabled: parseBooleanEnv(
+      "LLM_OUTPUT_SCANNER_ENABLED",
+      process.env["LLM_OUTPUT_SCANNER_ENABLED"],
+    ),
+    llmOutputScannerModel: process.env["LLM_OUTPUT_SCANNER_MODEL"],
+    llmOutputScannerTimeoutMs: process.env["LLM_OUTPUT_SCANNER_TIMEOUT_MS"],
+
     // Group 11 — Agent maxTurns
     defaultMaxTurns: process.env["DEFAULT_MAXTURNS"],
 
@@ -822,6 +877,15 @@ function loadConfig(): Config {
   });
 
   assertOauthRequiresAllowlist(cfg);
+  assertPatRequiresAllowlist(cfg);
+
+  if ((cfg.githubPersonalAccessToken?.trim().length ?? 0) > 0) {
+    console.warn(
+      "[config] GITHUB_PERSONAL_ACCESS_TOKEN is set — bypassing GitHub App installation token. " +
+        "All GitHub API and git operations will run as the PAT owner. " +
+        "Single-tenant only (ALLOWED_OWNERS enforced).",
+    );
+  }
 
   // H6: Warn when WebSocket URLs use unencrypted ws:// in production.
   // Installation tokens and DAEMON_AUTH_TOKEN are transmitted over this connection.
@@ -830,6 +894,44 @@ function loadConfig(): Config {
       console.warn(
         "[config] WARNING: ORCHESTRATOR_URL uses ws:// (unencrypted) in production. " +
           "Installation tokens and DAEMON_AUTH_TOKEN are transmitted in cleartext. Use wss:// for production.",
+      );
+    }
+  }
+
+  // H7 (issue #102 — defense layer 1b): warn when orchestrator-only secrets
+  // are present in a daemon process. The Helm chart should mount only
+  // `daemon-secrets` on daemon Pods; `orchestrator-secrets` (App private
+  // key, webhook secret, DB / Valkey URLs) belong on the orchestrator Pod
+  // alone. A misconfigured deployment that mounts both bundles wouldn't
+  // crash — the daemon doesn't read these keys — but it weakens the
+  // capability-minimization gate in `buildProviderEnv()` (the agent
+  // subprocess can no longer leak them simply because they aren't there).
+  // Warn only — never refuse to start, since a downed daemon is worse than
+  // a degraded security posture.
+  //
+  // Detection heuristic: only daemons set `ORCHESTRATOR_URL` (they connect
+  // TO the orchestrator) or `DAEMON_EPHEMERAL`. The orchestrator/webhook
+  // server has neither set so the warn won't fire there. Local-dev setups
+  // that share a single `.env` between both processes will fire spuriously
+  // — accepted noise; split the file to silence.
+  //
+  // `console.warn` (not pino) on purpose: config loads before the logger is
+  // built, so this is the only available channel at this point.
+  const isDaemonProcess = (cfg.orchestratorUrl?.trim().length ?? 0) > 0 || cfg.daemonEphemeral;
+  if (isDaemonProcess) {
+    const leakedKeys: string[] = [];
+    if ((process.env["GITHUB_APP_PRIVATE_KEY"]?.trim().length ?? 0) > 0)
+      leakedKeys.push("GITHUB_APP_PRIVATE_KEY");
+    if ((process.env["GITHUB_WEBHOOK_SECRET"]?.trim().length ?? 0) > 0)
+      leakedKeys.push("GITHUB_WEBHOOK_SECRET");
+    if ((process.env["DATABASE_URL"]?.trim().length ?? 0) > 0) leakedKeys.push("DATABASE_URL");
+    if ((process.env["VALKEY_URL"]?.trim().length ?? 0) > 0) leakedKeys.push("VALKEY_URL");
+    if ((process.env["REDIS_URL"]?.trim().length ?? 0) > 0) leakedKeys.push("REDIS_URL");
+    if (leakedKeys.length > 0) {
+      console.warn(
+        `[config] WARNING: orchestrator-only secret(s) present on daemon process: ${leakedKeys.join(", ")}. ` +
+          "Mount these only via `orchestrator-secrets` on the orchestrator Pod; the daemon does not need them. " +
+          "See docs/operate/configuration.md for the K8s Secret split contract.",
       );
     }
   }

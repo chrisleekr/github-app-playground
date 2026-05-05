@@ -277,7 +277,7 @@ function buildResolvePrompt(input: {
     `7. If all checks pass AND all comments resolved AND reviewDecision is APPROVED, post a one-line "resolve complete — ready to merge" comment via \`update_claude_comment\`.`,
     `8. NEVER call \`gh pr merge\` or \`octokit.pulls.merge\`. Merging is a human action (FR-017).`,
     `9. NEVER push to the base branch ${input.baseBranch}.`,
-    `10. **Before finishing**, write \`RESOLVE.md\` at the repo root summarizing this resolve iteration.`,
+    `10. **Before finishing**, write the resolve summary to \`$BOT_ARTIFACT_DIR/RESOLVE.md\` (path is OUTSIDE the cloned repo — never \`git add\` it).`,
     `    Required sections:`,
     `    ## Summary — one paragraph: what state the PR is in now and what's left.`,
     `    ## CI status — list each failing check and what you did about it; include the FINAL post-fix CI state from step 6.`,

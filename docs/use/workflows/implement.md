@@ -2,15 +2,15 @@
 
 Opens a PR with code, tests, and a filled-out PR template based on the prior plan.
 
-| Field           | Value                                 |
-| --------------- | ------------------------------------- |
-| Label           | `bot:implement`                       |
-| Mention         | `@chrisleekr-bot implement this`      |
-| Accepted target | Issue                                 |
-| Requires prior  | A successful `plan` run               |
-| Artifact        | `IMPLEMENT.md`                        |
-| Side effects    | New branch, new commits, new PR       |
-| Source          | `src/workflows/handlers/implement.ts` |
+| Field           | Value                                                                            |
+| --------------- | -------------------------------------------------------------------------------- |
+| Label           | `bot:implement`                                                                  |
+| Mention         | `@chrisleekr-bot implement this`                                                 |
+| Accepted target | Issue                                                                            |
+| Requires prior  | A successful `plan` run                                                          |
+| Artifact        | `$BOT_ARTIFACT_DIR/IMPLEMENT.md` (sibling temp dir, never committed to the repo) |
+| Side effects    | New branch, new commits, new PR                                                  |
+| Source          | `src/workflows/handlers/implement.ts`                                            |
 
 ## Inputs
 

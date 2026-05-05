@@ -22,9 +22,10 @@ import Anthropic from "@anthropic-ai/sdk";
 export type Provider = "anthropic" | "bedrock";
 
 /**
- * Operator-friendly aliases → provider-specific model IDs. Keep to models
- * actually supported for the triage call (Haiku-class by design — cheap,
- * fast, adequate for single-turn classification).
+ * Operator-friendly aliases → provider-specific model IDs. Haiku entries
+ * remain available for cost-sensitive deployments; Sonnet 4.6 is the
+ * default for triage and the output scanner where reasoning quality
+ * outweighs the higher per-token cost.
  */
 export const MODEL_MAP: Readonly<Record<string, Readonly<Record<Provider, string>>>> = {
   "haiku-3-5": {
@@ -34,6 +35,10 @@ export const MODEL_MAP: Readonly<Record<string, Readonly<Record<Provider, string
   "haiku-4-5": {
     anthropic: "claude-haiku-4-5-20251001",
     bedrock: "anthropic.claude-haiku-4-5-20251001-v1:0",
+  },
+  "sonnet-4-6": {
+    anthropic: "claude-sonnet-4-6",
+    bedrock: "us.anthropic.claude-sonnet-4-6",
   },
 };
 

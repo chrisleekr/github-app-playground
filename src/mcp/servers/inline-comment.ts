@@ -3,7 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { Octokit } from "octokit";
 import { z } from "zod";
 
-import { sanitizeContent } from "../../utils/sanitize";
+import { redactSecrets, sanitizeContent } from "../../utils/sanitize";
 
 /**
  * MCP server for creating inline PR review comments.
@@ -80,6 +80,24 @@ server.tool(
       const pull_number = parseInt(PR_NUMBER, 10);
       const sanitizedBody = sanitizeContent(body);
 
+      // Output-side secret guard (defense layer 2). Silently strip
+      // credential-shaped bytes after input sanitization, before the body
+      // leaves for GitHub.
+      const guarded = redactSecrets(sanitizedBody);
+      if (guarded.matchCount > 0) {
+        console.error(
+          JSON.stringify({
+            event: "secret_redacted",
+            scanner: "regex",
+            callsite: "mcp.inline-comment.create_inline_comment",
+            kinds: guarded.kinds,
+            matchCount: guarded.matchCount,
+            pull_number,
+            path,
+          }),
+        );
+      }
+
       const isSingleLine = startLine === undefined;
 
       // Get latest commit SHA if not provided
@@ -97,7 +115,7 @@ server.tool(
         owner: REPO_OWNER,
         repo: REPO_NAME,
         pull_number,
-        body: sanitizedBody,
+        body: guarded.body,
         path,
         side,
         commit_id: commitSha,

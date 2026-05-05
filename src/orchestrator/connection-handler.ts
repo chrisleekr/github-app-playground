@@ -1,7 +1,8 @@
 import type { ServerWebSocket } from "bun";
-import { App, type Octokit } from "octokit";
+import { App, Octokit } from "octokit";
 
 import { config } from "../config";
+import { resolveGithubToken } from "../core/github-token";
 import { logger } from "../logger";
 import { addReaction } from "../utils/reactions";
 import { findById, findInflightByOwner, type WorkflowRunRow } from "../workflows/runs-store";
@@ -251,12 +252,21 @@ async function postOrphanNotification(ancestor: WorkflowRunRow): Promise<void> {
     return;
   }
 
-  const app = getOrCreateApp();
-  const { data: installation } = await app.octokit.rest.apps.getRepoInstallation({
-    owner: ancestor.target_owner,
-    repo: ancestor.target_repo,
-  });
-  const octokit = await app.getInstallationOctokit(installation.id);
+  // PAT mode short-circuit: when GITHUB_PERSONAL_ACCESS_TOKEN is set, the
+  // contract is that the PAT replaces the installation token for ALL GitHub
+  // API calls — orphan-notification comments and reactions included, so the
+  // operator-visible identity stays consistent with other bot replies.
+  let octokit: Awaited<ReturnType<App["getInstallationOctokit"]>> | Octokit;
+  if (config.githubPersonalAccessToken !== undefined) {
+    octokit = new Octokit({ auth: config.githubPersonalAccessToken });
+  } else {
+    const app = getOrCreateApp();
+    const { data: installation } = await app.octokit.rest.apps.getRepoInstallation({
+      owner: ancestor.target_owner,
+      repo: ancestor.target_repo,
+    });
+    octokit = await app.getInstallationOctokit(installation.id);
+  }
 
   const humanMessage = [
     `❌ **Daemon disconnected during execution** — likely an OOM kill on the workflow pod.`,
@@ -814,14 +824,22 @@ async function handleAccept(
   const repo = typeof contextJson["repo"] === "string" ? contextJson["repo"] : "";
 
   try {
-    // Mint installation token via cached App singleton (avoid per-request App instantiation)
-    const app = getOrCreateApp();
-    const { data: installation } = await app.octokit.rest.apps.getRepoInstallation({
-      owner,
-      repo,
-    });
-    const octokit = await app.getInstallationOctokit(installation.id);
-    const { token } = (await octokit.auth({ type: "installation" })) as { token: string };
+    // PAT mode short-circuit: skip the per-request App lookup + installation
+    // octokit construction entirely. Both App calls hit the GitHub API and
+    // count against rate limits even though their result is discarded when
+    // GITHUB_PERSONAL_ACCESS_TOKEN is set.
+    let token: string;
+    if (config.githubPersonalAccessToken !== undefined) {
+      token = config.githubPersonalAccessToken;
+    } else {
+      const app = getOrCreateApp();
+      const { data: installation } = await app.octokit.rest.apps.getRepoInstallation({
+        owner,
+        repo,
+      });
+      const octokit = await app.getInstallationOctokit(installation.id);
+      token = await resolveGithubToken(octokit);
+    }
 
     // No turn cap by default: workflows must run end-to-end without losing
     // progress to a mid-run cap. `AGENT_MAX_TURNS` and `DEFAULT_MAXTURNS`
@@ -904,9 +922,16 @@ async function handleScopedAccept(
   const scopedJob: ScopedQueuedJob = reparsed.data;
 
   try {
-    const app = getOrCreateApp();
-    const octokit = await app.getInstallationOctokit(scopedJob.installationId);
-    const { token } = (await octokit.auth({ type: "installation" })) as { token: string };
+    // Same PAT short-circuit as in handleJobOfferAccept — `getInstallationOctokit`
+    // hits the GitHub API to mint a token, which is wasted work in PAT mode.
+    let token: string;
+    if (config.githubPersonalAccessToken !== undefined) {
+      token = config.githubPersonalAccessToken;
+    } else {
+      const app = getOrCreateApp();
+      const octokit = await app.getInstallationOctokit(scopedJob.installationId);
+      token = await resolveGithubToken(octokit);
+    }
 
     handleJobAccept({
       offerId,

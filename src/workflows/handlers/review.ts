@@ -280,7 +280,7 @@ function buildReviewPrompt(input: {
     ``,
     `12. **Push policy.** The ONLY acceptable push from this handler is \`git push --force-with-lease\` after a clean rebase onto base in step 1 — same diff, fresh head SHA, no new edits. **NEVER create commits with code changes** (no \`git commit\` of edits — code changes belong to \`implement\` and \`resolve\`). **NEVER call \`gh pr merge\`.** **NEVER call \`gh pr review --approve\` / \`--request-changes\`** — those verdicts belong to humans (FR-017).`,
     ``,
-    `13. **Write \`REVIEW.md\` at the repo root** summarizing this review:`,
+    `13. **Write the review summary to \`$BOT_ARTIFACT_DIR/REVIEW.md\`** (this path is OUTSIDE the cloned repo — never \`git add\` it):`,
     `    ## Summary — one paragraph: scope of the review and overall verdict.`,
     `    ## What was checked — files read in full, cross-references performed, tests/lint/typecheck runs.`,
     `    ## Findings — by severity. For each: file:line, issue, recommended fix. Mirrors the inline comments you posted (or "no findings — see Reasoning").`,

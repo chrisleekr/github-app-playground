@@ -26,6 +26,7 @@ import type { Octokit } from "octokit";
 import type { Logger } from "pino";
 
 import { logger as rootLogger } from "../../../logger";
+import { safePostToGitHub } from "../../../utils/github-output-guard";
 import { formatReply } from "../../format-reply";
 
 const DESIGN_DISCUSSION_PHRASES = [
@@ -92,6 +93,32 @@ export async function runFixThread(input: RunFixThreadInput): Promise<FixThreadO
     comment_id: input.comment_id,
   });
 
+  // All reply paths below route through this helper so the output secret
+  // guard (regex + LLM scanner) runs once, in one place. Reply bodies may
+  // include agent-supplied `result.reasoning` text — flag as "agent" source.
+  const postReply = async (body: string, callsite: string): Promise<number> => {
+    const guarded = await safePostToGitHub({
+      body,
+      source: "agent",
+      callsite,
+      log,
+      post: (cleanBody) =>
+        input.octokit.rest.pulls.createReplyForReviewComment({
+          owner: input.owner,
+          repo: input.repo,
+          pull_number: input.pr_number,
+          comment_id: input.comment_id,
+          body: cleanBody,
+        }),
+    });
+    if (!guarded.posted || guarded.result === undefined) {
+      throw new Error(
+        `${callsite}: post skipped after secret redaction (matchCount=${guarded.matchCount})`,
+      );
+    }
+    return guarded.result.data.id;
+  };
+
   // Conservatism gate (FR-004) — refuse design-discussion requests.
   if (isDesignDiscussion(input.thread.thread_body)) {
     const body = formatReply({
@@ -100,34 +127,23 @@ export async function runFixThread(input: RunFixThreadInput): Promise<FixThreadO
       reasoning:
         "This thread reads like a design discussion (FR-004). The bot only applies mechanical fixes; design changes are a maintainer call. Please weigh in before this becomes a code change.",
     });
-    const reply = await input.octokit.rest.pulls.createReplyForReviewComment({
-      owner: input.owner,
-      repo: input.repo,
-      pull_number: input.pr_number,
-      comment_id: input.comment_id,
-      body,
-    });
-    log.info({ reply_id: reply.data.id }, "fix_thread refused (design-discussion)");
-    return { kind: "design-discussion", reply_id: reply.data.id };
+    const reply_id = await postReply(body, "ship.scoped.fix_thread.design-discussion");
+    log.info({ reply_id }, "fix_thread refused (design-discussion)");
+    return { kind: "design-discussion", reply_id };
   }
 
   const result = await input.applyMechanicalFix(input.thread);
 
   if (!result.applied) {
     const reason = result.skip_reason ?? "no actionable mechanical change identified";
-    const reply = await input.octokit.rest.pulls.createReplyForReviewComment({
-      owner: input.owner,
-      repo: input.repo,
-      pull_number: input.pr_number,
-      comment_id: input.comment_id,
-      body: formatReply({
-        status: "_⏭️ Skipped_",
-        title: "No mechanical fix applied.",
-        reasoning: `I couldn't apply a mechanical fix here — ${reason}.`,
-      }),
+    const body = formatReply({
+      status: "_⏭️ Skipped_",
+      title: "No mechanical fix applied.",
+      reasoning: `I couldn't apply a mechanical fix here — ${reason}.`,
     });
-    log.info({ reply_id: reply.data.id, reason }, "fix_thread skipped");
-    return { kind: "skipped", reply_id: reply.data.id, reason };
+    const reply_id = await postReply(body, "ship.scoped.fix_thread.skipped");
+    log.info({ reply_id, reason }, "fix_thread skipped");
+    return { kind: "skipped", reply_id, reason };
   }
 
   if (result.commit_sha === undefined) {
@@ -136,35 +152,25 @@ export async function runFixThread(input: RunFixThreadInput): Promise<FixThreadO
     // in logs; behaviour matches the no-applied path otherwise.
     const reason =
       result.skip_reason ?? "applyMechanicalFix returned applied=true without commit_sha";
-    const reply = await input.octokit.rest.pulls.createReplyForReviewComment({
-      owner: input.owner,
-      repo: input.repo,
-      pull_number: input.pr_number,
-      comment_id: input.comment_id,
-      body: formatReply({
-        status: "_⏭️ Skipped_",
-        title: "No mechanical fix applied.",
-        reasoning: `I couldn't apply a mechanical fix here — ${reason}.`,
-      }),
+    const body = formatReply({
+      status: "_⏭️ Skipped_",
+      title: "No mechanical fix applied.",
+      reasoning: `I couldn't apply a mechanical fix here — ${reason}.`,
     });
-    log.warn({ reply_id: reply.data.id, reason }, "fix_thread skipped (partial success)");
-    return { kind: "skipped", reply_id: reply.data.id, reason };
+    const reply_id = await postReply(body, "ship.scoped.fix_thread.skipped-partial");
+    log.warn({ reply_id, reason }, "fix_thread skipped (partial success)");
+    return { kind: "skipped", reply_id, reason };
   }
 
   const trimmedReasoning = result.reasoning?.trim() ?? "";
-  const reply = await input.octokit.rest.pulls.createReplyForReviewComment({
-    owner: input.owner,
-    repo: input.repo,
-    pull_number: input.pr_number,
-    comment_id: input.comment_id,
-    body: formatReply({
-      status: "_✅ Fix applied_",
-      meta: ` — commit \`${result.commit_sha}\``,
-      title: "Mechanical fix pushed.",
-      reasoning:
-        trimmedReasoning.length > 0 ? trimmedReasoning : "See the linked commit for the change.",
-    }),
+  const body = formatReply({
+    status: "_✅ Fix applied_",
+    meta: ` — commit \`${result.commit_sha}\``,
+    title: "Mechanical fix pushed.",
+    reasoning:
+      trimmedReasoning.length > 0 ? trimmedReasoning : "See the linked commit for the change.",
   });
+  const reply_id = await postReply(body, "ship.scoped.fix_thread.applied");
 
   // Best-effort thread resolution (FR-005). A failure here does not undo
   // the commit — the reply with the SHA already documents the fix.
@@ -174,6 +180,6 @@ export async function runFixThread(input: RunFixThreadInput): Promise<FixThreadO
     log.warn({ err }, "fix_thread reply posted but thread resolution failed");
   }
 
-  log.info({ reply_id: reply.data.id, commit_sha: result.commit_sha }, "fix_thread applied");
-  return { kind: "applied", commit_sha: result.commit_sha, reply_id: reply.data.id };
+  log.info({ reply_id, commit_sha: result.commit_sha }, "fix_thread applied");
+  return { kind: "applied", commit_sha: result.commit_sha, reply_id };
 }
