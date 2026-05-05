@@ -2,6 +2,7 @@ import type { ServerWebSocket } from "bun";
 import { App, type Octokit } from "octokit";
 
 import { config } from "../config";
+import { resolveGithubToken } from "../core/github-token";
 import { logger } from "../logger";
 import { addReaction } from "../utils/reactions";
 import { findById, findInflightByOwner, type WorkflowRunRow } from "../workflows/runs-store";
@@ -821,7 +822,7 @@ async function handleAccept(
       repo,
     });
     const octokit = await app.getInstallationOctokit(installation.id);
-    const { token } = (await octokit.auth({ type: "installation" })) as { token: string };
+    const token = await resolveGithubToken(octokit);
 
     // No turn cap by default: workflows must run end-to-end without losing
     // progress to a mid-run cap. `AGENT_MAX_TURNS` and `DEFAULT_MAXTURNS`
@@ -906,7 +907,7 @@ async function handleScopedAccept(
   try {
     const app = getOrCreateApp();
     const octokit = await app.getInstallationOctokit(scopedJob.installationId);
-    const { token } = (await octokit.auth({ type: "installation" })) as { token: string };
+    const token = await resolveGithubToken(octokit);
 
     handleJobAccept({
       offerId,

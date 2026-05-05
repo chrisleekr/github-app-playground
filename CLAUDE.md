@@ -37,14 +37,14 @@ Single HTTP server (`src/app.ts`) using `octokit` App class. Webhook events arri
 **Pipeline** (`src/core/pipeline.ts`, executed by the daemon):
 
 1. Create tracking comment ("Working…")
-2. Get installation token
+2. Resolve GitHub credential (App installation token by default; PAT when `GITHUB_PERSONAL_ACCESS_TOKEN` is set — see "Authentication options")
 3. Fetch PR/issue data via GraphQL
 4. Build prompt with full context
-5. Clone repo to temp directory, checkout PR/default branch (and supplementally fetch the PR base branch when it differs from head, so `origin/<baseBranch>` resolves for diffs/rebases)
+5. Clone repo to temp directory, checkout PR/default branch (and supplementally fetch the PR base branch when it differs from head, so `origin/<baseBranch>` resolves for diffs/rebases). Also create a sibling artifacts directory (`${workDir}-artifacts`) outside the clone, exported to the agent as `BOT_ARTIFACT_DIR` so summary files (IMPLEMENT.md / REVIEW.md / RESOLVE.md) cannot accidentally be `git add`-ed
 6. Resolve MCP servers and allowed tools
 7. Run Claude Agent SDK with `cwd` set to cloned repo
 8. Finalize tracking comment (success/error/cost)
-9. Cleanup temp directory
+9. Cleanup temp directory + sibling artifacts directory
 
 ## Architecture
 
@@ -76,6 +76,12 @@ The runtime bot in `src/` supports three authentication modes (see `src/config.t
 Default agent execution model when `CLAUDE_MODEL` is unset and `CLAUDE_PROVIDER=anthropic`: `claude-opus-4-7` (Opus 4.7). The Bedrock path still requires an explicit `CLAUDE_MODEL` (Bedrock model IDs differ from Anthropic's).
 
 The scheduled research workflow in `.github/workflows/research.yml` also uses `CLAUDE_CODE_OAUTH_TOKEN`, but via `anthropics/claude-code-action@v1` — that path is separately sanctioned for CI and is not subject to the `ALLOWED_OWNERS` requirement.
+
+### GitHub credential
+
+GitHub-side auth defaults to the App installation token minted on demand from `GITHUB_APP_ID` + `GITHUB_APP_PRIVATE_KEY`. Optional override:
+
+- **`GITHUB_PERSONAL_ACCESS_TOKEN`** — when set, replaces the installation token for every GitHub API call and git operation. Commits, PR comments, and reviews are then attributed to the PAT owner instead of the App bot. **Requires `ALLOWED_OWNERS`** to contain exactly one owner — same single-tenant constraint as `CLAUDE_CODE_OAUTH_TOKEN`, because a PAT carries a real human identity and its per-user rate-limit bucket. Resolution happens in `resolveGithubToken()` (`src/core/github-token.ts`); downstream consumers (git credential helper, executor env, MCP servers) accept the resolved string regardless of source.
 
 ## Code Conventions
 

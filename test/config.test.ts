@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 
 import {
   assertOauthRequiresAllowlist,
+  assertPatRequiresAllowlist,
   type Config,
   configSchema,
   parseBooleanEnv,
@@ -265,6 +266,45 @@ describe("assertOauthRequiresAllowlist", () => {
     });
     expect(() => {
       assertOauthRequiresAllowlist(cfg);
+    }).not.toThrow();
+  });
+});
+
+describe("assertPatRequiresAllowlist", () => {
+  const basePatCfg: Config = configSchema.parse({
+    ...ANTHROPIC_BASE,
+    githubPersonalAccessToken: "ghp_test",
+    allowedOwners: "single-owner",
+  });
+
+  it("accepts PAT with exactly one allowlisted owner", () => {
+    expect(() => {
+      assertPatRequiresAllowlist(basePatCfg);
+    }).not.toThrow();
+  });
+
+  it("throws when PAT is set without an allowlist", () => {
+    const { allowedOwners, ...cfg } = basePatCfg;
+    expect(allowedOwners).toBeDefined();
+    expect(() => {
+      assertPatRequiresAllowlist(cfg);
+    }).toThrow(/ALLOWED_OWNERS/);
+  });
+
+  it("throws when PAT is set with multiple allowlisted owners", () => {
+    const cfg = { ...basePatCfg, allowedOwners: ["a", "b"] };
+    expect(() => {
+      assertPatRequiresAllowlist(cfg);
+    }).toThrow(/ALLOWED_OWNERS/);
+  });
+
+  it("does not trigger when PAT is unset", () => {
+    const cfg: Config = configSchema.parse({
+      ...ANTHROPIC_BASE,
+      allowedOwners: "a,b",
+    });
+    expect(() => {
+      assertPatRequiresAllowlist(cfg);
     }).not.toThrow();
   });
 });

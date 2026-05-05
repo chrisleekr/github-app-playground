@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { resolveMcpServers } from "../mcp/registry";
@@ -7,6 +8,7 @@ import { retryWithBackoff } from "../utils/retry";
 import { checkoutRepo } from "./checkout";
 import { executeAgent } from "./executor";
 import { fetchGitHubData } from "./fetcher";
+import { resolveGithubToken } from "./github-token";
 import { buildPrompt, resolveAllowedTools } from "./prompt-builder";
 import { createTrackingComment, finalizeTrackingComment } from "./tracking-comment";
 
@@ -54,7 +56,7 @@ function readDaemonActionsFile(
  * shape stays clean (no empty `capturedFiles: {}` for default callers).
  */
 async function readCapturedFiles(
-  workDir: string,
+  artifactsDir: string,
   basenames: readonly string[] | undefined,
   log: { info: (obj: object, msg: string) => void; warn: (obj: object, msg: string) => void },
 ): Promise<Record<string, string> | undefined> {
@@ -63,13 +65,13 @@ async function readCapturedFiles(
   const captured: Record<string, string> = {};
   for (const name of basenames) {
     try {
-      const content = await readFile(join(workDir, name), "utf-8");
+      const content = await readFile(join(artifactsDir, name), "utf-8");
       if (content.trim().length > 0) captured[name] = content;
     } catch {
       // Missing file is expected when the agent declines to write it.
     }
   }
-  log.info({ captured: Object.keys(captured) }, "Read captured workspace files");
+  log.info({ artifactsDir, captured: Object.keys(captured) }, "Read captured artifact files");
   return Object.keys(captured).length > 0 ? captured : undefined;
 }
 
@@ -213,9 +215,7 @@ export async function runPipeline(
     }
     const resolvedTrackingCommentId = trackingCommentId;
 
-    const { token: installationToken } = (await ctx.octokit.auth({
-      type: "installation",
-    })) as { token: string };
+    const installationToken = await resolveGithubToken(ctx.octokit);
 
     const data = await retryWithBackoff(() => fetchGitHubData(ctx), {
       maxAttempts: 3,
@@ -246,6 +246,13 @@ export async function runPipeline(
     );
     overrides.onWorkDirReady?.(workDir);
 
+    // Sibling scratch dir for agent-authored summary files (IMPLEMENT.md /
+    // REVIEW.md / RESOLVE.md). Sibling rather than child so a stray `git add`
+    // inside the checkout cannot pick it up. Cleaned up alongside `workDir`.
+    const artifactsDir = `${workDir}-artifacts`;
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- artifactsDir is a daemon-owned temp path derived from workDir
+    mkdirSync(artifactsDir, { recursive: true });
+
     try {
       writeEnvFile(workDir, enrichedCtx.envVars, enrichedCtx.log);
 
@@ -274,6 +281,7 @@ export async function runPipeline(
         prompt,
         mcpServers,
         workDir,
+        artifactsDir,
         allowedTools,
         installationToken,
         ...(overrides.maxTurns !== undefined ? { maxTurns: overrides.maxTurns } : {}),
@@ -311,7 +319,7 @@ export async function runPipeline(
 
       const daemonActions = readDaemonActionsFile(workDir, enrichedCtx.log);
       const capturedFiles = await readCapturedFiles(
-        workDir,
+        artifactsDir,
         overrides.captureFiles,
         enrichedCtx.log,
       );
@@ -328,6 +336,12 @@ export async function runPipeline(
         await cleanup();
       } catch (cleanupError) {
         ctx.log.error({ err: cleanupError }, "Failed to cleanup temp directory");
+      }
+      try {
+         
+        await rm(artifactsDir, { recursive: true, force: true });
+      } catch (cleanupError) {
+        ctx.log.error({ err: cleanupError, artifactsDir }, "Failed to cleanup artifacts directory");
       }
     }
   } catch (error) {

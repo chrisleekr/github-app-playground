@@ -8,28 +8,29 @@ Every environment variable the app reads at startup, grouped by concern. The aut
 
 Server mode only. If `ORCHESTRATOR_URL` is set, the process runs in daemon mode and these are not required.
 
-| Variable                 | Default | Required when | Notes                                                             |
-| ------------------------ | ------- | ------------- | ----------------------------------------------------------------- |
-| `GITHUB_APP_ID`          | —       | Server mode   | Numeric App ID from the App settings page.                        |
-| `GITHUB_APP_PRIVATE_KEY` | —       | Server mode   | Full PEM. Literal `\n` sequences are normalised to real newlines. |
-| `GITHUB_WEBHOOK_SECRET`  | —       | Server mode   | HMAC-SHA256 secret configured in the App settings.                |
+| Variable                       | Default | Required when | Notes                                                                                                               |
+| ------------------------------ | ------- | ------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `GITHUB_APP_ID`                | —       | Server mode   | Numeric App ID from the App settings page.                                                                          |
+| `GITHUB_APP_PRIVATE_KEY`       | —       | Server mode   | Full PEM. Literal `\n` sequences are normalised to real newlines.                                                   |
+| `GITHUB_WEBHOOK_SECRET`        | —       | Server mode   | HMAC-SHA256 secret configured in the App settings.                                                                  |
+| `GITHUB_PERSONAL_ACCESS_TOKEN` | —       | Optional      | Override App installation token with a PAT — bot acts as the PAT owner. **Requires single-owner `ALLOWED_OWNERS`.** |
 
 ## AI provider
 
-| Variable                     | Default                                    | Required when                                      | Notes                                                                     |
-| ---------------------------- | ------------------------------------------ | -------------------------------------------------- | ------------------------------------------------------------------------- |
-| `CLAUDE_PROVIDER`            | `anthropic`                                | —                                                  | `anthropic` or `bedrock`.                                                 |
-| `CLAUDE_MODEL`               | `claude-opus-4-7` (anthropic); — (bedrock) | Bedrock                                            | Bedrock requires an explicit Bedrock model ID.                            |
-| `ANTHROPIC_API_KEY`          | —                                          | Anthropic, unless `CLAUDE_CODE_OAUTH_TOKEN` is set | Console pay-as-you-go. Safe for multi-tenant deploys.                     |
-| `CLAUDE_CODE_OAUTH_TOKEN`    | —                                          | Anthropic, unless `ANTHROPIC_API_KEY` is set       | Max/Pro subscription token (`sk-ant-oat…`). Requires `ALLOWED_OWNERS`.    |
-| `AWS_REGION`                 | —                                          | Bedrock                                            | Resolved by the AWS SDK credential chain.                                 |
-| `AWS_PROFILE`                | —                                          | Optional (bedrock)                                 | Local SSO profile for dev.                                                |
-| `AWS_ACCESS_KEY_ID`          | —                                          | Optional (bedrock)                                 | Long-lived credential pair. Prefer profile or OIDC.                       |
-| `AWS_SECRET_ACCESS_KEY`      | —                                          | Optional (bedrock)                                 | Paired with `AWS_ACCESS_KEY_ID`.                                          |
-| `AWS_SESSION_TOKEN`          | —                                          | Optional (bedrock)                                 | Temporary credentials.                                                    |
-| `AWS_BEARER_TOKEN_BEDROCK`   | —                                          | Optional (bedrock, CI)                             | Set automatically by `aws-actions/configure-aws-credentials` OIDC.        |
-| `ANTHROPIC_BEDROCK_BASE_URL` | —                                          | Optional (bedrock)                                 | Override Bedrock runtime endpoint (VPC endpoint / proxy).                 |
-| `ALLOWED_OWNERS`             | —                                          | OAuth token path                                   | Comma-separated allowlist. Required when using `CLAUDE_CODE_OAUTH_TOKEN`. |
+| Variable                     | Default                                    | Required when                                      | Notes                                                                                                                      |
+| ---------------------------- | ------------------------------------------ | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `CLAUDE_PROVIDER`            | `anthropic`                                | —                                                  | `anthropic` or `bedrock`.                                                                                                  |
+| `CLAUDE_MODEL`               | `claude-opus-4-7` (anthropic); — (bedrock) | Bedrock                                            | Bedrock requires an explicit Bedrock model ID.                                                                             |
+| `ANTHROPIC_API_KEY`          | —                                          | Anthropic, unless `CLAUDE_CODE_OAUTH_TOKEN` is set | Console pay-as-you-go. Safe for multi-tenant deploys.                                                                      |
+| `CLAUDE_CODE_OAUTH_TOKEN`    | —                                          | Anthropic, unless `ANTHROPIC_API_KEY` is set       | Max/Pro subscription token (`sk-ant-oat…`). Requires `ALLOWED_OWNERS`.                                                     |
+| `AWS_REGION`                 | —                                          | Bedrock                                            | Resolved by the AWS SDK credential chain.                                                                                  |
+| `AWS_PROFILE`                | —                                          | Optional (bedrock)                                 | Local SSO profile for dev.                                                                                                 |
+| `AWS_ACCESS_KEY_ID`          | —                                          | Optional (bedrock)                                 | Long-lived credential pair. Prefer profile or OIDC.                                                                        |
+| `AWS_SECRET_ACCESS_KEY`      | —                                          | Optional (bedrock)                                 | Paired with `AWS_ACCESS_KEY_ID`.                                                                                           |
+| `AWS_SESSION_TOKEN`          | —                                          | Optional (bedrock)                                 | Temporary credentials.                                                                                                     |
+| `AWS_BEARER_TOKEN_BEDROCK`   | —                                          | Optional (bedrock, CI)                             | Set automatically by `aws-actions/configure-aws-credentials` OIDC.                                                         |
+| `ANTHROPIC_BEDROCK_BASE_URL` | —                                          | Optional (bedrock)                                 | Override Bedrock runtime endpoint (VPC endpoint / proxy).                                                                  |
+| `ALLOWED_OWNERS`             | —                                          | OAuth or PAT path                                  | Comma-separated allowlist. Required (single owner) when using `CLAUDE_CODE_OAUTH_TOKEN` or `GITHUB_PERSONAL_ACCESS_TOKEN`. |
 
 ## HTTP server
 

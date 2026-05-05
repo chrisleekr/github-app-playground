@@ -137,6 +137,16 @@ const configSchema = z
     anthropicApiKey: nonEmptyOptionalString,
     claudeCodeOauthToken: nonEmptyOptionalString,
 
+    // Optional: replace the GitHub App installation token with a personal access
+    // token for every GitHub API/git operation. When set, `resolveGithubToken()`
+    // short-circuits the App-token mint and uses this value instead — the bot
+    // then acts as the PAT owner (commits/PR comments are authored by them, not
+    // the App bot). Single-tenant only — must be paired with a single-owner
+    // ALLOWED_OWNERS, mirroring the CLAUDE_CODE_OAUTH_TOKEN constraint, because
+    // a PAT carries a real human identity and per-user rate-limit bucket.
+    // Set via GITHUB_PERSONAL_ACCESS_TOKEN env var.
+    githubPersonalAccessToken: nonEmptyOptionalString,
+
     // --- 4. AWS Bedrock credentials ---
 
     // Target AWS region for Bedrock. Required when provider=bedrock.
@@ -698,6 +708,20 @@ export function assertOauthRequiresAllowlist(cfg: Config): void {
 }
 
 /**
+ * Single-tenant guard for GITHUB_PERSONAL_ACCESS_TOKEN. A PAT inherits the
+ * full identity of one human and their rate-limit bucket — exposing it across
+ * multiple owners' webhooks would impersonate that human on every install.
+ * Hard-fail at startup so the misconfiguration cannot reach a webhook handler.
+ */
+export function assertPatRequiresAllowlist(cfg: Config): void {
+  if ((cfg.githubPersonalAccessToken?.trim().length ?? 0) > 0 && cfg.allowedOwners?.length !== 1) {
+    throw new Error(
+      "ALLOWED_OWNERS must contain exactly one owner when GITHUB_PERSONAL_ACCESS_TOKEN is set.",
+    );
+  }
+}
+
+/**
  * Parse a boolean environment variable strictly.
  * Accepts: true/false, 1/0, yes/no (case-insensitive).
  * Throws on unrecognized values to prevent silent misconfiguration.
@@ -735,6 +759,7 @@ function loadConfig(): Config {
     // Group 3 — Anthropic direct-API credentials
     anthropicApiKey: process.env["ANTHROPIC_API_KEY"],
     claudeCodeOauthToken: process.env["CLAUDE_CODE_OAUTH_TOKEN"],
+    githubPersonalAccessToken: process.env["GITHUB_PERSONAL_ACCESS_TOKEN"],
 
     // Group 4 — AWS Bedrock credentials
     awsRegion: process.env["AWS_REGION"],
@@ -822,6 +847,15 @@ function loadConfig(): Config {
   });
 
   assertOauthRequiresAllowlist(cfg);
+  assertPatRequiresAllowlist(cfg);
+
+  if ((cfg.githubPersonalAccessToken?.trim().length ?? 0) > 0) {
+    console.warn(
+      "[config] GITHUB_PERSONAL_ACCESS_TOKEN is set — bypassing GitHub App installation token. " +
+        "All GitHub API and git operations will run as the PAT owner. " +
+        "Single-tenant only (ALLOWED_OWNERS enforced).",
+    );
+  }
 
   // H6: Warn when WebSocket URLs use unencrypted ws:// in production.
   // Installation tokens and DAEMON_AUTH_TOKEN are transmitted over this connection.

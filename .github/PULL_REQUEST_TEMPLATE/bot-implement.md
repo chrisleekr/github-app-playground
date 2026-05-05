@@ -18,8 +18,10 @@ should be omitted if they would only contain placeholder text.
 
 ## Diagram
 
-<!-- Optional. Add a single mermaid block when behaviour or flow changes;
-omit this section entirely for trivial fixes/refactors.
+<!-- Required when behaviour or flow changes (new code paths, new state, new
+external calls, new error handling, sequence shifts) — include a single
+mermaid block. Only omit this section entirely for pure refactors, typo
+fixes, or test-only changes.
 GitHub-compat rules: WCAG 2 AA contrast pairs in classDef, `<br/>` for
 newlines, no parens in node labels, inline `:::className`, single subgraph,
 node IDs ≥ 3 chars. -->

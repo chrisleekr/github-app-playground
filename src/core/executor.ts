@@ -32,7 +32,10 @@ function isResultMessage(msg: unknown): msg is SDKResultMessage {
  * GitHub App installation. MCP servers receive the same token via their own
  * env mapping in `src/mcp/registry.ts`.
  */
-function buildProviderEnv(installationToken?: string): Record<string, string | undefined> {
+export function buildProviderEnv(
+  installationToken?: string,
+  artifactsDir?: string,
+): Record<string, string | undefined> {
   // Strip empty credential env vars before forwarding to the CLI. The CLI's
   // documented auth precedence chain (ANTHROPIC_API_KEY at position 3 beats
   // CLAUDE_CODE_OAUTH_TOKEN at position 5) treats an empty string as a
@@ -49,10 +52,15 @@ function buildProviderEnv(installationToken?: string): Record<string, string | u
     installationToken !== undefined && installationToken !== ""
       ? { GH_TOKEN: installationToken, GITHUB_TOKEN: installationToken }
       : {};
+  // Sibling scratch dir for agent-authored summaries. Exposed so the
+  // implement/review/resolve prompts can reference $BOT_ARTIFACT_DIR
+  // without leaking the path into commits inside the cloned repo.
+  const artifactEnv: Record<string, string> =
+    artifactsDir !== undefined && artifactsDir !== "" ? { BOT_ARTIFACT_DIR: artifactsDir } : {};
   if (config.provider === "bedrock") {
-    return { ...baseEnv, ...tokenEnv, CLAUDE_CODE_USE_BEDROCK: "1" };
+    return { ...baseEnv, ...tokenEnv, ...artifactEnv, CLAUDE_CODE_USE_BEDROCK: "1" };
   }
-  return { ...baseEnv, ...tokenEnv };
+  return { ...baseEnv, ...tokenEnv, ...artifactEnv };
 }
 
 /**
@@ -70,6 +78,13 @@ export interface ExecuteAgentParams {
   prompt: string;
   mcpServers: McpServerConfig;
   workDir: string;
+  /**
+   * Sibling scratch directory for agent-authored summary files (IMPLEMENT.md,
+   * REVIEW.md, RESOLVE.md). Exported to the agent subprocess as
+   * `BOT_ARTIFACT_DIR`. Lives outside `workDir` so the agent cannot
+   * accidentally `git add` these files.
+   */
+  artifactsDir?: string;
   allowedTools: string[];
   maxTurns?: number;
   installationToken?: string;
@@ -88,6 +103,7 @@ export async function executeAgent({
   prompt,
   mcpServers,
   workDir,
+  artifactsDir,
   allowedTools,
   maxTurns,
   installationToken,
@@ -138,7 +154,7 @@ export async function executeAgent({
     allowedTools,
     mcpServers,
     systemPrompt: { type: "preset", preset: "claude_code" },
-    env: buildProviderEnv(installationToken),
+    env: buildProviderEnv(installationToken, artifactsDir),
     abortController: controller,
   };
   const resolvedMaxTurns = maxTurns ?? config.agentMaxTurns;
