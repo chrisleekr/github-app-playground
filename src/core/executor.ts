@@ -237,6 +237,16 @@ export async function executeAgent({
     systemPrompt: { type: "preset", preset: "claude_code" },
     env: buildProviderEnv(installationToken, artifactsDir),
     abortController: controller,
+    // Without this, a non-zero CLI exit surfaces only as
+    // `Error("Claude Code process exited with code N")` with no detail. The
+    // SDK pipes the CLI's stderr here line-by-line; trim and log so the real
+    // failure reason (auth, rate-limit, model rejection, etc.) lands in pino.
+    stderr: (chunk: string) => {
+      const trimmed = chunk.trim();
+      if (trimmed !== "") {
+        log.warn({ stderr: trimmed }, "Claude CLI stderr");
+      }
+    },
   };
   const resolvedMaxTurns = maxTurns ?? config.agentMaxTurns;
   if (resolvedMaxTurns !== undefined) {
