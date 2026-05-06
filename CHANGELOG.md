@@ -1,3 +1,10 @@
+## [1.10.1](https://github.com/chrisleekr/github-app-playground/compare/v1.10.0...v1.10.1) (2026-05-06)
+
+
+### Bug Fixes
+
+* **executor:** capture Claude CLI stderr via SDK callback ([#105](https://github.com/chrisleekr/github-app-playground/issues/105)) ([3482443](https://github.com/chrisleekr/github-app-playground/commit/348244354ad291d3b633e75bb0a32ebc7ce1c866))
+
 # [1.10.0](https://github.com/chrisleekr/github-app-playground/compare/v1.9.1...v1.10.0) (2026-05-05)
 
 
