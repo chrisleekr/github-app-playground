@@ -263,4 +263,32 @@ describe("executeAgent — stderr callback", () => {
     const [fields] = logWarn.mock.calls[0] ?? [];
     expect(fields).toEqual({ stderr: "x".repeat(500), truncated: true });
   });
+
+  it("redacts secrets from stderr before logging and surfaces the kind", async () => {
+    const params = baseParams();
+    await executeAgent(params);
+
+    const oauth = `sk-ant-oat01-${"A".repeat(80)}`;
+    lastQueryCall?.options.stderr?.(`auth failed: token=${oauth} expired`);
+
+    const logWarn = params.ctx.log.warn as ReturnType<typeof mock>;
+    expect(logWarn).toHaveBeenCalledTimes(1);
+    const [fields] = logWarn.mock.calls[0] ?? [];
+    expect(fields).toEqual({
+      stderr: "auth failed: token= expired",
+      redactedSecretCount: 1,
+      redactedSecretKinds: ["ANTHROPIC_OAUTH"],
+    });
+  });
+
+  it("skips chunks that become empty after secret redaction", async () => {
+    const params = baseParams();
+    await executeAgent(params);
+
+    const oauthOnly = `sk-ant-oat01-${"A".repeat(80)}\n`;
+    lastQueryCall?.options.stderr?.(oauthOnly);
+
+    const logWarn = params.ctx.log.warn as ReturnType<typeof mock>;
+    expect(logWarn).not.toHaveBeenCalled();
+  });
 });
