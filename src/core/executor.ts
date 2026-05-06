@@ -2,6 +2,7 @@ import { query, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 
 import { config } from "../config";
 import type { BotContext, ExecutionResult, McpServerConfig } from "../types";
+import { redactSecrets } from "../utils/sanitize";
 
 function isResultMessage(msg: unknown): msg is SDKResultMessage {
   return (
@@ -237,6 +238,34 @@ export async function executeAgent({
     systemPrompt: { type: "preset", preset: "claude_code" },
     env: buildProviderEnv(installationToken, artifactsDir),
     abortController: controller,
+    // Without this, a non-zero CLI exit surfaces only as
+    // `Error("Claude Code process exited with code N")` with no detail. The
+    // SDK forwards CLI stderr here in stream chunks (not necessarily one
+    // line per call); log so the real failure reason (auth, rate-limit,
+    // model rejection, etc.) lands in pino. Pipe through redactSecrets
+    // first because CLI errors can echo bearer tokens / connection URLs
+    // that buildProviderEnv works hard to keep out of the subprocess —
+    // we don't want to undo that by leaking them into pod logs. trimEnd
+    // preserves leading indentation in multi-line stack traces; the
+    // 500-char cap matches the convention in src/daemon/updater.ts and
+    // scoped-rebase-executor.ts so an unexpectedly large chunk can't blow
+    // up log ingestion.
+    stderr: (chunk: string) => {
+      const redacted = redactSecrets(chunk);
+      const tail = redacted.body.trimEnd();
+      if (tail === "") return;
+      const truncated = tail.length > 500;
+      log.warn(
+        {
+          stderr: tail.slice(0, 500),
+          ...(truncated ? { truncated: true } : {}),
+          ...(redacted.matchCount > 0
+            ? { redactedSecretCount: redacted.matchCount, redactedSecretKinds: redacted.kinds }
+            : {}),
+        },
+        "Claude CLI stderr",
+      );
+    },
   };
   const resolvedMaxTurns = maxTurns ?? config.agentMaxTurns;
   if (resolvedMaxTurns !== undefined) {
