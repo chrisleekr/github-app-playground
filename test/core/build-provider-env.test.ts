@@ -180,11 +180,6 @@ describe("buildProviderEnv", () => {
     );
   });
 
-  it("sets CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 so grandchild subprocesses inherit no creds", () => {
-    const env = buildProviderEnv("ghs_token");
-    expect(env["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"]).toBe("1");
-  });
-
   it("does NOT forward arbitrary unknown keys (allowlist semantics)", () => {
     withEnv({ MY_RANDOM_OPERATOR_VAR: "should-not-leak" }, () => {
       const env = buildProviderEnv("ghs_token");
