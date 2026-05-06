@@ -180,6 +180,22 @@ describe("buildProviderEnv", () => {
     );
   });
 
+  it("does NOT set CLAUDE_CODE_SUBPROCESS_ENV_SCRUB by default (regression guard)", () => {
+    // Setting this env var requires `bubblewrap` in the runtime image and
+    // silently downgrades `permissionMode: bypassPermissions` when the
+    // allowed-tools list contains write-capable tools. Both effects break
+    // headless agent execution, so the var must not be forced on.
+    // See PR #106 for the incident write-up.
+    const prev = process.env["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"];
+    Reflect.deleteProperty(process.env, "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB");
+    try {
+      const env = buildProviderEnv("ghs_token");
+      expect(env["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"]).toBeUndefined();
+    } finally {
+      if (prev !== undefined) process.env["CLAUDE_CODE_SUBPROCESS_ENV_SCRUB"] = prev;
+    }
+  });
+
   it("does NOT forward arbitrary unknown keys (allowlist semantics)", () => {
     withEnv({ MY_RANDOM_OPERATOR_VAR: "should-not-leak" }, () => {
       const env = buildProviderEnv("ghs_token");
