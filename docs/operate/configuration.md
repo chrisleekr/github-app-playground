@@ -161,7 +161,6 @@ The allowlist (in `src/core/executor.ts buildProviderEnv()`):
 - **Allowed prefixes** (forward-compatible for vendor knobs): `CLAUDE_CODE_*`, `ANTHROPIC_*`, `AWS_*`, `GIT_*`, `GH_*`.
 - **Denied exact keys** (override allow): `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`, `GITHUB_PERSONAL_ACCESS_TOKEN`, `DAEMON_AUTH_TOKEN`, `DAEMON_AUTH_TOKEN_PREVIOUS`, `DATABASE_URL`, `VALKEY_URL`, `REDIS_URL`, `CONTEXT7_API_KEY`.
 - **Denied prefixes**: `GITHUB_APP_*`, `GITHUB_WEBHOOK_*`.
-- **Defense-in-depth flag**: `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` is set unconditionally so grandchild subprocesses spawned by the agent's `Bash` tool inherit no creds.
 
 If you add a new env var the agent CLI needs, extend the allowlist in `buildProviderEnv()`. Anything outside the allowlist is silently dropped — verify by running `bun test test/core/build-provider-env.test.ts` after the change.
 
