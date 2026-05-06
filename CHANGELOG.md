@@ -1,3 +1,10 @@
+## [1.10.2](https://github.com/chrisleekr/github-app-playground/compare/v1.10.1...v1.10.2) (2026-05-06)
+
+
+### Bug Fixes
+
+* **executor:** drop CLAUDE_CODE_SUBPROCESS_ENV_SCRUB to unblock CLI startup ([#106](https://github.com/chrisleekr/github-app-playground/issues/106)) ([52ab202](https://github.com/chrisleekr/github-app-playground/commit/52ab20222673ae305355b3b02a38b4d680f03884))
+
 ## [1.10.1](https://github.com/chrisleekr/github-app-playground/compare/v1.10.0...v1.10.1) (2026-05-06)
 
 
