@@ -239,13 +239,20 @@ export async function executeAgent({
     abortController: controller,
     // Without this, a non-zero CLI exit surfaces only as
     // `Error("Claude Code process exited with code N")` with no detail. The
-    // SDK pipes the CLI's stderr here line-by-line; trim and log so the real
-    // failure reason (auth, rate-limit, model rejection, etc.) lands in pino.
+    // SDK pipes the CLI's stderr here line-by-line; log so the real failure
+    // reason (auth, rate-limit, model rejection, etc.) lands in pino.
+    // trimEnd preserves leading indentation in multi-line stack traces; the
+    // 500-char cap matches the convention in src/daemon/updater.ts and
+    // scoped-rebase-executor.ts so an unexpectedly large chunk can't blow
+    // up log ingestion.
     stderr: (chunk: string) => {
-      const trimmed = chunk.trim();
-      if (trimmed !== "") {
-        log.warn({ stderr: trimmed }, "Claude CLI stderr");
-      }
+      const tail = chunk.trimEnd();
+      if (tail === "") return;
+      const truncated = tail.length > 500;
+      log.warn(
+        { stderr: tail.slice(0, 500), ...(truncated ? { truncated: true } : {}) },
+        "Claude CLI stderr",
+      );
     },
   };
   const resolvedMaxTurns = maxTurns ?? config.agentMaxTurns;

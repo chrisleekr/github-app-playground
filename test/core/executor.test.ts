@@ -18,7 +18,10 @@ import type { McpServerConfig } from "../../src/types";
 import { makeBotContext } from "../factories";
 
 interface QueryCall {
-  options: { abortController?: AbortController };
+  options: {
+    abortController?: AbortController;
+    stderr?: (chunk: string) => void;
+  };
 }
 
 let lastQueryCall: QueryCall | undefined;
@@ -42,10 +45,15 @@ function emptyIterator(): AsyncIterableIterator<unknown> {
 let nextIterator: IteratorFactory = emptyIterator;
 
 void mock.module("@anthropic-ai/claude-agent-sdk", () => ({
-  query: mock((opts: { prompt: string; options: { abortController?: AbortController } }) => {
-    lastQueryCall = { options: opts.options };
-    return nextIterator();
-  }),
+  query: mock(
+    (opts: {
+      prompt: string;
+      options: { abortController?: AbortController; stderr?: (chunk: string) => void };
+    }) => {
+      lastQueryCall = { options: opts.options };
+      return nextIterator();
+    },
+  ),
 }));
 
 const { executeAgent } = await import("../../src/core/executor");
@@ -194,5 +202,65 @@ describe("executeAgent — cancellation", () => {
     expect(result.success).toBe(false);
     expect(lastQueryCall?.options.abortController?.signal.aborted).toBe(true);
     expect(result.errorMessage).toBe("daemon cancel");
+  });
+});
+
+describe("executeAgent — stderr callback", () => {
+  beforeEach(() => {
+    lastQueryCall = undefined;
+    nextIterator = emptyIterator;
+  });
+
+  it("forwards a stderr callback into the SDK query options", async () => {
+    await executeAgent(baseParams());
+
+    expect(lastQueryCall?.options.stderr).toBeTypeOf("function");
+  });
+
+  it("logs non-empty stderr chunks at warn level on the request logger", async () => {
+    const params = baseParams();
+    await executeAgent(params);
+
+    lastQueryCall?.options.stderr?.("oauth token expired\n");
+
+    const logWarn = params.ctx.log.warn as ReturnType<typeof mock>;
+    expect(logWarn).toHaveBeenCalledTimes(1);
+    expect(logWarn.mock.calls[0]).toEqual([{ stderr: "oauth token expired" }, "Claude CLI stderr"]);
+  });
+
+  it("preserves leading indentation so multi-line stack traces stay readable", async () => {
+    const params = baseParams();
+    await executeAgent(params);
+
+    lastQueryCall?.options.stderr?.("Error: boom\n    at foo (file.ts:1:1)\n");
+
+    const logWarn = params.ctx.log.warn as ReturnType<typeof mock>;
+    expect(logWarn.mock.calls[0]?.[0]).toEqual({
+      stderr: "Error: boom\n    at foo (file.ts:1:1)",
+    });
+  });
+
+  it("skips whitespace-only chunks to avoid log spam", async () => {
+    const params = baseParams();
+    await executeAgent(params);
+
+    lastQueryCall?.options.stderr?.("\n");
+    lastQueryCall?.options.stderr?.("   \t\n");
+
+    const logWarn = params.ctx.log.warn as ReturnType<typeof mock>;
+    expect(logWarn).not.toHaveBeenCalled();
+  });
+
+  it("caps stderr at 500 chars and flags truncation", async () => {
+    const params = baseParams();
+    await executeAgent(params);
+
+    const oversized = "x".repeat(600);
+    lastQueryCall?.options.stderr?.(oversized);
+
+    const logWarn = params.ctx.log.warn as ReturnType<typeof mock>;
+    expect(logWarn).toHaveBeenCalledTimes(1);
+    const [fields] = logWarn.mock.calls[0] ?? [];
+    expect(fields).toEqual({ stderr: "x".repeat(500), truncated: true });
   });
 });
