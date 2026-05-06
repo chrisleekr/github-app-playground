@@ -2291,7 +2291,6 @@
 <li><strong>Allowed prefixes</strong> (forward-compatible for vendor knobs): <code>CLAUDE_CODE_*</code>, <code>ANTHROPIC_*</code>, <code>AWS_*</code>, <code>GIT_*</code>, <code>GH_*</code>.</li>
 <li><strong>Denied exact keys</strong> (override allow): <code>GITHUB_APP_ID</code>, <code>GITHUB_APP_PRIVATE_KEY</code>, <code>GITHUB_WEBHOOK_SECRET</code>, <code>GITHUB_PERSONAL_ACCESS_TOKEN</code>, <code>DAEMON_AUTH_TOKEN</code>, <code>DAEMON_AUTH_TOKEN_PREVIOUS</code>, <code>DATABASE_URL</code>, <code>VALKEY_URL</code>, <code>REDIS_URL</code>, <code>CONTEXT7_API_KEY</code>.</li>
 <li><strong>Denied prefixes</strong>: <code>GITHUB_APP_*</code>, <code>GITHUB_WEBHOOK_*</code>.</li>
-<li><strong>Defense-in-depth flag</strong>: <code>CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1</code> is set unconditionally so grandchild subprocesses spawned by the agent's <code>Bash</code> tool inherit no creds.</li>
 </ul>
 <p>If you add a new env var the agent CLI needs, extend the allowlist in <code>buildProviderEnv()</code>. Anything outside the allowlist is silently dropped — verify by running <code>bun test test/core/build-provider-env.test.ts</code> after the change.</p>
 <h2 id="k8s-secret-split-defense-layer-1b-issue-102">K8s Secret split (defense layer 1b, issue #102)<a class="headerlink" href="#k8s-secret-split-defense-layer-1b-issue-102" title="Permanent link">&para;</a></h2>
