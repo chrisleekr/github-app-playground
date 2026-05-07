@@ -68,14 +68,17 @@ function buildCtx(
   prs: PrStub[],
   options?: { authenticatedLogin?: string },
 ): WorkflowRunContext & { setStateMock: ReturnType<typeof mock> } {
-  // Anchor created_at to "now" so the handler's `since` window includes them.
+  // Anchor created_at slightly in the past so fixtures never produce future
+  // timestamps. The handler's filter is `created >= since - 5s`; since the
+  // mocked pipeline resolves synchronously, `since` is captured a few ms
+  // after `now`, so a 1s past offset still satisfies the window.
   const now = Date.now();
   const prData = prs.map((p) => ({
     number: p.number,
     html_url: `https://github.com/acme/widgets/pull/${String(p.number)}`,
     head: { ref: p.branch ?? `feat/issue-1-${String(p.number)}` },
     user: { type: p.type, login: p.login },
-    created_at: new Date(now + (p.createdAtOffsetMs ?? 1000)).toISOString(),
+    created_at: new Date(now - (p.createdAtOffsetMs ?? 1000)).toISOString(),
   }));
 
   const octokit = {
