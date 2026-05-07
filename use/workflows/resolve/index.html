@@ -827,6 +827,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#post-pipeline-ci-re-check-issue-93" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Post-pipeline CI re-check (issue #93)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Post-pipeline CI re-check (issue #93)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#incomplete-terminal-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        incomplete terminal status
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#stop-conditions" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1507,6 +1535,34 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#post-pipeline-ci-re-check-issue-93" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Post-pipeline CI re-check (issue #93)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Post-pipeline CI re-check (issue #93)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#incomplete-terminal-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        incomplete terminal status
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#stop-conditions" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1656,7 +1712,7 @@
 <tr>
 <td><code>state.failing_checks</code></td>
 <td><code>string[]</code></td>
-<td>Names of failing checks at start of run.</td>
+<td>Names of failing checks at start of run (prologue snapshot).</td>
 </tr>
 <tr>
 <td><code>state.top_level_comments</code></td>
@@ -1674,12 +1730,40 @@
 <td>Full <code>RESOLVE.md</code> (Summary / CI status / Review comments / Commits pushed / Outstanding).</td>
 </tr>
 <tr>
+<td><code>state.post_pipeline</code></td>
+<td>object</td>
+<td>Post-agent re-check snapshot — <code>{ head_sha, failing_checks[], all_green, outstanding_present }</code>. Source of truth for the <code>succeeded</code> vs. <code>incomplete</code> gate.</td>
+</tr>
+<tr>
+<td><code>state.ci_verified</code></td>
+<td>boolean</td>
+<td><code>true</code> only when the post-pipeline gate confirmed all-green CI AND <code>## Outstanding</code> was empty.</td>
+</tr>
+<tr>
 <td><code>state.costUsd</code>, <code>state.turns</code></td>
 <td>metrics</td>
 <td>—</td>
 </tr>
 </tbody>
 </table>
+<h2 id="post-pipeline-ci-re-check-issue-93">Post-pipeline CI re-check (issue #93)<a class="headerlink" href="#post-pipeline-ci-re-check-issue-93" title="Permanent link">&para;</a></h2>
+<p>The handler does <strong>not</strong> trust the agent's self-report. After <code>runPipeline()</code> returns successfully, it:</p>
+<ol>
+<li>Re-fetches the PR's head SHA (the agent may have pushed commits).</li>
+<li>Paginates <code>checks.listForRef</code> against that SHA.</li>
+<li>Applies the canonical "all-green" definition — failing iff <code>status === "completed"</code> AND <code>conclusion ∈ {failure, cancelled, timed_out, action_required}</code>. <code>skipped</code>, <code>neutral</code>, and <code>success</code> are acceptable.</li>
+<li>Parses the <code>## Outstanding</code> section out of <code>RESOLVE.md</code>.</li>
+<li>Returns <code>succeeded</code> only when <strong>both</strong> signals are clean (CI all-green AND <code>## Outstanding</code> empty/absent). Otherwise returns the new <code>incomplete</code> terminal status with <code>humanMessage</code> carrying the outstanding content.</li>
+</ol>
+<p>The shared definition lives in <code>src/workflows/handlers/checks.ts</code> so the prologue snapshot and the post-pipeline re-check can never drift.</p>
+<h3 id="incomplete-terminal-status"><code>incomplete</code> terminal status<a class="headerlink" href="#incomplete-terminal-status" title="Permanent link">&para;</a></h3>
+<p><code>incomplete</code> is a fourth <code>HandlerResult</code> variant ("agent ran cleanly but work remains") distinct from <code>succeeded</code> / <code>failed</code> / <code>handed-off</code>:</p>
+<ul>
+<li>The DB <code>workflow_runs.status</code> column accepts <code>incomplete</code> (migration <code>009_workflow_runs_incomplete.sql</code>).</li>
+<li><code>runs-store.markIncomplete(runId, reason, state)</code> mirrors <code>markFailed</code>, persisting <code>state.incompleteReason</code>.</li>
+<li>The daemon executor (<code>src/daemon/workflow-executor.ts</code>) reacts <code>confused</code> on the trigger comment, mirrors the handler's <code>humanMessage</code>, sends <code>job:result</code> with <code>success: false</code> and an <code>incomplete:</code>-prefixed <code>errorMessage</code>.</li>
+<li>The orchestrator cascade keeps its binary <code>succeeded | failed</code> contract: the executor maps <code>incomplete</code> → <code>failed</code> for cascade purposes, but the parent's tracking-comment headline reads "ship halted at step N (... → resolve) — resolve returned incomplete; see PR tracking comment for outstanding items." instead of the generic failure message.</li>
+</ul>
 <h2 id="stop-conditions">Stop conditions<a class="headerlink" href="#stop-conditions" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>FIX_ATTEMPTS_CAP = 3</code> — maximum consecutive CI-fix attempts per run.</li>
