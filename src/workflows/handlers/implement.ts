@@ -1,3 +1,4 @@
+import { config } from "../../config";
 import { runPipeline } from "../../core/pipeline";
 import type { BotContext } from "../../types";
 import type { WorkflowHandler } from "../registry";
@@ -120,7 +121,14 @@ export const handler: WorkflowHandler = async (ctx) => {
       };
     }
 
-    const opened = await findRecentOpenedPr(octokit, target.owner, target.repo, since);
+    const expectedLogin = await resolveExpectedAuthorLogin(octokit);
+    const opened = await findRecentOpenedPr(
+      octokit,
+      target.owner,
+      target.repo,
+      since,
+      expectedLogin,
+    );
     if (opened === null) {
       return {
         status: "failed",
@@ -176,13 +184,19 @@ interface OpenedPr {
 
 /**
  * Locate the PR the agent opened during this pipeline run. Filters on:
- *  - `pr.user.type === "Bot"` — the App's installation token always
- *    authors PRs as the App's bot account, so any non-bot PR is human
- *    work we mustn't claim. We deliberately do NOT hard-code a slug
- *    (e.g. `chrisleekr-bot[bot]`) because the dev and prod installations
- *    publish as different slugs (`chrisleekr-bot-dev[bot]` vs
- *    `chrisleekr-bot[bot]`); a hard-coded match makes the handler return
- *    `failed` for a PR that was actually opened correctly.
+ *  - Authorship match keyed off the active GitHub credential:
+ *      * App installation token (default): `pr.user.type === "Bot"`. Any
+ *        non-bot PR is human work we mustn't claim. We deliberately do NOT
+ *        hard-code a slug (e.g. `chrisleekr-bot[bot]`) because dev and prod
+ *        installations publish as different slugs (`chrisleekr-bot-dev[bot]`
+ *        vs `chrisleekr-bot[bot]`).
+ *      * `GITHUB_PERSONAL_ACCESS_TOKEN` mode: `pr.user.login === <PAT owner>`.
+ *        A PAT authors PRs as a real user (`type === "User"`), so the bot-type
+ *        filter would reject the PR the agent just opened. The expected login
+ *        is resolved at runtime via `/user`. If `/user` fails, the handler
+ *        fails closed (the outer `catch` reports `failed`) — falling back to
+ *        the bot-type filter would unsafely match an unrelated bot PR
+ *        (Dependabot/Renovate) opened in the same time window.
  *  - `created_at >= since - 5s` — the run's start. The 5s slop absorbs
  *    clock skew between the daemon's `Date.now()` and GitHub's server.
  *
@@ -194,6 +208,7 @@ async function findRecentOpenedPr(
   owner: string,
   repo: string,
   since: Date,
+  expectedLogin: string | null,
 ): Promise<OpenedPr | null> {
   const { data: prs } = await octokit.rest.pulls.list({
     owner,
@@ -204,13 +219,37 @@ async function findRecentOpenedPr(
     per_page: 30,
   });
   for (const pr of prs) {
-    if (pr.user?.type !== "Bot") continue;
+    if (expectedLogin === null) {
+      if (pr.user?.type !== "Bot") continue;
+    } else if (pr.user?.login !== expectedLogin) {
+      continue;
+    }
     const created = new Date(pr.created_at).getTime();
     if (created >= since.getTime() - 5_000) {
       return { number: pr.number, url: pr.html_url, branch: pr.head.ref };
     }
   }
   return null;
+}
+
+/**
+ * Resolve the GitHub login that owns the active credential, but only when the
+ * bot is running with `GITHUB_PERSONAL_ACCESS_TOKEN`. App installation tokens
+ * cannot call `/user` (it requires user-to-server auth and returns 403), so
+ * App mode short-circuits with `null` and the caller uses the bot-type filter.
+ *
+ * In PAT mode we fail closed: if `/user` errors, this throws and the outer
+ * handler `try/catch` reports the run as `failed`. We deliberately do NOT
+ * fall back to the bot-type filter — that filter is unsafe in PAT mode
+ * because an unrelated bot PR opened during the same time window
+ * (Dependabot, Renovate, …) would be incorrectly claimed as ours.
+ */
+async function resolveExpectedAuthorLogin(
+  octokit: Parameters<WorkflowHandler>[0]["octokit"],
+): Promise<string | null> {
+  if (config.githubPersonalAccessToken === undefined) return null;
+  const { data } = await octokit.rest.users.getAuthenticated();
+  return data.login;
 }
 
 /**
