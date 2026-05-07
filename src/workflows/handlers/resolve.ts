@@ -3,6 +3,8 @@ import type { BotContext } from "../../types";
 import type { WorkflowHandler } from "../registry";
 import { findById } from "../runs-store";
 import { type BranchStaleness, formatRefreshDirective, getBranchStaleness } from "./branch-refresh";
+import { evaluateChecks } from "./checks";
+import { parseOutstandingSection } from "./resolve-report";
 
 /**
  * `resolve` handler — runs a resolution pass on an open pull request:
@@ -62,22 +64,15 @@ export const handler: WorkflowHandler = async (ctx) => {
 
     // Paginate — `checks.listForRef` defaults to per_page=30. On busy PRs
     // with large CI matrices, a non-paginated call silently under-reports
-    // failing checks and the resolve prompt gets a stale picture.
-    const allCheckRuns = await octokit.paginate(octokit.rest.checks.listForRef, {
-      owner: target.owner,
-      repo: target.repo,
-      ref: pr.head.sha,
-      per_page: 100,
-    });
-    const failingChecks = allCheckRuns
-      .filter(
-        (c) =>
-          c.status === "completed" &&
-          c.conclusion !== "success" &&
-          c.conclusion !== "neutral" &&
-          c.conclusion !== "skipped",
-      )
-      .map((c) => c.name);
+    // failing checks and the resolve prompt gets a stale picture. Helper
+    // shared with the post-pipeline gate so both apply the same rule.
+    const preCheckEvaluation = await evaluateChecks(
+      octokit,
+      target.owner,
+      target.repo,
+      pr.head.sha,
+    );
+    const failingChecks = preCheckEvaluation.failingChecks;
 
     // Count top-level review comments — GitHub's REST API does not expose
     // thread-level resolution state (only the GraphQL `PullRequestReviewThread`
@@ -162,7 +157,32 @@ export const handler: WorkflowHandler = async (ctx) => {
 
     const report = result.capturedFiles?.["RESOLVE.md"]?.trim() ?? "";
 
-    const state = {
+    // Post-pipeline CI re-check (issue #93): the agent's prompt-level guards
+    // (`FIX_ATTEMPTS_CAP=3`, `## Outstanding`, "STOP. Do NOT mark the run
+    // successful") are agent-self-enforced — a hallucinating agent can still
+    // exit on red. Re-fetch the PR's HEAD SHA (the agent may have pushed
+    // commits) and re-evaluate against the canonical all-green definition.
+    const { data: postPr } = await octokit.rest.pulls.get({
+      owner: target.owner,
+      repo: target.repo,
+      pull_number: target.number,
+    });
+    const postCheckEvaluation = await evaluateChecks(
+      octokit,
+      target.owner,
+      target.repo,
+      postPr.head.sha,
+    );
+    const outstandingBody = parseOutstandingSection(report);
+
+    const meta: string[] = [];
+    if (result.costUsd !== undefined) meta.push(`cost: $${result.costUsd.toFixed(4)}`);
+    if (result.numTurns !== undefined) meta.push(`turns: ${String(result.numTurns)}`);
+    if (result.durationMs !== undefined)
+      meta.push(`duration: ${String(Math.round(result.durationMs / 1000))}s`);
+    const metaLine = meta.length > 0 ? `\n\n_${meta.join(" · ")}_` : "";
+
+    const baseState = {
       pr_number: target.number,
       failing_checks: failingChecks,
       top_level_comments: topLevelComments.length,
@@ -174,19 +194,78 @@ export const handler: WorkflowHandler = async (ctx) => {
       report,
       costUsd: result.costUsd ?? 0,
       turns: result.numTurns ?? 0,
+      post_pipeline: {
+        head_sha: postPr.head.sha,
+        failing_checks: postCheckEvaluation.failingChecks,
+        pending_checks: postCheckEvaluation.pendingChecks,
+        all_green: postCheckEvaluation.allGreen,
+        outstanding_present: outstandingBody !== null,
+      },
     };
 
-    const meta: string[] = [];
-    if (result.costUsd !== undefined) meta.push(`cost: $${result.costUsd.toFixed(4)}`);
-    if (result.numTurns !== undefined) meta.push(`turns: ${String(result.numTurns)}`);
-    if (result.durationMs !== undefined)
-      meta.push(`duration: ${String(Math.round(result.durationMs / 1000))}s`);
-    const metaLine = meta.length > 0 ? `\n\n_${meta.join(" · ")}_` : "";
+    const isClean = postCheckEvaluation.allGreen && outstandingBody === null;
+    if (!isClean) {
+      const reasonParts: string[] = [];
+      if (postCheckEvaluation.failingChecks.length > 0) {
+        reasonParts.push(
+          `CI still red after FIX_ATTEMPTS_CAP=${String(FIX_ATTEMPTS_CAP)} (failing: ${postCheckEvaluation.failingChecks.join(", ")})`,
+        );
+      }
+      if (postCheckEvaluation.pendingChecks.length > 0) {
+        reasonParts.push(
+          `CI still in flight (pending: ${postCheckEvaluation.pendingChecks.join(", ")})`,
+        );
+      }
+      if (outstandingBody !== null) {
+        reasonParts.push("RESOLVE.md ## Outstanding section is non-empty");
+      }
+      const reason = `resolve incomplete — ${reasonParts.join("; ")}`;
 
+      const headline =
+        postCheckEvaluation.failingChecks.length > 0
+          ? `🔎 **Resolve incomplete** — ${String(postCheckEvaluation.failingChecks.length)} failing checks remain after the agent finished.`
+          : postCheckEvaluation.pendingChecks.length > 0
+            ? `🔎 **Resolve incomplete** — ${String(postCheckEvaluation.pendingChecks.length)} checks still in flight after the agent finished.`
+            : `🔎 **Resolve incomplete** — outstanding items remain after the agent finished.`;
+      const ciOutstandingLines: string[] = [];
+      if (postCheckEvaluation.failingChecks.length > 0) {
+        ciOutstandingLines.push(
+          `CI still red — failing checks: ${postCheckEvaluation.failingChecks.join(", ")}`,
+        );
+      }
+      if (postCheckEvaluation.pendingChecks.length > 0) {
+        ciOutstandingLines.push(
+          `CI still in flight — pending checks: ${postCheckEvaluation.pendingChecks.join(", ")}`,
+        );
+      }
+      const outstandingSection =
+        outstandingBody !== null
+          ? `\n\n## Outstanding\n\n${outstandingBody}`
+          : ciOutstandingLines.length > 0
+            ? `\n\n## Outstanding\n\n${ciOutstandingLines.join("\n")}`
+            : "";
+      const reportSection = report.length > 0 && outstandingBody === null ? `\n\n${report}` : "";
+      const humanMessage = `${headline}${outstandingSection}${reportSection}${metaLine}`;
+
+      const state = { ...baseState, ci_verified: false };
+      await ctx.setState(state, humanMessage);
+      log.warn(
+        {
+          failingChecks: postCheckEvaluation.failingChecks,
+          pendingChecks: postCheckEvaluation.pendingChecks,
+          outstandingPresent: outstandingBody !== null,
+          costUsd: result.costUsd,
+        },
+        "resolve handler returning incomplete — post-pipeline gate caught surviving failures",
+      );
+      return { status: "incomplete", reason, state, humanMessage };
+    }
+
+    const state = { ...baseState, ci_verified: true };
     const headline =
       failingChecks.length === 0 && topLevelComments.length === 0
         ? `🔎 **Resolve passed** — no failing checks, no open review comments.`
-        : `🔎 **Resolve iteration complete** — ${String(failingChecks.length)} failing checks, ${String(topLevelComments.length)} open comment threads (some may already be resolved).`;
+        : `🔎 **Resolve iteration complete** — CI is now green; started with ${String(failingChecks.length)} failing checks and ${String(topLevelComments.length)} open comment threads (some may already be resolved).`;
     const reportSection =
       report.length > 0
         ? `\n\n${report}`

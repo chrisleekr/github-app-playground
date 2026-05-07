@@ -6,7 +6,13 @@ import { createMessageEnvelope, type JobPayloadMessage } from "../shared/ws-mess
 import { addReaction, type ReactionContent } from "../utils/reactions";
 import { type CompletionResult, onStepComplete } from "../workflows/orchestrator";
 import { getByName, type WorkflowRunContext } from "../workflows/registry";
-import { markFailed, markRunning, markSucceeded, mergeState } from "../workflows/runs-store";
+import {
+  markFailed,
+  markIncomplete,
+  markRunning,
+  markSucceeded,
+  mergeState,
+} from "../workflows/runs-store";
 import { setState } from "../workflows/tracking-mirror";
 import { getDaemonId } from "./daemon-id";
 
@@ -191,6 +197,59 @@ export async function executeWorkflowRun(
           success: true,
           deliveryId: context.deliveryId,
           durationMs: Date.now() - startedAt,
+        },
+      });
+    } else if (result.status === "incomplete") {
+      // Handler returned `incomplete` — the agent ran cleanly but a handler-
+      // side gate (e.g. resolve's post-pipeline CI re-check) found surviving
+      // failures. We persist a distinct DB status so operators can tell a
+      // clean-run-but-blocked outcome from a true pipeline error, but the
+      // orchestrator cascade still needs a binary outcome — propagate it as
+      // a non-success completion with the original reason preserved.
+      const incState =
+        typeof result.state === "object" && result.state !== null
+          ? (result.state as Record<string, unknown>)
+          : {};
+      await markIncomplete(workflowRun.runId, result.reason, incState);
+      try {
+        await setState(
+          { octokit, logger: log },
+          {
+            runId: workflowRun.runId,
+            patch: {},
+            humanMessage:
+              result.humanMessage ??
+              `${entry.name} incomplete — see tracking comment for outstanding items.`,
+          },
+        );
+      } catch (mirrorErr) {
+        log.warn(
+          { err: mirrorErr instanceof Error ? mirrorErr.message : String(mirrorErr) },
+          "Tracking-mirror update failed after markIncomplete; DB state is authoritative",
+        );
+      }
+
+      log.warn(
+        {
+          durationMs: Date.now() - startedAt,
+          outcome: "incomplete",
+          reason: result.reason,
+        },
+        "Workflow run reported incomplete",
+      );
+
+      reactOnTrigger("confused");
+
+      completion = { status: "failed", reason: `incomplete: ${result.reason}` };
+
+      send({
+        type: "job:result",
+        ...createMessageEnvelope(offerId),
+        payload: {
+          success: false,
+          deliveryId: context.deliveryId,
+          durationMs: Date.now() - startedAt,
+          errorMessage: `incomplete: ${result.reason}`,
         },
       });
     } else {
