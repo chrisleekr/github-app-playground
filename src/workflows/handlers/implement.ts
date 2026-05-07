@@ -1,3 +1,4 @@
+import { config } from "../../config";
 import { runPipeline } from "../../core/pipeline";
 import type { BotContext } from "../../types";
 import type { WorkflowHandler } from "../registry";
@@ -120,7 +121,14 @@ export const handler: WorkflowHandler = async (ctx) => {
       };
     }
 
-    const opened = await findRecentOpenedPr(octokit, target.owner, target.repo, since);
+    const expectedLogin = await resolveExpectedAuthorLogin(octokit, log);
+    const opened = await findRecentOpenedPr(
+      octokit,
+      target.owner,
+      target.repo,
+      since,
+      expectedLogin,
+    );
     if (opened === null) {
       return {
         status: "failed",
@@ -176,13 +184,16 @@ interface OpenedPr {
 
 /**
  * Locate the PR the agent opened during this pipeline run. Filters on:
- *  - `pr.user.type === "Bot"` — the App's installation token always
- *    authors PRs as the App's bot account, so any non-bot PR is human
- *    work we mustn't claim. We deliberately do NOT hard-code a slug
- *    (e.g. `chrisleekr-bot[bot]`) because the dev and prod installations
- *    publish as different slugs (`chrisleekr-bot-dev[bot]` vs
- *    `chrisleekr-bot[bot]`); a hard-coded match makes the handler return
- *    `failed` for a PR that was actually opened correctly.
+ *  - Authorship match keyed off the active GitHub credential:
+ *      * App installation token (default): `pr.user.type === "Bot"`. Any
+ *        non-bot PR is human work we mustn't claim. We deliberately do NOT
+ *        hard-code a slug (e.g. `chrisleekr-bot[bot]`) because dev and prod
+ *        installations publish as different slugs (`chrisleekr-bot-dev[bot]`
+ *        vs `chrisleekr-bot[bot]`).
+ *      * `GITHUB_PERSONAL_ACCESS_TOKEN` mode: `pr.user.login === <PAT owner>`.
+ *        A PAT authors PRs as a real user (`type === "User"`), so the bot-type
+ *        filter would reject the PR the agent just opened. The expected login
+ *        is resolved at runtime via `/user`, so no env var has to track it.
  *  - `created_at >= since - 5s` — the run's start. The 5s slop absorbs
  *    clock skew between the daemon's `Date.now()` and GitHub's server.
  *
@@ -194,6 +205,7 @@ async function findRecentOpenedPr(
   owner: string,
   repo: string,
   since: Date,
+  expectedLogin: string | null,
 ): Promise<OpenedPr | null> {
   const { data: prs } = await octokit.rest.pulls.list({
     owner,
@@ -204,13 +216,46 @@ async function findRecentOpenedPr(
     per_page: 30,
   });
   for (const pr of prs) {
-    if (pr.user?.type !== "Bot") continue;
+    if (expectedLogin === null) {
+      if (pr.user?.type !== "Bot") continue;
+    } else if (pr.user?.login !== expectedLogin) {
+      continue;
+    }
     const created = new Date(pr.created_at).getTime();
     if (created >= since.getTime() - 5_000) {
       return { number: pr.number, url: pr.html_url, branch: pr.head.ref };
     }
   }
   return null;
+}
+
+/**
+ * Resolve the GitHub login that owns the active credential, but only when the
+ * bot is running with `GITHUB_PERSONAL_ACCESS_TOKEN`. App installation tokens
+ * cannot call `/user` (it requires user-to-server auth and returns 403), so
+ * we skip the lookup and let the caller fall back to the bot-type filter.
+ *
+ * Failures are logged at warn and reported as `null` (= use bot-type filter).
+ * That preserves App-mode behaviour and keeps PAT-mode runs from crashing if
+ * `/user` is transiently unreachable; the worst case is the same false
+ * negative we had before this fix, never a wrong-PR claim.
+ */
+async function resolveExpectedAuthorLogin(
+  octokit: Parameters<WorkflowHandler>[0]["octokit"],
+  log: Parameters<WorkflowHandler>[0]["logger"],
+): Promise<string | null> {
+  const pat = config.githubPersonalAccessToken;
+  if (typeof pat !== "string" || pat.length === 0) return null;
+  try {
+    const { data } = await octokit.rest.users.getAuthenticated();
+    return data.login;
+  } catch (err) {
+    log.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      "implement: PAT mode active but /user lookup failed — falling back to Bot-type filter",
+    );
+    return null;
+  }
 }
 
 /**
