@@ -85,9 +85,20 @@ export async function onStepComplete(
     const childStepIndex = child.parent_step_index ?? -1;
 
     if (result.status === "failed") {
+      // The executor edge maps `HandlerResult.status === "incomplete"` to a
+      // `CompletionResult` with reason prefixed `incomplete:` so the cascade
+      // can keep its binary `succeeded | failed` contract while the parent's
+      // public surface still tells a clean-run-but-blocked outcome (CI red
+      // after the resolve cap) from a true pipeline error. Strip the prefix
+      // before persisting so `failedReason` carries the raw handler reason
+      // (the prefix is a private executor-internal marker).
+      const isIncomplete = (result.reason ?? "").startsWith("incomplete:");
+      const rawReason = isIncomplete
+        ? (result.reason ?? "").slice("incomplete:".length).trim()
+        : (result.reason ?? "child failed");
       const failPatch = {
         failedAtStepIndex: childStepIndex,
-        failedReason: result.reason ?? "child failed",
+        failedReason: rawReason || "child failed",
       };
       await tx`
         UPDATE workflow_runs
@@ -95,13 +106,6 @@ export async function onStepComplete(
                state = state || ${failPatch}::jsonb
          WHERE id = ${parent.id}
       `;
-      // The executor edge maps `HandlerResult.status === "incomplete"` to a
-      // `CompletionResult` with reason prefixed `incomplete:` so the cascade
-      // can keep its binary `succeeded | failed` contract while the parent's
-      // public surface still tells a clean-run-but-blocked outcome (CI red
-      // after the resolve cap) from a true pipeline error. The DB row keeps
-      // the raw reason via the `failedReason` patch above.
-      const isIncomplete = (result.reason ?? "").startsWith("incomplete:");
       const humanMessage = isIncomplete
         ? `ship halted at step ${String(childStepIndex)} (${parent.workflow_name} → ${child.workflow_name}) — ${child.workflow_name} returned incomplete; see PR tracking comment for outstanding items.`
         : `ship halted at step ${String(childStepIndex)} (${parent.workflow_name} → ${child.workflow_name}) — see server logs for details.`;

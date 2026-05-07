@@ -6,8 +6,10 @@ import type { Octokit } from "octokit";
  * Mirrors the prompt language at `resolve.ts` step 6: a check is failing iff
  * `status === "completed"` AND `conclusion` is one of `failure`, `cancelled`,
  * `timed_out`, or `action_required`. `skipped`, `neutral`, and `success` are
- * acceptable terminal states; in-flight (`queued`/`in_progress`) checks are
- * NOT counted as failing — the caller polls until terminal.
+ * acceptable terminal states. In-flight (`queued`/`in_progress`) checks are
+ * tracked separately as `pendingChecks` and block `allGreen` — the post-
+ * pipeline gate must not finalize a run while CI is still running because
+ * those pending checks could later fail.
  *
  * Single source of truth for both the handler prologue snapshot and the
  * post-pipeline re-check, so a future drift between the two definitions
@@ -15,10 +17,12 @@ import type { Octokit } from "octokit";
  */
 
 export interface CheckEvaluation {
-  /** True when no failing checks remain. Empty input → `true`. */
+  /** True when no failing AND no pending checks remain. Empty input → `true`. */
   readonly allGreen: boolean;
   /** Names of failing checks, deduplicated, in the order first encountered. */
   readonly failingChecks: string[];
+  /** Names of in-flight checks (queued/in_progress), deduplicated. */
+  readonly pendingChecks: string[];
 }
 
 interface CheckRunLike {
@@ -28,19 +32,33 @@ interface CheckRunLike {
 }
 
 const FAILING_CONCLUSIONS = new Set(["failure", "cancelled", "timed_out", "action_required"]);
+const PENDING_STATUSES = new Set(["queued", "in_progress", "waiting", "pending"]);
 
 export function evaluateCheckRuns(checks: readonly CheckRunLike[]): CheckEvaluation {
-  const seen = new Set<string>();
+  const seenFailing = new Set<string>();
+  const seenPending = new Set<string>();
   const failing: string[] = [];
+  const pending: string[] = [];
   for (const c of checks) {
-    if (c.status !== "completed") continue;
-    if (c.conclusion === null) continue;
-    if (!FAILING_CONCLUSIONS.has(c.conclusion)) continue;
-    if (seen.has(c.name)) continue;
-    seen.add(c.name);
-    failing.push(c.name);
+    if (c.status === "completed") {
+      if (c.conclusion === null) continue;
+      if (!FAILING_CONCLUSIONS.has(c.conclusion)) continue;
+      if (seenFailing.has(c.name)) continue;
+      seenFailing.add(c.name);
+      failing.push(c.name);
+      continue;
+    }
+    if (c.status !== null && PENDING_STATUSES.has(c.status)) {
+      if (seenPending.has(c.name)) continue;
+      seenPending.add(c.name);
+      pending.push(c.name);
+    }
   }
-  return { allGreen: failing.length === 0, failingChecks: failing };
+  return {
+    allGreen: failing.length === 0 && pending.length === 0,
+    failingChecks: failing,
+    pendingChecks: pending,
+  };
 }
 
 /**

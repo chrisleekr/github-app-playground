@@ -197,6 +197,7 @@ export const handler: WorkflowHandler = async (ctx) => {
       post_pipeline: {
         head_sha: postPr.head.sha,
         failing_checks: postCheckEvaluation.failingChecks,
+        pending_checks: postCheckEvaluation.pendingChecks,
         all_green: postCheckEvaluation.allGreen,
         outstanding_present: outstandingBody !== null,
       },
@@ -205,9 +206,14 @@ export const handler: WorkflowHandler = async (ctx) => {
     const isClean = postCheckEvaluation.allGreen && outstandingBody === null;
     if (!isClean) {
       const reasonParts: string[] = [];
-      if (!postCheckEvaluation.allGreen) {
+      if (postCheckEvaluation.failingChecks.length > 0) {
         reasonParts.push(
           `CI still red after FIX_ATTEMPTS_CAP=${String(FIX_ATTEMPTS_CAP)} (failing: ${postCheckEvaluation.failingChecks.join(", ")})`,
+        );
+      }
+      if (postCheckEvaluation.pendingChecks.length > 0) {
+        reasonParts.push(
+          `CI still in flight (pending: ${postCheckEvaluation.pendingChecks.join(", ")})`,
         );
       }
       if (outstandingBody !== null) {
@@ -215,12 +221,28 @@ export const handler: WorkflowHandler = async (ctx) => {
       }
       const reason = `resolve incomplete — ${reasonParts.join("; ")}`;
 
-      const headline = `🔎 **Resolve incomplete** — ${String(postCheckEvaluation.failingChecks.length)} failing checks remain after the agent finished.`;
+      const headline =
+        postCheckEvaluation.failingChecks.length > 0
+          ? `🔎 **Resolve incomplete** — ${String(postCheckEvaluation.failingChecks.length)} failing checks remain after the agent finished.`
+          : postCheckEvaluation.pendingChecks.length > 0
+            ? `🔎 **Resolve incomplete** — ${String(postCheckEvaluation.pendingChecks.length)} checks still in flight after the agent finished.`
+            : `🔎 **Resolve incomplete** — outstanding items remain after the agent finished.`;
+      const ciOutstandingLines: string[] = [];
+      if (postCheckEvaluation.failingChecks.length > 0) {
+        ciOutstandingLines.push(
+          `CI still red — failing checks: ${postCheckEvaluation.failingChecks.join(", ")}`,
+        );
+      }
+      if (postCheckEvaluation.pendingChecks.length > 0) {
+        ciOutstandingLines.push(
+          `CI still in flight — pending checks: ${postCheckEvaluation.pendingChecks.join(", ")}`,
+        );
+      }
       const outstandingSection =
         outstandingBody !== null
           ? `\n\n## Outstanding\n\n${outstandingBody}`
-          : !postCheckEvaluation.allGreen
-            ? `\n\n## Outstanding\n\nCI still red — failing checks: ${postCheckEvaluation.failingChecks.join(", ")}`
+          : ciOutstandingLines.length > 0
+            ? `\n\n## Outstanding\n\n${ciOutstandingLines.join("\n")}`
             : "";
       const reportSection = report.length > 0 && outstandingBody === null ? `\n\n${report}` : "";
       const humanMessage = `${headline}${outstandingSection}${reportSection}${metaLine}`;
@@ -230,6 +252,7 @@ export const handler: WorkflowHandler = async (ctx) => {
       log.warn(
         {
           failingChecks: postCheckEvaluation.failingChecks,
+          pendingChecks: postCheckEvaluation.pendingChecks,
           outstandingPresent: outstandingBody !== null,
           costUsd: result.costUsd,
         },
@@ -242,7 +265,7 @@ export const handler: WorkflowHandler = async (ctx) => {
     const headline =
       failingChecks.length === 0 && topLevelComments.length === 0
         ? `🔎 **Resolve passed** — no failing checks, no open review comments.`
-        : `🔎 **Resolve iteration complete** — ${String(failingChecks.length)} failing checks, ${String(topLevelComments.length)} open comment threads (some may already be resolved).`;
+        : `🔎 **Resolve iteration complete** — CI is now green; started with ${String(failingChecks.length)} failing checks and ${String(topLevelComments.length)} open comment threads (some may already be resolved).`;
     const reportSection =
       report.length > 0
         ? `\n\n${report}`
