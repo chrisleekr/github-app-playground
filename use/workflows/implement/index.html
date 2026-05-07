@@ -1637,7 +1637,11 @@
 </tbody>
 </table>
 <h2 id="pr-detection">PR detection<a class="headerlink" href="#pr-detection" title="Permanent link">&para;</a></h2>
-<p><code>findRecentOpenedPr</code> filters on <code>pr.user?.type === 'Bot'</code> plus <code>created_at &gt;= since - 5s</code>. It deliberately does not match on a hard-coded login slug — dev installs publish as <code>chrisleekr-bot-dev[bot]</code> and prod as <code>chrisleekr-bot[bot]</code>, so a slug check would produce false negatives.</p>
+<p><code>findRecentOpenedPr</code> filter is auth-mode aware (<code>src/workflows/handlers/implement.ts</code>):</p>
+<ul>
+<li><strong>App installation token (default)</strong> — matches <code>pr.user?.type === 'Bot'</code> plus <code>created_at &gt;= since - 5s</code>. Deliberately not keyed on a slug because dev installs publish as <code>chrisleekr-bot-dev[bot]</code> and prod as <code>chrisleekr-bot[bot]</code>.</li>
+<li><strong><code>GITHUB_PERSONAL_ACCESS_TOKEN</code> mode</strong> — a PAT authors PRs as the human owner (<code>type === 'User'</code>), so the bot-type filter would skip them. The handler resolves the active token's login via <code>octokit.rest.users.getAuthenticated()</code> and matches <code>pr.user?.login === &lt;PAT owner&gt;</code>. If <code>/user</code> fails the handler fails closed (the outer <code>try/catch</code> reports the run as <code>failed</code>); falling back to the bot-type filter would be unsafe in PAT mode because an unrelated bot PR opened in the same window (Dependabot, Renovate) would be claimed as ours.</li>
+</ul>
 <h2 id="pr-body">PR body<a class="headerlink" href="#pr-body" title="Permanent link">&para;</a></h2>
 <p>The agent reads <code>.github/PULL_REQUEST_TEMPLATE/bot-implement.md</code> and fills every section based on actual work, then passes it via <code>gh pr create --body-file …</code>. This keeps bot PRs structurally consistent and prevents <code>gh</code> from auto-falling back to the human PR template.</p>
 <h2 id="stop-conditions">Stop conditions<a class="headerlink" href="#stop-conditions" title="Permanent link">&para;</a></h2>
