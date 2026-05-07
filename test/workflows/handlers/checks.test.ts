@@ -87,4 +87,16 @@ describe("evaluateCheckRuns", () => {
     const result = evaluateCheckRuns([{ status: "completed", conclusion: null, name: "weird" }]);
     expect(result).toEqual({ allGreen: true, failingChecks: [], pendingChecks: [] });
   });
+
+  it("treats `stale` conclusion as failing (GitHub auto-sets after 14d incomplete)", () => {
+    const result = evaluateCheckRuns([{ status: "completed", conclusion: "stale", name: "stuck" }]);
+    expect(result.allGreen).toBe(false);
+    expect(result.failingChecks).toEqual(["stuck"]);
+  });
+
+  it("treats `requested` status as pending (rerun queued but not yet running)", () => {
+    const result = evaluateCheckRuns([{ status: "requested", conclusion: null, name: "rerun" }]);
+    expect(result.allGreen).toBe(false);
+    expect(result.pendingChecks).toEqual(["rerun"]);
+  });
 });

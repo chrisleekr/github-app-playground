@@ -31,8 +31,16 @@ interface CheckRunLike {
   readonly name: string;
 }
 
-const FAILING_CONCLUSIONS = new Set(["failure", "cancelled", "timed_out", "action_required"]);
-const PENDING_STATUSES = new Set(["queued", "in_progress", "waiting", "pending"]);
+// Whitelist of passing conclusions per the GitHub REST docs for check runs:
+// https://docs.github.com/en/rest/checks/runs — anything else terminal
+// (failure, cancelled, timed_out, action_required, stale) counts as failing.
+// `stale` is set automatically by GitHub after 14 days of incompletion; treating
+// it as green would let stuck check suites silently pass the post-pipeline gate.
+const PASSING_CONCLUSIONS = new Set(["success", "neutral", "skipped"]);
+// All non-terminal status values per the REST docs. `requested` was added in
+// the Checks API and is set when a rerun is queued but not yet running — must
+// block `allGreen` so the gate doesn't fire before the rerun starts.
+const PENDING_STATUSES = new Set(["queued", "in_progress", "waiting", "pending", "requested"]);
 
 export function evaluateCheckRuns(checks: readonly CheckRunLike[]): CheckEvaluation {
   const seenFailing = new Set<string>();
@@ -42,7 +50,7 @@ export function evaluateCheckRuns(checks: readonly CheckRunLike[]): CheckEvaluat
   for (const c of checks) {
     if (c.status === "completed") {
       if (c.conclusion === null) continue;
-      if (!FAILING_CONCLUSIONS.has(c.conclusion)) continue;
+      if (PASSING_CONCLUSIONS.has(c.conclusion)) continue;
       if (seenFailing.has(c.name)) continue;
       seenFailing.add(c.name);
       failing.push(c.name);
