@@ -1,3 +1,15 @@
+# [1.11.0](https://github.com/chrisleekr/github-app-playground/compare/v1.10.2...v1.11.0) (2026-05-07)
+
+
+### Bug Fixes
+
+* **implement:** match PR author by login in PAT mode ([#108](https://github.com/chrisleekr/github-app-playground/issues/108)) ([d325639](https://github.com/chrisleekr/github-app-playground/commit/d325639cd2d15d08d0825134772abfad4ca9c97f))
+
+
+### Features
+
+* **resolve:** gate handler success on post-fix CI state ([#107](https://github.com/chrisleekr/github-app-playground/issues/107)) ([eecdedc](https://github.com/chrisleekr/github-app-playground/commit/eecdedc2c222fe5d20e955c0462cb5279df60ee5))
+
 ## [1.10.2](https://github.com/chrisleekr/github-app-playground/compare/v1.10.1...v1.10.2) (2026-05-06)
 
 
