@@ -244,8 +244,7 @@ async function resolveExpectedAuthorLogin(
   octokit: Parameters<WorkflowHandler>[0]["octokit"],
   log: Parameters<WorkflowHandler>[0]["logger"],
 ): Promise<string | null> {
-  const pat = config.githubPersonalAccessToken;
-  if (typeof pat !== "string" || pat.length === 0) return null;
+  if (config.githubPersonalAccessToken === undefined) return null;
   try {
     const { data } = await octokit.rest.users.getAuthenticated();
     return data.login;

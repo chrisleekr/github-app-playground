@@ -172,4 +172,17 @@ describe("implement handler — findRecentOpenedPr", () => {
     const result = await implementHandler(ctx);
     expect(result.status).toBe("failed");
   });
+
+  it("PAT mode: falls back to Bot-type filter when /user lookup fails", async () => {
+    mockConfig.githubPersonalAccessToken = "ghp_test_token";
+    const ctx = buildCtx([{ number: 107, type: "User", login: "chrisleekr" }]);
+    (
+      ctx.octokit.rest.users.getAuthenticated as unknown as ReturnType<typeof mock>
+    ).mockImplementationOnce(() => Promise.reject(new Error("503 Service Unavailable")));
+    const result = await implementHandler(ctx);
+    expect(result.status).toBe("failed");
+    if (result.status === "failed") {
+      expect(result.reason).toBe("implement completed but no PR was found");
+    }
+  });
 });
