@@ -138,6 +138,9 @@ describe("implement handler — findRecentOpenedPr", () => {
     const ctx = buildCtx([{ number: 107, type: "Bot", login: "chrisleekr-bot[bot]" }]);
     const result = await implementHandler(ctx);
     expect(result.status).toBe("succeeded");
+    expect(
+      ctx.octokit.rest.users.getAuthenticated as unknown as ReturnType<typeof mock>,
+    ).not.toHaveBeenCalled();
     if (result.status === "succeeded") {
       expect(result.state["pr_number"]).toBe(107);
     }
@@ -171,6 +174,9 @@ describe("implement handler — findRecentOpenedPr", () => {
     });
     const result = await implementHandler(ctx);
     expect(result.status).toBe("failed");
+    if (result.status === "failed") {
+      expect(result.reason).toBe("implement completed but no PR was found");
+    }
   });
 
   it("PAT mode: fails closed when /user lookup fails (no fallback)", async () => {
