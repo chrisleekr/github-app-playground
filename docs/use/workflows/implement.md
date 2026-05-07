@@ -28,7 +28,10 @@ Opens a PR with code, tests, and a filled-out PR template based on the prior pla
 
 ## PR detection
 
-`findRecentOpenedPr` filters on `pr.user?.type === 'Bot'` plus `created_at >= since - 5s`. It deliberately does not match on a hard-coded login slug — dev installs publish as `chrisleekr-bot-dev[bot]` and prod as `chrisleekr-bot[bot]`, so a slug check would produce false negatives.
+`findRecentOpenedPr` filter is auth-mode aware (`src/workflows/handlers/implement.ts`):
+
+- **App installation token (default)** — matches `pr.user?.type === 'Bot'` plus `created_at >= since - 5s`. Deliberately not keyed on a slug because dev installs publish as `chrisleekr-bot-dev[bot]` and prod as `chrisleekr-bot[bot]`.
+- **`GITHUB_PERSONAL_ACCESS_TOKEN` mode** — a PAT authors PRs as the human owner (`type === 'User'`), so the bot-type filter would skip them. The handler resolves the active token's login via `octokit.rest.users.getAuthenticated()` and matches `pr.user?.login === <PAT owner>`. If `/user` fails (transient), the handler logs warn and falls back to the bot-type filter — worst case is the same false negative we had before this fix, never a wrong-PR claim.
 
 ## PR body
 
