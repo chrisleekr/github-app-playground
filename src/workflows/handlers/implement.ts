@@ -121,7 +121,7 @@ export const handler: WorkflowHandler = async (ctx) => {
       };
     }
 
-    const expectedLogin = await resolveExpectedAuthorLogin(octokit, log);
+    const expectedLogin = await resolveExpectedAuthorLogin(octokit);
     const opened = await findRecentOpenedPr(
       octokit,
       target.owner,
@@ -193,7 +193,10 @@ interface OpenedPr {
  *      * `GITHUB_PERSONAL_ACCESS_TOKEN` mode: `pr.user.login === <PAT owner>`.
  *        A PAT authors PRs as a real user (`type === "User"`), so the bot-type
  *        filter would reject the PR the agent just opened. The expected login
- *        is resolved at runtime via `/user`, so no env var has to track it.
+ *        is resolved at runtime via `/user`. If `/user` fails, the handler
+ *        fails closed (the outer `catch` reports `failed`) — falling back to
+ *        the bot-type filter would unsafely match an unrelated bot PR
+ *        (Dependabot/Renovate) opened in the same time window.
  *  - `created_at >= since - 5s` — the run's start. The 5s slop absorbs
  *    clock skew between the daemon's `Date.now()` and GitHub's server.
  *
@@ -233,28 +236,20 @@ async function findRecentOpenedPr(
  * Resolve the GitHub login that owns the active credential, but only when the
  * bot is running with `GITHUB_PERSONAL_ACCESS_TOKEN`. App installation tokens
  * cannot call `/user` (it requires user-to-server auth and returns 403), so
- * we skip the lookup and let the caller fall back to the bot-type filter.
+ * App mode short-circuits with `null` and the caller uses the bot-type filter.
  *
- * Failures are logged at warn and reported as `null` (= use bot-type filter).
- * That preserves App-mode behaviour and keeps PAT-mode runs from crashing if
- * `/user` is transiently unreachable; the worst case is the same false
- * negative we had before this fix, never a wrong-PR claim.
+ * In PAT mode we fail closed: if `/user` errors, this throws and the outer
+ * handler `try/catch` reports the run as `failed`. We deliberately do NOT
+ * fall back to the bot-type filter — that filter is unsafe in PAT mode
+ * because an unrelated bot PR opened during the same time window
+ * (Dependabot, Renovate, …) would be incorrectly claimed as ours.
  */
 async function resolveExpectedAuthorLogin(
   octokit: Parameters<WorkflowHandler>[0]["octokit"],
-  log: Parameters<WorkflowHandler>[0]["logger"],
 ): Promise<string | null> {
   if (config.githubPersonalAccessToken === undefined) return null;
-  try {
-    const { data } = await octokit.rest.users.getAuthenticated();
-    return data.login;
-  } catch (err) {
-    log.warn(
-      { err: err instanceof Error ? err.message : String(err) },
-      "implement: PAT mode active but /user lookup failed — falling back to Bot-type filter",
-    );
-    return null;
-  }
+  const { data } = await octokit.rest.users.getAuthenticated();
+  return data.login;
 }
 
 /**

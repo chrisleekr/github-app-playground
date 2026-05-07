@@ -173,7 +173,7 @@ describe("implement handler — findRecentOpenedPr", () => {
     expect(result.status).toBe("failed");
   });
 
-  it("PAT mode: falls back to Bot-type filter when /user lookup fails", async () => {
+  it("PAT mode: fails closed when /user lookup fails (no fallback)", async () => {
     mockConfig.githubPersonalAccessToken = "ghp_test_token";
     const ctx = buildCtx([{ number: 107, type: "User", login: "chrisleekr" }]);
     (
@@ -182,7 +182,29 @@ describe("implement handler — findRecentOpenedPr", () => {
     const result = await implementHandler(ctx);
     expect(result.status).toBe("failed");
     if (result.status === "failed") {
-      expect(result.reason).toBe("implement completed but no PR was found");
+      expect(result.reason).toContain("503 Service Unavailable");
+    }
+  });
+
+  it("PAT mode: /user failure does NOT misclaim an unrelated bot PR", async () => {
+    // Regression for the false-positive scenario flagged by Copilot:
+    // before this fix, /user failure fell back to the Bot-type filter,
+    // which would happily match a Dependabot/Renovate PR opened in the
+    // same time window as the implement run.
+    mockConfig.githubPersonalAccessToken = "ghp_test_token";
+    const ctx = buildCtx([
+      { number: 999, type: "Bot", login: "dependabot[bot]" },
+      { number: 107, type: "User", login: "chrisleekr" },
+    ]);
+    (
+      ctx.octokit.rest.users.getAuthenticated as unknown as ReturnType<typeof mock>
+    ).mockImplementationOnce(() => Promise.reject(new Error("502 Bad Gateway")));
+    const result = await implementHandler(ctx);
+    expect(result.status).toBe("failed");
+    if (result.status === "failed") {
+      // Must NOT silently claim PR #999 (Dependabot's bot PR).
+      expect(result.reason).not.toContain("999");
+      expect(result.reason).toContain("502 Bad Gateway");
     }
   });
 });
