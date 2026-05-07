@@ -10,7 +10,7 @@ import type { WorkflowName } from "./registry";
  * (`verdict`, `pr_number`, `currentStepIndex`, …) accumulate across updates.
  */
 
-export type WorkflowRunStatus = "queued" | "running" | "succeeded" | "failed";
+export type WorkflowRunStatus = "queued" | "running" | "succeeded" | "failed" | "incomplete";
 
 export type WorkflowOwnerKind = "orchestrator" | "daemon";
 
@@ -166,6 +166,27 @@ export async function markFailed(
   await sql`
     UPDATE workflow_runs
        SET status = 'failed',
+           state = state || ${merged}::jsonb
+     WHERE id = ${runId}
+  `;
+}
+
+/**
+ * Terminal "agent ran cleanly but work remains" write (issue #93). Mirrors
+ * `markFailed` but flips status to `'incomplete'` and records the reason
+ * under `state.incompleteReason` (separate from `failedReason` so operator
+ * tooling can tell a clean-run-but-blocked outcome from a true pipeline error).
+ */
+export async function markIncomplete(
+  runId: string,
+  reason: string,
+  state: Record<string, unknown> = {},
+  sql: SQL = requireDb(),
+): Promise<void> {
+  const merged = { ...state, incompleteReason: reason };
+  await sql`
+    UPDATE workflow_runs
+       SET status = 'incomplete',
            state = state || ${merged}::jsonb
      WHERE id = ${runId}
   `;

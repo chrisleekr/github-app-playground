@@ -249,6 +249,8 @@ function statusEmoji(status: WorkflowRunRow["status"]): string {
       return "✅";
     case "failed":
       return "❌";
+    case "incomplete":
+      return "⚠️";
   }
 }
 

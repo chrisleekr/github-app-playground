@@ -47,13 +47,36 @@ All four classifications use the same shape so bot replies look consistent acros
 
 ## Outputs
 
-| Field                          | Type       | Notes                                                                                     |
-| ------------------------------ | ---------- | ----------------------------------------------------------------------------------------- |
-| `state.failing_checks`         | `string[]` | Names of failing checks at start of run.                                                  |
-| `state.top_level_comments`     | number     | Count of open top-level review comments.                                                  |
-| `state.branch_state`           | object     | Pre-refresh snapshot.                                                                     |
-| `state.report`                 | markdown   | Full `RESOLVE.md` (Summary / CI status / Review comments / Commits pushed / Outstanding). |
-| `state.costUsd`, `state.turns` | metrics    | —                                                                                         |
+| Field                          | Type       | Notes                                                                                                                                                       |
+| ------------------------------ | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `state.failing_checks`         | `string[]` | Names of failing checks at start of run (prologue snapshot).                                                                                                |
+| `state.top_level_comments`     | number     | Count of open top-level review comments.                                                                                                                    |
+| `state.branch_state`           | object     | Pre-refresh snapshot.                                                                                                                                       |
+| `state.report`                 | markdown   | Full `RESOLVE.md` (Summary / CI status / Review comments / Commits pushed / Outstanding).                                                                   |
+| `state.post_pipeline`          | object     | Post-agent re-check snapshot — `{ head_sha, failing_checks[], all_green, outstanding_present }`. Source of truth for the `succeeded` vs. `incomplete` gate. |
+| `state.ci_verified`            | boolean    | `true` only when the post-pipeline gate confirmed all-green CI AND `## Outstanding` was empty.                                                              |
+| `state.costUsd`, `state.turns` | metrics    | —                                                                                                                                                           |
+
+## Post-pipeline CI re-check (issue #93)
+
+The handler does **not** trust the agent's self-report. After `runPipeline()` returns successfully, it:
+
+1. Re-fetches the PR's head SHA (the agent may have pushed commits).
+2. Paginates `checks.listForRef` against that SHA.
+3. Applies the canonical "all-green" definition — failing iff `status === "completed"` AND `conclusion ∈ {failure, cancelled, timed_out, action_required}`. `skipped`, `neutral`, and `success` are acceptable.
+4. Parses the `## Outstanding` section out of `RESOLVE.md`.
+5. Returns `succeeded` only when **both** signals are clean (CI all-green AND `## Outstanding` empty/absent). Otherwise returns the new `incomplete` terminal status with `humanMessage` carrying the outstanding content.
+
+The shared definition lives in `src/workflows/handlers/checks.ts` so the prologue snapshot and the post-pipeline re-check can never drift.
+
+### `incomplete` terminal status
+
+`incomplete` is a fourth `HandlerResult` variant ("agent ran cleanly but work remains") distinct from `succeeded` / `failed` / `handed-off`:
+
+- The DB `workflow_runs.status` column accepts `incomplete` (migration `009_workflow_runs_incomplete.sql`).
+- `runs-store.markIncomplete(runId, reason, state)` mirrors `markFailed`, persisting `state.incompleteReason`.
+- The daemon executor (`src/daemon/workflow-executor.ts`) reacts `confused` on the trigger comment, mirrors the handler's `humanMessage`, sends `job:result` with `success: false` and an `incomplete:`-prefixed `errorMessage`.
+- The orchestrator cascade keeps its binary `succeeded | failed` contract: the executor maps `incomplete` → `failed` for cascade purposes, but the parent's tracking-comment headline reads "ship halted at step N (... → resolve) — resolve returned incomplete; see PR tracking comment for outstanding items." instead of the generic failure message.
 
 ## Stop conditions
 

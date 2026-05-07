@@ -95,16 +95,28 @@ export async function onStepComplete(
                state = state || ${failPatch}::jsonb
          WHERE id = ${parent.id}
       `;
+      // The executor edge maps `HandlerResult.status === "incomplete"` to a
+      // `CompletionResult` with reason prefixed `incomplete:` so the cascade
+      // can keep its binary `succeeded | failed` contract while the parent's
+      // public surface still tells a clean-run-but-blocked outcome (CI red
+      // after the resolve cap) from a true pipeline error. The DB row keeps
+      // the raw reason via the `failedReason` patch above.
+      const isIncomplete = (result.reason ?? "").startsWith("incomplete:");
+      const humanMessage = isIncomplete
+        ? `ship halted at step ${String(childStepIndex)} (${parent.workflow_name} → ${child.workflow_name}) — ${child.workflow_name} returned incomplete; see PR tracking comment for outstanding items.`
+        : `ship halted at step ${String(childStepIndex)} (${parent.workflow_name} → ${child.workflow_name}) — see server logs for details.`;
       postCommit = {
         enqueue: null,
         parentRunId: parent.id,
         parentTerminal: {
           status: "failed",
-          // Do NOT inline `result.reason` — handlers persist raw error
-          // strings in `reason` for DB+log forensics, and that surface is
-          // public on GitHub. The DB carries the raw reason via the
-          // `failedReason` patch above.
-          humanMessage: `ship halted at step ${String(childStepIndex)} (${parent.workflow_name} → ${child.workflow_name}) — see server logs for details.`,
+          // Do NOT inline `result.reason` for the generic-failed branch —
+          // handlers persist raw error strings in `reason` for DB+log
+          // forensics and that surface is public on GitHub. The
+          // `incomplete:` prefix is a private executor-internal marker
+          // (set by `workflow-executor.ts`); the message above does not
+          // include the reason payload itself, only flags the class.
+          humanMessage,
         },
       };
       return;
