@@ -39,6 +39,13 @@ export function buildPrompt(
   const sections = formatAllSections(data, ctx.isPR);
   const triggerComment = sanitizeContent(ctx.triggerBody);
   const truncationBanner = buildTruncationBanner(data);
+  // `data.baseBranch` is interpolated into instruction text below (NOT inside
+  // an `<untrusted_*>` tag). The CLAUDE.md security invariant requires every
+  // attacker-controllable string crossing into `buildPrompt` to pass through
+  // `sanitizeContent` — apply it here so the invariant holds verbatim at every
+  // interpolation site, not just the formatter-helper one.
+  const sanitizedBaseBranch =
+    data.baseBranch !== undefined ? sanitizeContent(data.baseBranch) : undefined;
 
   // Sanitize the trigger username before it lands in the git Co-authored-by
   // trailer below. A newline in a username would forge an additional trailer
@@ -65,10 +72,10 @@ export function buildPrompt(
 
   // PR-specific diff instructions
   const diffInstructions =
-    ctx.isPR && data.baseBranch !== undefined
+    ctx.isPR && sanitizedBaseBranch !== undefined
       ? `
-   - For PR reviews: the PR base branch is 'origin/${data.baseBranch}'
-   - To see PR changes: use 'git diff origin/${data.baseBranch}...HEAD' or 'git log origin/${data.baseBranch}..HEAD'`
+   - For PR reviews: the PR base branch is 'origin/${sanitizedBaseBranch}'
+   - To see PR changes: use 'git diff origin/${sanitizedBaseBranch}...HEAD' or 'git log origin/${sanitizedBaseBranch}..HEAD'`
       : "";
 
   // Commit instructions: we use git CLI since the repo is cloned locally
@@ -164,7 +171,7 @@ ${ctx.repoMemory.map((m) => `[id:${m.id}] [${m.category}]${m.pinned ? " [pinned]
 Your task is to analyze the context, understand the request, and provide helpful responses and/or implement code changes as needed.
 
 IMPORTANT CLARIFICATIONS:
-- When asked to "review" code, read the code and provide review feedback (do not implement changes unless explicitly asked)${ctx.isPR ? "\n- For PR reviews: Your review will be posted when you update the comment. Focus on providing comprehensive review feedback." : ""}${ctx.isPR && data.baseBranch !== undefined ? `\n- When comparing PR changes, use 'origin/${data.baseBranch}' as the base reference` : ""}
+- When asked to "review" code, read the code and provide review feedback (do not implement changes unless explicitly asked)${ctx.isPR ? "\n- For PR reviews: Your review will be posted when you update the comment. Focus on providing comprehensive review feedback." : ""}${ctx.isPR && sanitizedBaseBranch !== undefined ? `\n- When comparing PR changes, use 'origin/${sanitizedBaseBranch}' as the base reference` : ""}
 - Your console outputs and tool results are NOT visible to the user
 - ALL communication happens through your GitHub comment - that's how users see your feedback, answers, and progress. Your normal responses are not seen.
 
@@ -247,7 +254,7 @@ ${ctx.isPR ? `- Always push to the existing branch when triggered on a PR.` : ""
   - Push to remote: Bash(git push origin HEAD) (NEVER force push)
   - Delete files: Bash(git rm <files>) followed by commit and push
   - Check status: Bash(git status)
-  - View diff: Bash(git diff)${ctx.isPR && data.baseBranch !== undefined ? `\n  - IMPORTANT: For PR diffs, use: Bash(git diff origin/${data.baseBranch}...HEAD)` : ""}
+  - View diff: Bash(git diff)${ctx.isPR && sanitizedBaseBranch !== undefined ? `\n  - IMPORTANT: For PR diffs, use: Bash(git diff origin/${sanitizedBaseBranch}...HEAD)` : ""}
 - Display the todo list as a checklist in the GitHub comment and mark things off as you go.
 - REPOSITORY SETUP INSTRUCTIONS: The repository's CLAUDE.md file(s) contain critical repo-specific setup instructions, development guidelines, and preferences. Always read and follow these files.
 - Use h3 headers (###) for section titles in your comments, not h1 headers (#).

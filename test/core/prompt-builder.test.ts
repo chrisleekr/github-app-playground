@@ -143,6 +143,25 @@ describe("buildPrompt", () => {
     expect(() => buildPrompt(ctx, makeIssueData(), 1)).toThrow(/illegal whitespace\/newline/);
   });
 
+  it("strips bidi/zero-width disguise chars from baseBranch at the prompt-instructions interpolation sites (not just inside the formatted_context block)", () => {
+    // `data.baseBranch` is interpolated into git instruction text OUTSIDE the
+    // `<untrusted_*>` spotlit tags (`origin/${baseBranch}` in diff/commit
+    // instructions). GitHub ref-name validation blocks whitespace and `..`
+    // but does NOT block Unicode bidi-override / zero-width chars, so a
+    // forked PR with a crafted base branch could otherwise reach the agent
+    // prompt verbatim. The CLAUDE.md "Input sanitization chokepoint"
+    // invariant requires sanitizeContent at every interpolation site —
+    // this test pins that down.
+    const ctx = makeBotContext({ isPR: true });
+    const data = makePrData({ baseBranch: "main\u202E\u200B" });
+    const result = buildPrompt(ctx, data, 1);
+
+    expect(result).not.toContain("\u202E");
+    expect(result).not.toContain("\u200B");
+    // The visible base ref name still appears (sanitized).
+    expect(result).toContain("origin/main");
+  });
+
   it("strips bidi/zero-width disguise chars from a malicious filename so a counterfeit </untrusted_changed_files> tag breakout cannot hide inside the spotlit block", () => {
     // A crafted filename combining bidi RTL override + zero-width space + a
     // counterfeit closing tag. The disguise chars are the load-bearing part
