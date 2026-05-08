@@ -154,6 +154,34 @@ describe("formatChangedFiles", () => {
   it("returns 'No files changed' for empty array", () => {
     expect(formatChangedFiles([])).toBe("No files changed");
   });
+
+  it("strips U+202E (RTL override) from filename", () => {
+    const files: ChangedFileData[] = [
+      { filename: "evil\u202E.ts", status: "modified", additions: 1, deletions: 0 },
+    ];
+    const result = formatChangedFiles(files);
+    expect(result).not.toContain("\u202E");
+    expect(result).toContain("evil.ts");
+  });
+
+  it("strips U+200B (zero-width space) from filename", () => {
+    const files: ChangedFileData[] = [
+      { filename: "evil\u200B.ts", status: "modified", additions: 1, deletions: 0 },
+    ];
+    const result = formatChangedFiles(files);
+    expect(result).not.toContain("\u200B");
+    expect(result).toContain("evil.ts");
+  });
+
+  it("redacts a ghp_ token embedded in filename", () => {
+    const token = `ghp_${"A".repeat(36)}`;
+    const files: ChangedFileData[] = [
+      { filename: `${token}.ts`, status: "modified", additions: 1, deletions: 0 },
+    ];
+    const result = formatChangedFiles(files);
+    expect(result).toContain("[REDACTED_GITHUB_TOKEN]");
+    expect(result).not.toContain(token);
+  });
 });
 
 describe("formatBody", () => {

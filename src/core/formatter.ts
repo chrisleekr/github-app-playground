@@ -80,7 +80,17 @@ export function formatChangedFiles(files: ChangedFileData[]): string {
   if (files.length === 0) return "No files changed";
 
   return files
-    .map((f) => `- ${f.filename} (${f.status}) +${f.additions}/-${f.deletions}`)
+    .map((f) => {
+      // Filename is attacker-controllable PR diff metadata (verbatim from
+      // GitHub GraphQL `files.nodes.path`) and lands inside the spotlit
+      // `<untrusted_changed_files>` tag. Sanitize for parity with the
+      // review-comment path above to strip zero-width / bidi-override /
+      // control characters, hidden HTML attributes, and known-format
+      // secrets that could disguise tag-text breakouts. Plain-ASCII
+      // counterfeit tags are not addressed here (Phase 1 caveat).
+      const filename = sanitizeContent(f.filename);
+      return `- ${filename} (${f.status}) +${f.additions}/-${f.deletions}`;
+    })
     .join("\n");
 }
 
