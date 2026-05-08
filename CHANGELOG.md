@@ -1,3 +1,10 @@
+## [1.11.1](https://github.com/chrisleekr/github-app-playground/compare/v1.11.0...v1.11.1) (2026-05-08)
+
+
+### Bug Fixes
+
+* **tracking-mirror:** idempotent setState with marker-based orphan adoption ([#109](https://github.com/chrisleekr/github-app-playground/issues/109)) ([#111](https://github.com/chrisleekr/github-app-playground/issues/111)) ([7e44417](https://github.com/chrisleekr/github-app-playground/commit/7e44417e9e4e9335f6ef95b5ba922df0ebda6dbf))
+
 # [1.11.0](https://github.com/chrisleekr/github-app-playground/compare/v1.10.2...v1.11.0) (2026-05-07)
 
 
