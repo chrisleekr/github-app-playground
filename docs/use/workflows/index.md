@@ -22,6 +22,7 @@ Six workflows are registered today (`src/workflows/registry.ts`). Each has a sin
 - **The bot never merges.** No workflow calls `pulls.merge` or posts an `APPROVE` / `REQUEST_CHANGES` review. Static guard at `scripts/check-no-destructive-actions.ts`.
 - **Always-rebase semantics.** PR-side workflows (`review`, `resolve`, `ship`) rebase the branch onto base before reading the diff if it is behind, then `git push --force-with-lease`. Fork PRs cannot be force-pushed by the bot — it asks the contributor to rebase and proceeds against the stale head.
 - **One Markdown artifact, one tracking comment.** Each run captures `<NAME>.md` from the working tree before cleanup and embeds it verbatim in the tracking comment.
+- **Tracking comments are idempotent.** Every tracking comment carries a hidden `<!-- workflow-run:{id} -->` marker. `setState()` in `src/workflows/tracking-mirror.ts` scans for the marker before posting, adopts any pre-existing comment found (e.g. after an octokit retry that silently duplicated a `POST`, or a pod restart between create and CAS reservation), and reconciles duplicates after create — keeping a single canonical comment per run regardless of transient API failures.
 - **Cost is visible.** Every workflow records `cost_usd`, `turns`, and `wall_clock_ms` on the run row. The shepherding lifecycle exposes cumulative spend in the tracking comment header.
 
 ## Trigger-comment intent classifier
