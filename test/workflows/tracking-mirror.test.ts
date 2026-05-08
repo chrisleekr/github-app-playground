@@ -5,8 +5,10 @@ import pino from "pino";
 import type { WorkflowRunRow } from "../../src/workflows/runs-store";
 
 // Mock the runs-store DB layer so the tracking-mirror exercises pure logic
-// without touching Postgres. Each test seeds the mocks via the exported
-// `setMockRow` / `setMockReservation` helpers below.
+// without touching Postgres. Each test seeds the mocks by mutating the
+// module-scoped `mockRow` / `mockReservation` locals before calling
+// `setState`; the mock factories below close over those bindings and
+// re-read them on every call.
 let mockRow: WorkflowRunRow | null = null;
 let mockReservation: { won: boolean; trackingCommentId: number } = {
   won: true,
@@ -75,8 +77,22 @@ function makeOctokit(opts: {
   });
   const updateComment = mock(() => Promise.resolve({ data: {} }));
   const deleteComment = mock(() => Promise.resolve({ data: {} }));
+  // Single-page paginate stub: source uses octokit.paginate(listComments, params),
+  // which under the real client follows Link headers. Our mocks return one page
+  // with no Link header, so paginate is equivalent to "call endpoint once and
+  // return .data". This keeps the listComments mock the call-shape source of
+  // truth for assertions while letting the source-side pagination call land.
+  const octokitRef: { paginate?: (ep: unknown, params: unknown) => Promise<unknown> } = {};
+  octokitRef.paginate = async (
+    endpoint: (params: unknown) => Promise<{ data: unknown[] }>,
+    params: unknown,
+  ): Promise<unknown[]> => {
+    const resp = await endpoint(params);
+    return resp.data;
+  };
   const calls: OctokitCallLog = { createComment, updateComment, deleteComment, listComments };
   const octokit = {
+    paginate: octokitRef.paginate,
     rest: { issues: { createComment, updateComment, deleteComment, listComments } },
   } as unknown as Octokit;
   return { octokit, calls };
@@ -273,6 +289,58 @@ describe("tracking-mirror.setState — first-touch create/adopt path", () => {
     expect(args?.owner).toBe("acme");
     expect(args?.repo).toBe("widgets");
     expect(args?.issue_number).toBe(42);
+    // Regression-lock: GitHub's per-issue listComments endpoint silently
+    // ignores `direction` and `sort` (only `since` / `per_page` / `page`
+    // are honoured). A future contributor adding either would create a
+    // false-confidence ordering assumption — fail the test instead.
+    expect(args).not.toHaveProperty("direction");
+    expect(args).not.toHaveProperty("sort");
+  });
+
+  it("lost-CAS: another racer reserved a different comment id — adopts the canonical, deletes our orphan", async () => {
+    // Concurrent first-touch race: post-create scan finds two markers
+    // (1010, 1011). Our code picks 1010 as candidate, but the CAS reveals
+    // a concurrent racer already reserved 1011. The fix's invariant: never
+    // delete the canonical id. Verify (a) tryReserveTrackingCommentId is
+    // called with our candidate (1010), (b) only the non-canonical id
+    // (1010) is deleted, (c) the row carries the racer's id (1011).
+    mockRow = makeRow();
+    mockReservation = { won: false, trackingCommentId: 1011 };
+    const { octokit, calls } = makeOctokit({
+      createCommentResult: { id: 1010 },
+    });
+
+    let scanCallCount = 0;
+    const listComments = mock(() => {
+      scanCallCount += 1;
+      if (scanCallCount === 1) return Promise.resolve({ data: [] });
+      return Promise.resolve({
+        data: [
+          { id: 1010, body: `${MARKER}\nstarting`, created_at: "2026-05-08T02:57:43Z" },
+          { id: 1011, body: `${MARKER}\nstarting`, created_at: "2026-05-08T02:57:46Z" },
+        ],
+      });
+    });
+    (octokit.rest.issues as unknown as { listComments: typeof listComments }).listComments =
+      listComments;
+
+    const result = await setState(
+      { octokit, logger: SILENT_LOGGER },
+      { runId: RUN_ID, patch: {}, humanMessage: "starting" },
+    );
+
+    expect(tryReserveMock).toHaveBeenCalledWith(RUN_ID, 1010);
+    expect(calls.deleteComment).toHaveBeenCalledTimes(1);
+    const deletedIds = calls.deleteComment.mock.calls.map(
+      (c) => (c[0] as { comment_id: number }).comment_id,
+    );
+    expect(deletedIds).toEqual([1010]);
+    // Final updateComment targets the canonical (racer-reserved) id.
+    const updateArgs = calls.updateComment.mock.calls.at(-1)?.[0] as
+      | { comment_id: number }
+      | undefined;
+    expect(updateArgs?.comment_id).toBe(1011);
+    expect(result.tracking_comment_id).toBe(1011);
   });
 
   it("updates the existing comment without POST when the row already has tracking_comment_id", async () => {

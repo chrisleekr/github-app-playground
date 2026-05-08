@@ -58,24 +58,28 @@ export function renderCommentBody(row: WorkflowRunRow, humanMessage: string): st
 }
 
 /**
- * Scan recent comments on the target issue/PR for our run marker. Scoped by
- * `since=row.created_at` so we only paginate comments at-or-after this run
- * was queued — the marker is posted seconds later, comfortably inside page 1.
- * Returns oldest-first (REST API ordering on this endpoint is ascending by id).
+ * Scan comments on the target issue/PR for our run marker. Scoped by
+ * `since=row.created_at` to bound the page-1 result set, but paginates via
+ * `octokit.paginate` because `since` filters by `updated_at` (not
+ * `created_at`) — on a busy issue, comments updated since `row.created_at`
+ * can exceed 100 and push our marker comment to a later page. We must
+ * walk every page until exhausted, otherwise we'd miss the marker and
+ * post a duplicate. Returns oldest-first (this endpoint orders ascending
+ * by id within a page; pages are concatenated by octokit in order).
  */
 async function findCommentsByMarker(
   deps: TrackingMirrorDeps,
   row: WorkflowRunRow,
 ): Promise<readonly { id: number; created_at: string }[]> {
   const marker = runMarker(row.id);
-  const resp = await deps.octokit.rest.issues.listComments({
+  const all = await deps.octokit.paginate(deps.octokit.rest.issues.listComments, {
     owner: row.target_owner,
     repo: row.target_repo,
     issue_number: row.target_number,
     per_page: 100,
     since: row.created_at.toISOString(),
   });
-  return resp.data
+  return all
     .filter((c) => typeof c.body === "string" && c.body.includes(marker))
     .map((c) => ({ id: c.id, created_at: c.created_at }));
 }
@@ -206,24 +210,32 @@ async function createOrAdoptTrackingComment(
     );
   }
 
-  const winner = matches[0];
-  if (winner === undefined) {
+  const candidate = matches[0];
+  if (candidate === undefined) {
     throw new Error(
       `tracking-mirror.createOrAdoptTrackingComment: marker scan length>0 but first element undefined (run ${runId})`,
     );
   }
-  const losers = matches.slice(1);
+
+  // CAS must run BEFORE delete: otherwise a concurrent racer that already
+  // reserved a different comment id (e.g. one of our `losers`) would see
+  // its canonical comment silently deleted by us. After CAS, the canonical
+  // id is whatever the row holds — every other marker comment is a true
+  // duplicate and safe to delete.
+  const reservation = await tryReserveTrackingCommentId(runId, candidate.id);
+  const winningId = reservation.trackingCommentId;
+  const losers = matches.filter((m) => m.id !== winningId);
 
   if (losers.length > 0 || createErr !== null) {
     logger.warn(
       {
         runId,
-        winnerCommentId: winner.id,
+        winnerCommentId: winningId,
         loserCount: losers.length,
         createErr: createErr instanceof Error ? createErr.message : null,
         workflowName: row.workflow_name,
       },
-      "Reconciling duplicate tracking comments — adopting oldest, deleting extras",
+      "Reconciling duplicate tracking comments — adopting CAS winner, deleting extras",
     );
   }
 
@@ -245,9 +257,6 @@ async function createOrAdoptTrackingComment(
       );
     }
   }
-
-  const reservation = await tryReserveTrackingCommentId(runId, winner.id);
-  const winningId = reservation.trackingCommentId;
 
   if (reservation.won) {
     logger.info(
@@ -284,18 +293,24 @@ async function tryAdoptExistingMarkerComment(
   const matches = await findCommentsByMarker(deps, row);
   if (matches.length === 0) return null;
 
-  const winner = matches[0];
-  if (winner === undefined) return null;
-  const losers = matches.slice(1);
+  const candidate = matches[0];
+  if (candidate === undefined) return null;
+
+  // CAS first, delete after — see createOrAdoptTrackingComment for the
+  // race that justifies this ordering. The reservation determines the
+  // canonical id; every non-canonical marker comment is then deleted.
+  const reservation = await tryReserveTrackingCommentId(row.id, candidate.id);
+  const winningId = reservation.trackingCommentId;
+  const losers = matches.filter((m) => m.id !== winningId);
 
   logger.warn(
     {
       runId: row.id,
-      winnerCommentId: winner.id,
+      winnerCommentId: winningId,
       loserCount: losers.length,
       workflowName: row.workflow_name,
     },
-    "Pre-scan found existing tracking comment(s) for run — adopting oldest",
+    "Pre-scan found existing tracking comment(s) for run — adopting CAS winner",
   );
 
   for (const loser of losers) {
@@ -316,9 +331,6 @@ async function tryAdoptExistingMarkerComment(
       );
     }
   }
-
-  const reservation = await tryReserveTrackingCommentId(row.id, winner.id);
-  const winningId = reservation.trackingCommentId;
 
   const latest = (await findById(row.id)) ?? row;
   await octokit.rest.issues.updateComment({
