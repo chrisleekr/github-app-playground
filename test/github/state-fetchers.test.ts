@@ -141,7 +141,12 @@ describe("dispatchGithubStateTool — happy paths", () => {
     const octokit = fakeOctokit({
       rest: {
         repos: {
-          getBranchProtection: () => Promise.reject(new Error("HTTP 404 Not Found")),
+          getBranchProtection: () => {
+            // Octokit's RequestError carries a numeric `status` field.
+            const err = new Error("Not Found") as Error & { status: number };
+            err.status = 404;
+            return Promise.reject(err);
+          },
         },
       },
     });
@@ -179,6 +184,23 @@ describe("dispatchGithubStateTool — happy paths", () => {
     expect(result.isError).toBeUndefined();
     const parsed = JSON.parse(result.content) as { file_count: number };
     expect(parsed.file_count).toBe(1);
+  });
+
+  it("list_pr_comments rejects non-positive-integer page", async () => {
+    const result = await dispatchGithubStateTool(
+      { octokit: fakeOctokit({}), ...repo },
+      { id: "x", name: "list_pr_comments", input: { pr_number: 1, page: 0 } },
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content).toContain("page must be a positive integer");
+  });
+
+  it("list_pr_comments rejects non-integer page (NaN, fractional)", async () => {
+    const result = await dispatchGithubStateTool(
+      { octokit: fakeOctokit({}), ...repo },
+      { id: "x", name: "list_pr_comments", input: { pr_number: 1, page: 1.5 } },
+    );
+    expect(result.isError).toBe(true);
   });
 
   it("non-404 errors from a fetcher become is_error tool results", async () => {

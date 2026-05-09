@@ -171,5 +171,8 @@ async function runServer(): Promise<void> {
 }
 
 void runServer().catch((err: unknown) => {
+  // Fail fast so the supervisor sees the dead sidecar instead of dispatching
+  // tool calls against an unconnected server (mirrors resolve-review-thread.ts).
   console.error(err);
+  process.exit(1);
 });

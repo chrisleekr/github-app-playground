@@ -269,11 +269,11 @@ export async function runPipeline(
       mkdirSync(artifactsDir, { recursive: true });
       writeEnvFile(workDir, enrichedCtx.envVars, enrichedCtx.log);
 
-      // Default the github-state MCP server ON. Additive tool surface — the
-      // agent can fetch fresh CI rollup, check output, branch protection,
-      // PR diff, and paginated comments on demand. Workflows that shouldn't
-      // touch the API can set `enableGithubState: false`.
-      const githubStateEnabled = overrides.enableGithubState !== false;
+      // Default the github-state MCP server ON for PRs only — most of its
+      // tools require a pr_number, and on issue contexts the agent would
+      // burn API quota on "PR not found" errors. Issue-side workflows can
+      // explicitly opt in via overrides.enableGithubState=true if needed.
+      const githubStateEnabled = overrides.enableGithubState ?? enrichedCtx.isPR;
 
       const mcpServers = resolveMcpServers(
         enrichedCtx,

@@ -30,10 +30,21 @@ function truncate(text: string, max: number): { text: string; truncated: boolean
   return { text: text.slice(0, max), truncated: true };
 }
 
+// Serialise a value to JSON. If the serialised payload exceeds `max`,
+// REPLACE it with a small valid-JSON envelope describing the overflow.
+// The previous behaviour of slicing and appending a non-JSON suffix
+// produced invalid JSON that callers running JSON.parse could not read.
+// Per-tool truncation of large inner fields (diff text, check run output)
+// happens before serialisation, so this envelope is a defence-in-depth fallback.
 function serialize(value: unknown, max = MAX_TEXT_BYTES): string {
   const raw = JSON.stringify(value);
-  const { text, truncated } = truncate(raw, max);
-  return truncated ? `${text} /* …truncated */` : text;
+  if (raw.length <= max) return raw;
+  return JSON.stringify({
+    truncated: true,
+    reason: "serialised payload exceeded the per-tool byte cap",
+    original_byte_length: raw.length,
+    cap_bytes: max,
+  });
 }
 
 interface CheckRollupRow {
@@ -218,7 +229,14 @@ export async function getBranchProtection(deps: GithubStateDeps, branch: string)
     });
   } catch (err) {
     // 404 is expected for unprotected branches — return a structured payload, not an error.
-    if (err instanceof Error && /404|not.found/i.test(err.message)) {
+    // Octokit RequestError carries `status` directly; that's more reliable than
+    // matching the message string (which varies by SDK version and locale).
+    if (
+      err !== null &&
+      typeof err === "object" &&
+      "status" in err &&
+      (err as { status: unknown }).status === 404
+    ) {
       return serialize({ branch, protected: false });
     }
     throw err;
@@ -453,7 +471,16 @@ export async function dispatchGithubStateTool(
         if (typeof input.pr_number !== "number") {
           return { content: JSON.stringify({ error: "pr_number required" }), isError: true };
         }
-        const page = typeof input.page === "number" ? input.page : 1;
+        let page = 1;
+        if (input.page !== undefined) {
+          if (typeof input.page !== "number" || !Number.isInteger(input.page) || input.page < 1) {
+            return {
+              content: JSON.stringify({ error: "page must be a positive integer >= 1" }),
+              isError: true,
+            };
+          }
+          page = input.page;
+        }
         return { content: await listPrComments(deps, input.pr_number, page) };
       }
       default:

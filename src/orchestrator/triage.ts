@@ -173,13 +173,17 @@ export function buildTriagePrompt(input: TriageInput): string {
   const labelsLine = sanitizedLabels.length > 0 ? sanitizedLabels.join(", ") : "(none)";
   const sanitizedBody = sanitizeContent(input.triggerBody);
   const body = sanitizedBody.length > 2_000 ? sanitizedBody.slice(0, 2_000) : sanitizedBody;
-  return [
+  // Include PR number when this is a PR event so the model can pass it to
+  // tool calls (issue #117 — the github-state tools require pr_number).
+  const lines = [
     `Repository: ${input.owner}/${input.repo}`,
     `Event: ${input.eventName} on ${input.isPR ? "pull request" : "issue"}`,
-    `Labels: ${labelsLine}`,
-    `Trigger body:`,
-    body,
-  ].join("\n");
+  ];
+  if (input.isPR && input.prNumber !== undefined) {
+    lines.push(`PR number: ${String(input.prNumber)}`);
+  }
+  lines.push(`Labels: ${labelsLine}`, `Trigger body:`, body);
+  return lines.join("\n");
 }
 
 /**
