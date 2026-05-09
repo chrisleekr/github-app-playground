@@ -1611,7 +1611,7 @@
 <li>Runs <code>bun test</code>, <code>bun run typecheck</code>, <code>bun run lint</code> when uncertain.</li>
 <li>Only posts findings it can defend with evidence.</li>
 </ul>
-<p>Each finding is posted as an inline comment in a CodeRabbit-style three-block layout (status line, bold one-line title, prose reasoning, then a <code>**Suggested fix:**</code> line). The same shape is used by <code>resolve</code>, <code>bot:fix-thread</code>, and <code>bot:explain-thread</code> so all bot output reads consistently.</p>
+<p>Each finding is posted as an inline comment in a three-block layout (status line, bold one-line title, prose reasoning, then a <code>**Suggested fix:**</code> line). The same shape is used by <code>resolve</code>, <code>bot:fix-thread</code>, and <code>bot:chat-thread</code> (which replaced <code>bot:explain-thread</code> as the conversational executor for review threads) so all bot output reads consistently.</p>
 <table>
 <thead>
 <tr>
