@@ -69,10 +69,12 @@ export function renderProposalSupersededByEdit(): string {
 
 /**
  * Render the body for "your reaction came too late". Used when the
- * reaction-poller spots a 👍 on an expired proposal.
+ * reaction-poller spots a 👍 on an expired proposal. Caller passes
+ * the configured TTL so the message stays accurate when
+ * `chatThreadProposalTtlHours` is overridden.
  */
-export function renderProposalExpired(): string {
-  return "_The proposal expired (24h TTL). Re-ask in a fresh comment and " + "I'll re-evaluate._";
+export function renderProposalExpired(ttlHours: number): string {
+  return `_The proposal expired (${String(ttlHours)}h TTL). Re-ask in a fresh comment and I'll re-evaluate._`;
 }
 
 /**

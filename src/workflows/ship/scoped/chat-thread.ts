@@ -658,8 +658,14 @@ async function proposeAndPost(p: ProposeAndPostInput): Promise<RunChatThreadOutc
     askerLogin: p.input.principalLogin,
     ttlHours: config.chatThreadProposalTtlHours,
   });
+  const isAction = p.proposalKind.startsWith("action:");
   return {
-    mode: p.downgraded === true ? "downgraded-to-propose" : "propose-workflow",
+    mode:
+      p.downgraded === true
+        ? "downgraded-to-propose"
+        : isAction
+          ? "propose-action"
+          : "propose-workflow",
     proposalId: row.id,
     replyCommentId: replyId,
   };
@@ -827,7 +833,13 @@ async function runProposalPayload(p: RunProposalPayloadInput): Promise<void> {
     return;
   }
 
-  p.log.warn({ proposalId: p.proposal.id, kind }, "chat-thread: unknown proposal kind");
+  // Unknown kinds (e.g. action:add-label / action:cross-link before
+  // their executors are wired) MUST throw — otherwise the caller
+  // would mark the proposal `executed` for a payload that never ran,
+  // hiding the gap in our coverage. The caller's catch path posts a
+  // user-facing failure ack and leaves the row in `approved` so an
+  // operator can investigate.
+  throw new Error(`chat-thread: unhandled proposal kind ${kind}`);
 }
 
 // ─── Direct workflow dispatch (high-confidence execute-workflow) ──────────────

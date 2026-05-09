@@ -90,8 +90,15 @@ export function handleIssueComment(
       dispatchLog.error({ err }, "ship dispatchCommentSurface threw for issue_comment");
     }
 
-    if (canonicalHandled) return;
-    if (!containsTrigger(commentBody)) return;
+    if (canonicalHandled || !containsTrigger(commentBody)) {
+      // Piggyback proposal-poll BEFORE returning — even comments that
+      // didn't trigger the bot may carry an approval reply by the
+      // original asker (the user reacts 👍 and then types something
+      // unrelated). Running the poll here ensures the bot picks up
+      // pending approvals on the next webhook for this target.
+      piggybackProposalPoll(octokit, installationId, owner, repo, log);
+      return;
+    }
 
     log.info("Trigger detected in issue_comment — routing via intent classifier");
 
@@ -120,10 +127,8 @@ export function handleIssueComment(
       log.error({ err }, "dispatchByIntent threw for issue_comment");
     }
 
-    // Piggyback proposal-poll. Runs unconditionally after dispatch so
-    // even non-trigger comments (which could carry an approval reply
-    // by their author) cause the bot to re-evaluate pending proposals
-    // for this target.
+    // Piggyback proposal-poll on the trigger path too — the early-
+    // return branch above already covered the non-trigger case.
     piggybackProposalPoll(octokit, installationId, owner, repo, log);
   })();
 }

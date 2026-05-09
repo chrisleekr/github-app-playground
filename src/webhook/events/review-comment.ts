@@ -124,8 +124,13 @@ export function handleReviewComment(
       dispatchLog.error({ err }, "ship dispatchCommentSurface threw for review_comment");
     }
 
-    if (canonicalHandled) return;
-    if (!containsTrigger(commentBody)) return;
+    if (canonicalHandled || !containsTrigger(commentBody)) {
+      // See issue-comment.ts — piggyback poll runs BEFORE the early
+      // return so non-trigger comments still catch reactions made by
+      // the original asker on a prior bot proposal.
+      piggybackProposalPoll(octokit, installationId, owner, repo, log);
+      return;
+    }
 
     log.info("Trigger detected in review_comment — routing via intent classifier");
 
@@ -155,8 +160,8 @@ export function handleReviewComment(
       log.error({ err }, "dispatchByIntent threw for review_comment");
     }
 
-    // Piggyback proposal-poll: covers the "user reacts then types
-    // something" UX without waiting for the periodic scanner.
+    // Piggyback proposal-poll on the trigger path too — the early-
+    // return branch above already handles the non-trigger case.
     piggybackProposalPoll(octokit, installationId, owner, repo, log);
   })();
 }

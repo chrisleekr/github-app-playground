@@ -3,6 +3,7 @@ import type pino from "pino";
 
 import { resolveModelId } from "../ai/llm-client";
 import { config } from "../config";
+import { getDb } from "../db";
 import { getInstanceId } from "../orchestrator/instance-id";
 import { enqueueJob } from "../orchestrator/job-queue";
 import type { TriggerEventType } from "../shared/dispatch-types";
@@ -485,6 +486,30 @@ async function runChatThreadFromDispatcher(input: {
   readonly triggerEventType: TriggerEventType;
   readonly triggerInReplyToId?: number;
 }): Promise<void> {
+  // chat-thread relies on the conversation cache and chat_proposals
+  // tables for state. Inline-mode deployments (no DATABASE_URL) cannot
+  // run it — fall back to the legacy clarify-style refusal so the user
+  // gets a coherent reply instead of a hung request.
+  if (getDb() === null) {
+    input.logger.info(
+      { target: input.target },
+      "runChatThreadFromDispatcher: DATABASE_URL not configured — posting clarify refusal instead",
+    );
+    try {
+      await postRefusalComment(
+        { octokit: input.octokit, logger: input.logger },
+        { owner: input.target.owner, repo: input.target.repo, number: input.target.number },
+        "unknown",
+        "I'm not sure which workflow you'd like me to run, and conversational mode requires a database backend that this deployment isn't configured for. Try `@chrisleekr-bot bot:plan`, `bot:implement`, `bot:review`, or `bot:resolve`.",
+      );
+    } catch (err) {
+      input.logger.error(
+        { err, target: input.target },
+        "runChatThreadFromDispatcher: postRefusalComment threw on inline-mode fallback",
+      );
+    }
+    return;
+  }
   try {
     const llm = getTriageLLMClient();
     const modelId = resolveModelId(config.triageModel, llm.provider);

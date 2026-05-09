@@ -202,10 +202,13 @@ export interface CanonicalCommand {
    */
   readonly comment_body?: string;
   /**
-   * REST id of the triggering comment. Set on comment surfaces. For
-   * review-comment triggers this is the same numeric value as
-   * `thread_id` (both come from `payload.comment.id`); top-level
-   * issue/PR comments only carry `trigger_comment_id`.
+   * REST id of the triggering comment (always `payload.comment.id`).
+   * Set on comment surfaces. NOTE: this differs from `thread_id` on
+   * review-comment replies — `thread_id` resolves to the top-level
+   * comment via `payload.comment.in_reply_to_id ?? payload.comment.id`
+   * so the cache and chat_proposals row scope to the thread root, not
+   * the individual reply. The two ids only coincide when the comment
+   * itself starts a thread.
    */
   readonly trigger_comment_id?: number;
 }

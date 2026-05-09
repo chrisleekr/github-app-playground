@@ -58,9 +58,15 @@ describe("proposal-template", () => {
 
   describe("renderProposalExpired", () => {
     it("notes the TTL expiry and prompts a fresh ask", () => {
-      const body = renderProposalExpired();
+      const body = renderProposalExpired(24);
       expect(body).toContain("expired");
+      expect(body).toContain("24h");
       expect(body).toContain("Re-ask");
+    });
+
+    it("uses the caller-supplied TTL in the message body", () => {
+      const body = renderProposalExpired(48);
+      expect(body).toContain("48h");
     });
   });
 
