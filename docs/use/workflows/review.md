@@ -21,7 +21,7 @@ The agent operates as a senior engineer:
 - Runs `bun test`, `bun run typecheck`, `bun run lint` when uncertain.
 - Only posts findings it can defend with evidence.
 
-Each finding is posted as an inline comment in a CodeRabbit-style three-block layout (status line, bold one-line title, prose reasoning, then a `**Suggested fix:**` line). The same shape is used by `resolve`, `bot:fix-thread`, and `bot:explain-thread` so all bot output reads consistently.
+Each finding is posted as an inline comment in a CodeRabbit-style three-block layout (status line, bold one-line title, prose reasoning, then a `**Suggested fix:**` line). The same shape is used by `resolve`, `bot:fix-thread`, and `bot:chat-thread` (which replaced `bot:explain-thread` as the conversational executor for review threads) so all bot output reads consistently.
 
 | Severity | Inline-comment status line             | REVIEW.md tag | Meaning                                             |
 | -------- | -------------------------------------- | ------------- | --------------------------------------------------- |

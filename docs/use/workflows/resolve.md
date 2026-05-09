@@ -28,7 +28,7 @@ Reviewer-thread replies are posted via `gh api repos/<owner>/<repo>/pulls/<num>/
 
 ### Reply body format
 
-All four classifications use the same shape so bot replies look consistent across `resolve`, `review`, `bot:fix-thread`, and `bot:explain-thread`:
+All four classifications use the same shape so bot replies look consistent across `resolve`, `review`, `bot:fix-thread`, and `bot:chat-thread` (the conversational executor that subsumed the former `bot:explain-thread`):
 
 ```markdown
 <STATUS_LINE>

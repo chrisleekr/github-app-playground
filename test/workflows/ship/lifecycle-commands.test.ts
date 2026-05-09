@@ -141,6 +141,9 @@ describe.skipIf(sql === null)("lifecycle commands (T055 + T058a)", () => {
     delete process.env["ALLOWED_OWNERS"];
     await requireSql().unsafe(`
       DROP TABLE IF EXISTS _migrations CASCADE;
+      DROP TABLE IF EXISTS comment_cache CASCADE;
+      DROP TABLE IF EXISTS target_cache CASCADE;
+      DROP TABLE IF EXISTS chat_proposals CASCADE;
       DROP TABLE IF EXISTS ship_fix_attempts CASCADE;
       DROP TABLE IF EXISTS ship_continuations CASCADE;
       DROP TABLE IF EXISTS ship_iterations CASCADE;
@@ -159,6 +162,9 @@ describe.skipIf(sql === null)("lifecycle commands (T055 + T058a)", () => {
     if (ORIGINAL_ALLOWED !== undefined) process.env["ALLOWED_OWNERS"] = ORIGINAL_ALLOWED;
     await requireSql().unsafe(`
       DROP TABLE IF EXISTS _migrations CASCADE;
+      DROP TABLE IF EXISTS comment_cache CASCADE;
+      DROP TABLE IF EXISTS target_cache CASCADE;
+      DROP TABLE IF EXISTS chat_proposals CASCADE;
       DROP TABLE IF EXISTS ship_fix_attempts CASCADE;
       DROP TABLE IF EXISTS ship_continuations CASCADE;
       DROP TABLE IF EXISTS ship_iterations CASCADE;

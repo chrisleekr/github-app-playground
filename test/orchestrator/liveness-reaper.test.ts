@@ -42,6 +42,9 @@ describe.skipIf(sql === null)("liveness-reaper", () => {
 
     await requireSql().unsafe(`
       DROP TABLE IF EXISTS _migrations CASCADE;
+      DROP TABLE IF EXISTS comment_cache CASCADE;
+      DROP TABLE IF EXISTS target_cache CASCADE;
+      DROP TABLE IF EXISTS chat_proposals CASCADE;
       DROP TABLE IF EXISTS ship_fix_attempts CASCADE;
       DROP TABLE IF EXISTS ship_continuations CASCADE;
       DROP TABLE IF EXISTS ship_iterations CASCADE;
@@ -61,6 +64,9 @@ describe.skipIf(sql === null)("liveness-reaper", () => {
     closeValkey();
     await requireSql().unsafe(`
       DROP TABLE IF EXISTS _migrations CASCADE;
+      DROP TABLE IF EXISTS comment_cache CASCADE;
+      DROP TABLE IF EXISTS target_cache CASCADE;
+      DROP TABLE IF EXISTS chat_proposals CASCADE;
       DROP TABLE IF EXISTS ship_fix_attempts CASCADE;
       DROP TABLE IF EXISTS ship_continuations CASCADE;
       DROP TABLE IF EXISTS ship_iterations CASCADE;
