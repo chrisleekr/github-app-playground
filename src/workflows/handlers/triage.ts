@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { z } from "zod";
 
+import { parseStructuredResponse } from "../../ai/structured-output";
 import { checkoutRepo } from "../../core/checkout";
 import { executeAgent } from "../../core/executor";
 import type { BotContext } from "../../types";
@@ -156,13 +157,14 @@ export const handler: WorkflowHandler = async (ctx) => {
       return { status: "failed", reason: "triage agent did not produce TRIAGE_VERDICT.json" };
     }
 
-    let verdict: Verdict;
-    try {
-      verdict = verdictSchema.parse(JSON.parse(verdictRaw));
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { status: "failed", reason: `TRIAGE_VERDICT.json failed validation: ${message}` };
+    const verdictResult = parseStructuredResponse(verdictRaw, verdictSchema);
+    if (!verdictResult.ok) {
+      return {
+        status: "failed",
+        reason: `TRIAGE_VERDICT.json failed ${verdictResult.stage}: ${verdictResult.error}`,
+      };
     }
+    const verdict: Verdict = verdictResult.data;
 
     const humanMessage = composeComment(report, verdict, result);
     const state = {

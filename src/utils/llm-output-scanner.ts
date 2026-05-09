@@ -19,7 +19,10 @@
  * Off-switched via `LLM_OUTPUT_SCANNER_ENABLED=false`.
  */
 
+import { z } from "zod";
+
 import { createLLMClient, type LLMClient, resolveModelId } from "../ai/llm-client";
+import { parseStructuredResponse, withStructuredRules } from "../ai/structured-output";
 import { config } from "../config";
 
 export interface LlmScanResult {
@@ -79,37 +82,17 @@ Respond with ONLY a single JSON object matching this exact schema, no prose, no 
 If you are uncertain, prefer false positives over false negatives — err toward redacting.`;
 }
 
-interface ParsedResponse {
-  contains_secret: boolean;
-  kinds: string[];
-  redacted_body: string;
-}
+const ScannerResponseSchema = z.object({
+  contains_secret: z.boolean(),
+  kinds: z.array(z.string()),
+  redacted_body: z.string(),
+});
+
+type ParsedResponse = z.infer<typeof ScannerResponseSchema>;
 
 function parseScannerJson(raw: string): ParsedResponse | undefined {
-  const trimmed = raw.trim();
-  // Strip optional code fences just in case the model emits one.
-  const fenced = /^```(?:json)?\s*([\s\S]+?)\s*```$/.exec(trimmed);
-  const candidate = fenced?.[1] ?? trimmed;
-  try {
-    const parsed: unknown = JSON.parse(candidate);
-    if (
-      typeof parsed === "object" &&
-      parsed !== null &&
-      "contains_secret" in parsed &&
-      "redacted_body" in parsed &&
-      "kinds" in parsed &&
-      typeof (parsed as { contains_secret: unknown }).contains_secret === "boolean" &&
-      typeof (parsed as { redacted_body: unknown }).redacted_body === "string" &&
-      Array.isArray((parsed as { kinds: unknown }).kinds)
-    ) {
-      const obj = parsed as ParsedResponse;
-      const kinds = obj.kinds.filter((k): k is string => typeof k === "string");
-      return { contains_secret: obj.contains_secret, kinds, redacted_body: obj.redacted_body };
-    }
-  } catch {
-    return undefined;
-  }
-  return undefined;
+  const result = parseStructuredResponse(raw, ScannerResponseSchema);
+  return result.ok ? result.data : undefined;
 }
 
 async function invokeScanner(body: string): Promise<ParsedResponse> {
@@ -122,7 +105,7 @@ async function invokeScanner(body: string): Promise<ParsedResponse> {
   const tagName = `scan_target_${crypto.randomUUID().replace(/-/g, "").slice(0, 8)}`;
   const response = await client.create({
     model: modelId,
-    system: buildSystemPrompt(tagName),
+    system: withStructuredRules(buildSystemPrompt(tagName)),
     messages: [
       {
         role: "user",

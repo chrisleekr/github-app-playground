@@ -17,7 +17,7 @@ Fixes failing CI, replies to existing review threads, and pushes new commits.
 For each open reviewer comment the agent classifies as **Valid**, **Partially Valid**, **Invalid**, or **Needs Clarification**, then:
 
 - Fixes valid ones with new commits.
-- Replies to all four classes appropriately, in the same CodeRabbit-style three-block layout (status line, bold one-line title, prose reasoning).
+- Replies to all four classes appropriately, in the same three-block layout (status line, bold one-line title, prose reasoning).
 - Marks the thread resolved (Valid / Partially Valid only) via the `resolve-review-thread` MCP tool after the reply lands.
 - Fixes failing CI when there is a clear root cause.
 - Polls CI after the final commit and does not exit until all checks return to green (or the per-iteration `FIX_ATTEMPTS_CAP=3` is exhausted, in which case the unresolved failure is recorded under `## Outstanding` in `RESOLVE.md`).

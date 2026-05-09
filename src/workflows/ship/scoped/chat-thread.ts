@@ -40,6 +40,7 @@ import type { Octokit } from "octokit";
 import type { Logger } from "pino";
 import { z } from "zod";
 
+import { parseStructuredResponse, withStructuredRules } from "../../../ai/structured-output";
 import { config } from "../../../config";
 import {
   backfillFromGitHub,
@@ -119,7 +120,7 @@ Action payload shapes:
 Mode picker:
   - answer            — the user is asking a question or chatting; you can answer it from the
                         provided context. Reply with the answer in markdown. NO action.
-                        For pure code explanations, format the reply as CodeRabbit-style:
+                        For pure code explanations, format the reply as a 3-block layout:
                         first line "_💡 Explanation_", blank, then **summary**, blank, body.
   - decline           — the ask is out of scope, or there's nothing actionable AND nothing to
                         explain (e.g., "make it ready to merge" on a PR with green CI and zero
@@ -330,7 +331,7 @@ export async function runChatThread(input: RunChatThreadInput): Promise<RunChatT
   let raw: string;
   try {
     raw = await input.callLlm({
-      systemPrompt: CHAT_THREAD_SYSTEM_PROMPT,
+      systemPrompt: withStructuredRules(CHAT_THREAD_SYSTEM_PROMPT),
       userPrompt,
     });
   } catch (err) {
@@ -346,10 +347,18 @@ export async function runChatThread(input: RunChatThreadInput): Promise<RunChatT
     return { mode: "skipped", reason: "llm-error" };
   }
 
-  // Parse + validate.
-  const parsed = parseChatThreadOutput(raw);
-  if (parsed === null) {
-    log.warn({ raw: raw.slice(0, 500) }, "chat-thread: LLM output failed Zod validation");
+  // Parse + validate via the structured-output pipeline.
+  const result = parseStructuredResponse(raw, ChatThreadOutputSchema);
+  if (!result.ok) {
+    log.warn(
+      {
+        stage: result.stage,
+        error: result.error,
+        rawLen: raw.length,
+        raw: raw.slice(0, 8000),
+      },
+      "chat-thread: LLM output failed structured-output pipeline",
+    );
     await postReply({
       input,
       log,
@@ -357,28 +366,15 @@ export async function runChatThread(input: RunChatThreadInput): Promise<RunChatT
     });
     return { mode: "skipped", reason: "parse-error" };
   }
+  if (result.strategy === "tolerant") {
+    log.info(
+      { rawLen: raw.length },
+      "chat-thread: structured-output recovered via tolerant parser",
+    );
+  }
 
   // Dispatch on mode.
-  return dispatchOutput({ input, log, output: parsed, pendingProposal });
-}
-
-// ─── LLM output parsing ───────────────────────────────────────────────────────
-
-function parseChatThreadOutput(raw: string): ChatThreadOutput | null {
-  // Strip a single leading and trailing markdown code fence.
-  const fencePattern = /^```(?:json)?\s*\n([\s\S]*?)\n```\s*$/;
-  const text = raw.trim();
-  const match = fencePattern.exec(text);
-  const jsonText = match?.[1] ?? text;
-  let json: unknown;
-  try {
-    json = JSON.parse(jsonText);
-  } catch {
-    return null;
-  }
-  const parsed = ChatThreadOutputSchema.safeParse(json);
-  if (!parsed.success) return null;
-  return parsed.data;
+  return dispatchOutput({ input, log, output: result.data, pendingProposal });
 }
 
 // ─── User prompt builder ──────────────────────────────────────────────────────
@@ -760,6 +756,71 @@ interface RunProposalPayloadInput {
 }
 
 /**
+ * GraphQL helpers for the `resolve-thread` action.
+ *
+ * The propose-action payload carries `thread_id` as the REST review-comment
+ * databaseId (numeric, stringified) — that's what the chat-thread prompt
+ * surfaces to the agent via `<thread_id>`. The `resolveReviewThread`
+ * mutation needs the GraphQL thread node-id instead, so we list the PR's
+ * review threads and match by databaseId of the thread's first comment.
+ */
+const FIND_REVIEW_THREAD_QUERY = `
+  query FindThreadByCommentId($owner: String!, $repo: String!, $pr: Int!) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $pr) {
+        reviewThreads(first: 100) {
+          nodes {
+            id
+            isResolved
+            comments(first: 1) { nodes { databaseId } }
+          }
+        }
+      }
+    }
+  }
+`;
+
+const RESOLVE_REVIEW_THREAD_MUTATION = `
+  mutation ResolveReviewThread($threadId: ID!) {
+    resolveReviewThread(input: { threadId: $threadId }) {
+      thread { id isResolved }
+    }
+  }
+`;
+
+interface FindReviewThreadResponse {
+  repository: {
+    pullRequest: {
+      reviewThreads: {
+        nodes: {
+          id: string;
+          isResolved: boolean;
+          comments: { nodes: { databaseId: number }[] };
+        }[];
+      };
+    } | null;
+  } | null;
+}
+
+export async function findReviewThreadByCommentId(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  prNumber: number,
+  commentDatabaseId: number,
+): Promise<{ threadNodeId: string; alreadyResolved: boolean } | null> {
+  const data = await octokit.graphql<FindReviewThreadResponse>(FIND_REVIEW_THREAD_QUERY, {
+    owner,
+    repo,
+    pr: prNumber,
+  });
+  const threads = data.repository?.pullRequest?.reviewThreads.nodes ?? [];
+  const match = threads.find((t) => t.comments.nodes[0]?.databaseId === commentDatabaseId);
+  if (match === undefined) return null;
+  return { threadNodeId: match.id, alreadyResolved: match.isResolved };
+}
+
+/**
  * Run the payload for an approved proposal. Action kinds run inline
  * via Octokit; workflow kinds enqueue a workflow_run via the legacy
  * dispatcher's helpers.
@@ -782,12 +843,43 @@ async function runProposalPayload(p: RunProposalPayloadInput): Promise<void> {
 
   if (kind === "action:resolve-thread") {
     const payload = ResolveThreadPayloadSchema.parse(p.proposal.payload);
-    p.log.info(
-      { proposalId: p.proposal.id, thread_id: payload.thread_id },
-      "chat-thread: resolve-thread approved — wiring to MCP resolveReviewThread is a follow-up",
+    const commentId = Number(payload.thread_id);
+    if (!Number.isInteger(commentId) || commentId <= 0) {
+      throw new Error(
+        `resolve-thread: invalid thread_id "${payload.thread_id}" — expected numeric review-comment id`,
+      );
+    }
+    const found = await findReviewThreadByCommentId(
+      p.input.octokit,
+      p.proposal.owner,
+      p.proposal.repo,
+      p.proposal.target_number,
+      commentId,
     );
-    // The MCP `resolve-review-thread` server is daemon-side; v1 logs
-    // intent only. A follow-up wires the GraphQL mutation here.
+    if (found === null) {
+      throw new Error(
+        `resolve-thread: no review thread on PR #${p.proposal.target_number} contains comment ${commentId}`,
+      );
+    }
+    if (found.alreadyResolved) {
+      p.log.info(
+        { proposalId: p.proposal.id, threadNodeId: found.threadNodeId },
+        "chat-thread: resolve-thread — thread already resolved, no-op",
+      );
+      return;
+    }
+    await p.input.octokit.graphql<{ resolveReviewThread: { thread: { id: string } } }>(
+      RESOLVE_REVIEW_THREAD_MUTATION,
+      { threadId: found.threadNodeId },
+    );
+    p.log.info(
+      {
+        proposalId: p.proposal.id,
+        thread_id: payload.thread_id,
+        threadNodeId: found.threadNodeId,
+      },
+      "chat-thread: resolve-thread ran",
+    );
     return;
   }
 

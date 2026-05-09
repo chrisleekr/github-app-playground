@@ -1,5 +1,5 @@
 -- Migration 010: chat_proposals — proposal state machine for the
--- `chat-thread` scoped intent (CodeRabbit-style propose → confirm →
+-- `chat-thread` scoped intent (propose → confirm →
 -- execute UX for freeform conversations on PRs and issues).
 --
 -- A row is inserted whenever the chat-thread executor emits

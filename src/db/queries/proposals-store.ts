@@ -161,7 +161,7 @@ export async function insertProposal(input: InsertProposalInput): Promise<ChatPr
     ) VALUES (
       ${input.owner}, ${input.repo}, ${input.targetType}, ${input.targetNumber},
       ${input.threadId},
-      ${input.proposalCommentId}, ${input.proposalKind}, ${JSON.stringify(input.payload)}::jsonb,
+      ${input.proposalCommentId}, ${input.proposalKind}, ${input.payload}::jsonb,
       ${input.askerLogin}, 'awaiting', ${expiresAt}
     )
     RETURNING *

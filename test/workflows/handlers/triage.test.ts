@@ -187,7 +187,7 @@ describe("triage handler (SDK-driven)", () => {
 
     expect(result.status).toBe("failed");
     if (result.status === "failed") {
-      expect(result.reason).toContain("TRIAGE_VERDICT.json failed validation");
+      expect(result.reason).toContain("TRIAGE_VERDICT.json failed validate");
     }
   });
 
@@ -250,7 +250,7 @@ describe("triage handler (SDK-driven)", () => {
 
     expect(result.status).toBe("failed");
     if (result.status === "failed") {
-      expect(result.reason).toContain("TRIAGE_VERDICT.json failed validation");
+      expect(result.reason).toContain("TRIAGE_VERDICT.json failed parse");
     }
   });
 
@@ -281,7 +281,7 @@ describe("triage handler (SDK-driven)", () => {
     }
   });
 
-  it("rejects evidence entries that have neither file nor note", async () => {
+  it("rejects evidence entries that have neither file nor note (validate)", async () => {
     triageVerdict = JSON.stringify({
       valid: true,
       confidence: 0.9,
@@ -296,7 +296,7 @@ describe("triage handler (SDK-driven)", () => {
 
     expect(result.status).toBe("failed");
     if (result.status === "failed") {
-      expect(result.reason).toContain("TRIAGE_VERDICT.json failed validation");
+      expect(result.reason).toContain("TRIAGE_VERDICT.json failed validate");
     }
   });
 

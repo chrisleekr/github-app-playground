@@ -1,5 +1,5 @@
 /**
- * Bot reply formatter — emits the CodeRabbit-style 3-block layout
+ * Bot reply formatter — emits the standard 3-block layout
  * shared by every bot reply surface (resolve, review, fix-thread,
  * explain-thread). Format: `<status>[meta]` line, blank, bold title,
  * blank, prose reasoning.

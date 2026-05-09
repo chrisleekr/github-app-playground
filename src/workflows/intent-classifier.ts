@@ -2,6 +2,7 @@ import type pino from "pino";
 import { z } from "zod";
 
 import { createLLMClient, type LLMClient, resolveModelId } from "../ai/llm-client";
+import { parseStructuredResponse, withStructuredRules } from "../ai/structured-output";
 import { config } from "../config";
 import { logger as rootLogger } from "../logger";
 import { WorkflowNameSchema } from "./registry";
@@ -50,9 +51,9 @@ const SYSTEM_PROMPT = [
   "  - review:     proactive senior-dev code review of an open PR — finds bugs and posts inline findings (use this when the user says 'review' or 'code review')",
   "  - resolve:    fix CI failures and respond to existing reviewer comments on an open PR (use this when the user says 'fix', 'address feedback', or 'fix CI')",
   "  - ship:       triage → plan → implement → review → resolve end-to-end",
-  "  - chat-thread: the user is having a freeform conversation — asking a question, requesting code explanation, or making an ambiguous-but-engageable ask. Pick this when no single workflow above is unambiguous AND the comment is clearly directed at the bot. The chat-thread executor will reply, propose a workflow with explicit consent, or take a small follow-up action.",
+  '  - chat-thread: freeform conversation directed at the bot — answering questions, explaining code, or proposing repo-scoped side-actions that need human sign-off. The chat-thread executor handles propose-then-confirm for: opening a follow-up issue ("can you create an issue for X?"), resolving a review thread ("please resolve this conversation"), adding a label, cross-linking related items. Pick chat-thread when the ask is repo-scoped and addressable by one of those side-actions OR is a question/explanation request.',
   "  - clarify:    use ONLY when even chat-thread cannot engage — the comment is genuinely uninterpretable or empty.",
-  "  - unsupported: the ask is off-topic or beyond this bot's remit",
+  "  - unsupported: off-topic asks (creative writing, world knowledge), out-of-remit asks (real-world actions like ordering food), or fundamentally unsafe asks (deleting the repo, force-pushing to main, running arbitrary shell). NEVER pick unsupported for repo-scoped side-actions chat-thread can propose (opening issues, resolving threads, adding labels) — those go to chat-thread.",
   "",
   "Respond with STRICT JSON matching exactly this shape, no prose:",
   `{"workflow":"<one of above>","confidence":<0..1>,"rationale":"<short reason>"}`,
@@ -135,7 +136,7 @@ export async function classify(
   try {
     const response = await client.create({
       model,
-      system: SYSTEM_PROMPT,
+      system: withStructuredRules(SYSTEM_PROMPT),
       messages: [{ role: "user", content: buildUserMessage(commentBody) }],
       maxTokens: config.triageMaxTokens,
       temperature: 0,
@@ -149,40 +150,22 @@ export async function classify(
   return parseResponse(rawText, log);
 }
 
-function extractJsonObject(text: string): string | null {
-  const trimmed = text.trim();
-  if (trimmed.startsWith("{") && trimmed.endsWith("}")) return trimmed;
-  const start = trimmed.indexOf("{");
-  const end = trimmed.lastIndexOf("}");
-  if (start === -1 || end === -1 || end <= start) return null;
-  return trimmed.slice(start, end + 1);
-}
-
 function parseResponse(rawText: string, log: pino.Logger): ClassifyResult {
-  const json = extractJsonObject(rawText);
-  if (json === null) {
-    log.warn({ rawTextLength: rawText.length }, "intent-classifier: no JSON object in response");
-    return FALLBACK_CLARIFY;
-  }
-
-  let parsedJson: unknown;
-  try {
-    parsedJson = JSON.parse(json);
-  } catch (err) {
-    log.warn({ err }, "intent-classifier: response JSON.parse failed");
-    return FALLBACK_CLARIFY;
-  }
-
-  const validated = ClassifyResultSchema.safeParse(parsedJson);
-  if (!validated.success) {
+  const result = parseStructuredResponse(rawText, ClassifyResultSchema);
+  if (!result.ok) {
     log.warn(
-      { issues: validated.error.issues },
-      "intent-classifier: response failed schema validation — returning clarify",
+      { stage: result.stage, error: result.error, rawTextLength: rawText.length },
+      "intent-classifier: structured-output pipeline rejected response — returning clarify",
     );
     return FALLBACK_CLARIFY;
   }
-
-  return validated.data;
+  if (result.strategy === "tolerant") {
+    log.info(
+      { rawTextLength: rawText.length },
+      "intent-classifier: response recovered via tolerant parser",
+    );
+  }
+  return result.data;
 }
 
 /** @internal — test hook to reset the memoised client between tests. */

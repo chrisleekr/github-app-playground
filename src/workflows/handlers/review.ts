@@ -241,7 +241,7 @@ function buildReviewPrompt(input: {
     `10. **Post each finding as an inline comment.** For every issue, call \`mcp__github_inline_comment__create_inline_comment\` with:`,
     `    - \`path\`: the file path relative to repo root`,
     `    - \`line\`: the line number on the **right side** of the diff (the new code)`,
-    `    - \`body\`: a CodeRabbit-style 3-block layout (see template below)`,
+    `    - \`body\`: a 3-block layout (see template below)`,
     ``,
     `    ### Inline comment body format (MANDATORY — same shape as resolve, fix-thread, explain-thread)`,
     ``,
