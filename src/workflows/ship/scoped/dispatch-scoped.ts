@@ -21,7 +21,12 @@
 import type { Octokit } from "octokit";
 import type { Logger } from "pino";
 
-import { resolveModelId } from "../../../ai/llm-client";
+import {
+  type LLMTool,
+  type LLMToolHandler,
+  resolveModelId,
+  runWithTools,
+} from "../../../ai/llm-client";
 import { config } from "../../../config";
 import { enqueueJob } from "../../../orchestrator/job-queue";
 import type { CanonicalCommand } from "../../../shared/ship-types";
@@ -41,12 +46,31 @@ export interface ScopedCommandDeps {
 /**
  * Build the LLM-call adapter the scoped handlers expect. Reuses the
  * shared triage LLM client (Bedrock when configured, Anthropic otherwise)
- * to avoid spinning up a parallel SDK instance per command.
+ * to avoid spinning up a parallel SDK instance per command. When the
+ * caller supplies `tools` + `onToolCall`, dispatch goes through the
+ * shared `runWithTools` loop (issue #117); otherwise stays single-turn.
  */
-function buildCallLlm(): (input: { systemPrompt: string; userPrompt: string }) => Promise<string> {
+function buildCallLlm(): (input: {
+  systemPrompt: string;
+  userPrompt: string;
+  tools?: readonly LLMTool[];
+  onToolCall?: LLMToolHandler;
+}) => Promise<string> {
   const llm = getTriageLLMClient();
   const modelId = resolveModelId(config.triageModel, llm.provider);
   return async (params) => {
+    if (params.tools !== undefined && params.onToolCall !== undefined) {
+      const result = await runWithTools(llm, {
+        model: modelId,
+        system: params.systemPrompt,
+        messages: [{ role: "user", content: params.userPrompt }],
+        maxTokens: 800,
+        temperature: 0.1,
+        tools: params.tools,
+        onToolCall: params.onToolCall,
+      });
+      return result.text;
+    }
     const res = await llm.create({
       model: modelId,
       system: params.systemPrompt,

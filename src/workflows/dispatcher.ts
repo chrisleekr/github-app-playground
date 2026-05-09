@@ -1,7 +1,7 @@
 import type { Octokit } from "octokit";
 import type pino from "pino";
 
-import { resolveModelId } from "../ai/llm-client";
+import { type LLMTool, type LLMToolHandler, resolveModelId, runWithTools } from "../ai/llm-client";
 import { config } from "../config";
 import { getDb } from "../db";
 import { getInstanceId } from "../orchestrator/instance-id";
@@ -513,10 +513,26 @@ async function runChatThreadFromDispatcher(input: {
   try {
     const llm = getTriageLLMClient();
     const modelId = resolveModelId(config.triageModel, llm.provider);
+    // Tools-aware adapter for chat-thread (issue #117). Single-turn for
+    // callers without tools, runWithTools loop when tools are passed.
     const callLlm = async (params: {
       systemPrompt: string;
       userPrompt: string;
+      tools?: readonly LLMTool[];
+      onToolCall?: LLMToolHandler;
     }): Promise<string> => {
+      if (params.tools !== undefined && params.onToolCall !== undefined) {
+        const result = await runWithTools(llm, {
+          model: modelId,
+          system: params.systemPrompt,
+          messages: [{ role: "user", content: params.userPrompt }],
+          maxTokens: 1500,
+          temperature: 0.2,
+          tools: params.tools,
+          onToolCall: params.onToolCall,
+        });
+        return result.text;
+      }
       const res = await llm.create({
         model: modelId,
         system: params.systemPrompt,

@@ -459,6 +459,13 @@ const configSchema = z
     // failure and the circuit breaker's consecutive-failure counter increments.
     triageTimeoutMs: z.coerce.number().int().positive().default(5_000),
 
+    // Kill-switch for triage's tool-call path (issue #117). When false, triage
+    // stays single-turn even on PR events with octokit available — the model
+    // classifies from text alone. Operator escape hatch when GitHub API quota
+    // pressure or per-event latency tips the cost/benefit. The triage LLM
+    // call itself still runs; only the github-state tool surface is suppressed.
+    triageToolsEnabled: z.boolean().default(true),
+
     // Minimum model confidence to accept an intent-classifier verdict. Below
     // this threshold the dispatcher treats the comment as ambiguous and posts
     // a clarification request instead of dispatching (FR-009). 0.75 matches
@@ -490,6 +497,15 @@ const configSchema = z
     // to bound run-away back-and-forth on a contentious propose-loop,
     // not to limit casual conversation.
     chatThreadMaxTurns: z.coerce.number().int().positive().default(8),
+
+    // Kill-switch for chat-thread's tool-call path (issue #117). When false,
+    // chat-thread stays single-turn — the model answers from the cached
+    // <conversation> snapshot only and cannot fetch fresh CI rollup,
+    // check output, branch protection, diff, file list, or paginated
+    // comments. Operator escape hatch for cost containment or when the
+    // github-state subprocess is misbehaving. The chat-thread LLM call
+    // itself still runs.
+    chatThreadToolsEnabled: z.boolean().default(true),
 
     // --- 10b. LLM-based output scanner (defense layer 4) ---
 
@@ -872,6 +888,10 @@ function loadConfig(): Config {
 
     // Group 10 — Triage — strict boolean parsing; rejects unrecognized values at startup.
     triageEnabled: parseBooleanEnv("TRIAGE_ENABLED", process.env["TRIAGE_ENABLED"]),
+    triageToolsEnabled: parseBooleanEnv(
+      "TRIAGE_TOOLS_ENABLED",
+      process.env["TRIAGE_TOOLS_ENABLED"],
+    ),
     triageModel: process.env["TRIAGE_MODEL"],
     triageConfidenceThreshold: process.env["TRIAGE_CONFIDENCE_THRESHOLD"],
     triageMaxTokens: process.env["TRIAGE_MAX_TOKENS"],
@@ -882,6 +902,10 @@ function loadConfig(): Config {
     chatThreadExecuteThreshold: process.env["CHAT_THREAD_EXECUTE_THRESHOLD"],
     chatThreadProposalTtlHours: process.env["CHAT_THREAD_PROPOSAL_TTL_HOURS"],
     chatThreadMaxTurns: process.env["CHAT_THREAD_MAX_TURNS"],
+    chatThreadToolsEnabled: parseBooleanEnv(
+      "CHAT_THREAD_TOOLS_ENABLED",
+      process.env["CHAT_THREAD_TOOLS_ENABLED"],
+    ),
 
     // Group 10b — LLM-based output scanner
     llmOutputScannerEnabled: parseBooleanEnv(

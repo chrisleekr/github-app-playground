@@ -23,12 +23,19 @@
  * `config.defaultMaxTurns` for every job.
  */
 
+import type { Octokit } from "octokit";
 import { z } from "zod";
 
-import { estimateHaikuCostUsd, type LLMClient, resolveModelId } from "../ai/llm-client";
+import {
+  estimateHaikuCostUsd,
+  type LLMClient,
+  resolveModelId,
+  runWithTools,
+} from "../ai/llm-client";
 import { parseStructuredResponse, withStructuredRules } from "../ai/structured-output";
 import { config } from "../config";
 import { getDb } from "../db";
+import { dispatchGithubStateTool, GITHUB_STATE_TOOLS } from "../github/state-fetchers";
 import { logger } from "../logger";
 import { CircuitBreaker } from "../utils/circuit-breaker";
 import { sanitizeContent } from "../utils/sanitize";
@@ -93,7 +100,24 @@ export interface TriageInput {
   readonly isPR: boolean;
   readonly labels: readonly string[];
   readonly triggerBody: string;
+  /**
+   * Optional Octokit + PR number for tool-driven classification (issue #117).
+   * When BOTH are supplied AND the event is on a PR, triage gains the
+   * `github-state` read-only tools so the model can sample CI rollup or
+   * file-list signals before classifying. Iteration cap is conservative
+   * (2 round trips) to keep the hot-path latency bounded.
+   */
+  readonly octokit?: Octokit;
+  readonly prNumber?: number;
 }
+
+/**
+ * Hard cap on tool round-trips inside a single triage call. Triage runs
+ * on every webhook event with a strict timeout, so we trade some
+ * accuracy headroom for predictable latency. Higher than 2 is unlikely
+ * to improve triage's binary heavy/not-heavy decision.
+ */
+const TRIAGE_MAX_TOOL_ITERATIONS = 2;
 
 const SYSTEM_PROMPT = `You are a workload-intensity classifier for a GitHub-integration bot. Every request runs on the same daemon fleet; your only job is to decide whether a request is "heavy" enough that the orchestrator should spawn an extra ephemeral worker Pod to absorb it, instead of queuing it behind existing work.
 
@@ -109,7 +133,17 @@ A request is NOT HEAVY when it is a quick question, a tiny patch, a doc tweak, a
 Respond with ONLY a JSON object, no prose, matching:
 {"heavy":true|false,"confidence":0.0-1.0,"rationale":"one sentence, max 500 chars"}
 
-Confidence is your probability that \`heavy\` is correct.`;
+Confidence is your probability that \`heavy\` is correct.
+
+Tools (PR events only — absent on issues):
+  - get_pr_state_check_rollup({ pr_number }) — CI rollup. Useful when "ship" or
+    "make it ready to merge" arrives on a PR with red CI; that's heavy.
+  - get_pr_diff({ pr_number }) — capped diff. Use ONLY when text alone is
+    ambiguous AND a single fetch will resolve heavy vs light (large refactor
+    diff = heavy; one-line typo fix = not heavy).
+
+  Triage runs on the hot path with a strict timeout. Call AT MOST ONE tool per
+  classification. If text alone is enough, do not call any tool.`;
 
 /**
  * A single shared circuit breaker for the process. Per research.md R7 the
@@ -230,8 +264,34 @@ export async function triageRequest(input: TriageInput, client: LLMClient): Prom
   const prompt = buildTriagePrompt(input);
   const timeoutMs = config.triageTimeoutMs;
 
-  const breakerResult = await breaker.execute(async () =>
-    withTimeout(
+  const useTools =
+    config.triageToolsEnabled &&
+    input.isPR &&
+    input.octokit !== undefined &&
+    input.prNumber !== undefined;
+  const breakerResult = await breaker.execute(async () => {
+    if (useTools && input.octokit !== undefined && input.prNumber !== undefined) {
+      const octokit = input.octokit;
+      const result = await withTimeout(
+        runWithTools(client, {
+          model: modelId,
+          system: withStructuredRules(SYSTEM_PROMPT),
+          messages: [{ role: "user", content: prompt }],
+          maxTokens: config.triageMaxTokens,
+          tools: GITHUB_STATE_TOOLS,
+          maxIterations: TRIAGE_MAX_TOOL_ITERATIONS,
+          onToolCall: (call) =>
+            dispatchGithubStateTool({ octokit, owner: input.owner, repo: input.repo }, call),
+        }),
+        timeoutMs,
+      );
+      return {
+        text: result.text,
+        model: result.model,
+        usage: result.usage,
+      };
+    }
+    return withTimeout(
       client.create({
         model: modelId,
         system: withStructuredRules(SYSTEM_PROMPT),
@@ -239,8 +299,8 @@ export async function triageRequest(input: TriageInput, client: LLMClient): Prom
         maxTokens: config.triageMaxTokens,
       }),
       timeoutMs,
-    ),
-  );
+    );
+  });
 
   if (breakerResult.outcome === "circuit-open") {
     logger.warn({ deliveryId: input.deliveryId }, "triage short-circuited by open breaker");

@@ -15,6 +15,7 @@ import type { Octokit } from "octokit";
 import { config } from "../../config";
 import { requireDb } from "../../db";
 import { appendIteration } from "../../db/queries/ship";
+import { PROBE_QUERY, REVIEW_THREADS_PAGE_QUERY } from "../../github/queries";
 import { logger } from "../../logger";
 import { retryWithBackoff } from "../../utils/retry";
 import {
@@ -27,90 +28,8 @@ import { resyncBaseSha } from "./intent";
 import { type BarrierProbeShape, shouldDeferOnReviewLatency } from "./review-barrier";
 import { computeVerdict, type MergeReadiness, type ProbeResponseShape } from "./verdict";
 
-const PROBE_QUERY = `
-  query MergeReadinessProbe($owner: String!, $repo: String!, $number: Int!) {
-    repository(owner: $owner, name: $repo) {
-      pullRequest(number: $number) {
-        number
-        isDraft
-        state
-        merged
-        mergeable
-        mergeStateStatus
-        reviewDecision
-        baseRefName
-        baseRefOid
-        headRefName
-        headRefOid
-        author { login }
-        reviewThreads(first: 100) {
-          totalCount
-          pageInfo { hasNextPage endCursor }
-          nodes { id isResolved isOutdated }
-        }
-        commits(last: 1) {
-          nodes {
-            commit {
-              oid
-              committedDate
-              author { user { login } email }
-              statusCheckRollup {
-                state
-                contexts(first: 100) {
-                  nodes {
-                    __typename
-                    ... on CheckRun {
-                      name
-                      databaseId
-                      conclusion
-                      status
-                      completedAt
-                      isRequired(pullRequestNumber: $number)
-                    }
-                    ... on StatusContext {
-                      context
-                      state
-                      isRequired(pullRequestNumber: $number)
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-        reviews(last: 20) {
-          nodes {
-            id
-            author { __typename login }
-            state
-            submittedAt
-            commit { oid }
-          }
-        }
-      }
-    }
-  }
-`;
-
-/**
- * Paginated review-threads query (FR-022 follow-up). Used when a PR
- * carries more than 100 review threads — the main `PROBE_QUERY` only
- * fetches the first page, so an unresolved thread past the first 100
- * would otherwise be invisible to `computeVerdict()` and the verdict
- * could incorrectly return `ready`.
- */
-const REVIEW_THREADS_PAGE_QUERY = `
-  query ReviewThreadsPage($owner: String!, $repo: String!, $number: Int!, $cursor: String!) {
-    repository(owner: $owner, name: $repo) {
-      pullRequest(number: $number) {
-        reviewThreads(first: 100, after: $cursor) {
-          pageInfo { hasNextPage endCursor }
-          nodes { id isResolved isOutdated }
-        }
-      }
-    }
-  }
-`;
+// Probe queries live in src/github/queries.ts so the github-state MCP
+// server can reuse them without duplicating the GraphQL.
 
 interface ReviewThreadNode {
   readonly id: string;
