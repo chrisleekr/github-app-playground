@@ -34,3 +34,31 @@ A comment that mentions the trigger phrase is routed through `src/workflows/inte
 - `workflow` in registry → same dispatch as the label path.
 
 The classifier prompt distinguishes `review` (proactive — find bugs, post inline findings) from `resolve` (reactive — fix CI, answer feedback). Tune the threshold per environment with `INTENT_CONFIDENCE_THRESHOLD`.
+
+## Conversational `chat-thread` (sub-threshold fallback)
+
+When the intent classifier verdict is below `INTENT_CONFIDENCE_THRESHOLD` AND the conversational backend (`DATABASE_URL`) is configured, the dispatcher routes the comment to `src/workflows/ship/scoped/chat-thread.ts` instead of refusing — a freeform exchange entry point for review threads, PR replies, and issue comments. Output modes the executor can return are validated by Zod (`answer`, `decline`, `execute-workflow`, `propose-workflow`, `propose-action`, `approve-pending`, `decline-pending`, `replace-proposal`).
+
+### Tool surface (PR conversations only)
+
+On PR events, `chat-thread` and the orchestrator-side `triage` engine drive Anthropic's tool-use loop via `src/ai/llm-client.ts runWithTools`. Both share the `github-state` tool set defined in `src/github/state-fetchers.ts`:
+
+| Tool                        | Purpose                                                    |
+| --------------------------- | ---------------------------------------------------------- |
+| `get_pr_state_check_rollup` | Head-commit CI rollup + per-check rows + `is_required`     |
+| `get_check_run_output`      | Single check run summary + truncated text + `html_url`     |
+| `get_workflow_run`          | Workflow run conclusion, `logs_url`, `html_url`            |
+| `get_branch_protection`     | Required checks list, reviewers, `protected: false` on 404 |
+| `get_pr_diff`               | Unified diff (capped ~50 KB)                               |
+| `get_pr_files`              | File list with status + per-file additions/deletions       |
+| `list_pr_comments`          | Paginated issue comments on the PR (30/page)               |
+
+The same surface is exposed to Agent SDK callers via `src/mcp/servers/github-state.ts` (registered when `enableGithubState` is `true` in the `runPipeline` overrides).
+
+**Caps and operator switches:**
+
+- `runWithTools` enforces a per-turn iteration cap (default 8 for `chat-thread`, **2** for `triage`) and a per-turn fan-out cap (`DEFAULT_MAX_TOOL_USES_PER_TURN` = 4). Excess `tool_use` blocks get `is_error: true` `tool_result` feedback so the model adjusts on the next turn rather than triggering silent truncation.
+- `CHAT_THREAD_TOOLS_ENABLED` (default `true`) — when `false`, `chat-thread` stays single-turn and answers only from the cached snapshot.
+- `TRIAGE_TOOLS_ENABLED` (default `true`) — when `false`, `triage` classifies from text alone even on PR events. Hot-path latency escape hatch.
+
+The deterministic merge-readiness path (`src/workflows/ship/probe.ts`, `src/workflows/ship/verdict.ts`) is intentionally NOT tool-driven — its GraphQL probe (`PROBE_QUERY`, now centralised in `src/github/queries.ts`) is correctness-invariant for the merge gate.
