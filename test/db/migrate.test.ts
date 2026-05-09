@@ -34,6 +34,9 @@ describe.skipIf(sql === null)("runMigrations", () => {
   beforeAll(async () => {
     await requireDb().unsafe(`
       DROP TABLE IF EXISTS _migrations CASCADE;
+      DROP TABLE IF EXISTS comment_cache CASCADE;
+      DROP TABLE IF EXISTS target_cache CASCADE;
+      DROP TABLE IF EXISTS chat_proposals CASCADE;
       DROP TABLE IF EXISTS ship_fix_attempts CASCADE;
       DROP TABLE IF EXISTS ship_continuations CASCADE;
       DROP TABLE IF EXISTS ship_iterations CASCADE;
@@ -49,6 +52,9 @@ describe.skipIf(sql === null)("runMigrations", () => {
   afterAll(async () => {
     await requireDb().unsafe(`
       DROP TABLE IF EXISTS _migrations CASCADE;
+      DROP TABLE IF EXISTS comment_cache CASCADE;
+      DROP TABLE IF EXISTS target_cache CASCADE;
+      DROP TABLE IF EXISTS chat_proposals CASCADE;
       DROP TABLE IF EXISTS ship_fix_attempts CASCADE;
       DROP TABLE IF EXISTS ship_continuations CASCADE;
       DROP TABLE IF EXISTS ship_iterations CASCADE;
@@ -70,7 +76,7 @@ describe.skipIf(sql === null)("runMigrations", () => {
     const versions: { version: string }[] = await requireDb()`
       SELECT version FROM _migrations ORDER BY version
     `;
-    expect(versions.length).toBe(9);
+    expect(versions.length).toBe(11);
     expect(versions[0]?.version).toBe("001_initial");
     expect(versions[1]?.version).toBe("002_repo_knowledge");
     expect(versions[2]?.version).toBe("003_dispatch_decisions");
@@ -80,6 +86,8 @@ describe.skipIf(sql === null)("runMigrations", () => {
     expect(versions[6]?.version).toBe("007_trigger_comment");
     expect(versions[7]?.version).toBe("008_ship_intents");
     expect(versions[8]?.version).toBe("009_workflow_runs_incomplete");
+    expect(versions[9]?.version).toBe("010_chat_proposals");
+    expect(versions[10]?.version).toBe("011_conversation_cache");
   });
 
   it("is idempotent — second run is a no-op", async () => {
@@ -89,7 +97,7 @@ describe.skipIf(sql === null)("runMigrations", () => {
     const versions: { version: string }[] = await requireDb()`
       SELECT version FROM _migrations ORDER BY version
     `;
-    expect(versions.length).toBe(9);
+    expect(versions.length).toBe(11);
   });
 
   it("creates the executions table with expected columns", async () => {
