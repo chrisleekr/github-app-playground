@@ -27,6 +27,7 @@ import { WorkflowNameSchema } from "./registry";
 
 export const IntentWorkflowSchema = z.union([
   WorkflowNameSchema,
+  z.literal("chat-thread"),
   z.literal("clarify"),
   z.literal("unsupported"),
 ]);
@@ -49,7 +50,8 @@ const SYSTEM_PROMPT = [
   "  - review:     proactive senior-dev code review of an open PR — finds bugs and posts inline findings (use this when the user says 'review' or 'code review')",
   "  - resolve:    fix CI failures and respond to existing reviewer comments on an open PR (use this when the user says 'fix', 'address feedback', or 'fix CI')",
   "  - ship:       triage → plan → implement → review → resolve end-to-end",
-  "  - clarify:    the ask is ambiguous — we need the user to clarify",
+  "  - chat-thread: the user is having a freeform conversation — asking a question, requesting code explanation, or making an ambiguous-but-engageable ask. Pick this when no single workflow above is unambiguous AND the comment is clearly directed at the bot. The chat-thread executor will reply, propose a workflow with explicit consent, or take a small follow-up action.",
+  "  - clarify:    use ONLY when even chat-thread cannot engage — the comment is genuinely uninterpretable or empty.",
   "  - unsupported: the ask is off-topic or beyond this bot's remit",
   "",
   "Respond with STRICT JSON matching exactly this shape, no prose:",

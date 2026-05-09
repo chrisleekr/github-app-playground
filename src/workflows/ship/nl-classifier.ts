@@ -31,7 +31,7 @@ export const NL_CLASSIFIER_RESULT = z.object({
     "resume",
     "abort",
     "fix-thread",
-    "explain-thread",
+    "chat-thread",
     "summarize",
     "rebase",
     "investigate",
@@ -46,7 +46,7 @@ export type NlClassifierResult = z.infer<typeof NL_CLASSIFIER_RESULT>;
 
 const SYSTEM_PROMPT = `You classify GitHub comments addressed to a maintainer bot.
 Return ONLY a single JSON object matching this schema and nothing else:
-  { "intent": "ship"|"stop"|"resume"|"abort"|"fix-thread"|"explain-thread"|"summarize"|"rebase"|"investigate"|"triage"|"open-pr"|"none", "deadline_ms"?: number }
+  { "intent": "ship"|"stop"|"resume"|"abort"|"fix-thread"|"chat-thread"|"summarize"|"rebase"|"investigate"|"triage"|"open-pr"|"none", "deadline_ms"?: number }
 Ship-lifecycle verbs (only valid on PRs):
 - "ship" — drive the PR to merge-ready.
 - "stop" — pause (resumable).
@@ -54,7 +54,7 @@ Ship-lifecycle verbs (only valid on PRs):
 - "abort" — terminate the session.
 Scoped one-shot verbs (each declares which surfaces accept it):
 - "fix-thread" — apply a mechanical fix to the targeted review thread (review-comment surface only).
-- "explain-thread" — explain the code at the targeted review thread (review-comment surface only).
+- "chat-thread" — have a freeform conversation: answer questions, explain code, propose follow-up actions (open issue, resolve thread), or propose a workflow when the ask is ambiguous. Always pick this for any reply-mention that is conversational rather than a clear command — including any explanation request (the explain-thread response style is a special case of chat-thread answer-mode). Eligible on review-comment, pr-comment, and issue-comment surfaces.
 - "summarize" — post a structured PR change-summary (PR surfaces).
 - "rebase" — merge the PR's base into its head (PR surfaces; never force-push).
 - "investigate" — root-cause analysis on an issue (issue surfaces only).

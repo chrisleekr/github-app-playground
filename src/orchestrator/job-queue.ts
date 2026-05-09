@@ -77,13 +77,6 @@ const scopedFixThreadJobSchema = z.object({
   threadRef: threadRefSchema,
 });
 
-const scopedExplainThreadJobSchema = z.object({
-  kind: z.literal("scoped-explain-thread"),
-  ...scopedCommonShape,
-  prNumber: z.number().int().positive(),
-  threadRef: threadRefSchema,
-});
-
 const scopedOpenPrJobSchema = z.object({
   kind: z.literal("scoped-open-pr"),
   ...scopedCommonShape,
@@ -101,7 +94,6 @@ export const QueuedJobSchema = z.discriminatedUnion("kind", [
   workflowRunJobSchema,
   scopedRebaseJobSchema,
   scopedFixThreadJobSchema,
-  scopedExplainThreadJobSchema,
   scopedOpenPrJobSchema,
 ]);
 
@@ -110,20 +102,13 @@ export type LegacyQueuedJob = z.infer<typeof legacyJobSchema>;
 export type WorkflowRunQueuedJob = z.infer<typeof workflowRunJobSchema>;
 export type ScopedRebaseQueuedJob = z.infer<typeof scopedRebaseJobSchema>;
 export type ScopedFixThreadQueuedJob = z.infer<typeof scopedFixThreadJobSchema>;
-export type ScopedExplainThreadQueuedJob = z.infer<typeof scopedExplainThreadJobSchema>;
 export type ScopedOpenPrQueuedJob = z.infer<typeof scopedOpenPrJobSchema>;
 export type ScopedQueuedJob =
   | ScopedRebaseQueuedJob
   | ScopedFixThreadQueuedJob
-  | ScopedExplainThreadQueuedJob
   | ScopedOpenPrQueuedJob;
 
-export const SCOPED_JOB_KINDS = [
-  "scoped-rebase",
-  "scoped-fix-thread",
-  "scoped-explain-thread",
-  "scoped-open-pr",
-] as const;
+export const SCOPED_JOB_KINDS = ["scoped-rebase", "scoped-fix-thread", "scoped-open-pr"] as const;
 
 export type ScopedJobKind = (typeof SCOPED_JOB_KINDS)[number];
 

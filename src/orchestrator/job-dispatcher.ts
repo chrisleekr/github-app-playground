@@ -286,7 +286,6 @@ function buildScopedJobOfferEnvelope(
         },
       };
     case "scoped-fix-thread":
-    case "scoped-explain-thread":
       return {
         ...base,
         payload: {

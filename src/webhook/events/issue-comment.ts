@@ -1,8 +1,11 @@
 import type { IssueCommentEvent } from "@octokit/webhooks-types";
 import type { Octokit } from "octokit";
+import type { Logger } from "pino";
 
 import { containsTrigger } from "../../core/trigger";
+import { softDeleteComment, upsertComment } from "../../db/queries/conversation-store";
 import { logger } from "../../logger";
+import { runProposalPollOnce } from "../../orchestrator/proposal-poller";
 import { addReaction } from "../../utils/reactions";
 import { dispatchByIntent } from "../../workflows/dispatcher";
 import { dispatchCommentSurface } from "../../workflows/ship/command-dispatch";
@@ -22,6 +25,14 @@ export function handleIssueComment(
   payload: IssueCommentEvent,
   deliveryId: string,
 ): void {
+  // Cache write-through (chat-thread): every created/edited/deleted action
+  // hits the cache before any dispatch so subsequent chat-thread turns see
+  // the freshest body. Bot self-comments are cached too — chat-thread reads
+  // them as prior conversation turns.
+  void writeCommentCacheThrough(payload).catch((err: unknown) => {
+    logger.warn({ err, deliveryId }, "issue-comment: cache write-through failed");
+  });
+
   if (payload.action !== "created") return;
   if (payload.comment.user.type === "Bot") return;
 
@@ -71,6 +82,7 @@ export function handleIssueComment(
         principal_login: senderLogin,
         pr: { owner, repo, number: targetNumber, installation_id: installationId },
         event_surface: eventSurface,
+        trigger_comment_id: payload.comment.id,
         octokit,
         log: dispatchLog,
       });
@@ -107,5 +119,81 @@ export function handleIssueComment(
     } catch (err) {
       log.error({ err }, "dispatchByIntent threw for issue_comment");
     }
+
+    // Piggyback proposal-poll. Runs unconditionally after dispatch so
+    // even non-trigger comments (which could carry an approval reply
+    // by their author) cause the bot to re-evaluate pending proposals
+    // for this target.
+    piggybackProposalPoll(octokit, installationId, owner, repo, log);
   })();
+}
+
+/**
+ * Cache write-through for the chat-thread executor. Runs on every
+ * `created` / `edited` / `deleted` action so the cache stays a faithful
+ * projection of GitHub state. Inline-mode deployments (no DB) silently
+ * skip — `upsertComment` requires `requireDb()` which throws if not
+ * configured, so wrap in try/catch and downgrade DB-not-configured to
+ * a no-op.
+ */
+async function writeCommentCacheThrough(payload: IssueCommentEvent): Promise<void> {
+  const owner = payload.repository.owner.login;
+  const repo = payload.repository.name;
+  const targetNumber = payload.issue.number;
+  const targetType: "issue" | "pr" = payload.issue.pull_request !== undefined ? "pr" : "issue";
+
+  try {
+    if (payload.action === "deleted") {
+      await softDeleteComment({ owner, repo, commentId: payload.comment.id });
+      return;
+    }
+    if (payload.action === "created" || payload.action === "edited") {
+      await upsertComment({
+        owner,
+        repo,
+        targetType,
+        targetNumber,
+        commentId: payload.comment.id,
+        surface: "issue-comment",
+        inReplyToId: null,
+        authorLogin: payload.comment.user.login,
+        authorType: payload.comment.user.type,
+        body: payload.comment.body,
+        path: null,
+        line: null,
+        diffHunk: null,
+        createdAt: new Date(payload.comment.created_at),
+        updatedAt: new Date(payload.comment.updated_at),
+      });
+    }
+  } catch (err) {
+    // DB not configured (inline mode) → harmless skip. Other errors are
+    // surfaced via the caller's outer .catch — we still throw here.
+    if (err instanceof Error && /DATABASE_URL/i.test(err.message)) return;
+    throw err;
+  }
+}
+
+/**
+ * Piggyback proposal-poll: after dispatching the webhook, scan any
+ * pending chat-thread proposals for this target. The most common UX is
+ * "user reacts then types something" — this poll is what flips that
+ * proposal during the same delivery without waiting for the periodic
+ * scanner.
+ */
+function piggybackProposalPoll(
+  octokit: Octokit,
+  installationId: number,
+  owner: string,
+  repo: string,
+  log: Logger,
+): void {
+  void runProposalPollOnce({
+    resolveOctokit: () => Promise.resolve(octokit),
+    resolveInstallationId: (q) =>
+      Promise.resolve(q.owner === owner && q.repo === repo ? installationId : null),
+    log: log.child({ component: "proposal-poller", trigger: "piggyback-issue-comment" }),
+  }).catch((err: unknown) => {
+    logger.debug({ err }, "piggybackProposalPoll: scan failed");
+  });
 }

@@ -1,8 +1,11 @@
 import type { PullRequestReviewCommentEvent } from "@octokit/webhooks-types";
 import type { Octokit } from "octokit";
+import type { Logger } from "pino";
 
 import { containsTrigger } from "../../core/trigger";
+import { softDeleteComment, upsertComment } from "../../db/queries/conversation-store";
 import { logger } from "../../logger";
+import { runProposalPollOnce } from "../../orchestrator/proposal-poller";
 import { addReaction } from "../../utils/reactions";
 import { dispatchByIntent } from "../../workflows/dispatcher";
 import { dispatchCommentSurface } from "../../workflows/ship/command-dispatch";
@@ -35,6 +38,12 @@ export function handleReviewComment(
     });
   }
 
+  // Cache write-through (chat-thread): created/edited/deleted all hit
+  // the cache before dispatch so chat-thread sees the freshest body.
+  void writeReviewCommentCacheThrough(payload).catch((err: unknown) => {
+    logger.warn({ err, deliveryId }, "review-comment: cache write-through failed");
+  });
+
   if (payload.action !== "created") return;
   if (payload.comment.user.type === "Bot") return;
 
@@ -61,7 +70,7 @@ export function handleReviewComment(
   // T028e + T089: ship trigger-surface dispatch. Review comments always
   // target a PR; carry the `event_surface: 'review-comment'` tag and
   // the originating comment's REST `id` as `thread_id` so scoped commands
-  // that act on a specific thread (`bot:fix-thread`, `bot:explain-thread`)
+  // that act on a specific thread (`bot:fix-thread`, `bot:chat-thread`)
   // can resolve the target.
   //
   // **Identifier semantics** (CanonicalCommand.thread_id): the value below
@@ -86,7 +95,16 @@ export function handleReviewComment(
   const repo = payload.repository.name;
   const prNumber = payload.pull_request.number;
   const commentBody = payload.comment.body;
-  const threadId = String(payload.comment.id);
+  // Thread identity: top-level comment's id, NOT the reply's id.
+  // payload.comment.in_reply_to_id is the parent (top-level) comment id
+  // when this comment is itself a reply; null/undefined for top-level
+  // comments. The conversation cache and proposal scope both key on the
+  // top-level id, so a reply turn (e.g., CR-style "yes" follow-up) sees
+  // the original thread context. Fix #1.
+  const inReplyToIdRaw = (payload.comment as { in_reply_to_id?: number | null }).in_reply_to_id;
+  const topLevelCommentId =
+    typeof inReplyToIdRaw === "number" ? inReplyToIdRaw : payload.comment.id;
+  const threadId = String(topLevelCommentId);
 
   void (async (): Promise<void> => {
     const dispatchLog = log.child({ thread_id: threadId, event_surface: "review-comment" });
@@ -98,6 +116,7 @@ export function handleReviewComment(
         pr: { owner, repo, number: prNumber, installation_id: installationId },
         event_surface: "review-comment",
         thread_id: threadId,
+        trigger_comment_id: payload.comment.id,
         octokit,
         log: dispatchLog,
       });
@@ -130,9 +149,69 @@ export function handleReviewComment(
         deliveryId,
         triggerCommentId: payload.comment.id,
         triggerEventType: "pull_request_review_comment",
+        ...(typeof inReplyToIdRaw === "number" ? { triggerInReplyToId: inReplyToIdRaw } : {}),
       });
     } catch (err) {
       log.error({ err }, "dispatchByIntent threw for review_comment");
     }
+
+    // Piggyback proposal-poll: covers the "user reacts then types
+    // something" UX without waiting for the periodic scanner.
+    piggybackProposalPoll(octokit, installationId, owner, repo, log);
   })();
+}
+
+async function writeReviewCommentCacheThrough(
+  payload: PullRequestReviewCommentEvent,
+): Promise<void> {
+  const owner = payload.repository.owner.login;
+  const repo = payload.repository.name;
+  const prNumber = payload.pull_request.number;
+
+  try {
+    if (payload.action === "deleted") {
+      await softDeleteComment({ owner, repo, commentId: payload.comment.id });
+      return;
+    }
+    if (payload.action === "created" || payload.action === "edited") {
+      const c = payload.comment;
+      await upsertComment({
+        owner,
+        repo,
+        targetType: "pr",
+        targetNumber: prNumber,
+        commentId: c.id,
+        surface: "review-comment",
+        inReplyToId: typeof c.in_reply_to_id === "number" ? c.in_reply_to_id : null,
+        authorLogin: c.user.login,
+        authorType: c.user.type,
+        body: c.body,
+        path: c.path,
+        line: typeof c.line === "number" ? c.line : null,
+        diffHunk: c.diff_hunk ?? null,
+        createdAt: new Date(c.created_at),
+        updatedAt: new Date(c.updated_at),
+      });
+    }
+  } catch (err) {
+    if (err instanceof Error && /DATABASE_URL/i.test(err.message)) return;
+    throw err;
+  }
+}
+
+function piggybackProposalPoll(
+  octokit: Octokit,
+  installationId: number,
+  owner: string,
+  repo: string,
+  log: Logger,
+): void {
+  void runProposalPollOnce({
+    resolveOctokit: () => Promise.resolve(octokit),
+    resolveInstallationId: (q) =>
+      Promise.resolve(q.owner === owner && q.repo === repo ? installationId : null),
+    log: log.child({ component: "proposal-poller", trigger: "piggyback-review-comment" }),
+  }).catch((err: unknown) => {
+    logger.debug({ err }, "piggybackProposalPoll: scan failed");
+  });
 }

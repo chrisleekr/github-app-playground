@@ -96,6 +96,12 @@ export async function dispatchCommentSurface(input: {
   readonly event_surface?: "pr-comment" | "review-comment" | "issue-comment";
   /** Set when the comment originates from a `pull_request_review_comment`. */
   readonly thread_id?: string;
+  /**
+   * REST id of the triggering comment. Required so conversational
+   * handlers (chat-thread) can post replies on the same surface
+   * without refetching the comment.
+   */
+  readonly trigger_comment_id?: number;
   readonly octokit: Octokit;
   readonly log?: Logger;
 }): Promise<boolean> {
@@ -115,6 +121,10 @@ export async function dispatchCommentSurface(input: {
         pr: input.pr,
         ...(input.event_surface !== undefined ? { event_surface: input.event_surface } : {}),
         ...(input.thread_id !== undefined ? { thread_id: input.thread_id } : {}),
+        comment_body: input.commentBody,
+        ...(input.trigger_comment_id !== undefined
+          ? { trigger_comment_id: input.trigger_comment_id }
+          : {}),
       },
     });
     if (literal !== null) {
@@ -149,6 +159,10 @@ export async function dispatchCommentSurface(input: {
         callLlm,
         ...(input.event_surface !== undefined ? { event_surface: input.event_surface } : {}),
         ...(input.thread_id !== undefined ? { thread_id: input.thread_id } : {}),
+        comment_body: input.commentBody,
+        ...(input.trigger_comment_id !== undefined
+          ? { trigger_comment_id: input.trigger_comment_id }
+          : {}),
       },
     });
     if (nl !== null) {
