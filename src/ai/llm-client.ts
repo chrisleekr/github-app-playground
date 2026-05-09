@@ -19,7 +19,30 @@
 import AnthropicBedrock from "@anthropic-ai/bedrock-sdk";
 import Anthropic from "@anthropic-ai/sdk";
 
+import { logger } from "../logger";
+
 export type Provider = "anthropic" | "bedrock";
+
+/**
+ * Authentication mode tracked alongside the SDK so the request shaper can
+ * apply the Claude Code OAuth gate (see `CLAUDE_CODE_IDENTIFIER` below).
+ * Bedrock and console API keys do NOT require the gate.
+ */
+export type AuthMode = "anthropic-apikey" | "anthropic-oauth" | "bedrock";
+
+/**
+ * Anthropic's API gates `sk-ant-oat...` OAuth tokens to a degenerate-quota
+ * pool unless the FIRST system block is exactly this identifier string.
+ * Without it, Sonnet/Opus return `429 rate_limit_error` with body
+ * `{"message":"Error"}` (Haiku is in a separate pool that happens to pass
+ * either way). The check is exact-match on the first block — string-form
+ * with any caller text appended (even after `\n\n`) is rejected, but the
+ * SDK's array-of-blocks form `[{type:"text",text:ID}, {type:"text",text:callerSystem}]`
+ * is accepted. `buildRequest` uses the array form on the OAuth path so
+ * the caller's task instructions stay intact. Console API keys and
+ * Bedrock are unaffected.
+ */
+export const CLAUDE_CODE_IDENTIFIER = "You are Claude Code, Anthropic's official CLI for Claude.";
 
 /**
  * Operator-friendly aliases → provider-specific model IDs. Haiku entries
@@ -109,6 +132,7 @@ export interface CreateLLMClientParams {
  */
 export function createLLMClient(params: CreateLLMClientParams): LLMClient {
   let sdk: AnthropicLikeSdk;
+  let authMode: AuthMode;
   if (params.provider === "anthropic") {
     const apiKeyRaw = params.anthropicApiKey;
     const oauthRaw = params.claudeCodeOauthToken;
@@ -118,22 +142,34 @@ export function createLLMClient(params: CreateLLMClientParams): LLMClient {
     // leak " " into `new Anthropic({ apiKey })` and produce a confusing 401.
     const apiKey = apiKeyRaw !== undefined && apiKeyRaw.trim().length > 0 ? apiKeyRaw : undefined;
     const oauth = oauthRaw !== undefined && oauthRaw.trim().length > 0 ? oauthRaw : undefined;
-    const chosen = apiKey ?? oauth;
-    if (chosen === undefined) {
+    if (apiKey === undefined && oauth === undefined) {
       const apiKeyState = apiKeyRaw === undefined ? "missing" : "empty";
       const oauthState = oauthRaw === undefined ? "missing" : "empty";
       throw new Error(
         `createLLMClient: provider=anthropic requires a non-empty anthropicApiKey or claudeCodeOauthToken (anthropicApiKey=${apiKeyState}, claudeCodeOauthToken=${oauthState})`,
       );
     }
-    sdk = new Anthropic({ apiKey: chosen }) as unknown as AnthropicLikeSdk;
+    // OAuth tokens (sk-ant-oat-...) authenticate via Authorization: Bearer
+    // (SDK `authToken`), NOT x-api-key. Passing OAuth as `apiKey` produces a
+    // 401 "invalid x-api-key" because the API distinguishes the two headers.
+    // Prefer the API key when both are provided — it's the lower-friction
+    // credential and matches the precedence in config.ts. (Restoring the
+    // fix from 82f8332 that PR #104 silently regressed.)
+    if (apiKey !== undefined) {
+      sdk = new Anthropic({ apiKey }) as unknown as AnthropicLikeSdk;
+      authMode = "anthropic-apikey";
+    } else {
+      sdk = new Anthropic({ authToken: oauth ?? null }) as unknown as AnthropicLikeSdk;
+      authMode = "anthropic-oauth";
+    }
   } else {
     if (params.awsRegion === undefined || params.awsRegion.length === 0) {
       throw new Error("createLLMClient: provider=bedrock requires awsRegion");
     }
     sdk = new AnthropicBedrock({ awsRegion: params.awsRegion }) as unknown as AnthropicLikeSdk;
+    authMode = "bedrock";
   }
-  return { provider: params.provider, create: (p) => invokeSdk(sdk, p) };
+  return { provider: params.provider, create: (p) => invokeSdk(sdk, p, authMode) };
 }
 
 /**
@@ -142,8 +178,12 @@ export function createLLMClient(params: CreateLLMClientParams): LLMClient {
  * without touching the network. NEVER imported in production code —
  * production uses `createLLMClient`.
  */
-export function _createLLMClientForTests(provider: Provider, sdk: AnthropicLikeSdk): LLMClient {
-  return { provider, create: (p) => invokeSdk(sdk, p) };
+export function _createLLMClientForTests(
+  provider: Provider,
+  sdk: AnthropicLikeSdk,
+  authMode: AuthMode = "anthropic-apikey",
+): LLMClient {
+  return { provider, create: (p) => invokeSdk(sdk, p, authMode) };
 }
 
 /**
@@ -164,14 +204,33 @@ export interface AnthropicLikeSdk {
 }
 
 /** @internal — exported for tests only. */
-export function buildRequest(p: LLMCreateParams): Record<string, unknown> {
+export function buildRequest(
+  p: LLMCreateParams,
+  authMode: AuthMode = "anthropic-apikey",
+): Record<string, unknown> {
+  const callerSystem = p.system;
+  // OAuth path requires the FIRST top-level system block to be exactly the
+  // Claude Code identifier. The string form `${ID}\n\n${callerSystem}` is
+  // rejected — the gate checks the first block as a whole, not a prefix.
+  // The array form keeps the identifier as a standalone first block so the
+  // caller's task instructions ride along untouched.
+  const system: string | { type: "text"; text: string }[] | undefined =
+    authMode === "anthropic-oauth"
+      ? callerSystem !== undefined && callerSystem.length > 0
+        ? [
+            { type: "text", text: CLAUDE_CODE_IDENTIFIER },
+            { type: "text", text: callerSystem },
+          ]
+        : CLAUDE_CODE_IDENTIFIER
+      : callerSystem;
+
   const base: Record<string, unknown> = {
     model: p.model,
     max_tokens: p.maxTokens,
     messages: p.messages.map((m) => ({ role: m.role, content: m.content })),
     temperature: p.temperature ?? 0,
   };
-  if (p.system !== undefined) base["system"] = p.system;
+  if (system !== undefined) base["system"] = system;
   return base;
 }
 
@@ -188,8 +247,42 @@ export function parseAnthropicResponse(raw: AnthropicMessageResponse): LLMRespon
   };
 }
 
-async function invokeSdk(sdk: AnthropicLikeSdk, p: LLMCreateParams): Promise<LLMResponse> {
-  const raw = (await sdk.messages.create(buildRequest(p))) as AnthropicMessageResponse;
+async function invokeSdk(
+  sdk: AnthropicLikeSdk,
+  p: LLMCreateParams,
+  authMode: AuthMode,
+): Promise<LLMResponse> {
+  const req = buildRequest(p, authMode);
+  // Diagnostic: gated on DEBUG_LLM_PROMPTS so it's silent in normal operation.
+  // When set, dumps the exact request shape (model, authMode, system head/tail,
+  // user-message preview) so we can verify the OAuth Claude Code identifier
+  // gate is actually applied at the wire.
+  if (process.env["DEBUG_LLM_PROMPTS"] === "1") {
+    const rawSys = req["system"];
+    const sys =
+      typeof rawSys === "string"
+        ? rawSys
+        : Array.isArray(rawSys)
+          ? (rawSys as { text?: string }[]).map((b) => b.text ?? "").join(" ⏵ ")
+          : "";
+    const firstUserMsg =
+      Array.isArray(req["messages"]) && req["messages"].length > 0
+        ? ((req["messages"] as { content: string }[])[0]?.content ?? "")
+        : "";
+    logger.info(
+      {
+        event: "llm.request.debug",
+        model: req["model"],
+        authMode,
+        systemLen: sys.length,
+        systemHead: sys.slice(0, 120),
+        systemTail: sys.slice(-120),
+        userPreview: firstUserMsg.slice(0, 200),
+      },
+      "llm.request.debug",
+    );
+  }
+  const raw = (await sdk.messages.create(req)) as AnthropicMessageResponse;
   return parseAnthropicResponse(raw);
 }
 

@@ -45,12 +45,7 @@ function rebaseOffer(): ScopedJobOfferMessage {
   };
 }
 
-const SUPPORTED = [
-  "scoped-rebase",
-  "scoped-fix-thread",
-  "scoped-explain-thread",
-  "scoped-open-pr",
-] as const;
+const SUPPORTED = ["scoped-rebase", "scoped-fix-thread", "scoped-open-pr"] as const;
 
 describe("evaluateScopedOffer (C1, H3, H4)", () => {
   it("accepts a supported jobKind", () => {

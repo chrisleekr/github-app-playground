@@ -30,7 +30,6 @@ import { DaemonWsClient } from "./ws-client";
 const SUPPORTED_SCOPED_KINDS: readonly ScopedJobKind[] = [
   "scoped-rebase",
   "scoped-fix-thread",
-  "scoped-explain-thread",
   "scoped-open-pr",
 ] as const;
 

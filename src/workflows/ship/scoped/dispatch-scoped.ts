@@ -1,6 +1,6 @@
 /**
  * Scoped-command fan-out (US5 / T089-T091). Maps a `CanonicalCommand`
- * with a scoped intent (`fix-thread`, `explain-thread`, `summarize`,
+ * with a scoped intent (`fix-thread`, `chat-thread`, `summarize`,
  * `rebase`, `investigate`, `triage`, `open-pr`) to the appropriate
  * scoped handler. Each handler is stateless — no `ship_intents` row,
  * no tracking comment, no continuation. Failures are logged and
@@ -27,6 +27,7 @@ import { enqueueJob } from "../../../orchestrator/job-queue";
 import type { CanonicalCommand } from "../../../shared/ship-types";
 import { getTriageLLMClient } from "../../../webhook/triage-client-factory";
 import { SHIP_LOG_EVENTS } from "../log-fields";
+import { runChatThread } from "./chat-thread";
 import { runInvestigate } from "./investigate";
 import { runOpenPrPolicy } from "./open-pr";
 import { runSummarize } from "./summarize";
@@ -77,15 +78,14 @@ function deriveTriggerCommentId(command: CanonicalCommand): number {
 }
 
 /**
- * Build the queue offer for a review-thread-scoped job (`fix-thread` or
- * `explain-thread`). Both kinds carry the same payload shape; the only
- * difference is the discriminator. Refuses dispatch when the thread
- * cannot be resolved (no scoped offer is enqueued).
+ * Build the queue offer for the review-thread-scoped `fix-thread` job.
+ * Refuses dispatch when the thread cannot be resolved (no scoped offer
+ * is enqueued).
  */
 async function enqueueScopedThreadJob(
   deps: ScopedCommandDeps,
   command: CanonicalCommand,
-  kind: "scoped-fix-thread" | "scoped-explain-thread",
+  kind: "scoped-fix-thread",
 ): Promise<void> {
   const triggerCommentId = deriveTriggerCommentId(command);
   if (triggerCommentId === 1) {
@@ -117,10 +117,7 @@ async function enqueueScopedThreadJob(
     threadRef,
     triggerCommentId,
   });
-  const eventKey =
-    kind === "scoped-fix-thread"
-      ? SHIP_LOG_EVENTS.scoped.fixThread.enqueued
-      : SHIP_LOG_EVENTS.scoped.explainThread.enqueued;
+  const eventKey = SHIP_LOG_EVENTS.scoped.fixThread.enqueued;
   deps.log?.info(
     {
       event: eventKey,
@@ -298,8 +295,36 @@ async function runScopedCommand(command: CanonicalCommand, deps: ScopedCommandDe
       await enqueueScopedThreadJob(deps, command, "scoped-fix-thread");
       return;
     }
-    case "explain-thread": {
-      await enqueueScopedThreadJob(deps, command, "scoped-explain-thread");
+    case "chat-thread": {
+      // Inline: chat-thread runs the conversational LLM call in-process,
+      // replies via Octokit, and (when the user approves) hands off to
+      // existing handlers — no daemon enqueue.
+      if (command.comment_body === undefined || command.trigger_comment_id === undefined) {
+        deps.log?.warn(
+          { intent: command.intent },
+          "chat-thread: missing comment_body or trigger_comment_id on canonical command — refusing dispatch",
+        );
+        return;
+      }
+      const targetType: "issue" | "pr" = command.event_surface === "issue-comment" ? "issue" : "pr";
+      const triggerEventType: "issue_comment" | "pull_request_review_comment" =
+        command.event_surface === "review-comment"
+          ? "pull_request_review_comment"
+          : "issue_comment";
+      await runChatThread({
+        octokit: deps.octokit,
+        owner: command.pr.owner,
+        repo: command.pr.repo,
+        targetType,
+        targetNumber: command.pr.number,
+        threadId: command.thread_id ?? null,
+        triggerCommentId: command.trigger_comment_id,
+        triggerCommentBody: command.comment_body,
+        triggerEventType,
+        principalLogin: command.principal_login,
+        callLlm,
+        ...(deps.log ? { log: deps.log } : {}),
+      });
       return;
     }
     case "rebase": {

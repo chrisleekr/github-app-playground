@@ -16,7 +16,7 @@
 
 import { z } from "zod";
 
-import { stripJsonFence } from "../nl-classifier";
+import { parseStructuredResponse, withStructuredRules } from "../../../ai/structured-output";
 
 export const META_ISSUE_VERDICT_SCHEMA = z.object({
   actionable: z.boolean(),
@@ -50,32 +50,22 @@ export interface ClassifyMetaIssueInput {
 export async function classifyMetaIssue(input: ClassifyMetaIssueInput): Promise<MetaIssueVerdict> {
   const userPrompt = [`Title: ${input.title}`, `Body:\n${input.body}`].join("\n\n");
   const raw = await input.callLlm({
-    systemPrompt: META_ISSUE_SYSTEM_PROMPT,
+    systemPrompt: withStructuredRules(META_ISSUE_SYSTEM_PROMPT),
     userPrompt,
   });
-  // Anthropic Haiku 4.5 frequently wraps single-object JSON responses in a
-  // markdown code fence (```json …```) despite a "Return ONLY JSON" system
-  // prompt. Mirror the unwrap done in `nl-classifier` so the issue
-  // classifier doesn't refuse legitimate verdicts. Surfaced by T042 S9.
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(stripJsonFence(raw.trim()));
-  } catch {
-    throw new Error("meta-issue classifier returned non-JSON output");
-  }
-  const validated = META_ISSUE_VERDICT_SCHEMA.safeParse(parsed);
-  if (!validated.success) {
-    throw new Error(
-      `meta-issue classifier output failed schema validation: ${validated.error.message}`,
-    );
+  const result = parseStructuredResponse(raw, META_ISSUE_VERDICT_SCHEMA);
+  if (!result.ok) {
+    if (result.stage === "parse") {
+      throw new Error("meta-issue classifier returned non-JSON output");
+    }
+    throw new Error(`meta-issue classifier output failed schema validation: ${result.error}`);
   }
   // Enforce the actionable invariant deterministically — the LLM is
   // not trusted to apply this rule consistently.
   const enforced: MetaIssueVerdict = {
-    ...validated.data,
+    ...result.data,
     actionable:
-      validated.data.actionable &&
-      (validated.data.kind === "bug" || validated.data.kind === "feature"),
+      result.data.actionable && (result.data.kind === "bug" || result.data.kind === "feature"),
   };
   return enforced;
 }

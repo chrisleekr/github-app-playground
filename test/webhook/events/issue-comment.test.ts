@@ -51,12 +51,7 @@ const mockEnqueueJob = mock(() => Promise.resolve());
 void mock.module("../../../src/orchestrator/job-queue", () => ({
   enqueueJob: mockEnqueueJob,
   isScopedJob: () => false,
-  SCOPED_JOB_KINDS: [
-    "scoped-rebase",
-    "scoped-fix-thread",
-    "scoped-explain-thread",
-    "scoped-open-pr",
-  ],
+  SCOPED_JOB_KINDS: ["scoped-rebase", "scoped-fix-thread", "scoped-open-pr"],
 }));
 
 const mockEnforceSingleBotLabel = mock(() => Promise.resolve({ kept: "bot:ship", removed: [] }));
@@ -123,6 +118,9 @@ describe.skipIf(sql === null)("issue-comment → dispatchByIntent integration (T
   beforeAll(async () => {
     await requireSql().unsafe(`
       DROP TABLE IF EXISTS _migrations CASCADE;
+      DROP TABLE IF EXISTS comment_cache CASCADE;
+      DROP TABLE IF EXISTS target_cache CASCADE;
+      DROP TABLE IF EXISTS chat_proposals CASCADE;
       DROP TABLE IF EXISTS ship_fix_attempts CASCADE;
       DROP TABLE IF EXISTS ship_continuations CASCADE;
       DROP TABLE IF EXISTS ship_iterations CASCADE;
@@ -140,6 +138,9 @@ describe.skipIf(sql === null)("issue-comment → dispatchByIntent integration (T
   afterAll(async () => {
     await requireSql().unsafe(`
       DROP TABLE IF EXISTS _migrations CASCADE;
+      DROP TABLE IF EXISTS comment_cache CASCADE;
+      DROP TABLE IF EXISTS target_cache CASCADE;
+      DROP TABLE IF EXISTS chat_proposals CASCADE;
       DROP TABLE IF EXISTS ship_fix_attempts CASCADE;
       DROP TABLE IF EXISTS ship_continuations CASCADE;
       DROP TABLE IF EXISTS ship_iterations CASCADE;

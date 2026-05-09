@@ -17,6 +17,7 @@
 
 import { z } from "zod";
 
+import { parseStructuredResponse, withStructuredRules } from "../../ai/structured-output";
 import { logger } from "../../logger";
 import {
   type CommandIntent,
@@ -31,7 +32,7 @@ export const NL_CLASSIFIER_RESULT = z.object({
     "resume",
     "abort",
     "fix-thread",
-    "explain-thread",
+    "chat-thread",
     "summarize",
     "rebase",
     "investigate",
@@ -46,7 +47,7 @@ export type NlClassifierResult = z.infer<typeof NL_CLASSIFIER_RESULT>;
 
 const SYSTEM_PROMPT = `You classify GitHub comments addressed to a maintainer bot.
 Return ONLY a single JSON object matching this schema and nothing else:
-  { "intent": "ship"|"stop"|"resume"|"abort"|"fix-thread"|"explain-thread"|"summarize"|"rebase"|"investigate"|"triage"|"open-pr"|"none", "deadline_ms"?: number }
+  { "intent": "ship"|"stop"|"resume"|"abort"|"fix-thread"|"chat-thread"|"summarize"|"rebase"|"investigate"|"triage"|"open-pr"|"none", "deadline_ms"?: number }
 Ship-lifecycle verbs (only valid on PRs):
 - "ship" — drive the PR to merge-ready.
 - "stop" — pause (resumable).
@@ -54,7 +55,7 @@ Ship-lifecycle verbs (only valid on PRs):
 - "abort" — terminate the session.
 Scoped one-shot verbs (each declares which surfaces accept it):
 - "fix-thread" — apply a mechanical fix to the targeted review thread (review-comment surface only).
-- "explain-thread" — explain the code at the targeted review thread (review-comment surface only).
+- "chat-thread" — have a freeform conversation: answer questions, explain code, propose follow-up actions (open issue, resolve thread), or propose a workflow when the ask is ambiguous. Always pick this for any reply-mention that is conversational rather than a clear command — including any explanation request (the explain-thread response style is a special case of chat-thread answer-mode). Eligible on review-comment, pr-comment, and issue-comment surfaces.
 - "summarize" — post a structured PR change-summary (PR surfaces).
 - "rebase" — merge the PR's base into its head (PR surfaces; never force-push).
 - "investigate" — root-cause analysis on an issue (issue surfaces only).
@@ -94,61 +95,39 @@ export async function classifyComment(input: ClassifyInput): Promise<NlClassifie
 
   let raw: string;
   try {
-    raw = await input.callLlm({ systemPrompt: SYSTEM_PROMPT, userPrompt: post });
+    raw = await input.callLlm({
+      systemPrompt: withStructuredRules(SYSTEM_PROMPT),
+      userPrompt: post,
+    });
   } catch (err) {
     logger.warn({ event: "ship.nl.llm_error", err: String(err) }, "ship nl-classifier LLM failed");
     return { intent: "none" };
   }
 
-  // Strip a single leading ```/```json fence and trailing ``` if present.
-  // Anthropic Haiku frequently wraps single-object JSON responses in a
-  // markdown code block despite the system prompt asking for raw JSON;
-  // without unwrapping, every NL trigger silently classifies as `none`.
-  const trimmedJson = stripJsonFence(raw.trim());
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(trimmedJson);
-  } catch {
+  const result = parseStructuredResponse(raw, NL_CLASSIFIER_RESULT);
+  if (!result.ok) {
+    logger.warn(
+      { event: "ship.nl.parse_error", stage: result.stage, error: result.error },
+      "ship nl-classifier rejected response — returning intent=none",
+    );
     return { intent: "none" };
   }
-  const validated = NL_CLASSIFIER_RESULT.safeParse(parsed);
-  if (!validated.success) return { intent: "none" };
 
   // Per-event-surface eligibility (FR-029..FR-035): a verb that is not
   // eligible on the current event surface is rewritten to `'none'`. We
   // do this post-classification rather than via the prompt because LLM
   // adherence to surface rules is unreliable; deterministic enforcement
   // is the contract.
-  if (input.eventSurface !== undefined && validated.data.intent !== "none") {
-    if (!isIntentEligibleOnSurface(validated.data.intent, input.eventSurface)) {
+  if (input.eventSurface !== undefined && result.data.intent !== "none") {
+    if (!isIntentEligibleOnSurface(result.data.intent, input.eventSurface)) {
       return { intent: "none" };
     }
   }
 
-  return validated.data;
+  return result.data;
 }
 
 /** Narrow the classifier's `intent` enum to a `CommandIntent` (drops `'none'`). */
 export function toCommandIntent(intent: NlClassifierResult["intent"]): CommandIntent | null {
   return intent === "none" ? null : intent;
-}
-
-/**
- * Strip a single leading and trailing markdown code fence from an LLM
- * response so the inner JSON can be parsed.
- *
- * Anthropic Haiku 4.5 — the model `TRIAGE_MODEL` defaults to — frequently
- * answers with a fenced block (```json …```) even when the system prompt
- * says "Return ONLY a single JSON object". Without unwrapping, every NL
- * trigger silently classified as `none` and fell through to the legacy
- * intent classifier (which routes ship to issues only). Surfaced by T042
- * S2 against `@chrisleekr-bot-dev`.
- *
- * Conservative: only strips when both leading and trailing fences are
- * present; passes through unfenced JSON unchanged.
- */
-export function stripJsonFence(text: string): string {
-  const fencePattern = /^```(?:json)?\s*\n([\s\S]*?)\n```\s*$/;
-  const fenceMatch = fencePattern.exec(text);
-  return fenceMatch?.[1] ?? text;
 }

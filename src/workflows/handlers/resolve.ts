@@ -332,7 +332,7 @@ function buildResolvePrompt(input: {
     ``,
     `   ### Reply body format (MANDATORY — same shape for all four classes)`,
     ``,
-    `   Use this exact 3-block CodeRabbit-style layout. The format is required so all bot replies look consistent across resolve, review, fix-thread, and explain-thread:`,
+    `   Use this exact 3-block layout. The format is required so all bot replies look consistent across resolve, review, fix-thread, and explain-thread:`,
     ``,
     `   \`\`\`markdown`,
     `   <STATUS_LINE>`,

@@ -465,6 +465,32 @@ const configSchema = z
     // the SC-005 target accuracy band.
     intentConfidenceThreshold: z.coerce.number().min(0).max(1).default(0.75),
 
+    // --- 10a. chat-thread executor (conversational scoped intent) ---
+
+    // Minimum LLM-reported confidence required to dispatch a workflow
+    // directly from chat-thread without going through the human-confirm
+    // proposal gate. Slightly stricter than intentConfidenceThreshold
+    // because chat-thread runs after a second pass with full PR context
+    // and is expected to be more sure of itself.
+    chatThreadExecuteThreshold: z.coerce.number().min(0).max(1).default(0.8),
+
+    // TTL for awaiting chat-thread proposals. After this point the
+    // proposal-poller transitions the row to `expired` and any
+    // subsequent reaction is logged-but-ignored.
+    chatThreadProposalTtlHours: z.coerce.number().int().positive().default(24),
+
+    // Per-AWAITING-PROPOSAL cap on conversational turns. While a chat
+    // proposal is in `awaiting` status, every chat-thread tick on that
+    // thread bumps the proposal-row's `turn_count`; once this cap is
+    // hit, chat-thread declines further LLM work and tells the user
+    // they need to take an explicit action (👍 reaction, decline, or
+    // re-ask in a fresh comment). The counter freezes when the
+    // proposal exits `awaiting`, so unrelated future chat in the same
+    // thread is NOT capped here. This is intentional — the cap exists
+    // to bound run-away back-and-forth on a contentious propose-loop,
+    // not to limit casual conversation.
+    chatThreadMaxTurns: z.coerce.number().int().positive().default(8),
+
     // --- 10b. LLM-based output scanner (defense layer 4) ---
 
     // When true, run a second-pass LLM scan on every agent-generated body
@@ -851,6 +877,11 @@ function loadConfig(): Config {
     triageMaxTokens: process.env["TRIAGE_MAX_TOKENS"],
     triageTimeoutMs: process.env["TRIAGE_TIMEOUT_MS"],
     intentConfidenceThreshold: process.env["INTENT_CONFIDENCE_THRESHOLD"],
+
+    // Group 10a — chat-thread executor
+    chatThreadExecuteThreshold: process.env["CHAT_THREAD_EXECUTE_THRESHOLD"],
+    chatThreadProposalTtlHours: process.env["CHAT_THREAD_PROPOSAL_TTL_HOURS"],
+    chatThreadMaxTurns: process.env["CHAT_THREAD_MAX_TURNS"],
 
     // Group 10b — LLM-based output scanner
     llmOutputScannerEnabled: parseBooleanEnv(

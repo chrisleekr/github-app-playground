@@ -26,6 +26,7 @@
 import { z } from "zod";
 
 import { estimateHaikuCostUsd, type LLMClient, resolveModelId } from "../ai/llm-client";
+import { parseStructuredResponse, withStructuredRules } from "../ai/structured-output";
 import { config } from "../config";
 import { getDb } from "../db";
 import { logger } from "../logger";
@@ -233,7 +234,7 @@ export async function triageRequest(input: TriageInput, client: LLMClient): Prom
     withTimeout(
       client.create({
         model: modelId,
-        system: SYSTEM_PROMPT,
+        system: withStructuredRules(SYSTEM_PROMPT),
         messages: [{ role: "user", content: prompt }],
         maxTokens: config.triageMaxTokens,
       }),
@@ -260,6 +261,9 @@ export async function triageRequest(input: TriageInput, client: LLMClient): Prom
     return { outcome: "fallback", reason: "llm-error" };
   }
 
+  // Defensive prose extraction first — `parseStructuredResponse` only
+  // strips code fences. Triage occasionally sees prose-wrapped JSON
+  // ("Here's the verdict: { ... }") which we want to recover from.
   const jsonText = extractJsonObject(response.text);
   if (jsonText === null) {
     const rawPreview = sanitizeContent(response.text.slice(0, 200));
@@ -270,27 +274,19 @@ export async function triageRequest(input: TriageInput, client: LLMClient): Prom
     return { outcome: "fallback", reason: "parse-error" };
   }
 
-  let parsedJson: unknown;
-  try {
-    parsedJson = JSON.parse(jsonText);
-  } catch (err) {
+  const parseResult = parseStructuredResponse(jsonText, TriageResponseSchema);
+  if (!parseResult.ok) {
     logger.warn(
-      { deliveryId: input.deliveryId, err: err instanceof Error ? err.message : String(err) },
-      "triage response was not valid JSON; falling back",
+      { deliveryId: input.deliveryId, stage: parseResult.stage, error: parseResult.error },
+      "triage response rejected by structured-output pipeline; falling back",
     );
     return { outcome: "fallback", reason: "parse-error" };
   }
-
-  const schemaResult = TriageResponseSchema.safeParse(parsedJson);
-  if (!schemaResult.success) {
-    logger.warn(
-      { deliveryId: input.deliveryId, issues: schemaResult.error.issues },
-      "triage response failed schema validation; falling back",
-    );
-    return { outcome: "fallback", reason: "parse-error" };
+  if (parseResult.strategy === "tolerant") {
+    logger.info({ deliveryId: input.deliveryId }, "triage response recovered via tolerant parser");
   }
 
-  const triage = schemaResult.data;
+  const triage = parseResult.data;
   const result: TriageResult = {
     ...triage,
     costUsd: estimateHaikuCostUsd(response.usage, response.model),

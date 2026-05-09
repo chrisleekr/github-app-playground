@@ -10,11 +10,7 @@
 
 import { describe, expect, it, mock } from "bun:test";
 
-import {
-  classifyComment,
-  stripJsonFence,
-  toCommandIntent,
-} from "../../../src/workflows/ship/nl-classifier";
+import { classifyComment, toCommandIntent } from "../../../src/workflows/ship/nl-classifier";
 
 describe("classifyComment — FR-025a mention-prefix gate", () => {
   it("returns null and does NOT invoke the LLM when the comment lacks the trigger phrase", async () => {
@@ -156,20 +152,9 @@ describe("classifyComment — JSON shape + Zod validation", () => {
   });
 });
 
-describe("stripJsonFence", () => {
-  it("returns the inner JSON when wrapped in ```json … ```", () => {
-    expect(stripJsonFence('```json\n{"intent":"ship"}\n```')).toBe('{"intent":"ship"}');
-  });
-  it("returns the inner JSON when wrapped in ``` … ``` (no language tag)", () => {
-    expect(stripJsonFence('```\n{"intent":"ship"}\n```')).toBe('{"intent":"ship"}');
-  });
-  it("passes raw JSON through unchanged when no fence is present", () => {
-    expect(stripJsonFence('{"intent":"ship"}')).toBe('{"intent":"ship"}');
-  });
-  it("does not strip when only one side has a fence", () => {
-    expect(stripJsonFence('```json\n{"intent":"ship"}')).toBe('```json\n{"intent":"ship"}');
-  });
-});
+// `stripJsonFence` was lifted into `src/ai/structured-output.ts` and is
+// covered by `test/ai/structured-output.test.ts` (fence-stripping cases).
+// The classifier no longer exposes its own implementation.
 
 describe("classifyComment — FR-029..FR-035 event-surface eligibility", () => {
   it("rewrites an ineligible intent to 'none' when eventSurface is provided", async () => {

@@ -29,6 +29,7 @@ import {
   startLivenessReaper,
   stopLivenessReaper,
 } from "./orchestrator/liveness-reaper";
+import { type ProposalPollerHandle, startProposalPoller } from "./orchestrator/proposal-poller";
 import { startQueueWorker, stopQueueWorker } from "./orchestrator/queue-worker";
 import {
   closeValkey,
@@ -418,11 +419,36 @@ async function runStartupChecks(): Promise<void> {
   await shipTickleScheduler.start();
   logger.info({ event: "ship.tickle.started" }, "Ship-intent tickle scheduler started");
 
+  // Chat-thread proposal poller (FIX R2#2). Periodic reaction scan +
+  // expired-row cleanup. No-op when DATABASE_URL is unset; resolves
+  // installations on demand via apps.getRepoInstallation since
+  // chat_proposals does not carry installation_id.
+  proposalPoller = startProposalPoller({
+    resolveOctokit: async (installationId) =>
+      (await app.getInstallationOctokit(installationId)) as unknown as Octokit,
+    resolveInstallationId: async (q) => {
+      try {
+        const r = await app.octokit.rest.apps.getRepoInstallation({
+          owner: q.owner,
+          repo: q.repo,
+        });
+        return r.data.id;
+      } catch (err) {
+        logger.debug(
+          { err, owner: q.owner, repo: q.repo },
+          "proposal-poller: getRepoInstallation lookup failed",
+        );
+        return null;
+      }
+    },
+  });
+
   isReady = true;
   logger.info({ valkeyHealthy: isValkeyHealthy() }, "Startup checks passed, server is ready");
 }
 
 let shipTickleScheduler: TickleScheduler | null = null;
+let proposalPoller: ProposalPollerHandle | null = null;
 
 void runStartupChecks().catch((err: unknown) => {
   logger.error({ err }, "Startup checks failed unexpectedly");
@@ -451,6 +477,10 @@ function shutdown(signal: string): void {
         if (shipTickleScheduler !== null) {
           shipTickleScheduler.stop();
           shipTickleScheduler = null;
+        }
+        if (proposalPoller !== null) {
+          proposalPoller.stop();
+          proposalPoller = null;
         }
         await stopQueueWorker();
         stopLivenessReaper();

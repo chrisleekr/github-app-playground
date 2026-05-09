@@ -90,7 +90,7 @@ export type ShipCommandIntent = (typeof SHIP_COMMAND_INTENTS)[number];
  */
 export const SCOPED_COMMAND_INTENTS = [
   "fix-thread",
-  "explain-thread",
+  "chat-thread",
   "summarize",
   "rebase",
   "investigate",
@@ -135,7 +135,12 @@ export const INTENT_ELIGIBLE_SURFACES: Record<CommandIntent, readonly EventSurfa
   resume: ["pr-comment", "review-comment", "pr-label"],
   abort: ["pr-comment", "review-comment", "pr-label"],
   "fix-thread": ["review-comment"],
-  "explain-thread": ["review-comment"],
+  // chat-thread is the general conversational executor — eligible on
+  // every comment surface so the bot can engage on review threads,
+  // top-level PR comments, and issue comments alike. Issue and PR
+  // labels are intentionally excluded — labels are imperative, not
+  // conversational.
+  "chat-thread": ["review-comment", "pr-comment", "issue-comment"],
   summarize: ["pr-comment", "review-comment", "pr-label"],
   rebase: ["pr-comment", "review-comment", "pr-label"],
   investigate: ["issue-comment", "issue-label"],
@@ -190,4 +195,20 @@ export interface CanonicalCommand {
   readonly thread_id?: string;
   readonly principal_login: string;
   readonly pr: CanonicalCommandPr;
+  /**
+   * Body of the comment that triggered the canonical command. Set on
+   * comment surfaces (literal + NL); absent for label triggers. Carried
+   * here so conversational handlers (chat-thread) don't have to refetch.
+   */
+  readonly comment_body?: string;
+  /**
+   * REST id of the triggering comment (always `payload.comment.id`).
+   * Set on comment surfaces. NOTE: this differs from `thread_id` on
+   * review-comment replies — `thread_id` resolves to the top-level
+   * comment via `payload.comment.in_reply_to_id ?? payload.comment.id`
+   * so the cache and chat_proposals row scope to the thread root, not
+   * the individual reply. The two ids only coincide when the comment
+   * itself starts a thread.
+   */
+  readonly trigger_comment_id?: number;
 }

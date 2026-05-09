@@ -89,12 +89,7 @@ void mock.module("../../src/orchestrator/job-queue", () => ({
   tryDequeueJob: mock(() => Promise.resolve(null)),
   dequeueJob: mock(() => Promise.resolve(null)),
   isScopedJob: () => false,
-  SCOPED_JOB_KINDS: [
-    "scoped-rebase",
-    "scoped-fix-thread",
-    "scoped-explain-thread",
-    "scoped-open-pr",
-  ],
+  SCOPED_JOB_KINDS: ["scoped-rebase", "scoped-fix-thread", "scoped-open-pr"],
   // Stub the discriminated-union schema so connection-handler's
   // re-validation in `handleScopedAccept` (C2) compiles. Returning
   // `success: false` is fine — the only legacy-flow tests in this file

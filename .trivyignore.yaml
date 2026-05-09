@@ -75,7 +75,7 @@ vulnerabilities:
       bypass on excluded DNS constraints). Fix requires Go 1.26.2 — docker
       image lag. CLI's only TLS path is `docker login` against trusted public
       registries, not attacker-supplied cert chains.
-    expired_at: 2026-04-30
+    expired_at: 2026-05-23
 
   - id: CVE-2026-32282
     paths:
@@ -86,7 +86,7 @@ vulnerabilities:
       not invoke Root.Chmod on any agent-triggered flow; isolated-job pod
       filesystem is not writable by any external attacker who could race a
       symlink replacement.
-    expired_at: 2026-04-30
+    expired_at: 2026-05-23
 
   - id: CVE-2026-32280
     paths:
@@ -97,7 +97,7 @@ vulnerabilities:
       lag. Only TLS path is `docker login` against trusted public registries
       — no attacker-supplied intermediate certificate chains reach x509
       chain-building.
-    expired_at: 2026-04-30
+    expired_at: 2026-05-23
 
   # NOTE: prior entries for CVE-2026-33672 (MEDIUM picomatch) and
   # CVE-2026-33750 (MEDIUM brace-expansion) were removed when

@@ -123,6 +123,75 @@ describe("buildRequest — shaping the SDK payload", () => {
     expect(req["system"]).toBe("you are a classifier");
     expect(req["temperature"]).toBe(0.5);
   });
+
+  describe("Claude Code OAuth gate", () => {
+    const CALLER_SYSTEM = "you are a classifier";
+    const IDENTIFIER = "You are Claude Code, Anthropic's official CLI for Claude.";
+
+    it("emits a two-block array system on the OAuth path so the gate's first-block check passes", () => {
+      const req = buildRequest(
+        {
+          model: "claude-sonnet-4-6",
+          system: CALLER_SYSTEM,
+          messages: [{ role: "user", content: "hi" }],
+          maxTokens: 256,
+        },
+        "anthropic-oauth",
+      );
+      expect(req["system"]).toEqual([
+        { type: "text", text: IDENTIFIER },
+        { type: "text", text: CALLER_SYSTEM },
+      ]);
+    });
+
+    it("uses the Claude Code identifier alone (string form) when no caller system is supplied (OAuth)", () => {
+      const req = buildRequest(
+        {
+          model: "claude-sonnet-4-6",
+          messages: [{ role: "user", content: "hi" }],
+          maxTokens: 256,
+        },
+        "anthropic-oauth",
+      );
+      expect(req["system"]).toBe(IDENTIFIER);
+    });
+
+    it("does NOT prepend the identifier on the API-key path", () => {
+      const req = buildRequest(
+        {
+          model: "claude-sonnet-4-6",
+          system: CALLER_SYSTEM,
+          messages: [{ role: "user", content: "hi" }],
+          maxTokens: 256,
+        },
+        "anthropic-apikey",
+      );
+      expect(req["system"]).toBe(CALLER_SYSTEM);
+    });
+
+    it("does NOT prepend the identifier on the Bedrock path", () => {
+      const req = buildRequest(
+        {
+          model: "us.anthropic.claude-sonnet-4-6",
+          system: CALLER_SYSTEM,
+          messages: [{ role: "user", content: "hi" }],
+          maxTokens: 256,
+        },
+        "bedrock",
+      );
+      expect(req["system"]).toBe(CALLER_SYSTEM);
+    });
+
+    it("defaults authMode to api-key (no prefix) when called without the parameter", () => {
+      const req = buildRequest({
+        model: "haiku",
+        system: CALLER_SYSTEM,
+        messages: [{ role: "user", content: "hi" }],
+        maxTokens: 256,
+      });
+      expect(req["system"]).toBe(CALLER_SYSTEM);
+    });
+  });
 });
 
 describe("parseAnthropicResponse — concatenates text blocks, strips non-text", () => {

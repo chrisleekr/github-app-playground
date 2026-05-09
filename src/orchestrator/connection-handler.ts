@@ -997,18 +997,6 @@ function scopedJobToContext(job: ScopedQueuedJob): ScopedJobContext {
         triggerCommentId: job.triggerCommentId,
         enqueuedAt: job.enqueuedAt,
       };
-    case "scoped-explain-thread":
-      return {
-        jobKind: "scoped-explain-thread",
-        deliveryId: job.deliveryId,
-        installationId: job.installationId,
-        owner: job.repoOwner,
-        repo: job.repoName,
-        prNumber: job.prNumber,
-        threadRef: job.threadRef,
-        triggerCommentId: job.triggerCommentId,
-        enqueuedAt: job.enqueuedAt,
-      };
     case "scoped-open-pr":
       return {
         jobKind: "scoped-open-pr",

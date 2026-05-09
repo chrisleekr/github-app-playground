@@ -91,11 +91,6 @@ export const SHIP_LOG_EVENTS = {
       daemonCompleted: "ship.scoped.fix_thread.daemon.completed",
       daemonFailed: "ship.scoped.fix_thread.daemon.failed",
     },
-    explainThread: {
-      enqueued: "ship.scoped.explain_thread.enqueued",
-      daemonCompleted: "ship.scoped.explain_thread.daemon.completed",
-      daemonFailed: "ship.scoped.explain_thread.daemon.failed",
-    },
     openPr: {
       enqueued: "ship.scoped.open_pr.enqueued",
       daemonCompleted: "ship.scoped.open_pr.daemon.completed",

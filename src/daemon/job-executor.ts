@@ -540,33 +540,6 @@ async function runScopedJob(
         });
         return;
       }
-      case "scoped-explain-thread": {
-        const { executeScopedExplainThread } = await import("./scoped-explain-thread-executor");
-        const outcome = await executeScopedExplainThread({
-          installationToken,
-          owner: scoped.owner,
-          repo: scoped.repo,
-          prNumber: scoped.prNumber,
-          threadRef: scoped.threadRef,
-          triggerCommentId: scoped.triggerCommentId,
-        });
-        sendIfNotAborted({
-          type: "scoped-job-completion",
-          ...createMessageEnvelope(offerId),
-          payload: {
-            offerId,
-            deliveryId: scoped.deliveryId,
-            jobKind: "scoped-explain-thread",
-            status: outcome.status,
-            durationMs: Date.now() - startedAt,
-            ...(outcome.threadReplyId !== undefined
-              ? { threadReplyId: outcome.threadReplyId }
-              : {}),
-            ...(outcome.reason !== undefined ? { reason: outcome.reason } : {}),
-          },
-        });
-        return;
-      }
       case "scoped-open-pr": {
         const { executeScopedOpenPr } = await import("./scoped-open-pr-executor");
         const outcome = await executeScopedOpenPr({

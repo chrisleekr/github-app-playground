@@ -29,6 +29,17 @@ interface BasePayload {
   readonly event_surface?: EventSurface;
   /** Set when the trigger originated from a `pull_request_review_comment` event. */
   readonly thread_id?: string;
+  /**
+   * Body of the triggering comment. Forwarded onto `CanonicalCommand`
+   * for conversational handlers (chat-thread). Absent for label
+   * triggers.
+   */
+  readonly comment_body?: string;
+  /**
+   * REST id of the triggering comment. Forwarded onto `CanonicalCommand`
+   * for conversational handlers. Absent for label triggers.
+   */
+  readonly trigger_comment_id?: number;
 }
 
 export interface LiteralPayload extends BasePayload {
@@ -76,10 +87,18 @@ function withSurface(
     payload.event_surface === undefined
       ? withDeadline
       : { ...withDeadline, event_surface: payload.event_surface };
-  const final =
+  const withThread =
     payload.thread_id === undefined
       ? withEventSurface
       : { ...withEventSurface, thread_id: payload.thread_id };
+  const withCommentBody =
+    payload.comment_body === undefined
+      ? withThread
+      : { ...withThread, comment_body: payload.comment_body };
+  const final =
+    payload.trigger_comment_id === undefined
+      ? withCommentBody
+      : { ...withCommentBody, trigger_comment_id: payload.trigger_comment_id };
   return final;
 }
 
