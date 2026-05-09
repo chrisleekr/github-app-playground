@@ -334,7 +334,15 @@ export async function runChatThread(input: RunChatThreadInput): Promise<RunChatT
       userPrompt,
     });
   } catch (err) {
-    log.error({ err }, "chat-thread: LLM call failed");
+    // Anthropic SDK errors carry circular fetch Response refs; pino's
+    // safe-stable-stringify drops them as "[unable to serialize…]",
+    // hiding the actual 401/429. Mirror the nl-classifier/dispatch-scoped
+    // pattern: log err.message (or String(err)) so the real cause is
+    // visible. Same lesson as commit 82f8332.
+    log.error(
+      { err: err instanceof Error ? err.message : String(err) },
+      "chat-thread: LLM call failed",
+    );
     return { mode: "skipped", reason: "llm-error" };
   }
 
