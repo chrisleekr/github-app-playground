@@ -94,9 +94,27 @@ server.registerTool(
   ({ category, content }) => {
     // Untrusted-input boundary: memory rows are surfaced as data on every
     // future run, so strip injection vectors before they reach the daemon
-    // scratch file. See docs/build/security.md (repo-memory hardening) and
-    // issue #112 for the cross-session indirect-injection chain.
+    // scratch file. See issue #112 for the cross-session indirect-injection
+    // chain that motivates this guard.
     const safeContent = sanitizeRepoMemoryContent(content);
+    if (safeContent === "") {
+      // Content collapsed to empty (entirely an HTML comment, invisibles, or
+      // similar). Don't append an action: saveRepoLearnings would skip it on
+      // the orchestrator side anyway, and signalling success here would
+      // leave the agent thinking it wrote something it did not.
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({
+              saved: false,
+              category,
+              reason: "empty_after_sanitize",
+            }),
+          },
+        ],
+      };
+    }
     appendAction({ type: "save", category, content: safeContent });
     return {
       content: [

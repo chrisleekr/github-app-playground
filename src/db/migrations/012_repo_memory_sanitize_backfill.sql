@@ -13,23 +13,32 @@
 --
 -- Coverage parity with src/utils/sanitize.ts sanitizeRepoMemoryContent:
 --   1. Strip HTML comments (the most-cited write-side injection vector).
---   2. Strip BMP invisibles: zero-width, BOM, soft-hyphen, bidi controls,
---      line/paragraph separators (U+2028/U+2029).
---   3. Strip NUL bytes (DB / JSON desync).
---   4. Collapse CR/LF/U+2028/U+2029 runs to a single space (line-shape
+--   2. Strip BMP invisibles + ASCII C0/C1 control characters: zero-width,
+--      BOM, soft-hyphen, bidi controls, NUL through U+0008, U+000B/U+000C,
+--      U+000E-U+001F, and U+007F-U+009F. Mirrors the bracket expression in
+--      stripInvisibleCharacters() so a legacy row containing a stray ESC
+--      (U+001B) or NBSP-adjacent C1 byte gets the same treatment as a row
+--      written today.
+--   3. Collapse CR/LF/U+2028/U+2029 runs to a single space (line-shape
 --      break-out vector).
---   5. Redact every GitHub token shape that redactGitHubTokens covers:
+--   4. Redact every GitHub token shape that redactGitHubTokens covers:
 --      ghp_ / gho_ / ghs_ / ghr_ / github_pat_.
---   6. Trim surrounding whitespace.
+--   5. Trim surrounding whitespace, including tab and NBSP, to match the
+--      JS String.prototype.trim() set the runtime helper relies on.
+--      Postgres btrim() defaults to ASCII space only, so an explicit
+--      character set is required for parity.
 --
--- This SQL pass is intentionally narrower than the TypeScript helper in two
--- specific ways: (a) no markdown alt-text / link-title / hidden-attribute
--- strip, (b) no Unicode TAG block (U+E0000..U+E007F) strip — Postgres ARE
--- in 17 does not range over the supplementary plane in a single
--- bracket-expression. Both gaps are tolerated because all NEW writes go
--- through the helper, and pre-existing rows containing TAG-block payloads
--- are vanishingly rare. Document any new gap added here in test/security/
--- SCENARIOS.md Section K alongside the rest.
+-- This SQL pass is intentionally narrower than the TypeScript helper in
+-- three specific ways:
+--   (a) no markdown alt-text / link-title / hidden-attribute strip,
+--   (b) no normalizeHtmlEntities decode/strip,
+--   (c) no Unicode TAG block (U+E0000..U+E007F) strip - Postgres ARE in
+--       17 does not range over the supplementary plane in a single
+--       bracket-expression.
+-- All three gaps are tolerated because every NEW write goes through the
+-- runtime helper. Pre-existing rows containing payloads that exercise only
+-- those vectors are vanishingly rare. Document any new gap added here in
+-- test/security/SCENARIOS.md Section K alongside the rest.
 --
 -- WHERE filter: intentionally none. repo_memory is small per-repo, the
 -- regexp_replace chain is idempotent, and dropping the filter eliminates
@@ -46,13 +55,10 @@ SET content = btrim(
           regexp_replace(
             regexp_replace(
               regexp_replace(
-                regexp_replace(
-                  content,
-                  '<!--.*?-->', '', 'g'
-                ),
-                E'[\\u200B-\\u200D\\uFEFF\\u00AD\\u2066-\\u2069\\u202A-\\u202E]', '', 'g'
+                content,
+                '<!--.*?-->', '', 'g'
               ),
-              E'\\x00', '', 'g'
+              E'[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F-\\u009F\\u00AD\\u200B-\\u200D\\u2066-\\u2069\\u202A-\\u202E\\uFEFF]', '', 'g'
             ),
             E'[\\r\\n\\u2028\\u2029]+', ' ', 'g'
           ),
@@ -63,7 +69,8 @@ SET content = btrim(
       'ghs_[A-Za-z0-9]{36}', '[REDACTED_GITHUB_TOKEN]', 'g'
     ),
     'ghr_[A-Za-z0-9]{36}', '[REDACTED_GITHUB_TOKEN]', 'g'
-  )
+  ),
+  E' \t\u00A0'
 )
 WHERE category != 'env_var';
 

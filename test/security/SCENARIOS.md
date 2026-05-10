@@ -22,7 +22,7 @@ The bot is a GitHub App that:
 1. Reads attacker-controllable text: PR title, PR body, issue title, issue body, comments, review comments, review-comment paths, branch names, filenames, commit messages.
 2. Passes that text into an LLM prompt.
 3. Lets the LLM call tools and post comments back to the same repository under a bot identity.
-4. Persists agent-attested state across sessions (Postgres `repo_memory`, daemon scratch files surfaced as MCP env vars). Today: `repo_memory` rows authored via `save_repo_memory` and re-injected as `<untrusted_repo_memory>` in every future prompt.
+4. Persists agent-attested state across sessions (Postgres `repo_memory`, daemon scratch files surfaced as MCP env vars). Today: `repo_memory` rows authored via `save_repo_memory` and re-injected as `<untrusted_repo_memory_<8hex>>` in every future prompt, where `<8hex>` is a per-call nonce that the rendered tag and the `<security_directive>` enumeration share.
 
 Every scenario below assumes the attacker can write **at least one** surface in (1), the standard "comment-and-control" threat model published throughout 2025-2026 (see References). Section K additionally covers cross-session vectors: an attacker influences a single run to write attacker-controlled text into (4), then the payload is re-rendered into a future, _separately triggered_ run.
 
