@@ -1,3 +1,18 @@
+# [1.12.0](https://github.com/chrisleekr/github-app-playground/compare/v1.11.1...v1.12.0) (2026-05-10)
+
+
+### Bug Fixes
+
+* **security:** sanitize attacker-controlled filenames in formatChangedFiles ([#110](https://github.com/chrisleekr/github-app-playground/issues/110)) ([bb7b91d](https://github.com/chrisleekr/github-app-playground/commit/bb7b91d46a156d889eee9e335590ed1e6beab1fa))
+* **ship:** reroute iteration-0 terminal-bad verdicts to chat-thread ([#119](https://github.com/chrisleekr/github-app-playground/issues/119)) ([#120](https://github.com/chrisleekr/github-app-playground/issues/120)) ([403ec21](https://github.com/chrisleekr/github-app-playground/commit/403ec21d0162e7deee66c161e792ac0a8c3eca86))
+
+
+### Features
+
+* **ai:** tool-driven LLM with github-state MCP server ([#117](https://github.com/chrisleekr/github-app-playground/issues/117)) ([#118](https://github.com/chrisleekr/github-app-playground/issues/118)) ([2a3c1e3](https://github.com/chrisleekr/github-app-playground/commit/2a3c1e3aecd6f7ea18a5788f202edef6b3a2b178))
+* **security:** harden bot against prompt-injection comment attacks ([#121](https://github.com/chrisleekr/github-app-playground/issues/121)) ([564d066](https://github.com/chrisleekr/github-app-playground/commit/564d0663499921bbe7e1b644b97e27c5e41f336d))
+* **workflows:** chat-thread executor + structured-output chokepoint + OAuth gate fix ([#113](https://github.com/chrisleekr/github-app-playground/issues/113)) ([698694b](https://github.com/chrisleekr/github-app-playground/commit/698694b879218d1d291af85d25c2c2d235af44b5))
+
 ## [1.11.1](https://github.com/chrisleekr/github-app-playground/compare/v1.11.0...v1.11.1) (2026-05-08)
 
 
