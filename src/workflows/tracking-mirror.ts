@@ -189,7 +189,7 @@ async function createOrAdoptTrackingComment(
 
   let createErr: unknown = null;
   try {
-    await safePostToGitHub({
+    const guarded = await safePostToGitHub({
       body,
       source: "system",
       callsite: "workflows.tracking-mirror.create",
@@ -202,6 +202,16 @@ async function createOrAdoptTrackingComment(
           body: cleanBody,
         }),
     });
+    // safePostToGitHub returns posted:false when the body is emptied by
+    // secret redaction. Surface that as a synthetic createErr so the
+    // post-scan branch below produces a clear failure instead of silently
+    // dropping the create and falling through to the misleading
+    // "createComment returned no row" path.
+    if (!guarded.posted) {
+      createErr = new Error(
+        `workflows.tracking-mirror.create: post skipped after secret redaction (matchCount=${guarded.matchCount}, reason=${guarded.reason ?? "unknown"})`,
+      );
+    }
   } catch (err) {
     createErr = err;
   }

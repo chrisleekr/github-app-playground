@@ -86,7 +86,7 @@ export async function upsertMarkerComment(input: UpsertMarkerCommentInput): Prom
     marker: input.marker,
   });
   if (existing !== null) {
-    await safePostToGitHub({
+    const guarded = await safePostToGitHub({
       body: input.body,
       source: input.source,
       callsite: "ship.scoped.marker-comment.update",
@@ -100,6 +100,11 @@ export async function upsertMarkerComment(input: UpsertMarkerCommentInput): Prom
           body: cleanBody,
         }),
     });
+    if (!guarded.posted) {
+      throw new Error(
+        `ship.scoped.marker-comment.update: post skipped after secret redaction (matchCount=${guarded.matchCount})`,
+      );
+    }
     return existing;
   }
   const guarded = await safePostToGitHub({
