@@ -23,11 +23,11 @@ Writes an implementation plan for an issue that has already passed triage.
 | Field                                              | Type     | Notes                                                                                              |
 | -------------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------- |
 | `state.plan`                                       | markdown | Full `PLAN.md` body, captured before workspace cleanup. Embedded verbatim in the tracking comment. |
-| `state.costUsd`, `state.turns`, `state.durationMs` | metrics  | —                                                                                                  |
+| `state.costUsd`, `state.turns`, `state.durationMs` | metrics  | _none_                                                                                             |
 
 ## Stop conditions
 
-The agent writes `PLAN.md`; the pipeline reports success or failure. No turn cap — the agent runs to completion.
+The agent writes `PLAN.md`; the pipeline reports success or failure. No turn cap: the agent runs to completion.
 
 ## Re-trigger semantics
 

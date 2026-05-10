@@ -57,7 +57,7 @@ export function dispatchCanonicalCommand(command: CanonicalCommand, deps: Dispat
   }
 
   if (isScopedCommandIntent(command.intent)) {
-    // US5 — fan out to the right scoped handler. Each scoped handler
+    // US5, fan out to the right scoped handler. Each scoped handler
     // is stateless (no `ship_intents` row) and runs to completion in a
     // single agent invocation.
     const scopedDeps: ScopedCommandDeps = { octokit: deps.octokit, log };
@@ -75,7 +75,7 @@ export function dispatchCanonicalCommand(command: CanonicalCommand, deps: Dispat
  * pull_request_review_comment). Tries the literal `bot:<verb>` parser
  * first; on no match, falls back to the NL classifier (gated on
  * mention-prefix per FR-025a). Both paths produce a `CanonicalCommand`
- * via `routeTrigger(...)` — the NL classifier MUST NOT run when the
+ * via `routeTrigger(...)`: the NL classifier MUST NOT run when the
  * literal parser already matched (no double-fire).
  *
  * Returns `true` when canonical routing matched a verb and dispatched
@@ -90,7 +90,7 @@ export async function dispatchCommentSurface(input: {
   /**
    * Per-event-surface eligibility carrier (FR-029..FR-035). When present,
    * it is forwarded verbatim into the canonical command. When absent
-   * (legacy callers), per-intent eligibility is not enforced — every
+   * (legacy callers), per-intent eligibility is not enforced: every
    * 11-verb intent reaches its handler.
    */
   readonly event_surface?: "pr-comment" | "review-comment" | "issue-comment";
@@ -175,7 +175,7 @@ export async function dispatchCommentSurface(input: {
     // structured properties; `String(err)` would discard both.
     (input.log ?? rootLogger).error(
       { event: "ship.dispatch_comment_surface_failed", err },
-      "ship dispatchCommentSurface threw — swallowed",
+      "ship dispatchCommentSurface threw, swallowed",
     );
     return false;
   }

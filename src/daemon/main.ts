@@ -104,7 +104,7 @@ function initiateGracefulShutdown(reason: string): void {
   const checkInterval = setInterval(() => {
     if (getActiveJobCount() === 0) {
       clearInterval(checkInterval);
-      logger.info("All active jobs completed — shutting down");
+      logger.info("All active jobs completed, shutting down");
       wsClient.close(1000, "graceful shutdown");
       process.exit(0);
     }
@@ -113,7 +113,7 @@ function initiateGracefulShutdown(reason: string): void {
       clearInterval(checkInterval);
       logger.warn(
         { activeJobs: getActiveJobCount() },
-        "Drain timeout expired with active jobs — forcing shutdown",
+        "Drain timeout expired with active jobs, forcing shutdown",
       );
       wsClient.close(1000, "graceful shutdown (timeout)");
       process.exit(1);
@@ -293,7 +293,7 @@ function startSpotTerminationPolling(): void {
           signal: AbortSignal.timeout(1000),
         });
         if (resp.ok) {
-          logger.warn("Spot termination notice detected — initiating graceful drain");
+          logger.warn("Spot termination notice detected, initiating graceful drain");
           if (spotCheckInterval !== null) {
             clearInterval(spotCheckInterval);
             spotCheckInterval = null;
@@ -315,7 +315,7 @@ function startSpotTerminationPolling(): void {
  * When the daemon runs as an ephemeral K8s Pod, it must exit after a
  * period of idleness so the Pod is reclaimed and the orchestrator doesn't
  * keep paying for unused capacity. The persistent pool never exits on
- * idle — those Pods are replaced by operators, not self-terminated.
+ * idle: those Pods are replaced by operators, not self-terminated.
  */
 function startEphemeralIdleLoop(): void {
   if (!capabilities.ephemeral) return;
@@ -333,7 +333,7 @@ function startEphemeralIdleLoop(): void {
         clearInterval(ephemeralIdleCheckInterval);
         ephemeralIdleCheckInterval = null;
       }
-      logger.info({ idleForMs: idleFor, idleTimeoutMs }, "Ephemeral daemon idle — exiting");
+      logger.info({ idleForMs: idleFor, idleTimeoutMs }, "Ephemeral daemon idle, exiting");
       initiateGracefulShutdown("ephemeral idle timeout");
     }
   }, 5_000);

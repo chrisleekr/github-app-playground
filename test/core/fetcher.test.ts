@@ -55,7 +55,7 @@ describe("filterByTriggerTime", () => {
     });
 
     it("prefers lastEditedAt over updatedAt when both are present", () => {
-      // lastEditedAt is before trigger, updatedAt is after — item must be kept.
+      // lastEditedAt is before trigger, updatedAt is after, item must be kept.
       const items = [
         item("2025-06-01T10:00:00Z", {
           lastEditedAt: "2025-06-01T11:00:00Z",
@@ -91,8 +91,8 @@ describe("filterByTriggerTime", () => {
     it("filters multiple items correctly", () => {
       const items = [
         item("2025-06-01T10:00:00Z"), // keep
-        item("2025-06-01T12:00:01Z"), // remove — created after
-        item("2025-06-01T11:00:00Z", { lastEditedAt: "2025-06-01T12:30:00Z" }), // remove — edited after
+        item("2025-06-01T12:00:01Z"), // remove, created after
+        item("2025-06-01T11:00:00Z", { lastEditedAt: "2025-06-01T12:30:00Z" }), // remove, edited after
         item("2025-06-01T09:00:00Z", { updatedAt: "2025-06-01T11:00:00Z" }), // keep
       ];
       const result = filterByTriggerTime(items, TRIGGER);
@@ -118,7 +118,7 @@ function makeCtx(
   });
 }
 
-describe("fetchGitHubData — issue path", () => {
+describe("fetchGitHubData: issue path", () => {
   it("returns parsed issue data from GraphQL response", async () => {
     const ctx = makeCtx({
       isPR: false,
@@ -284,7 +284,7 @@ describe("fetchGitHubData — issue path", () => {
   });
 });
 
-describe("fetchGitHubData — PR path", () => {
+describe("fetchGitHubData: PR path", () => {
   const basePrResponse = {
     repository: {
       pullRequest: {
@@ -540,7 +540,7 @@ describe("fetchGitHubData — PR path", () => {
 /**
  * Builds N issue-comment-shaped GraphQL nodes with sequential ISO timestamps.
  * `triggerOffset` is the index whose `createdAt` matches `triggerTime` exactly
- * — items below it are pre-trigger (kept by `filterByTriggerTime`), items at
+ * items below it are pre-trigger (kept by `filterByTriggerTime`), items at
  * or above are post-trigger (filtered out).
  */
 function buildIssueComments(
@@ -568,11 +568,11 @@ function buildIssueComments(
   });
 }
 
-describe("fetchGitHubData — pagination merge", () => {
+describe("fetchGitHubData: pagination merge", () => {
   it("merges paginated issue comments into FetchedData (length > 100)", async () => {
     const total = 250;
     // Trigger offset is 999 so every fixture comment is pre-trigger and
-    // survives the TOCTOU filter — proves pagination merged correctly.
+    // survives the TOCTOU filter, proves pagination merged correctly.
     const ctx = makeCtx({
       isPR: false,
       // Trigger far in the future so all 250 fixture comments survive.
@@ -606,8 +606,8 @@ describe("fetchGitHubData — pagination merge", () => {
     expect(result.truncated).toBeUndefined();
   });
 
-  it("filterByTriggerTime runs after the merge — newest pre-trigger items survive", async () => {
-    // 250 comments, trigger at the 240th — items 0..239 must be kept and
+  it("filterByTriggerTime runs after the merge: newest pre-trigger items survive", async () => {
+    // 250 comments, trigger at the 240th, items 0..239 must be kept and
     // 240..249 dropped. Critically: comment 239 (the newest pre-trigger
     // item) MUST be in the result. Under the old un-paginated fetcher
     // this was the failure mode the issue reported: GraphQL would return
@@ -647,7 +647,7 @@ describe("fetchGitHubData — pagination merge", () => {
     expect(result.comments.length).toBe(triggerOffset);
     // comment at index 239 (the newest pre-trigger item) is preserved
     expect(result.comments[triggerOffset - 1]?.author).toBe(`user-${String(triggerOffset - 1)}`);
-    // post-trigger comments are dropped — no comment from index 240 onwards
+    // post-trigger comments are dropped, no comment from index 240 onwards
     const postTriggerKept = result.comments.some(
       (c) => c.author === `user-${String(triggerOffset)}`,
     );
@@ -693,7 +693,7 @@ describe("fetchGitHubData — pagination merge", () => {
     // The cap MUST keep the newest items, not the oldest. Comments arrive
     // ASC by createdAt from the GraphQL connection, so dropping the head
     // (the regression this guards against) would silently lose the most
-    // recent items — including, very likely, the trigger comment.
+    // recent items, including, very likely, the trigger comment.
     // After the cap, the surviving range is users (total - cap)..(total - 1);
     // user-0 must be gone and user-(total - 1) must be present.
     const firstSurvivor = total - cap;
@@ -741,7 +741,7 @@ describe("fetchGitHubData — pagination merge", () => {
       triggerTimestamp: new Date(Date.UTC(2099, 0, 1)).toISOString(),
       octokit: makeOctokit({
         graphqlPaginateResponses: {
-          // Top-level PR query — hand back one review with a partial first
+          // Top-level PR query, hand back one review with a partial first
           // page of nested comments.
           "pullRequest(number:": {
             repository: {
@@ -782,7 +782,7 @@ describe("fetchGitHubData — pagination merge", () => {
               },
             },
           },
-          // Follow-up paginate of the nested review-comments connection —
+          // Follow-up paginate of the nested review-comments connection,
           // matched by the `... on PullRequestReview` selection unique to
           // REVIEW_COMMENTS_QUERY.
           PullRequestReview: {
@@ -801,14 +801,14 @@ describe("fetchGitHubData — pagination merge", () => {
     expect(result.reviewComments.length).toBe(150);
     // First-page item present
     expect(result.reviewComments.some((c) => c.body === "inline-0")).toBe(true);
-    // Second-page item present — proves the follow-up paginate call ran
+    // Second-page item present, proves the follow-up paginate call ran
     expect(result.reviewComments.some((c) => c.body === "inline-149")).toBe(true);
   });
 });
 
-describe("fetchGitHubData — real paginate-graphql plugin contract", () => {
+describe("fetchGitHubData: real paginate-graphql plugin contract", () => {
   // These tests wire the actual `@octokit/plugin-paginate-graphql` against a
-  // stubbed `octokit.graphql` so the plugin's contract is enforced — the
+  // stubbed `octokit.graphql` so the plugin's contract is enforced, the
   // canned-merged-response path used elsewhere cannot tell a working
   // implementation apart from one that violates the cursor-name or
   // single-pageInfo invariants. If the queries in src/core/fetcher.ts ever
@@ -875,7 +875,7 @@ describe("fetchGitHubData — real paginate-graphql plugin contract", () => {
 
     const result = await fetchGitHubData(ctx);
     expect(result.comments.length).toBe(150);
-    // Page-1 first item AND page-2 last item must both be present —
+    // Page-1 first item AND page-2 last item must both be present,
     // proves both pages were merged.
     expect(result.comments[0]?.author).toBe("user-0");
     expect(result.comments[149]?.author).toBe("user-149");
@@ -884,7 +884,7 @@ describe("fetchGitHubData — real paginate-graphql plugin contract", () => {
   it("walks PR connections (files/comments/reviews) independently across real pages", async () => {
     // Three independent paginate calls each chain their own `$cursor`.
     // If the queries ever collapse multiple pageInfo blocks into one,
-    // the second connection silently truncates to page 1 — this test
+    // the second connection silently truncates to page 1, this test
     // surfaces that.
     const filesP1 = Array.from({ length: 100 }, (_, i) => ({
       path: `f${String(i)}.ts`,
@@ -962,9 +962,9 @@ describe("fetchGitHubData — real paginate-graphql plugin contract", () => {
       octokit: makeOctokit({
         useRealPaginatePlugin: true,
         graphqlPagesByQuery: {
-          // PR_FIRST_QUERY — `commits(first: 100)` is unique to it.
+          // PR_FIRST_QUERY, `commits(first: 100)` is unique to it.
           "commits(first: 100)": [prBaseP1, prBaseP2],
-          // PR_COMMENTS_QUERY — uses `comments(first: 100, after: $cursor)`.
+          // PR_COMMENTS_QUERY, uses `comments(first: 100, after: $cursor)`.
           "comments(first: 100, after: $cursor)": [
             {
               repository: {
@@ -987,7 +987,7 @@ describe("fetchGitHubData — real paginate-graphql plugin contract", () => {
               },
             },
           ],
-          // PR_REVIEWS_QUERY — single page, empty.
+          // PR_REVIEWS_QUERY, single page, empty.
           "reviews(first: 100, after: $cursor)": [
             {
               repository: {
@@ -1004,7 +1004,7 @@ describe("fetchGitHubData — real paginate-graphql plugin contract", () => {
     const result = await fetchGitHubData(ctx);
     expect(result.changedFiles.length).toBe(130);
     expect(result.comments.length).toBe(120);
-    // Both page boundaries crossed — last item of each connection survived.
+    // Both page boundaries crossed, last item of each connection survived.
     expect(result.changedFiles[129]?.filename).toBe("f129.ts");
     expect(result.comments[119]?.body).toBe("pr-comment-119");
   });

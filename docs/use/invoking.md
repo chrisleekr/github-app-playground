@@ -1,6 +1,6 @@
 # Invoking the bot
 
-The bot reacts to three kinds of input: mentions in a comment, labels applied to an issue or PR, and (for `bot:ship` only) natural-language asks that include the trigger phrase. All three converge on the same workflow registry — only the **surface** differs in logs.
+The bot reacts to three kinds of input: mentions in a comment, labels applied to an issue or PR, and (for `bot:ship` only) natural-language asks that include the trigger phrase. All three converge on the same workflow registry, only the **surface** differs in logs.
 
 ## The three surfaces
 
@@ -53,8 +53,8 @@ flowchart TD
 
 A duplicate webhook delivery never spawns a duplicate job. The router checks two layers:
 
-1. **Fast in-memory** — a `Map` keyed by the `X-GitHub-Delivery` header, swept every 60 minutes (`src/webhook/router.ts`). Lost on restart.
-2. **Durable** — `isAlreadyProcessed` looks for the hidden delivery marker that the bot embeds in its tracking comment. Survives pod restarts, OOM kills, and crash loops; works without `DATABASE_URL`.
+1. **Fast in-memory**: a `Map` keyed by the `X-GitHub-Delivery` header, swept every 60 minutes (`src/webhook/router.ts`). Lost on restart.
+2. **Durable**, `isAlreadyProcessed` looks for the hidden delivery marker that the bot embeds in its tracking comment. Survives pod restarts, OOM kills, and crash loops; works without `DATABASE_URL`.
 
 If both miss, the request proceeds to the allowlist + concurrency guard.
 
@@ -69,7 +69,7 @@ Comment-driven runs stack four reactions on your trigger comment so the lifecycl
 | Workflow succeeded         | 🎉       |
 | Workflow failed            | 😕       |
 
-Reactions are additive — the combined set is the audit trail. Label-driven runs skip reactions because there is no comment to react on.
+Reactions are additive: the combined set is the audit trail. Label-driven runs skip reactions because there is no comment to react on.
 
 The bot also writes a single **tracking comment** per run. For workflows that take minutes (triage, plan, implement, review, resolve, ship), the comment opens with a "Working…" body and is rewritten in place at major checkpoints and at the terminal state. You only need to watch one comment.
 

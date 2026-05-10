@@ -6,7 +6,7 @@
  * on the happy path so the Bun test runner exits promptly.
  *
  * The Claude Agent SDK is replaced at module level so we can drive the
- * iterator from the test. mock.module persists for the Bun process — that
+ * iterator from the test. mock.module persists for the Bun process: that
  * is acceptable here because no other test file imports the SDK directly
  * (only `src/core/executor.ts` does, and other suites mock executor itself).
  */
@@ -103,7 +103,7 @@ function awaitAbortIterator(
   } as AsyncIterableIterator<unknown>;
 }
 
-describe("executeAgent — cancellation", () => {
+describe("executeAgent: cancellation", () => {
   beforeEach(() => {
     lastQueryCall = undefined;
     nextIterator = emptyIterator;
@@ -146,7 +146,7 @@ describe("executeAgent — cancellation", () => {
     config.agentTimeoutMs = 60_000;
 
     // Spy on setTimeout/clearTimeout so we can confirm the timer handle is
-    // released — leaving it pending is what would otherwise pin the Bun
+    // released, leaving it pending is what would otherwise pin the Bun
     // event loop for up to AGENT_TIMEOUT_MS after a successful run.
     const realSetTimeout = globalThis.setTimeout;
     const realClearTimeout = globalThis.clearTimeout;
@@ -189,7 +189,7 @@ describe("executeAgent — cancellation", () => {
     const controller = new AbortController();
 
     nextIterator = () => {
-      // Fire the caller abort one microtask after the iterator starts — the
+      // Fire the caller abort one microtask after the iterator starts, the
       // SDK controller must receive it via the listener wired in executeAgent.
       queueMicrotask(() => {
         controller.abort(new Error("daemon cancel"));
@@ -205,7 +205,7 @@ describe("executeAgent — cancellation", () => {
   });
 });
 
-describe("executeAgent — stderr callback", () => {
+describe("executeAgent: stderr callback", () => {
   beforeEach(() => {
     lastQueryCall = undefined;
     nextIterator = emptyIterator;

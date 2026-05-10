@@ -1,5 +1,5 @@
 /**
- * Unit tests for the `resolve` handler — focused on the post-pipeline CI
+ * Unit tests for the `resolve` handler: focused on the post-pipeline CI
  * re-check gate added for issue #93.
  *
  * The handler delegates the heavy lifting to `runPipeline` (clone + multi-
@@ -112,7 +112,7 @@ function buildCtx(opts: BuildCtxOptions = {}): WorkflowRunContext & {
   // same mock can serve both call sites.
   const paginate = mock((endpoint: unknown, args: Record<string, unknown>) => {
     if ("ref" in args) {
-      // checks.listForRef — return pre-snapshot the first time, post-snapshot
+      // checks.listForRef, return pre-snapshot the first time, post-snapshot
       // the second time. Distinguish by `ref`: prologue uses "oldsha000",
       // post-pipeline uses postHeadSha.
       if (args["ref"] === postHeadSha && postHeadSha !== "oldsha000") {
@@ -222,7 +222,7 @@ describe("resolve handler", () => {
       numTurns: 20,
       capturedFiles: {
         "RESOLVE.md":
-          "## Summary\n\nGave up.\n\n## Outstanding\n\n- typecheck still red — could not isolate root cause",
+          "## Summary\n\nGave up.\n\n## Outstanding\n\n- typecheck still red, could not isolate root cause",
       },
     };
     const ctx = buildCtx({

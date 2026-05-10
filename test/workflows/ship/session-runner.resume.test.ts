@@ -1,12 +1,12 @@
 /**
  * Tests for `resumeShipIntent` (US2). The scheduler's `onDue` callback
- * fires this function for every tickled intent — terminal intents must
+ * fires this function for every tickled intent: terminal intents must
  * be no-ops (otherwise a stale `ship:tickle` entry could keep firing
  * after a successful merge), and missing intents must not throw (the
  * tickle scheduler can't distinguish a still-existing intent from one
  * that was hand-deleted by an operator).
  *
- * Active intents now run `runProbe` against the live PR — the probe is
+ * Active intents now run `runProbe` against the live PR: the probe is
  * stubbed via `octokitFactory` so the test keeps the existing
  * "no DB mutation" assertion without hitting GitHub.
  */
@@ -28,7 +28,7 @@ try {
 }
 
 function requireSql(): SQL {
-  if (sql === null) throw new Error("Database not available — test should have been skipped");
+  if (sql === null) throw new Error("Database not available, test should have been skipped");
   return sql;
 }
 
@@ -79,7 +79,7 @@ describe.skipIf(sql === null)("resumeShipIntent", () => {
     await runMigrations(requireSql());
   });
 
-  // Don't close the SQL connection — other test files in the same Bun
+  // Don't close the SQL connection, other test files in the same Bun
   // run share it via the `mock.module` indirection. Closing here would
   // cascade as `Connection closed` errors into later files.
 

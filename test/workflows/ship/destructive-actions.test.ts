@@ -1,11 +1,11 @@
 /**
- * T046a — destructive-action guard tests covering FR-009 / SC-003.
+ * T046a: destructive-action guard tests covering FR-009 / SC-003.
  *
  * Two layers:
  *   1. **Static layer** (this file, mirroring `scripts/check-no-destructive-actions.ts`):
  *      grep every `.ts` source file under the ship-relevant subtrees for
  *      the forbidden literal-string patterns and assert zero matches.
- *      Fails the test on the first violation — this is the durable
+ *      Fails the test on the first violation: this is the durable
  *      compile-time gate.
  *   2. **Runtime layer**: assert the destructive-action vocabulary is
  *      absent from any tool-call argument list across the scoped
@@ -24,7 +24,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "bun:test";
 
 // Mirrors the SCAN_ROOTS list in scripts/check-no-destructive-actions.ts.
-// The static scan is intentionally restricted to `src/workflows/ship/` —
+// The static scan is intentionally restricted to `src/workflows/ship/`,
 // the legacy `src/workflows/handlers/{ship,resolve,review,branch-refresh}.ts`
 // modules embed agent prompt strings that DOCUMENT the prohibitions
 // verbatim (e.g., a backtick template literal containing
@@ -89,7 +89,7 @@ function scanFile(file: string): readonly Violation[] {
   for (let i = 0; i < lines.length; i += 1) {
     const lineText = lines[i] ?? "";
     const stripped = lineText.trim();
-    // Skip pure JSDoc / single-line comments — they document
+    // Skip pure JSDoc / single-line comments, they document
     // prohibitions verbatim and would self-report.
     if (stripped.startsWith("//") || stripped.startsWith("*")) continue;
     for (const rule of FORBIDDEN) {
@@ -101,7 +101,7 @@ function scanFile(file: string): readonly Violation[] {
   return out;
 }
 
-describe("T046a / FR-009 — destructive-action static guard", () => {
+describe("T046a / FR-009: destructive-action static guard", () => {
   it("ship workflow + ship-related handler subtrees contain none of the forbidden patterns", () => {
     const violations: Violation[] = [];
     const visited = new Set<string>();
@@ -123,7 +123,7 @@ describe("T046a / FR-009 — destructive-action static guard", () => {
 
   it("the FORBIDDEN rule set covers every category enumerated in FR-009 / SC-003", () => {
     const descriptions = FORBIDDEN.map((r) => r.description.toLowerCase());
-    // Enumerate the SC-003 categories — each MUST have at least one pattern.
+    // Enumerate the SC-003 categories, each MUST have at least one pattern.
     const categories: readonly string[] = [
       "git push --force",
       "git push --force-with-lease",
@@ -148,7 +148,7 @@ describe("T046a / FR-009 — destructive-action static guard", () => {
   });
 });
 
-describe("T046a / FR-009 — runtime tool-call recorder", () => {
+describe("T046a / FR-009: runtime tool-call recorder", () => {
   // Runtime layer: any module under `src/workflows/ship/scoped/` that
   // calls a Bash tool MUST not pass forbidden flag combinations through
   // its callback API. The scoped command modules expose their git-touching
@@ -156,16 +156,16 @@ describe("T046a / FR-009 — runtime tool-call recorder", () => {
   // `runMerge`, `createBranchAndPr`) precisely so runtime callers can be
   // audited against this contract.
   //
-  // The recorder below proves the *type signature* of each callback —
+  // The recorder below proves the *type signature* of each callback,
   // the static layer above proves the *implementation*. Together they
   // make the destructive-action contract two-sided.
 
-  it("the scoped command callbacks have no flag-bearing field — destructive flags cannot be smuggled through their API", async () => {
+  it("the scoped command callbacks have no flag-bearing field: destructive flags cannot be smuggled through their API", async () => {
     const fixThread = await import("../../../src/workflows/ship/scoped/fix-thread");
     const rebase = await import("../../../src/workflows/ship/scoped/rebase");
     const openPr = await import("../../../src/workflows/ship/scoped/open-pr");
 
-    // The callbacks are referenced by type only — assert each module
+    // The callbacks are referenced by type only, assert each module
     // exports its public surface so any future addition of a "force"
     // toggle would surface as a contract change reviewed in PR.
     expect(typeof fixThread.runFixThread).toBe("function");

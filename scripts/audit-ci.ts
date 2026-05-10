@@ -52,7 +52,7 @@ const stderr = new TextDecoder().decode(proc.stderr).trim();
 if (!stdout) {
   // Empty stdout + non-zero exit = bun audit failed to run (network error,
   // registry outage, Bun bug). Treating this as "no advisories" would
-  // silently disable the audit gate — fail closed instead.
+  // silently disable the audit gate; fail closed instead.
   if (proc.exitCode !== 0 && proc.exitCode !== null) {
     console.error(`::error::bun audit exited with code ${proc.exitCode} and produced no JSON.`);
     if (stderr) console.error(stderr);
@@ -85,7 +85,7 @@ function lookupAllow(ghsa: string): AllowEntry | null {
   const entry = IGNORED.find((e) => e.ghsa === ghsa);
   if (!entry) return null;
   // Enforce YYYY-MM-DD so we can append an end-of-day time deterministically.
-  // `new Date("2026-04-30")` resolves to 00:00:00Z — the entry would be
+  // `new Date("2026-04-30")` resolves to 00:00:00Z, so the entry would be
   // considered expired for the whole day. Treat the expiry as valid through
   // 23:59:59.999 UTC of the stated day instead.
   if (!/^\d{4}-\d{2}-\d{2}$/.test(entry.expires)) {
@@ -103,7 +103,7 @@ function lookupAllow(ghsa: string): AllowEntry | null {
   }
   if (expiresAt < now) {
     console.warn(
-      `::warning::Allowlist entry for ${ghsa} expired ${entry.expires} — must re-review.`,
+      `::warning::Allowlist entry for ${ghsa} expired ${entry.expires}, must re-review.`,
     );
     return null;
   }
@@ -124,7 +124,7 @@ for (const a of advisories) {
 
   if (allow) {
     console.log(
-      `::notice::Ignored ${id} (${sev}) ${where}: ${title} — ${allow.reason} (expires ${allow.expires})`,
+      `::notice::Ignored ${id} (${sev}) ${where}: ${title}, ${allow.reason} (expires ${allow.expires})`,
     );
     ignored++;
     continue;

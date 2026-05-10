@@ -21,7 +21,7 @@ export interface WsConnectionData {
   authenticated: boolean;
   /** Remote address for logging. */
   remoteAddr: string;
-  /** Daemon ID — set after daemon:register is processed. */
+  /** Daemon ID, set after daemon:register is processed. */
   daemonId: string | undefined;
 }
 
@@ -42,7 +42,7 @@ interface AuthExpectations {
   /**
    * Original (un-padded) byte length of `Bearer ${previousToken}`, or `-1`
    * when no previous token is configured. The sentinel is chosen so the
-   * length-equality guard rejects unconditionally — `Buffer.byteLength` is
+   * length-equality guard rejects unconditionally: `Buffer.byteLength` is
    * always non-negative.
    */
   readonly previousLength: number;
@@ -89,12 +89,12 @@ function buildAuthExpectations(
 /**
  * Constant-time bearer-token comparator. JavaScript's `===`/`!==` short-circuits
  * on the first mismatched byte, leaking the matching prefix length through
- * response latency — a known timing-attack surface for bearer-token auth (#76).
+ * response latency: a known timing-attack surface for bearer-token auth (#76).
  *
  * Per-request copy work is bounded by `padLength`: `actual.write(..., padLength,
  * ...)` truncates input longer than `padLength` and `Buffer.alloc(padLength)`
  * gives a fixed-size comparison buffer. Total work additionally includes one
- * `Buffer.byteLength` walk of the incoming header — bounded in practice by
+ * `Buffer.byteLength` walk of the incoming header: bounded in practice by
  * Bun's HTTP header limit, not by `padLength`. The byte-length is used (rather
  * than `actual.length`) so the length-equality guard still rejects
  * longer-with-correct-prefix headers that the truncating `write` would
@@ -104,7 +104,7 @@ function buildAuthExpectations(
  * Both `timingSafeEqual` calls run unconditionally (the previous slot uses a
  * zero-buffer sentinel + `previousLength = -1` when not configured) so a
  * caller cannot distinguish "rejected by primary" from "rejected by previous"
- * — or "rotation active" from "rotation inactive" — via timing. The two
+ * or "rotation active" from "rotation inactive": via timing. The two
  * length-equality checks are combined with bitwise `&` and the per-token
  * results with bitwise `|` to avoid the JS `&&`/`||` short-circuit.
  */
@@ -126,7 +126,7 @@ function isAuthHeaderValid(
   const actual = Buffer.alloc(expectations.padLength);
   actual.write(headerStr, 0, expectations.padLength, "utf8");
 
-  // Both `timingSafeEqual` calls always run — when no `_PREVIOUS` token is
+  // Both `timingSafeEqual` calls always run, when no `_PREVIOUS` token is
   // configured, `previousPadded` is a zero-filled sentinel and
   // `previousLength === -1`, so the length-equality guard rejects
   // unconditionally without taking a different code path.
@@ -160,7 +160,7 @@ export function startWebSocketServer(): ReturnType<typeof Bun.serve<WsConnection
     // same value. Warn loudly so the operator notices before assuming the
     // rolling-rotation procedure in `runbooks/daemon-fleet.md` is in flight.
     logger.warn(
-      "DAEMON_AUTH_TOKEN_PREVIOUS equals DAEMON_AUTH_TOKEN — rotation slot has no effect. Drop _PREVIOUS once rotation completes, or set it to the prior token while rolling daemons.",
+      "DAEMON_AUTH_TOKEN_PREVIOUS equals DAEMON_AUTH_TOKEN, rotation slot has no effect. Drop _PREVIOUS once rotation completes, or set it to the prior token while rolling daemons.",
     );
   }
   const authExpectations = buildAuthExpectations(authToken, previousAuthToken);
@@ -181,7 +181,7 @@ export function startWebSocketServer(): ReturnType<typeof Bun.serve<WsConnection
       if (!isAuthHeaderValid(authHeader, authExpectations)) {
         logger.warn(
           { remoteAddr: srv.requestIP(req)?.address },
-          "WebSocket auth failed — invalid token",
+          "WebSocket auth failed, invalid token",
         );
         return new Response("Unauthorized", { status: 401 });
       }
@@ -196,7 +196,7 @@ export function startWebSocketServer(): ReturnType<typeof Bun.serve<WsConnection
       if (!upgraded) {
         return new Response("WebSocket upgrade failed", { status: 500 });
       }
-      // Bun handles the 101 response when upgrade succeeds — no explicit return needed.
+      // Bun handles the 101 response when upgrade succeeds, no explicit return needed.
       return undefined;
     },
 
@@ -255,7 +255,7 @@ export function startWebSocketServer(): ReturnType<typeof Bun.serve<WsConnection
 
 /**
  * Stop the WebSocket server and wait for in-flight drain.
- * Called during graceful shutdown — the caller must await so that daemon
+ * Called during graceful shutdown: the caller must await so that daemon
  * disconnect cleanup paths finish before downstream resources (Valkey, DB)
  * are closed.
  *

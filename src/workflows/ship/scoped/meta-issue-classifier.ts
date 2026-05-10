@@ -4,7 +4,7 @@
  * bug or feature an engineer can implement) versus a meta/tracking/
  * roadmap/discussion/unclear issue that should NOT spawn a draft PR.
  *
- * Returned shape — strict Zod-validated:
+ * Returned shape: strict Zod-validated:
  *   { actionable: boolean,
  *     kind: 'bug' | 'feature' | 'tracking' | 'meta' | 'roadmap' | 'discussion' | 'unclear',
  *     reason: string }
@@ -26,7 +26,7 @@ export const META_ISSUE_VERDICT_SCHEMA = z.object({
 
 export type MetaIssueVerdict = z.infer<typeof META_ISSUE_VERDICT_SCHEMA>;
 
-export const META_ISSUE_SYSTEM_PROMPT = `You decide whether a GitHub issue is **actionable** —
+export const META_ISSUE_SYSTEM_PROMPT = `You decide whether a GitHub issue is **actionable**,
 i.e., a concrete bug or feature an engineer can implement in a single PR.
 Return ONLY a single JSON object matching this schema and nothing else:
   { "actionable": boolean,
@@ -60,7 +60,7 @@ export async function classifyMetaIssue(input: ClassifyMetaIssueInput): Promise<
     }
     throw new Error(`meta-issue classifier output failed schema validation: ${result.error}`);
   }
-  // Enforce the actionable invariant deterministically — the LLM is
+  // Enforce the actionable invariant deterministically: the LLM is
   // not trusted to apply this rule consistently.
   const enforced: MetaIssueVerdict = {
     ...result.data,

@@ -46,7 +46,7 @@ plugins:
   - search
   # social/privacy require Pillow + cairosvg and add ~10s to the build, so they
   # only run when CI=true (set automatically by GitHub Actions). Local builds
-  # via `bun run docs:build` will skip them — that is intentional.
+  # via `bun run docs:build` will skip them: that is intentional.
   - social:
       enabled: !ENV [CI, false]
   - privacy:

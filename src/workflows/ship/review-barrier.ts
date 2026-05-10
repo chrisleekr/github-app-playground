@@ -17,7 +17,7 @@
 /**
  * Minimal shape this barrier reads from the probe response. The full
  * GraphQL response carries more (`reviews`, etc.) than `ProbeResponseShape`
- * currently declares — declared narrowly here so the barrier stays
+ * currently declares: declared narrowly here so the barrier stays
  * decoupled from the verdict module's type evolution.
  */
 export interface BarrierProbeShape {
@@ -33,7 +33,7 @@ export interface BarrierProbeShape {
         readonly nodes: readonly {
           readonly author: {
             readonly login: string;
-            // GraphQL Actor union — "User" | "Bot" | "Mannequin" | "Organization" | "EnterpriseUserAccount"
+            // GraphQL Actor union, "User" | "Bot" | "Mannequin" | "Organization" | "EnterpriseUserAccount"
             readonly __typename?: string;
           } | null;
           readonly commit: { readonly oid: string } | null;
@@ -67,7 +67,7 @@ export function shouldDeferOnReviewLatency(input: ShouldDeferInput): boolean {
     const authorLogin = r.author?.login ?? null;
     if (authorLogin === null) return false;
     if (authorLogin === input.ourAppLogin) return false;
-    // Exclude any non-User actor — automation reviews (other bots, GitHub
+    // Exclude any non-User actor, automation reviews (other bots, GitHub
     // Apps, deploy keys) must not satisfy the human-review barrier.
     // `__typename` is requested in the probe GraphQL query; older fixtures
     // without it fall back to the App-login self-exclusion above.

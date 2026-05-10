@@ -100,7 +100,7 @@ describe("findReviewThreadByCommentId", () => {
       },
     ]);
 
-    // 1001 would be a reply on the thread, NOT the parent — should NOT match.
+    // 1001 would be a reply on the thread, NOT the parent, should NOT match.
     const result = await findReviewThreadByCommentId(octokit, "owner", "repo", 113, 1001);
 
     expect(result).toBeNull();

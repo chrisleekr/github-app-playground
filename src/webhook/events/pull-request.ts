@@ -16,10 +16,10 @@ const BOT_LABEL_PATTERN = /^bot:[a-z][a-z-]*(?:\/deadline=\d+(?:\.\d+)?[hms])?$/
 /**
  * Handler for `pull_request.*` events. Currently covers four actions:
  *
- *   - `opened` — placeholder (trigger detection lands when ready)
- *   - `labeled` — legacy workflow dispatch + ship reactor label dispatch (T028d)
- *   - `synchronize` — ship reactor early-wake / foreign-push detection (T023)
- *   - `closed` — ship reactor terminal transition (merged_externally / pr_closed) (T023)
+ *   - `opened`: placeholder (trigger detection lands when ready)
+ *   - `labeled`: legacy workflow dispatch + ship reactor label dispatch (T028d)
+ *   - `synchronize`: ship reactor early-wake / foreign-push detection (T023)
+ *   - `closed`: ship reactor terminal transition (merged_externally / pr_closed) (T023)
  *
  * Registered in `src/app.ts` via explicit per-action listeners
  * (`pull_request.opened`, `.labeled`, `.synchronize`, `.closed`); each
@@ -70,7 +70,7 @@ export function handlePullRequest(
 /**
  * Resolve the actual commit author for the new head SHA before firing
  * the reactor. `payload.sender.login` is the webhook actor, not the
- * commit author — for cherry-picks, rebases, or push-on-behalf-of
+ * commit author: for cherry-picks, rebases, or push-on-behalf-of
  * automation those differ, and the foreign-push detector downstream
  * needs the real author to avoid both false positives (bot pushes
  * surfaced as foreign) and false negatives (human pushes hidden behind
@@ -136,7 +136,7 @@ function handlePullRequestLabeled(
   if (!auth.allowed) {
     log.info(
       { reason: auth.reason },
-      "pull_request.labeled: sender not in ALLOWED_OWNERS — dropped",
+      "pull_request.labeled: sender not in ALLOWED_OWNERS, dropped",
     );
     return;
   }
@@ -144,7 +144,7 @@ function handlePullRequestLabeled(
   // Canonical routing wins; legacy `dispatchByLabel` runs only when
   // `routeTrigger` returns null. Without this precedence, an overlapping
   // label (e.g. `bot:ship`) fires both pipelines for one webhook.
-  // FR-029..FR-035 eligibility — labels declared issue-only (e.g.
+  // FR-029..FR-035 eligibility, labels declared issue-only (e.g.
   // `bot:investigate`) are rejected here and fall through to the legacy
   // path, which ignores them on PRs.
   const owner = payload.repository.owner.login;

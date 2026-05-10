@@ -5,7 +5,7 @@
  * terminate intents that have run past their wall-clock budget.
  *
  * Per Q2-round1: deadline carries over UNCHANGED on cascade base-ref
- * change — the deadline tracks human attention budget, not work
+ * change: the deadline tracks human attention budget, not work
  * progress.
  */
 

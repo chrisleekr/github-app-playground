@@ -125,7 +125,7 @@ describe("executeWorkflowRun: incomplete branch", () => {
       status: "incomplete",
       reason: "CI still red after FIX_ATTEMPTS_CAP=3",
       state: { post_pipeline: { all_green: false } },
-      humanMessage: "🔎 **Resolve incomplete** — typecheck still failing",
+      humanMessage: "🔎 **Resolve incomplete**, typecheck still failing",
     });
 
     const sent: unknown[] = [];

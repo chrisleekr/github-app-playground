@@ -12,10 +12,10 @@ import { logger } from "../../logger";
  *
  * Note: GitHub does NOT emit a "pull_request_review_thread.created" action.
  * The only valid actions are "resolved" and "unresolved".
- * Source: @octokit/webhooks-types — PullRequestReviewThreadResolvedEvent |
+ * Source: @octokit/webhooks-types, PullRequestReviewThreadResolvedEvent |
  *         PullRequestReviewThreadUnresolvedEvent
  *
- * Placeholder — no processing implemented yet.
+ * Placeholder: no processing implemented yet.
  * Add trigger detection + processRequest() here when ready.
  */
 export function handleReviewThread(

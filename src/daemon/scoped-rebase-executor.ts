@@ -1,10 +1,10 @@
 /**
- * Daemon-side `scoped-rebase` executor (T029, US3). Deterministic git only —
+ * Daemon-side `scoped-rebase` executor (T029, US3). Deterministic git only,
  * no Agent SDK invocation. Implements `contracts/job-kinds.md#scoped-rebase`:
  *
  *   1. Fetch PR via Octokit; abort `closed` if PR is closed/merged.
  *   2. Clone head branch to a temp dir.
- *   3. `git fetch origin <base_ref>` + `git merge origin/<base_ref>` —
+ *   3. `git fetch origin <base_ref>` + `git merge origin/<base_ref>`,
  *      explicitly NO `--ff-only`, NO `--rebase`, NO `--force`.
  *   4. Push the merge commit if produced; never `-f`/`--force`/`--force-with-lease`.
  *   5. On conflict: collect paths via `git diff --name-only --diff-filter=U`,
@@ -153,13 +153,13 @@ export async function executeScopedRebase(
         if (abortResult.exitCode !== 0) {
           // The temp dir is rm'd in the finally below so no dirty state
           // persists, but a non-zero abort can still indicate disk pressure
-          // or fs corruption — log so it surfaces in operator dashboards.
+          // or fs corruption, log so it surfaces in operator dashboards.
           log.warn(
             {
               exitCode: abortResult.exitCode,
               stderr: abortResult.stderr.toString().slice(0, 200),
             },
-            "git merge --abort returned non-zero (non-fatal — workDir will be removed)",
+            "git merge --abort returned non-zero (non-fatal, workDir will be removed)",
           );
         }
         return { status: "conflict", conflict_paths };

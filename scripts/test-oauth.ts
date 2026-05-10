@@ -12,7 +12,7 @@
  * Usage: bun run scripts/test-oauth.ts
  *
  * Reads CLAUDE_CODE_OAUTH_TOKEN from environment. The .env at repo root
- * is intentionally NOT auto-loaded — export the var before running, or
+ * is intentionally NOT auto-loaded: export the var before running, or
  * pipe it through `env $(grep CLAUDE_CODE_OAUTH_TOKEN .env) bun run ...`
  * so multi-line PEM keys in .env don't break shell sourcing.
  */

@@ -1,5 +1,5 @@
 /**
- * T049 — iteration audit-trail tests (extension of T008's
+ * T049: iteration audit-trail tests (extension of T008's
  * `test/db/queries/ship.test.ts`). Asserts the per-iteration
  * invariants:
  *
@@ -7,7 +7,7 @@
  *   - the row carries the full `verdict_json` for `kind = 'probe'`
  *   - the row carries `cost_usd` for agent-invoking kinds
  *
- * Constitution V — DB-backed integration; no mocks.
+ * Constitution V: DB-backed integration; no mocks.
  */
 
 import { SQL } from "bun";
@@ -26,7 +26,7 @@ try {
 }
 
 function requireConn(): SQL {
-  if (sql === null) throw new Error("Database not available — test should have been skipped");
+  if (sql === null) throw new Error("Database not available, test should have been skipped");
   return sql;
 }
 
@@ -52,7 +52,7 @@ const baseInsert = (): {
   tracking_comment_marker: "<!-- ship-intent:audit -->",
 });
 
-describe.skipIf(sql === null)("iteration audit trail — T049", () => {
+describe.skipIf(sql === null)("iteration audit trail, T049", () => {
   beforeAll(async () => {
     const { runMigrations } = await import("../../../src/db/migrate");
     await runMigrations(requireConn());
@@ -88,7 +88,7 @@ describe.skipIf(sql === null)("iteration audit trail — T049", () => {
     `;
     const seen = (rows as readonly { iteration_n: number }[]).map((r) => r.iteration_n);
     expect(seen).toEqual([1, 2, 3, 4]);
-    // Strictly monotonic — no duplicates, no gaps.
+    // Strictly monotonic, no duplicates, no gaps.
     for (let i = 1; i < seen.length; i += 1) {
       expect((seen[i] ?? 0) - (seen[i - 1] ?? 0)).toBe(1);
     }

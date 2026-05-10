@@ -1,5 +1,5 @@
 /**
- * Router tests — post dispatch-collapse surface.
+ * Router tests: post dispatch-collapse surface.
  *
  * The router now exposes three public functions plus telemetry helpers:
  *   - cleanupStaleIdempotencyEntries (pure utility)
@@ -9,7 +9,7 @@
  *   - processRequest                 (top-level: idempotency + auth + capacity)
  *
  * We mock every downstream surface that reaches over the network or hits
- * Valkey/Postgres — the router is a pure orchestrator.
+ * Valkey/Postgres: the router is a pure orchestrator.
  */
 
 import { beforeEach, describe, expect, it, mock } from "bun:test";
@@ -335,7 +335,7 @@ describe("decideDispatch", () => {
         // round-trip (to prevent a thundering herd of concurrent spawns)
         // and then rolls it back on failure so the next attempt isn't
         // blocked. `rollbackSpawn` takes the reserved timestamp and only
-        // clears the slot if it still matches — preventing it from
+        // clears the slot if it still matches, preventing it from
         // trampling a concurrent successful reservation.
         expect(mockMarkSpawn).toHaveBeenCalledTimes(1);
         expect(mockRollbackSpawn).toHaveBeenCalledTimes(1);
@@ -382,7 +382,7 @@ describe("dispatch", () => {
     expect(createComment).toHaveBeenCalledTimes(1);
     const body = (createComment.mock.calls[0] as [{ body: string }])[0].body;
     expect(body).toContain("Kubernetes infrastructure");
-    // Must NOT inline the raw spawnError into the public comment — k8s
+    // Must NOT inline the raw spawnError into the public comment, k8s
     // exception strings can carry API URLs, RBAC detail, or other
     // operational info. The structured spawnError remains on the log
     // line and in the executions row.
@@ -421,10 +421,10 @@ describe("dispatch", () => {
   });
 });
 
-describe("processRequest — idempotency + auth + capacity", () => {
+describe("processRequest: idempotency + auth + capacity", () => {
   it("skips duplicate delivery (in-memory map)", async () => {
     const ctx = makeCtx({ deliveryId: "dup-delivery" });
-    // First pass runs — stub allowlist via ambient env, else allowlist check
+    // First pass runs, stub allowlist via ambient env, else allowlist check
     // silently skips. We deliberately use the same deliveryId twice.
     await processRequest(ctx);
     mockIsAlreadyProcessed.mockClear();

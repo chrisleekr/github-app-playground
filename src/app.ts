@@ -297,7 +297,7 @@ async function handleTestWebhook(
  */
 async function runStartupChecks(): Promise<void> {
   // Use process.cwd() (always the project root, /app in Docker) so the path matches
-  // how registry.ts spawns these servers — CWD-relative dist/mcp/servers/*.js.
+  // how registry.ts spawns these servers, CWD-relative dist/mcp/servers/*.js.
   // import.meta.dir would resolve to src/ in dev and dist/ in prod, breaking one or the other.
   const mcpScripts = [
     join(process.cwd(), "dist/mcp/servers/comment.js"),
@@ -310,7 +310,7 @@ async function runStartupChecks(): Promise<void> {
       await access(scriptPath, constants.F_OK);
       logger.info({ scriptPath }, "MCP script accessible");
     } catch {
-      logger.error({ scriptPath }, "MCP script not accessible — cannot start");
+      logger.error({ scriptPath }, "MCP script not accessible, cannot start");
       process.exit(1);
     }
   }
@@ -366,17 +366,17 @@ async function runStartupChecks(): Promise<void> {
   const instanceId = getInstanceId();
   await startInstanceHeartbeat();
 
-  // Best-effort recovery passes. None of these block startup if they fail —
+  // Best-effort recovery passes. None of these block startup if they fail,
   // the queue worker still comes up and makes forward progress.
   try {
     await sweepValkeyOrphans(instanceId);
   } catch (err) {
-    logger.error({ err }, "Valkey orphan sweep failed — continuing startup");
+    logger.error({ err }, "Valkey orphan sweep failed, continuing startup");
   }
   try {
     await recoverProcessingList(instanceId);
   } catch (err) {
-    logger.error({ err }, "recoverProcessingList failed — continuing startup");
+    logger.error({ err }, "recoverProcessingList failed, continuing startup");
   }
 
   // One eager reaper pass on startup catches rows abandoned by a previous
@@ -384,7 +384,7 @@ async function runStartupChecks(): Promise<void> {
   try {
     await reapLivenessOnce();
   } catch (err) {
-    logger.error({ err }, "Initial liveness reaper pass failed — continuing startup");
+    logger.error({ err }, "Initial liveness reaper pass failed, continuing startup");
   }
   startLivenessReaper();
 
@@ -397,7 +397,7 @@ async function runStartupChecks(): Promise<void> {
 
   // Ship-intent tickle scheduler. start() performs the boot reconciliation
   // against ship_continuations AND begins the periodic scan in a single
-  // call (verified in src/workflows/ship/tickle-scheduler.ts) — there is
+  // call (verified in src/workflows/ship/tickle-scheduler.ts), there is
   // no separate reconcile method to invoke.
   shipTickleScheduler = createTickleScheduler({
     valkey: requireValkeyClient(),

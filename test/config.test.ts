@@ -30,7 +30,7 @@ const BEDROCK_BASE = {
   model: "anthropic.claude-3-5-haiku-20241022-v1:0",
 };
 
-describe("configSchema — Anthropic provider", () => {
+describe("configSchema: Anthropic provider", () => {
   it("parses successfully with an API key", () => {
     const result = configSchema.safeParse({ ...ANTHROPIC_BASE });
     expect(result.success).toBe(true);
@@ -89,7 +89,7 @@ describe("configSchema — Anthropic provider", () => {
   });
 });
 
-describe("configSchema — Bedrock provider", () => {
+describe("configSchema: Bedrock provider", () => {
   it("parses successfully with region + model", () => {
     const result = configSchema.safeParse({ ...BEDROCK_BASE });
     expect(result.success).toBe(true);
@@ -109,7 +109,7 @@ describe("configSchema — Bedrock provider", () => {
   });
 });
 
-describe("configSchema — data layer validation", () => {
+describe("configSchema: data layer validation", () => {
   it("requires DAEMON_AUTH_TOKEN in every mode", () => {
     const { daemonAuthToken, ...withoutToken } = ANTHROPIC_BASE;
     expect(daemonAuthToken).toBeDefined();
@@ -145,7 +145,7 @@ describe("configSchema — data layer validation", () => {
   });
 
   it("still requires DAEMON_AUTH_TOKEN in daemon mode (ORCHESTRATOR_URL set)", () => {
-    // The DB/Valkey waiver must not cascade into waiving daemon auth —
+    // The DB/Valkey waiver must not cascade into waiving daemon auth,
     // an orchestrator-connected daemon without a shared token would
     // accept unauthenticated connections on restart.
     const { daemonAuthToken, ...withoutToken } = ANTHROPIC_BASE;
@@ -158,7 +158,7 @@ describe("configSchema — data layer validation", () => {
   });
 });
 
-describe("configSchema — ephemeral-daemon defaults", () => {
+describe("configSchema: ephemeral-daemon defaults", () => {
   it("has sensible defaults for all five ephemeral env vars", () => {
     const result = configSchema.safeParse({ ...ANTHROPIC_BASE });
     expect(result.success).toBe(true);
@@ -243,7 +243,7 @@ describe("assertOauthRequiresAllowlist", () => {
   it("throws when OAuth is set without an allowlist", () => {
     // With `exactOptionalPropertyTypes`, the absence of a property is
     // distinct from an explicit `undefined`. Destructure the property
-    // out so this test actually models "no allowlist configured" — not
+    // out so this test actually models "no allowlist configured", not
     // "allowlist is undefined-valued".
     const { allowedOwners, ...cfg } = baseOauthCfg;
     expect(allowedOwners).toBeDefined();
@@ -309,7 +309,7 @@ describe("assertPatRequiresAllowlist", () => {
   });
 });
 
-describe("configSchema — ship workflow defaults", () => {
+describe("configSchema: ship workflow defaults", () => {
   it("populates every ship env var with its documented default", () => {
     const result = configSchema.safeParse({ ...ANTHROPIC_BASE });
     expect(result.success).toBe(true);
@@ -344,7 +344,7 @@ describe("configSchema — ship workflow defaults", () => {
   });
 });
 
-describe("configSchema — MAX_WALL_CLOCK_PER_SHIP_RUN duration parsing", () => {
+describe("configSchema: MAX_WALL_CLOCK_PER_SHIP_RUN duration parsing", () => {
   it("accepts a plain integer (ms)", () => {
     const result = configSchema.safeParse({ ...ANTHROPIC_BASE, maxWallClockPerShipRun: "60000" });
     expect(result.success).toBe(true);
@@ -388,7 +388,7 @@ describe("configSchema — MAX_WALL_CLOCK_PER_SHIP_RUN duration parsing", () => 
   });
 });
 
-describe("configSchema — MAX_SHIP_ITERATIONS validation", () => {
+describe("configSchema: MAX_SHIP_ITERATIONS validation", () => {
   it("rejects zero", () => {
     expect(configSchema.safeParse({ ...ANTHROPIC_BASE, maxShipIterations: 0 }).success).toBe(false);
   });
@@ -399,7 +399,7 @@ describe("configSchema — MAX_SHIP_ITERATIONS validation", () => {
   });
 });
 
-describe("configSchema — MERGEABLE_NULL_BACKOFF_MS_LIST parsing", () => {
+describe("configSchema: MERGEABLE_NULL_BACKOFF_MS_LIST parsing", () => {
   it("parses a comma-separated list of positive integers", () => {
     const result = configSchema.safeParse({
       ...ANTHROPIC_BASE,
@@ -446,7 +446,7 @@ describe("configSchema — MERGEABLE_NULL_BACKOFF_MS_LIST parsing", () => {
   });
 });
 
-describe("configSchema — SHIP_FORBIDDEN_TARGET_BRANCHES parsing", () => {
+describe("configSchema: SHIP_FORBIDDEN_TARGET_BRANCHES parsing", () => {
   it("defaults to empty array when unset", () => {
     const result = configSchema.safeParse({ ...ANTHROPIC_BASE });
     expect(result.success).toBe(true);

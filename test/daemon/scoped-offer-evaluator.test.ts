@@ -55,7 +55,7 @@ describe("evaluateScopedOffer (C1, H3, H4)", () => {
   });
 
   it("rejects an unknown jobKind with WS_REJECT_REASONS.SCOPED_KIND_UNSUPPORTED", () => {
-    // Cast through unknown — the test exercises the runtime guard, not the
+    // Cast through unknown, the test exercises the runtime guard, not the
     // compile-time discriminator.
     const offer = {
       ...rebaseOffer(),

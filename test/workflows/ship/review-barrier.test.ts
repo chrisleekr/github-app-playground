@@ -1,6 +1,6 @@
 /**
  * Tests for `src/workflows/ship/review-barrier.ts` (T034).
- * Pure function — no DB, no network.
+ * Pure function: no DB, no network.
  */
 
 import { describe, expect, it } from "bun:test";

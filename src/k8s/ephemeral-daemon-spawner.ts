@@ -67,7 +67,7 @@ export function _resetK8sClientForTests(): void {
 export interface SpawnEphemeralDaemonInput {
   /**
    * Delivery ID that triggered the spawn. Used only for observability
-   * (Pod name suffix + label) — ephemeral daemons don't handle only this
+   * (Pod name suffix + label): ephemeral daemons don't handle only this
    * delivery, they enter the pool and may claim whatever job the
    * orchestrator offers them.
    */
@@ -81,7 +81,7 @@ export interface SpawnEphemeralDaemonInput {
    */
   readonly orchestratorUrl: string;
   /**
-   * Optional activeDeadlineSeconds — a hard K8s-enforced ceiling on the
+   * Optional activeDeadlineSeconds: a hard K8s-enforced ceiling on the
    * Pod's wall-clock lifetime. Defaults to 1 hour so a wedged ephemeral
    * daemon can't outlive its installation-token budget.
    */
@@ -91,13 +91,13 @@ export interface SpawnEphemeralDaemonInput {
 /**
  * Build a Pod spec for a single ephemeral daemon.
  *
- * - `restartPolicy: Never` — if the daemon crashes, K8s must not revive it
+ * - `restartPolicy: Never`, if the daemon crashes, K8s must not revive it
  *   under the same identity; the orchestrator will spawn a fresh one on
  *   the next heavy signal.
- * - `activeDeadlineSeconds` — belt-and-suspenders: the daemon self-exits
+ * - `activeDeadlineSeconds`: belt-and-suspenders: the daemon self-exits
  *   on idle, but a bug in the idle loop must not leak a long-running Pod.
- * - `DAEMON_EPHEMERAL=true` — flips the daemon into idle-exit mode.
- * - `envFrom: secretRef: daemon-secrets` — carries the full runtime
+ * - `DAEMON_EPHEMERAL=true`: flips the daemon into idle-exit mode.
+ * - `envFrom: secretRef: daemon-secrets`, carries the full runtime
  *   credential set (GitHub App, Claude, DB, Valkey). The operator is
  *   expected to provision this Secret out-of-band.
  */
@@ -128,7 +128,7 @@ function buildEphemeralDaemonPodSpec(input: SpawnEphemeralDaemonInput): V1Pod {
       .replace(/[^a-z0-9]/g, "-")
       .slice(0, maxSuffixLen)
       // Trim trailing non-alphanumerics so the name doesn't end on '-' before
-      // the separator — DNS-1123 requires alphanumeric at both ends of the
+      // the separator, DNS-1123 requires alphanumeric at both ends of the
       // Pod name, but the joining '-' + timestamp already guarantees the end.
       .replace(/^[^a-z0-9]+/, "") || "unknown";
   const podName = `ephemeral-daemon-${nameSuffix}-${timestampPart}`;
@@ -149,7 +149,7 @@ function buildEphemeralDaemonPodSpec(input: SpawnEphemeralDaemonInput): V1Pod {
     spec: {
       restartPolicy: "Never",
       activeDeadlineSeconds: input.activeDeadlineSeconds ?? 3_600,
-      // The ephemeral daemon never calls the K8s API itself — only the
+      // The ephemeral daemon never calls the K8s API itself, only the
       // orchestrator does. Refuse the default ServiceAccount token so an
       // agent subprocess running untrusted repo code cannot use it.
       automountServiceAccountToken: false,
@@ -165,7 +165,7 @@ function buildEphemeralDaemonPodSpec(input: SpawnEphemeralDaemonInput): V1Pod {
           image: input.image,
           command: ["bun", "run", "dist/daemon/main.js"],
           // The ephemeral-daemon Pod mounts ONLY the `daemon-secrets` Secret
-          // — never `orchestrator-secrets`. The orchestrator/daemon split
+          //, never `orchestrator-secrets`. The orchestrator/daemon split
           // (defense layer 1b for prompt-injection hardening, issue #102) is
           // enforced by the Helm chart: orchestrator-only credentials
           // (`GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`, `DATABASE_URL`,
@@ -176,7 +176,7 @@ function buildEphemeralDaemonPodSpec(input: SpawnEphemeralDaemonInput): V1Pod {
           //   - `AWS_*` chain (Bedrock provider)
           //   - `GITHUB_PERSONAL_ACCESS_TOKEN` (PAT mode only; optional)
           // Inlining these env vars here would expose them in
-          // `kubectl get pod -o yaml` and the cluster's Pod audit log —
+          // `kubectl get pod -o yaml` and the cluster's Pod audit log,
           // hence `envFrom: secretRef`.
           env: [
             { name: "DAEMON_EPHEMERAL", value: "true" },
@@ -208,7 +208,7 @@ function buildEphemeralDaemonPodSpec(input: SpawnEphemeralDaemonInput): V1Pod {
  * `daemon:register` when its WebSocket handshake completes.
  *
  * @throws {EphemeralSpawnError} on missing K8s auth, unloadable kubeconfig,
- *         or K8s API failure — the router maps these to the
+ *         or K8s API failure: the router maps these to the
  *         `ephemeral-spawn-failed` dispatch reason.
  */
 export async function spawnEphemeralDaemon(input: SpawnEphemeralDaemonInput): Promise<string> {

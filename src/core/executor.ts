@@ -23,7 +23,7 @@ function isResultMessage(msg: unknown): msg is SDKResultMessage {
  * We avoid mutating process.env directly so the main process stays unaffected.
  *
  * Anthropic credentials (ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN, etc.) are
- * forwarded as part of the `...process.env` spread — no explicit handling here.
+ * forwarded as part of the `...process.env` spread: no explicit handling here.
  * The Claude CLI subprocess picks between them via its own documented auth
  * precedence chain (API key at position 3 beats OAuth token at position 5).
  * See https://code.claude.com/docs/en/authentication#authentication-precedence
@@ -71,14 +71,14 @@ const ENV_ALLOW_KEYS = new Set<string>([
   "TERM",
   "COLORTERM",
   "CI",
-  // GitHub auth surface for `gh`/`git` inside the agent — the actual values
+  // GitHub auth surface for `gh`/`git` inside the agent: the actual values
   // are typically injected from `installationToken` below; pass-through here
   // matters only for local dev where the operator pre-sets one.
   "GH_TOKEN",
   "GITHUB_TOKEN",
 ]);
 
-// Prefix allowlist — forward-compatible coverage for env knobs that vendors
+// Prefix allowlist, forward-compatible coverage for env knobs that vendors
 // keep adding (Claude Code CLI flags, Anthropic SDK config, AWS chain extras,
 // git config). Sensitive overlaps (GITHUB_APP_*, GITHUB_WEBHOOK_*) are
 // stripped by the deny-prefix list below.
@@ -115,7 +115,7 @@ export function buildProviderEnv(
   installationToken?: string,
   artifactsDir?: string,
 ): Record<string, string | undefined> {
-  // Strip empty values too — the CLI's auth precedence chain (ANTHROPIC_API_KEY
+  // Strip empty values too: the CLI's auth precedence chain (ANTHROPIC_API_KEY
   // at position 3 beats CLAUDE_CODE_OAUTH_TOKEN at position 5) treats an empty
   // string as a present-but-blank credential and selects it, blocking the real
   // token. Generic blank-stripping protects every credential, not just those
@@ -207,7 +207,7 @@ export async function executeAgent({
   // any caller-supplied AbortSignal actually tear down the `query()` async
   // iterator (and the underlying Claude Code subprocess + MCP servers).
   // Without this, the SDK keeps streaming tokens and writing to the workspace
-  // long after `executeAgent` returns — see issue #16.
+  // long after `executeAgent` returns, see issue #16.
   const controller = new AbortController();
   const onCallerAbort = (): void => {
     controller.abort(signal?.reason);
@@ -223,7 +223,7 @@ export async function executeAgent({
   // Build query options. model and maxTurns are only included when set
   // (exactOptionalPropertyTypes forbids assigning undefined to optional
   // properties). When maxTurns is omitted entirely, the SDK runs the agent
-  // to completion — that's the default we want for end-to-end workflows.
+  // to completion, that's the default we want for end-to-end workflows.
   const queryOptions: Parameters<typeof query>[0]["options"] = {
     cwd: workDir,
     permissionMode: "bypassPermissions",
@@ -239,7 +239,7 @@ export async function executeAgent({
     // line per call); log so the real failure reason (auth, rate-limit,
     // model rejection, etc.) lands in pino. Pipe through redactSecrets
     // first because CLI errors can echo bearer tokens / connection URLs
-    // that buildProviderEnv works hard to keep out of the subprocess —
+    // that buildProviderEnv works hard to keep out of the subprocess,
     // we don't want to undo that by leaking them into pod logs. trimEnd
     // preserves leading indentation in multi-line stack traces; the
     // 500-char cap matches the convention in src/daemon/updater.ts and
@@ -289,7 +289,7 @@ export async function executeAgent({
   // promise) so the iterator stops consuming tokens and the subprocess exits.
   // The Error is hoisted so the catch block can identify a timer-fired abort
   // by reference (controller.signal.reason === timeoutError) rather than a
-  // separate flag — also avoids constructing the same message twice.
+  // separate flag, also avoids constructing the same message twice.
   const timeoutError = new Error(`Agent execution timed out after ${config.agentTimeoutMs}ms`);
   const timer = setTimeout(() => {
     controller.abort(timeoutError);
@@ -339,7 +339,7 @@ export async function executeAgent({
         }
 
         // isResultMessage guards against the SDK message union resolving to
-        // `any` in ESLint's type graph — ensures safe property access.
+        // `any` in ESLint's type graph, ensures safe property access.
         if (isResultMessage(message)) {
           result = message;
         }

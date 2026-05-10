@@ -6,7 +6,7 @@
  * 1. The text MUST tell the user EXACTLY which comment to react on.
  *    GitHub does not fire webhooks for reactions, so a stray 👍 on a
  *    different bot reply (a Q&A answer, an acknowledgement) is silently
- *    ignored — the user has to know that.
+ *    ignored: the user has to know that.
  *
  * 2. The TTL must be visible. The proposal-poller expires awaiting
  *    rows after `CHAT_THREAD_PROPOSAL_TTL_HOURS`; a reaction arriving
@@ -14,11 +14,11 @@
  *    "proposal expired" reply.
  *
  * 3. The phrasing acknowledges that reactions take a moment to
- *    register — sets expectation that the bot will pick them up "next
+ *    register: sets expectation that the bot will pick them up "next
  *    time you interact with this PR" via the piggyback poll, even
  *    though the periodic scanner will also catch them.
  *
- * No HTML markers in the body itself — the proposal id lives on the
+ * No HTML markers in the body itself: the proposal id lives on the
  * `chat_proposals` row, not in the comment body. This keeps the
  * comment human-readable and prevents an attacker from forging a
  * marker by editing a different comment.
@@ -62,7 +62,7 @@ export function renderProposalComment(input: ProposalCommentInput): string {
  */
 export function renderProposalSupersededByEdit(): string {
   return (
-    "_You edited the comment that prompted my prior proposal — " +
+    "_You edited the comment that prompted my prior proposal, " +
     "the proposal no longer applies. Re-ask if you'd like a fresh take._"
   );
 }
@@ -80,12 +80,12 @@ export function renderProposalExpired(ttlHours: number): string {
 /**
  * Render the body for "I'm still waiting on your 👍 from the prior
  * proposal". Used when the user replies in a thread but their reply
- * isn't a clear approval/decline/replace — the bot nudges them.
+ * isn't a clear approval/decline/replace: the bot nudges them.
  */
 export function renderProposalNudge(verbInPlainEnglish: string): string {
   return (
     `_I'm still waiting on a 👍 reaction on my prior proposal to ` +
-    `**${verbInPlainEnglish}** — your reply didn't read as approve or ` +
+    `**${verbInPlainEnglish}**, your reply didn't read as approve or ` +
     `decline. Reply "no" to drop it._`
   );
 }

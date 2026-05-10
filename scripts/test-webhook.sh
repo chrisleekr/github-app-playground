@@ -6,29 +6,29 @@
 # Prerequisites:
 #   1. bun run dev:deps   (Valkey + Postgres)
 #   2. bun run dev        (webhook server + orchestrator)
-#   3. bun run dev:daemon (daemon worker — not needed for inline mode or dry-run)
+#   3. bun run dev:daemon (daemon worker: not needed for inline mode or dry-run)
 #
 # Usage:
 #   bash scripts/test-webhook.sh                          # dry-run (default, no Claude, no cost)
 #   bash scripts/test-webhook.sh "summarise this repo"    # dry-run with custom trigger body
 #
 # Environment overrides:
-#   SERVER_URL   — base URL of the webhook server (default: http://localhost:3000)
-#   OWNER        — repo owner (default: chrisleekr)
-#   REPO         — repo name  (default: github-app-playground)
-#   ENTITY       — issue/PR number (default: 1)
-#   IS_PR        — true/false (default: false)
-#   DRY_RUN      — true/false (default: true). When true, pipeline returns synthetic
+#   SERVER_URL  : base URL of the webhook server (default: http://localhost:3000)
+#   OWNER       : repo owner (default: chrisleekr)
+#   REPO        : repo name  (default: github-app-playground)
+#   ENTITY      : issue/PR number (default: 1)
+#   IS_PR       : true/false (default: false)
+#   DRY_RUN     : true/false (default: true). When true, pipeline returns synthetic
 #                  result before executing Claude. Set to false for full live execution.
 #
 # ─── Example Scenarios ───────────────────────────────────────────────────────
 #
 # Tier 1: Dry-run (no Claude execution, no cost, milliseconds)
 #
-#   # 1. Basic dry-run — issue context
+#   # 1. Basic dry-run: issue context
 #   bash scripts/test-webhook.sh
 #
-#   # 2. Dry-run — PR context
+#   # 2. Dry-run: PR context
 #   IS_PR=true bash scripts/test-webhook.sh
 #
 #   # 3. Duplicate delivery ID rejection (run twice quickly)
@@ -46,19 +46,19 @@
 #
 # Tier 2: Live execution (real Claude, costs money, use test repo)
 #
-#   # 7. Issue — read-only task against test repo
+#   # 7. Issue: read-only task against test repo
 #   DRY_RUN=false REPO=test-github-actions ENTITY=1 \
 #     bash scripts/test-webhook.sh "@chrisleekr-bot what files are in this repo?"
 #
-#   # 8. PR — read-only task against test repo
+#   # 8. PR: read-only task against test repo
 #   DRY_RUN=false REPO=test-github-actions ENTITY=1 IS_PR=true \
 #     bash scripts/test-webhook.sh "@chrisleekr-bot summarize this PR"
 #
-#   # 9. Failure — nonexistent repo
+#   # 9. Failure: nonexistent repo
 #   DRY_RUN=false REPO=nonexistent-repo-12345 \
 #     bash scripts/test-webhook.sh "@chrisleekr-bot hello"
 #
-#   # 10. Failure — nonexistent entity
+#   # 10. Failure: nonexistent entity
 #   DRY_RUN=false REPO=test-github-actions ENTITY=999999 \
 #     bash scripts/test-webhook.sh "@chrisleekr-bot hello"
 # ─────────────────────────────────────────────────────────────────────────────

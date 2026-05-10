@@ -21,7 +21,7 @@ try {
 }
 
 function requireSql(): SQL {
-  if (sql === null) throw new Error("Database not available — test should have been skipped");
+  if (sql === null) throw new Error("Database not available, test should have been skipped");
   return sql;
 }
 
@@ -76,7 +76,7 @@ function makeFakeValkey(): {
   };
 }
 
-describe.skipIf(sql === null)("createTickleScheduler — round-trip", () => {
+describe.skipIf(sql === null)("createTickleScheduler, round-trip", () => {
   beforeAll(async () => {
     await requireSql().unsafe(`
       DROP TABLE IF EXISTS _migrations CASCADE;

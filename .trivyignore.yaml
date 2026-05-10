@@ -5,7 +5,7 @@
 #
 # Wired into CI via the `trivyignores:` input on aquasecurity/trivy-action
 # (see .github/workflows/docker-build.yml). The action does NOT auto-discover
-# this file — it is only read when passed explicitly. See:
+# this file: it is only read when passed explicitly. See:
 #   https://github.com/aquasecurity/trivy-action/blob/v0.35.0/action.yaml
 #   https://github.com/aquasecurity/trivy-action/blob/v0.35.0/entrypoint.sh
 #
@@ -16,11 +16,11 @@
 # Claude Code CLI later ships its own vulnerable copy).
 
 vulnerabilities:
-  # HIGH — picomatch ReDoS via crafted extglob patterns (`+(...)` / `*(...)`).
+  # HIGH: picomatch ReDoS via crafted extglob patterns (`+(...)` / `*(...)`).
   # Present at: /usr/lib/node_modules/npm/node_modules/tinyglobby/node_modules/picomatch@4.0.3
   # Shipped by npm's bundled tinyglobby@0.2.15 dep. Fix floor: picomatch@4.0.4.
   # npm@11 latest (11.12.1 as of 2026-04-12) has NOT yet released a version
-  # that rebundles tinyglobby with the patched picomatch — verified by
+  # that rebundles tinyglobby with the patched picomatch: verified by
   # inspecting the npm-11.12.1.tgz tarball on 2026-04-12.
   #
   # Reachability: the npm CLI is not invoked by the runtime ENTRYPOINT
@@ -42,10 +42,10 @@ vulnerabilities:
       npm CLI only runs at image build time under trusted inputs.
     expired_at: 2026-05-12
 
-  # HIGH — Go stdlib CVEs in the static `docker` client binary copied from
+  # HIGH: Go stdlib CVEs in the static `docker` client binary copied from
   # `docker:29.4.0-cli` (see Dockerfile:106, src/k8s/job-spawner.ts). Upstream
   # Go has released 1.25.9 / 1.26.2 with the fixes, but the docker image has
-  # not yet been rebuilt — docker:29.4.0-cli pushed 2026-04-16 still ships
+  # not yet been rebuilt: docker:29.4.0-cli pushed 2026-04-16 still ships
   # Go 1.26.1. Verified via
   # `docker run --rm docker:29.4.0-cli docker version --format '{{.Client.GoVersion}}'`.
   #
@@ -61,7 +61,7 @@ vulnerabilities:
   #   exercised on that code path.
   # - The only TLS code path is `docker login` against trusted public
   #   registries (Docker Hub / GHCR) whose certificate chains are signed
-  #   by well-known public CAs we configure — no attacker-supplied
+  #   by well-known public CAs we configure: no attacker-supplied
   #   intermediates or wildcard SANs reach the CLI.
   # - `os.Root.Chmod` (CVE-2026-32282) is not called by the docker CLI on
   #   any agent-triggered flow; the isolated-job pod filesystem is not
@@ -72,7 +72,7 @@ vulnerabilities:
       - "usr/local/bin/docker"
     statement: >-
       Go 1.26.1 stdlib in docker:29.4.0-cli (crypto/x509 wildcard SAN case
-      bypass on excluded DNS constraints). Fix requires Go 1.26.2 — docker
+      bypass on excluded DNS constraints). Fix requires Go 1.26.2, docker
       image lag. CLI's only TLS path is `docker login` against trusted public
       registries, not attacker-supplied cert chains.
     expired_at: 2026-05-23
@@ -82,7 +82,7 @@ vulnerabilities:
       - "usr/local/bin/docker"
     statement: >-
       Go 1.26.1 stdlib in docker:29.4.0-cli (os.Root.Chmod symlink TOCTOU on
-      Linux). Fix in Go 1.25.9 / 1.26.2 — docker image lag. docker CLI does
+      Linux). Fix in Go 1.25.9 / 1.26.2, docker image lag. docker CLI does
       not invoke Root.Chmod on any agent-triggered flow; isolated-job pod
       filesystem is not writable by any external attacker who could race a
       symlink replacement.
@@ -93,10 +93,10 @@ vulnerabilities:
       - "usr/local/bin/docker"
     statement: >-
       Go 1.26.1 stdlib in docker:29.4.0-cli (crypto/x509 chain-building DoS
-      via unbounded intermediates). Fix in Go 1.25.9 / 1.26.2 — docker image
-      lag. Only TLS path is `docker login` against trusted public registries
-      — no attacker-supplied intermediate certificate chains reach x509
-      chain-building.
+      via unbounded intermediates). Fix in Go 1.25.9 / 1.26.2, docker image
+      lag. Only TLS path is `docker login` against trusted public
+      registries; no attacker-supplied intermediate certificate chains
+      reach x509 chain-building.
     expired_at: 2026-05-23
 
   # NOTE: prior entries for CVE-2026-33672 (MEDIUM picomatch) and

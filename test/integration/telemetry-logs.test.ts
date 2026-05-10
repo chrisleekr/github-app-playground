@@ -1,10 +1,10 @@
 /**
- * T053 — structured-log contract for dispatch decisions.
+ * T053: structured-log contract for dispatch decisions.
  *
  * Exercises every `DispatchReason` value against
  * `logDispatchDecision(ctx, decision)` and asserts the emitted
  * `ctx.log.info("dispatch decision", ...)` record matches
- * `contracts/dispatch-telemetry.md` §1 — including the triage-*
+ * `contracts/dispatch-telemetry.md` §1: including the triage-*
  * field rules (present only when `decision.triage` is populated,
  * which in turn happens only on the triage / default-fallback
  * cascade).
@@ -91,7 +91,7 @@ const REASONS_WITH_ATTEMPT_ONLY = new Set<DispatchReason>(["triage-error-fallbac
 
 // Tests
 
-describe("dispatch-decision structured log — contract §1", () => {
+describe("dispatch-decision structured log: contract §1", () => {
   for (const reason of DISPATCH_REASONS) {
     it(`emits contract fields for reason="${reason}"`, () => {
       const target: DispatchTarget = reason === "static-default" ? "inline" : "shared-runner";

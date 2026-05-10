@@ -44,7 +44,7 @@ describe("GITHUB_STATE_TOOLS surface", () => {
   });
 });
 
-describe("dispatchGithubStateTool — parameter validation", () => {
+describe("dispatchGithubStateTool: parameter validation", () => {
   it("rejects get_pr_state_check_rollup without pr_number", async () => {
     const result = await dispatchGithubStateTool(
       { octokit: fakeOctokit({}), ...repo },
@@ -72,7 +72,7 @@ describe("dispatchGithubStateTool — parameter validation", () => {
   });
 });
 
-describe("dispatchGithubStateTool — happy paths", () => {
+describe("dispatchGithubStateTool: happy paths", () => {
   it("get_pr_state_check_rollup returns sorted rollup with failed+required first", async () => {
     const octokit = fakeOctokit({
       graphql: () =>

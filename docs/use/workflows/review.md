@@ -7,7 +7,7 @@ Reads a PR diff in full, cross-references with the rest of the codebase, and pos
 | Label           | `bot:review`                                                                                                                          |
 | Mention         | `@chrisleekr-bot review this PR` · `@chrisleekr-bot do a code review` · `@chrisleekr-bot check for issues`                            |
 | Accepted target | Pull request                                                                                                                          |
-| Requires prior  | —                                                                                                                                     |
+| Requires prior  | _none_                                                                                                                                |
 | Artifact        | `$BOT_ARTIFACT_DIR/REVIEW.md` (sibling temp dir, never committed to the repo)                                                         |
 | Side effects    | Inline review comments via `mcp__github_inline_comment__create_inline_comment`; force-push of a clean rebase if branch is behind base |
 | Source          | `src/workflows/handlers/review.ts`                                                                                                    |
@@ -23,12 +23,12 @@ The agent operates as a senior engineer:
 
 Each finding is posted as an inline comment in a three-block layout (status line, bold one-line title, prose reasoning, then a `**Suggested fix:**` line). The same shape is used by `resolve`, `bot:fix-thread`, and `bot:chat-thread` (which replaced `bot:explain-thread` as the conversational executor for review threads) so all bot output reads consistently.
 
-| Severity | Inline-comment status line             | REVIEW.md tag | Meaning                                             |
-| -------- | -------------------------------------- | ------------- | --------------------------------------------------- |
-| Blocker  | `_⚠️ Potential issue_ \| _🔴 Blocker_` | `[blocker]`   | Must fix before merge — correctness or security.    |
-| Major    | `_⚠️ Potential issue_ \| _🟠 Major_`   | `[major]`     | Should fix before merge — likely bug, missing test. |
-| Minor    | `_💭 Suggestion_      \| _🟡 Minor_`   | `[minor]`     | Nice to fix — readability.                          |
-| Nit      | `_💭 Suggestion_      \| _🔵 Nit_`     | `[nit]`       | Taste, optional. Not counted in `findings.total`.   |
+| Severity | Inline-comment status line             | REVIEW.md tag | Meaning                                            |
+| -------- | -------------------------------------- | ------------- | -------------------------------------------------- |
+| Blocker  | `_⚠️ Potential issue_ \| _🔴 Blocker_` | `[blocker]`   | Must fix before merge, correctness or security.    |
+| Major    | `_⚠️ Potential issue_ \| _🟠 Major_`   | `[major]`     | Should fix before merge, likely bug, missing test. |
+| Minor    | `_💭 Suggestion_      \| _🟡 Minor_`   | `[minor]`     | Nice to fix, readability.                          |
+| Nit      | `_💭 Suggestion_      \| _🔵 Nit_`     | `[nit]`       | Taste, optional. Not counted in `findings.total`.  |
 
 The bracketed REVIEW.md tags drive the `countFindings` parser (see `src/workflows/handlers/review.ts`); the inline status-line emojis drive presentation. Both are required.
 
@@ -51,7 +51,7 @@ If the PR head is behind base **and** the branch is not on a fork, the agent reb
 | `state.branch_state`                                        | `{commits_behind_base, commits_ahead_of_base, is_fork}` | Pre-refresh snapshot.                                       |
 | `state.findings`                                            | `{blocker, major, minor, nit, total}`                   | Counted from the severity tags; `total` excludes `nit`.     |
 | `state.report`                                              | markdown                                                | Full `REVIEW.md`.                                           |
-| `state.costUsd`, `state.turns`                              | metrics                                                 | —                                                           |
+| `state.costUsd`, `state.turns`                              | metrics                                                 | _none_                                                      |
 
 ## Push policy
 
@@ -61,5 +61,5 @@ The only push acceptable from `review` is `git push --force-with-lease` after a 
 
 Every failure path (`runPipeline` failure, the outer handler catch, or any sync/async throw before the pipeline runs) returns `status: "failed"` with two distinct outputs:
 
-- **Public tracking comment** — a safe constant: `"review pipeline execution failed — see server logs for details."` Never carries the raw error string, since octokit error stacks include the request URL with the installation token (`https://x-access-token:GHS_xxx@…`).
-- **Operator surfaces (DB + logs)** — `state.failedReason` on the `workflow_runs` row, `pino` log line on the daemon, and `ExecutionResult.errorMessage` returned to the caller. These carry the full SDK message so an operator can diagnose without tailing daemon stderr.
+- **Public tracking comment**: a safe constant: `"review pipeline execution failed, see server logs for details."` Never carries the raw error string, since octokit error stacks include the request URL with the installation token (`https://x-access-token:GHS_xxx@…`).
+- **Operator surfaces (DB + logs)**: `state.failedReason` on the `workflow_runs` row, `pino` log line on the daemon, and `ExecutionResult.errorMessage` returned to the caller. These carry the full SDK message so an operator can diagnose without tailing daemon stderr.

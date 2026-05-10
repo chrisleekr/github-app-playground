@@ -1,15 +1,15 @@
 /**
  * Integration tests for the composite `ship` handler (T027, T028).
  *
- * The handler's core job is deciding `startIndex` — which step of
+ * The handler's core job is deciding `startIndex`: which step of
  * `triage → plan → implement → review → resolve` to enqueue first when a `bot:ship`
  * parent is launched. This is driven by the staleness rules in
  * `contracts/handoff-protocol.md` §Skip-if-output-exists.
  *
- *   T027 — Resume after failure: parent failed at step 2 → on re-apply,
+ *   T027: Resume after failure: parent failed at step 2 → on re-apply,
  *          the new parent enqueues at index 2 and carries prior step run
  *          ids through `state.stepRuns`.
- *   T028 — Open-PR shortcut (FR-020): prior successful `implement` run
+ *   T028: Open-PR shortcut (FR-020): prior successful `implement` run
  *          whose recorded PR is still open → skip straight to step 3
  *          (`review`). The downstream `resolve` step (index 4) is
  *          enqueued by the orchestrator after `review` completes,
@@ -38,7 +38,7 @@ try {
 }
 
 function requireSql(): SQL {
-  if (sql === null) throw new Error("Database not available — test should have been skipped");
+  if (sql === null) throw new Error("Database not available, test should have been skipped");
   return sql;
 }
 

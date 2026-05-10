@@ -103,7 +103,7 @@ beforeEach(() => {
   triageVerdict = JSON.stringify({
     valid: true,
     confidence: 0.92,
-    summary: "Reproduced — cache TTL is 0 in src/foo.ts:42.",
+    summary: "Reproduced, cache TTL is 0 in src/foo.ts:42.",
     recommendedNext: "plan",
     evidence: [{ file: "src/foo.ts", line: 42, note: "cache TTL hard-coded to 0" }],
     reproduction: {
@@ -149,13 +149,13 @@ describe("triage handler (SDK-driven)", () => {
     triageVerdict = JSON.stringify({
       valid: true,
       confidence: 0.85,
-      summary: "Feature request — adds caching to /search endpoint.",
+      summary: "Feature request, adds caching to /search endpoint.",
       recommendedNext: "plan",
       evidence: [],
       reproduction: {
         attempted: false,
         reproduced: null,
-        details: "Not a bug claim — feature request, reproduction skipped.",
+        details: "Not a bug claim, feature request, reproduction skipped.",
       },
     });
     const ctx = buildCtx();
@@ -179,7 +179,7 @@ describe("triage handler (SDK-driven)", () => {
       summary: "Looks fine.",
       recommendedNext: "plan",
       evidence: [],
-      // no reproduction — schema must reject
+      // no reproduction, schema must reject
     });
     const ctx = buildCtx();
 
@@ -201,7 +201,7 @@ describe("triage handler (SDK-driven)", () => {
       reproduction: {
         attempted: true,
         reproduced: false,
-        details: "Ran `bun test test/cache.test.ts`; all 4 tests pass — bug already fixed.",
+        details: "Ran `bun test test/cache.test.ts`; all 4 tests pass, bug already fixed.",
       },
     });
     const ctx = buildCtx();
@@ -258,7 +258,7 @@ describe("triage handler (SDK-driven)", () => {
     triageVerdict = JSON.stringify({
       valid: true,
       confidence: 0.9,
-      summary: "Reproduced — non-constant-time bearer comparison.",
+      summary: "Reproduced, non-constant-time bearer comparison.",
       recommendedNext: "plan",
       evidence: [
         { file: "src/orchestrator/ws-server.ts", line: 52, note: "plain !== check" },

@@ -8,7 +8,7 @@ import {
   type WorkflowRunContext,
 } from "../registry";
 import { findLatestForTarget, type WorkflowRunRow } from "../runs-store";
-// T028 v2 entry — re-exported for spec-locator parity with the
+// T028 v2 entry, re-exported for spec-locator parity with the
 // CanonicalCommand path described in the tasks.md T028 description. The
 // legacy WorkflowHandler `handler` below covers the workflow_runs
 // composite lifecycle; `runShipFromCommand` covers the new
@@ -16,7 +16,7 @@ import { findLatestForTarget, type WorkflowRunRow } from "../runs-store";
 export { runShipFromCommand } from "../ship/session-runner";
 
 /**
- * `ship` composite handler (T031) — the entry point for the end-to-end
+ * `ship` composite handler (T031): the entry point for the end-to-end
  * triage → plan → implement → review → resolve pipeline.
  *
  * Resume semantics (T033 / FR-013 / FR-020):
@@ -27,16 +27,16 @@ export { runShipFromCommand } from "../ship/session-runner";
  *   - The handler walks `registry.ship.steps` left-to-right and, for each
  *     step, asks: does a fresh output exist for this target? Staleness
  *     rules per `contracts/handoff-protocol.md`:
- *       triage    — fresh iff succeeded row exists AND `state.recommendedNext==='plan'`
- *       plan      — fresh iff succeeded row exists AND created AFTER the last triage success
- *       implement — fresh iff succeeded row exists AND recorded PR is still open
- *       review    — always stale (bot self-reviews on every ship iteration)
- *       resolve   — always stale
+ *       triage   : fresh iff succeeded row exists AND `state.recommendedNext==='plan'`
+ *       plan     : fresh iff succeeded row exists AND created AFTER the last triage success
+ *       implement: fresh iff succeeded row exists AND recorded PR is still open
+ *       review   : always stale (bot self-reviews on every ship iteration)
+ *       resolve  : always stale
  *   - The first stale step becomes `startIndex`. Prior-step run ids are
  *     carried forward in `state.stepRuns` so the tracking comment can link
  *     them.
  *
- * Return value is `handed-off` — the executor merges state but keeps the
+ * Return value is `handed-off`: the executor merges state but keeps the
  * parent row in `running` until the final child succeeds or any child
  * fails. The orchestrator's cascade (in `src/workflows/orchestrator.ts`)
  * handles the terminal transition.
@@ -64,7 +64,7 @@ export const handler: WorkflowHandler = async (ctx) => {
       // the orchestrator flips the parent immediately. We do that by
       // inserting a synthetic completion path: cascade to succeeded.
       // Simplest path: fall through to insert a child for the last step
-      // anyway — but resolve is always stale, so this branch is unreachable
+      // anyway, but resolve is always stale, so this branch is unreachable
       // in practice. Defensive failure.
       return { status: "failed", reason: "ship: computed startIndex out of range" };
     }
@@ -117,7 +117,7 @@ export const handler: WorkflowHandler = async (ctx) => {
     };
     const humanMessage =
       startIndex === 0
-        ? `ship started — first step \`${firstStep}\` queued.`
+        ? `ship started, first step \`${firstStep}\` queued.`
         : `ship resumed at step ${String(startIndex)} (\`${firstStep}\`); ${String(priorRunIds.length)} prior step(s) reused.`;
 
     await ctx.setState(state, humanMessage);
@@ -183,7 +183,7 @@ async function computeStartIndex(params: ComputeStartIndexParams): Promise<{
     }
   }
 
-  // All steps fresh — should be unreachable because `resolve` is always
+  // All steps fresh, should be unreachable because `resolve` is always
   // stale. Return the last index so caller defensively inserts a resolve
   // child.
   return { startIndex: steps.length - 1, priorRunIds: priorRunIds.slice(0, -1) };
@@ -228,7 +228,7 @@ async function isFresh(params: IsFreshParams): Promise<boolean> {
     } catch (err) {
       logger.warn(
         { err, prNumber, owner, repo },
-        "ship: failed to verify PR state — treating implement as stale",
+        "ship: failed to verify PR state, treating implement as stale",
       );
       return false;
     }

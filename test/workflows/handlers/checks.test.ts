@@ -1,7 +1,7 @@
 /**
  * Unit tests for the canonical "all-green" check evaluator (issue #93).
  *
- * Mirrors the prompt-level definition in `resolve.ts` step 6 verbatim — a
+ * Mirrors the prompt-level definition in `resolve.ts` step 6 verbatim: a
  * check is failing iff `status === "completed"` AND `conclusion` is one of
  * `failure`, `cancelled`, `timed_out`, `action_required`. `skipped`,
  * `neutral`, and `success` are acceptable terminal states. In-flight checks

@@ -1,5 +1,5 @@
 /**
- * Proposal poller — periodic scanner for awaiting `chat_proposals`
+ * Proposal poller: periodic scanner for awaiting `chat_proposals`
  * rows that the user has approved by reacting 👍 on the bot's
  * proposal comment.
  *
@@ -8,15 +8,15 @@
  * approval signal is therefore unobservable in real-time. Two paths
  * close that gap:
  *
- *   1. Piggyback poll — webhook handlers for the same target call
+ *   1. Piggyback poll: webhook handlers for the same target call
  *      `runProposalPollOnce()` after dispatch (cheap, latency-free).
  *      Implemented inline in the webhook handlers.
  *
- *   2. Periodic scanner (THIS FILE) — handles the case where the user
+ *   2. Periodic scanner (THIS FILE): handles the case where the user
  *      reacts but never posts another comment. Runs every
  *      `CHAT_THREAD_POLLER_INTERVAL_MS` (default 90s; clamped to
  *      [60s, 600s]); bounded by `idx_chat_proposals_pending_target`
- *      so cost is O(open proposals) — zero work when nothing is
+ *      so cost is O(open proposals): zero work when nothing is
  *      awaiting.
  *
  * Lifecycle: started by `src/app.ts` on boot when `DATABASE_URL` is
@@ -50,7 +50,7 @@ export interface ProposalPollerDeps {
   /**
    * Map (owner, repo) → installation_id so the poller can mint the
    * right Octokit for each proposal's repository. The chat_proposals
-   * row does NOT carry installation_id — the caller (app.ts) supplies
+   * row does NOT carry installation_id: the caller (app.ts) supplies
    * a resolver that goes through whatever installation lookup the
    * server already maintains.
    */
@@ -77,7 +77,7 @@ export function startProposalPoller(deps: ProposalPollerDeps): ProposalPollerHan
   const log = (deps.log ?? rootLogger).child({ component: "proposal-poller" });
 
   if (getDb() === null) {
-    log.info("proposal-poller: DATABASE_URL not configured — skipping");
+    log.info("proposal-poller: DATABASE_URL not configured, skipping");
     return {
       stop: () => {
         // No-op: poller never started.
@@ -137,7 +137,7 @@ export interface RunProposalPollOnceInput {
 /**
  * One-shot reaction-poll. Used by both the periodic scanner AND the
  * webhook piggyback path (call this after dispatching a webhook for
- * the same target — most common UX is "user reacts then types
+ * the same target: most common UX is "user reacts then types
  * something" which fires the next webhook, and we want to flip the
  * proposal status during that cycle).
  *
@@ -158,7 +158,7 @@ export async function runProposalPollOnce(
       if (installationId === null) {
         input.log.debug(
           { proposalId: row.id, owner: row.owner, repo: row.repo },
-          "proposal-poller: no installation_id for repo — skipping",
+          "proposal-poller: no installation_id for repo, skipping",
         );
         continue;
       }
@@ -172,7 +172,7 @@ export async function runProposalPollOnce(
       });
       if (approver === null) continue;
       // Don't honour the asker reacting to their own proposal as a
-      // safety nuance. Wait — actually, the asker IS the right person
+      // safety nuance. Wait, actually, the asker IS the right person
       // to approve. Leaving the check loose: any non-Bot user counts.
       const result = await approveProposal({ id: row.id, approverLogin: approver });
       if (result !== null) {
@@ -185,7 +185,7 @@ export async function runProposalPollOnce(
     } catch (err) {
       input.log.warn(
         { err, proposalId: row.id },
-        "proposal-poller: failed to poll one proposal — skipping",
+        "proposal-poller: failed to poll one proposal, skipping",
       );
     }
   }

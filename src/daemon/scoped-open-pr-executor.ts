@@ -67,13 +67,13 @@ export async function executeScopedOpenPr(
       ? input.verdictSummary
       : `${input.verdictSummary.slice(0, MAX_SUMMARY_BYTES)}\n\n…(truncated)`;
   // Octokit-level errors (closed issue, missing repo) are contractually
-  // `halted`, not `failed` — see scoped-fix-thread for rationale.
+  // `halted`, not `failed`, see scoped-fix-thread for rationale.
   try {
-    // verdictSummary contains LLM-generated policy text — route through the
+    // verdictSummary contains LLM-generated policy text, route through the
     // agent-source path so the LLM scanner runs on the body.
     const guarded = await safePostToGitHub({
       body:
-        `\`bot:open-pr\` daemon-side executor is scaffolded — clone + branch + ` +
+        `\`bot:open-pr\` daemon-side executor is scaffolded, clone + branch + ` +
         `Agent SDK scaffolding + \`gh pr create\` invocation is the next follow-up. ` +
         `Policy verdict (verbatim):\n\n> ${truncatedSummary.replaceAll("\n", "\n> ")}`,
       source: "agent",
@@ -88,7 +88,7 @@ export async function executeScopedOpenPr(
         }),
     });
     if (!guarded.posted) {
-      // Body emptied by secret redaction — do NOT log a misleading "completed"
+      // Body emptied by secret redaction, do NOT log a misleading "completed"
       // line. Surface a distinct halt so the orchestrator records it
       // separately from a successful scaffold reply.
       log.warn(
@@ -98,7 +98,7 @@ export async function executeScopedOpenPr(
           kinds: guarded.kinds,
           reason: guarded.reason,
         },
-        "scoped-open-pr reply skipped — body emptied by secret redaction",
+        "scoped-open-pr reply skipped, body emptied by secret redaction",
       );
       return {
         status: "halted",
@@ -117,7 +117,7 @@ export async function executeScopedOpenPr(
     const reason = err instanceof Error ? err.message : String(err);
     // Terminal 4xx (closed issue, missing repo) is a clean halt. Throttling
     // and abuse-detection responses (429, 403 with rate-limit body) MUST
-    // rethrow so the orchestrator's retry layer can back off — same rule
+    // rethrow so the orchestrator's retry layer can back off, same rule
     // as scoped-fix-thread.
     const status =
       typeof err === "object" && err !== null && "status" in err
@@ -130,7 +130,7 @@ export async function executeScopedOpenPr(
     if (isTerminalSemanticError && !isRateLimited) {
       log.warn(
         { err: reason, status, event: SHIP_LOG_EVENTS.scoped.openPr.daemonFailed },
-        "scoped-open-pr issue reply failed — halting on semantic GitHub error",
+        "scoped-open-pr issue reply failed, halting on semantic GitHub error",
       );
       return { status: "halted", reason: `issue reply failed: ${reason}` };
     }

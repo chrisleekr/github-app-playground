@@ -154,7 +154,7 @@ function parseQueuedJob(raw: string): QueuedJob | null {
  * discriminated union before LPUSH so producers cannot ship malformed
  * entries onto the shared queue.
  *
- * Uses LPUSH (newest at head) — BRPOP dequeues from tail (FIFO).
+ * Uses LPUSH (newest at head): BRPOP dequeues from tail (FIFO).
  */
 export async function enqueueJob(job: QueuedJob): Promise<void> {
   const validated = QueuedJobSchema.parse(job);
@@ -181,7 +181,7 @@ export async function getQueueLength(): Promise<number> {
   } catch (err) {
     logger.warn(
       { err: err instanceof Error ? err.message : String(err) },
-      "Failed to read queue length — treating as 0",
+      "Failed to read queue length, treating as 0",
     );
     return 0;
   }
@@ -189,7 +189,7 @@ export async function getQueueLength(): Promise<number> {
 
 /**
  * Non-blocking dequeue for use in webhook handlers.
- * Uses RPOP — returns immediately with null if the queue is empty.
+ * Uses RPOP: returns immediately with null if the queue is empty.
  */
 export async function tryDequeueJob(): Promise<QueuedJob | null> {
   const valkey = requireValkeyClient();
@@ -198,7 +198,7 @@ export async function tryDequeueJob(): Promise<QueuedJob | null> {
   if (result === null) return null;
   const parsed = parseQueuedJob(result);
   if (parsed === null) {
-    logger.error("Failed to parse dequeued job — dropping poison pill");
+    logger.error("Failed to parse dequeued job, dropping poison pill");
     return null;
   }
   return parsed;
@@ -216,7 +216,7 @@ export async function dequeueJob(): Promise<QueuedJob | null> {
   if (result === null) return null;
   const parsed = parseQueuedJob(result[1]);
   if (parsed === null) {
-    logger.error("Failed to parse dequeued job — dropping poison pill");
+    logger.error("Failed to parse dequeued job, dropping poison pill");
     return null;
   }
   return parsed;
@@ -230,7 +230,7 @@ export async function requeueJob(job: QueuedJob): Promise<boolean> {
   if (job.retryCount >= config.jobMaxRetries) {
     logger.warn(
       { kind: job.kind, deliveryId: job.deliveryId, retryCount: job.retryCount },
-      "Job exceeded max retries — will not re-queue",
+      "Job exceeded max retries, will not re-queue",
     );
     return false;
   }
@@ -248,7 +248,7 @@ export async function requeueJob(job: QueuedJob): Promise<boolean> {
 // A single Bun RedisClient is shared process-wide, so blocking commands like
 // BLMOVE would starve every other Valkey caller (heartbeats, registration,
 // counters). The worker therefore polls with a non-blocking LMOVE and sleeps
-// between empty polls — see `queue-worker.ts`.
+// between empty polls, see `queue-worker.ts`.
 
 /**
  * Atomic lease: pop the oldest job from `queue:jobs` and append it to this
@@ -267,7 +267,7 @@ export async function leaseJob(
   if (raw === null) return null;
   const job = parseQueuedJob(raw);
   if (job === null) {
-    logger.error({ rawLength: raw.length }, "Failed to parse leased job — dropping poison pill");
+    logger.error({ rawLength: raw.length }, "Failed to parse leased job, dropping poison pill");
     await valkey.send("LREM", [dest, "1", raw]);
     return null;
   }
@@ -276,7 +276,7 @@ export async function leaseJob(
 
 /**
  * Release a successfully-dispatched job from this instance's processing list.
- * Idempotent — `LREM` is a no-op when the element is already gone.
+ * Idempotent: `LREM` is a no-op when the element is already gone.
  */
 export async function releaseLeasedJob(instanceId: string, raw: string): Promise<void> {
   const valkey = requireValkeyClient();
@@ -325,7 +325,7 @@ export async function requeueLeasedJob(
  * cross-instance reaper.
  *
  * Pushes items to the HEAD of the shared queue so they are re-leased before
- * any newer arrivals — preserving the rough FIFO intent of the original queue.
+ * any newer arrivals: preserving the rough FIFO intent of the original queue.
  *
  * Returns the number of items recovered.
  */

@@ -1,5 +1,5 @@
 /**
- * T014b — trigger-router tests covering FR-027.
+ * T014b: trigger-router tests covering FR-027.
  *
  * Surface parity contract: literal, NL, and label inputs that name the
  * same intent + deadline MUST produce identical canonical commands
@@ -15,7 +15,7 @@ import { routeTrigger } from "../../../src/workflows/ship/trigger-router";
 const PR = { owner: "o", repo: "r", number: 42, installation_id: 100 } as const;
 const PRINCIPAL = "alice";
 
-describe("routeTrigger — FR-027 surface parity", () => {
+describe("routeTrigger: FR-027 surface parity", () => {
   it("literal `bot:ship --deadline 2h` → canonical {intent:'ship', deadline_ms:7200000, surface:'literal'}", async () => {
     const out = await routeTrigger({
       surface: "literal",
@@ -140,7 +140,7 @@ describe("routeTrigger — FR-027 surface parity", () => {
         pr: PR,
         event_surface: "pr-label",
         // thread_id carries REST `payload.comment.id` stringified per the
-        // CanonicalCommand contract — numeric, NOT a GraphQL node ID.
+        // CanonicalCommand contract, numeric, NOT a GraphQL node ID.
         thread_id: "12345",
       },
     });
@@ -152,7 +152,7 @@ describe("routeTrigger — FR-027 surface parity", () => {
     // ship's eligibility set is [pr-comment, review-comment, pr-label];
     // triggering it on issue-comment MUST be rejected at withSurface.
     // Using a verb the literal parser actually understands (ship) is the
-    // only way to exercise eligibility on the literal surface — scoped
+    // only way to exercise eligibility on the literal surface, scoped
     // verbs are not in the literal grammar.
     const out = await routeTrigger({
       surface: "literal",
@@ -196,7 +196,7 @@ describe("routeTrigger — FR-027 surface parity", () => {
   it("NL classifier output rewritten to 'none' on ineligible event_surface yields null", async () => {
     // Classifier returns `bot:investigate` for "investigate this", and
     // the eventSurface filter inside the classifier rewrites it to
-    // `'none'` because `pr-comment` is not eligible — so routeTrigger
+    // `'none'` because `pr-comment` is not eligible, so routeTrigger
     // returns null without ever passing through trigger-router's own
     // eligibility check.
     const callLlm = mock(() => Promise.resolve(JSON.stringify({ intent: "investigate" })));

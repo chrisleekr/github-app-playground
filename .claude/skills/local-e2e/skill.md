@@ -14,8 +14,8 @@ $ARGUMENTS
 
 These must be set in `.env` or the shell environment before running:
 
-- `LOCAL_E2E_TEST_REPO` — `owner/repo` to test against (e.g. `myorg/my-test-repo`)
-- `LOCAL_E2E_TEST_ENTITY` — issue or PR number to target
+- `LOCAL_E2E_TEST_REPO`: `owner/repo` to test against (e.g. `myorg/my-test-repo`)
+- `LOCAL_E2E_TEST_ENTITY`: issue or PR number to target
 
 The skill MUST fail with a clear error message if either is unset.
 
@@ -34,8 +34,8 @@ The skill MUST fail with a clear error message if either is unset.
 2. If either is missing, stop immediately and tell the user:
    ```
    Missing required env vars for /local-e2e:
-     LOCAL_E2E_TEST_REPO  — set to owner/repo (e.g. myorg/my-test-repo)
-     LOCAL_E2E_TEST_ENTITY — set to issue or PR number
+     LOCAL_E2E_TEST_REPO: set to owner/repo (e.g. myorg/my-test-repo)
+     LOCAL_E2E_TEST_ENTITY: set to issue or PR number
    Add them to .env or export in your shell.
    ```
 
@@ -69,8 +69,8 @@ bash scripts/test-webhook.sh "${TRIGGER_BODY}"
 ### Step 5: Monitor execution
 
 1. Tail the daemon log output, watching for either:
-   - `Claude Agent SDK execution completed` — success
-   - `error` / `failed` / process exit — failure
+   - `Claude Agent SDK execution completed`: success
+   - `error` / `failed` / process exit: failure
 2. Check every 15 seconds, with a maximum wait of 5 minutes.
 
 ### Step 6: Report result
@@ -89,4 +89,4 @@ Print a summary:
 
 1. Query `repo_memory` table: `psql $DATABASE_URL -c "SELECT id, repo_owner, repo_name, category, content, pinned FROM repo_memory ORDER BY updated_at DESC LIMIT 10;"`
 2. Report whether new entries were created during this execution.
-3. If empty, flag as **memory not working** — the daemon either didn't pass `REPO_MEMORY` env to the MCP server, the MCP server didn't write `.daemon-actions.json`, or the orchestrator didn't persist the actions.
+3. If empty, flag as **memory not working**: the daemon either didn't pass `REPO_MEMORY` env to the MCP server, the MCP server didn't write `.daemon-actions.json`, or the orchestrator didn't persist the actions.

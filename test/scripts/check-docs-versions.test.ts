@@ -17,7 +17,7 @@ const PACKAGE_JSON = JSON.stringify(
 );
 
 const DOCKERFILE_OK = `# fixture\nFROM oven/bun:1.3.13 AS base\nRUN echo hello\n`;
-// Stale `oven/bun:` mention inside a comment — caught by the new line-scan.
+// Stale `oven/bun:` mention inside a comment, caught by the new line-scan.
 const DOCKERFILE_STALE_COMMENT = `FROM oven/bun:1.3.13 AS base\n# /root is mode 700 in oven/bun:1.3.8\n`;
 
 interface Layout {

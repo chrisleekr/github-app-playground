@@ -53,7 +53,7 @@ function readActions(): DaemonAction[] {
       return JSON.parse(readFileSync(ACTIONS_FILE, "utf-8")) as DaemonAction[];
     }
   } catch {
-    // Corrupted file — start fresh
+    // Corrupted file, start fresh
   }
   return [];
 }
@@ -75,7 +75,7 @@ server.registerTool(
   "save_repo_memory",
   {
     description:
-      "Save a learning about this repository for future executions. Use this when you discover important information about setup steps, build/test commands, architecture, coding conventions, or common gotchas. Be specific and actionable — future executions will see this in their context.",
+      "Save a learning about this repository for future executions. Use this when you discover important information about setup steps, build/test commands, architecture, coding conventions, or common gotchas. Be specific and actionable, future executions will see this in their context.",
     inputSchema: {
       category: z
         .enum(VALID_CATEGORIES)

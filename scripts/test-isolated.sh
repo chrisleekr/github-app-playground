@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run each test file in its own Bun process to avoid mock.module() conflicts.
-# Bun's mock.module() is process-global — mocks from one file bleed into others
+# Bun's mock.module() is process-global: mocks from one file bleed into others
 # when all files run in a single process, causing import failures and segfaults.
 set -uo pipefail
 shopt -s globstar nullglob
@@ -27,7 +27,7 @@ for f in "${tests[@]}"; do
   fi
   # Bun prints " N skip" (leading whitespace) only when N > 0. Treat any
   # non-zero skip as a failure so silently-skipped suites stop counting
-  # as green — a fully-skipped suite trivially satisfies " 0 fail" but
+  # as green: a fully-skipped suite trivially satisfies " 0 fail" but
   # exercises zero assertions, which previously masked DB-backed
   # integration tests when the test database was unreachable.
   if echo "$output" | grep -qE '^[[:space:]]+[1-9][0-9]* skip'; then
@@ -43,7 +43,7 @@ for f in "${tests[@]}"; do
     else
       echo "FAIL: $f"
     fi
-    # Full output — module load failures don't emit '(fail)' lines, so a
+    # Full output: module load failures don't emit '(fail)' lines, so a
     # filtered view would hide the root cause.
     echo "$output"
   fi

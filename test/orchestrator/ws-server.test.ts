@@ -366,7 +366,7 @@ describe("WebSocket auth (constant-time bearer comparator, #76)", () => {
     await withServer("primary-secret-32chars-aaaaaaaaa", undefined, async (port) => {
       // A non-upgrade GET with valid auth passes the auth check and reaches
       // `srv.upgrade()`, which fails because the request lacks Upgrade
-      // headers — the fetch handler then returns the 500 fallback. Pinning
+      // headers, the fetch handler then returns the 500 fallback. Pinning
       // to 500 (rather than `.not.toBe(401)`) catches a regression where a
       // refactored upgrade path returns a different status while still
       // accepting bad credentials.
@@ -382,7 +382,7 @@ describe("WebSocket auth (constant-time bearer comparator, #76)", () => {
       "new-primary-32chars-aaaaaaaaaaaaa",
       "old-primary-32chars-bbbbbbbbbbbbb",
       async (port) => {
-        // Old token still works while the rotation overlap is open — see
+        // Old token still works while the rotation overlap is open, see
         // the upgrade-fallback note on the previous test for why we expect
         // 500.
         const resOld = await fetch(`http://localhost:${port}/ws`, {

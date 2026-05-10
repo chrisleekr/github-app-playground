@@ -21,7 +21,7 @@ import { isOwnerAllowed } from "./authorize";
 import { getTriageLLMClient } from "./triage-client-factory";
 
 /**
- * DispatchDecision — the in-memory record the router produces for each
+ * DispatchDecision: the in-memory record the router produces for each
  * event. Post dispatch-collapse, target is always `"daemon"`; the reason
  * carries the four-valued routing verdict (persistent vs ephemeral vs
  * spawn-failed). `triage` is populated when the LLM classifier returned a
@@ -35,7 +35,7 @@ export interface DispatchDecision {
   triageAttempted?: boolean;
   /**
    * Set when `reason === "ephemeral-spawn-failed"`. Retained for operator-side
-   * surfaces only (structured logs, executions row) — never interpolated into
+   * surfaces only (structured logs, executions row): never interpolated into
    * public GitHub comments because the underlying error string can embed an
    * installation token or other Kubernetes API detail.
    */
@@ -92,7 +92,7 @@ export async function processRequest(ctx: BotContext): Promise<void> {
     return;
   }
 
-  // Reserve BEFORE the async durable check — closes a retry race.
+  // Reserve BEFORE the async durable check, closes a retry race.
   processed.set(ctx.deliveryId, Date.now());
 
   if (await isAlreadyProcessed(ctx)) {
@@ -100,11 +100,11 @@ export async function processRequest(ctx: BotContext): Promise<void> {
     return;
   }
 
-  // Owner allowlist check — MUST run before any GitHub side effects to
+  // Owner allowlist check, MUST run before any GitHub side effects to
   // preserve the "silent skip" guarantee for non-allowlisted repos.
   const authResult = isOwnerAllowed(ctx.owner, ctx.log);
   if (!authResult.allowed) {
-    ctx.log.info({ reason: authResult.reason }, "skipping request — owner not allowlisted");
+    ctx.log.info({ reason: authResult.reason }, "skipping request, owner not allowlisted");
     return;
   }
 
@@ -143,7 +143,7 @@ export async function processRequest(ctx: BotContext): Promise<void> {
 }
 
 /**
- * Pick a DispatchReason for this event. The target is always `"daemon"` —
+ * Pick a DispatchReason for this event. The target is always `"daemon"`,
  * the reason distinguishes persistent-pool routing from ephemeral scale-up.
  *
  * Flow:
@@ -251,7 +251,7 @@ export async function decideDispatch(ctx: BotContext): Promise<DispatchDecision>
       ...(triageAttempted && { triageAttempted: true }),
     };
   } catch (err) {
-    // Spawn failed — release only *our* reservation. Unconditionally
+    // Spawn failed, release only *our* reservation. Unconditionally
     // zeroing the timestamp would stomp on a newer concurrent spawn
     // that already won the cooldown race while this call was in flight,
     // reopening the thundering-herd window the cooldown exists to close.
@@ -265,7 +265,7 @@ export async function decideDispatch(ctx: BotContext): Promise<DispatchDecision>
           : String(err);
     ctx.log.error(
       { err, deliveryId: ctx.deliveryId, spawnErrorKind: kind },
-      "Ephemeral daemon spawn failed — rejecting request",
+      "Ephemeral daemon spawn failed, rejecting request",
     );
     return {
       target: "daemon",
@@ -289,7 +289,7 @@ export async function dispatch(ctx: BotContext, decision: DispatchDecision): Pro
  * FR: graceful rejection when Kubernetes cannot spawn the ephemeral daemon
  * required to serve this request. Writes an executions row for analytics
  * and posts an infrastructure-unavailable comment. Never silently routes
- * to the persistent pool — if the scaler decided a spawn was needed, the
+ * to the persistent pool: if the scaler decided a spawn was needed, the
  * persistent pool is not expected to absorb the work.
  */
 async function recordSpawnFailedRejection(
@@ -298,7 +298,7 @@ async function recordSpawnFailedRejection(
 ): Promise<void> {
   ctx.log.warn(
     { deliveryId: ctx.deliveryId, spawnError: decision.spawnError },
-    "Request rejected — ephemeral-daemon spawn failed",
+    "Request rejected, ephemeral-daemon spawn failed",
   );
 
   const db = getDb();
@@ -329,7 +329,7 @@ async function recordSpawnFailedRejection(
   }
 
   try {
-    // Public comment — do NOT include `decision.spawnError`. The raw
+    // Public comment, do NOT include `decision.spawnError`. The raw
     // text can carry K8s API URLs, RBAC detail, or other operational
     // info. The structured spawn error is already on the log line and
     // in the executions row for operators.
@@ -365,10 +365,10 @@ async function recordSpawnFailedRejection(
  */
 async function dispatchDaemon(ctx: BotContext, decision: DispatchDecision): Promise<void> {
   if (!isValkeyHealthy()) {
-    ctx.log.error("Valkey unavailable — rejecting request (FM-7)");
+    ctx.log.error("Valkey unavailable, rejecting request (FM-7)");
     try {
       await safePostToGitHub({
-        body: `**${config.triggerPhrase}** cannot process this request — the job queue service is temporarily unavailable. Please try again in a few minutes.`,
+        body: `**${config.triggerPhrase}** cannot process this request: the job queue service is temporarily unavailable. Please try again in a few minutes.`,
         source: "system",
         callsite: "webhook.router.valkey-unavailable",
         log: ctx.log,
@@ -427,7 +427,7 @@ async function dispatchDaemon(ctx: BotContext, decision: DispatchDecision): Prom
     await enqueueJob(queuedJob);
     ctx.log.info(
       { deliveryId: ctx.deliveryId },
-      "No daemon available — job enqueued, awaiting daemon claim",
+      "No daemon available, job enqueued, awaiting daemon claim",
     );
   }
 }

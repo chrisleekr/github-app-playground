@@ -2,7 +2,7 @@
  * Scoped-command fan-out (US5 / T089-T091). Maps a `CanonicalCommand`
  * with a scoped intent (`fix-thread`, `chat-thread`, `summarize`,
  * `rebase`, `investigate`, `triage`, `open-pr`) to the appropriate
- * scoped handler. Each handler is stateless — no `ship_intents` row,
+ * scoped handler. Each handler is stateless: no `ship_intents` row,
  * no tracking comment, no continuation. Failures are logged and
  * swallowed at the per-intent boundary so a misbehaving handler does
  * not poison the webhook delivery.
@@ -11,7 +11,7 @@
  * via `src/ai/llm-client.ts`) so scoped handlers stay pure of
  * provider details.
  *
- * Two of the seven scoped commands — `fix-thread` and `rebase` —
+ * Two of the seven scoped commands: `fix-thread` and `rebase`,
  * require server-side git operations (clone + diff + push). Those are
  * delegated to a daemon-side helper that is NOT wired in v1; until
  * the helper lands, the dispatcher posts a maintainer-facing notice
@@ -115,7 +115,7 @@ async function enqueueScopedThreadJob(
   if (triggerCommentId === 1) {
     deps.log?.warn(
       { intent: command.intent },
-      `${kind}: missing thread_id on canonical command — refusing dispatch`,
+      `${kind}: missing thread_id on canonical command, refusing dispatch`,
     );
     return;
   }
@@ -157,7 +157,7 @@ async function enqueueScopedThreadJob(
 /**
  * Resolve a review-comment's file/line range so the daemon executor can
  * scope its prompt without re-fetching. Returns null when the lookup
- * fails — caller should refuse the dispatch in that case rather than
+ * fails: caller should refuse the dispatch in that case rather than
  * enqueue a malformed offer.
  */
 async function resolveThreadRef(
@@ -197,7 +197,7 @@ async function resolveThreadRef(
   } catch (err) {
     deps.log?.warn(
       { err, commentId, intent: command.intent },
-      "resolveThreadRef failed — refusing scoped dispatch",
+      "resolveThreadRef failed, refusing scoped dispatch",
     );
     return null;
   }
@@ -217,7 +217,7 @@ export async function runChatThreadFromCommand(
   if (command.comment_body === undefined || command.trigger_comment_id === undefined) {
     deps.log?.warn(
       { intent: command.intent },
-      "chat-thread: missing comment_body or trigger_comment_id on canonical command — refusing dispatch",
+      "chat-thread: missing comment_body or trigger_comment_id on canonical command, refusing dispatch",
     );
     return;
   }
@@ -243,7 +243,7 @@ export async function runChatThreadFromCommand(
 /**
  * Stateless one-shot dispatch. The whole body is wrapped in a top-level
  * try/catch so any Octokit, LLM, or callback error is logged and
- * swallowed at the per-intent boundary — a misbehaving scoped command
+ * swallowed at the per-intent boundary: a misbehaving scoped command
  * never rejects up to the webhook delivery loop.
  */
 export async function dispatchScopedCommand(
@@ -261,7 +261,7 @@ export async function dispatchScopedCommand(
         repo: command.pr.repo,
         pr_number: command.pr.number,
       },
-      "dispatchScopedCommand: scoped handler threw — swallowed at per-intent boundary",
+      "dispatchScopedCommand: scoped handler threw, swallowed at per-intent boundary",
     );
   }
 }
@@ -308,7 +308,7 @@ async function runScopedCommand(command: CanonicalCommand, deps: ScopedCommandDe
       // The legacy approach called `runOpenPr` with a stub `createBranchAndPr`
       // that returned `{ pr_number: 0, ... }`. That caused `runOpenPr` to
       // post a back-link marker `<!-- bot:open-pr:0 -->` BEFORE the daemon
-      // had created any PR — `findExistingBackLink` matches by verb prefix,
+      // had created any PR, `findExistingBackLink` matches by verb prefix,
       // so the bogus marker would permanently block future re-triggers
       // (Copilot review on PR #79). The daemon executor is now solely
       // responsible for posting the back-link marker once it actually
@@ -359,7 +359,7 @@ async function runScopedCommand(command: CanonicalCommand, deps: ScopedCommandDe
     case "chat-thread": {
       // Inline: chat-thread runs the conversational LLM call in-process,
       // replies via Octokit, and (when the user approves) hands off to
-      // existing handlers — no daemon enqueue.
+      // existing handlers, no daemon enqueue.
       await runChatThreadFromCommand(command, deps);
       return;
     }
@@ -393,7 +393,7 @@ async function runScopedCommand(command: CanonicalCommand, deps: ScopedCommandDe
       return;
     }
     default: {
-      // Defensive — exhaustiveness guard. A new scoped intent added to
+      // Defensive, exhaustiveness guard. A new scoped intent added to
       // SCOPED_COMMAND_INTENTS without a case here will fail the type
       // check.
       const _exhaustive: never = command.intent as never;

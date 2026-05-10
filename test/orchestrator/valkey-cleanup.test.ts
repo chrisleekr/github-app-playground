@@ -1,5 +1,5 @@
 /**
- * Tests for src/orchestrator/valkey-cleanup.ts — startup orphan sweep.
+ * Tests for src/orchestrator/valkey-cleanup.ts: startup orphan sweep.
  * Drives the cleanup against a mocked Valkey client so we don't need to
  * mock the job-queue module (which would leak across files via Bun's
  * process-global mock.module registry).
@@ -115,7 +115,7 @@ describe("valkey-cleanup", () => {
     const recovered = await reapOrphanProcessingLists("orch-self");
 
     expect(recovered).toBeGreaterThan(0);
-    // Self-owned list is skipped — LMOVE never called with orch-self as source.
+    // Self-owned list is skipped, LMOVE never called with orch-self as source.
     const selfDrainAttempt = mockSend.mock.calls.find(
       (c) => c[0] === "LMOVE" && (c[1] as string[])[0] === "queue:processing:orch-self",
     );

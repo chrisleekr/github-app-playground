@@ -2,7 +2,7 @@
  * Helpers for parsing the agent-authored RESOLVE.md artefact.
  *
  * The resolve handler's post-pipeline gate reads the `## Outstanding` section
- * — populated by the agent when CI failures survive the per-iteration cap —
+ * populated by the agent when CI failures survive the per-iteration cap,
  * to surface what's left in the tracking comment. Kept in its own module so
  * the parser can be unit-tested without booting the rest of the handler.
  */
@@ -11,7 +11,7 @@
  * Extract the body of the `## Outstanding` section from a RESOLVE.md report.
  *
  * Returns `null` when the section is missing, present-but-empty, or contains
- * only whitespace. The parser is heading-shape tolerant — any next `##`-level
+ * only whitespace. The parser is heading-shape tolerant: any next `##`-level
  * heading terminates the section, regardless of its content.
  */
 export function parseOutstandingSection(report: string | undefined | null): string | null {

@@ -1,5 +1,5 @@
 /**
- * Triage engine — single-turn binary classification of ambiguous events.
+ * Triage engine: single-turn binary classification of ambiguous events.
  *
  * After the dispatch-to-daemon collapse, triage no longer picks an
  * execution target (there's only one: the daemon fleet). Instead, it
@@ -18,7 +18,7 @@
  *   - NEVER throws. All failure paths return `{ outcome: "fallback", reason }`
  *     so the router can deterministically carry on.
  *
- * `maxTurns` is deliberately NOT part of the triage output — the LLM
+ * `maxTurns` is deliberately NOT part of the triage output: the LLM
  * mis-sizes complexity often enough that we prefer a static
  * `config.defaultMaxTurns` for every job.
  */
@@ -41,7 +41,7 @@ import { CircuitBreaker } from "../utils/circuit-breaker";
 import { sanitizeContent } from "../utils/sanitize";
 
 /**
- * Zod schema — binary heavy classifier.
+ * Zod schema: binary heavy classifier.
  *
  * `.strict()` so legacy pre-collapse fields (`mode`, `complexity`) on a
  * response from a stale provider/proxy are a hard parse error instead of
@@ -135,10 +135,10 @@ Respond with ONLY a JSON object, no prose, matching:
 
 Confidence is your probability that \`heavy\` is correct.
 
-Tools (PR events only — absent on issues):
-  - get_pr_state_check_rollup({ pr_number }) — CI rollup. Useful when "ship" or
+Tools (PR events only, absent on issues):
+  - get_pr_state_check_rollup({ pr_number }): CI rollup. Useful when "ship" or
     "make it ready to merge" arrives on a PR with red CI; that's heavy.
-  - get_pr_diff({ pr_number }) — capped diff. Use ONLY when text alone is
+  - get_pr_diff({ pr_number }): capped diff. Use ONLY when text alone is
     ambiguous AND a single fetch will resolve heavy vs light (large refactor
     diff = heavy; one-line typo fix = not heavy).
 
@@ -174,7 +174,7 @@ export function buildTriagePrompt(input: TriageInput): string {
   const sanitizedBody = sanitizeContent(input.triggerBody);
   const body = sanitizedBody.length > 2_000 ? sanitizedBody.slice(0, 2_000) : sanitizedBody;
   // Include PR number when this is a PR event so the model can pass it to
-  // tool calls (issue #117 — the github-state tools require pr_number).
+  // tool calls (issue #117: the github-state tools require pr_number).
   const lines = [
     `Repository: ${input.owner}/${input.repo}`,
     `Event: ${input.eventName} on ${input.isPR ? "pull request" : "issue"}`,
@@ -253,7 +253,7 @@ async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 /**
  * Primary triage entry point. Called by the router for every dispatch.
  *
- * @param input Event context — decoupled from BotContext for testability.
+ * @param input Event context: decoupled from BotContext for testability.
  * @param client Injected LLM client. Production callers pass the module-level
  *               singleton from `src/ai/llm-client.ts`; tests pass a stub.
  * @returns `{ outcome: "result", result }` on success above the threshold,
@@ -325,7 +325,7 @@ export async function triageRequest(input: TriageInput, client: LLMClient): Prom
     return { outcome: "fallback", reason: "llm-error" };
   }
 
-  // Defensive prose extraction first — `parseStructuredResponse` only
+  // Defensive prose extraction first, `parseStructuredResponse` only
   // strips code fences. Triage occasionally sees prose-wrapped JSON
   // ("Here's the verdict: { ... }") which we want to recover from.
   const jsonText = extractJsonObject(response.text);

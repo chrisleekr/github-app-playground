@@ -19,7 +19,7 @@ import type { DaemonMessage } from "../../src/shared/ws-messages";
 
 // ─── Leaf dependency mocks (shared across all orchestrator tests) ─────────────
 // These MUST be declared and registered before any SUT import.
-// Only mock modules that are NOT under test — never mock connection-handler,
+// Only mock modules that are NOT under test, never mock connection-handler,
 // job-dispatcher, or ws-server here, because mock.module() is process-wide.
 
 // daemon-registry
@@ -92,7 +92,7 @@ void mock.module("../../src/orchestrator/job-queue", () => ({
   SCOPED_JOB_KINDS: ["scoped-rebase", "scoped-fix-thread", "scoped-open-pr"],
   // Stub the discriminated-union schema so connection-handler's
   // re-validation in `handleScopedAccept` (C2) compiles. Returning
-  // `success: false` is fine — the only legacy-flow tests in this file
+  // `success: false` is fine, the only legacy-flow tests in this file
   // never have `offer.scoped` set, so the validator is unreachable.
   QueuedJobSchema: { safeParse: () => ({ success: false, error: { issues: [] } }) },
 }));
@@ -180,7 +180,7 @@ void mock.module("../../src/core/prompt-builder", () => ({
   buildEnvironmentHeader: mock(() => ""),
 }));
 
-// Import AFTER all mocks — these are the real modules, not mocked
+// Import AFTER all mocks, these are the real modules, not mocked
 const {
   handleWsOpen,
   handleWsClose,
@@ -572,7 +572,7 @@ describe("handleDaemonMessage - daemon:register", () => {
 
     expect(mockMarkExecutionFailed).toHaveBeenCalledWith(
       "prev-orphan-1",
-      "daemon reconnected — previous session orphaned",
+      "daemon reconnected, previous session orphaned",
     );
   });
 });
@@ -1331,7 +1331,7 @@ describe("handleDaemonMessage - job:result", () => {
 });
 
 // C4: handleScopedJobCompletion must decrement active-count and
-// daemon-active-jobs for both succeeded and halted/failed branches —
+// daemon-active-jobs for both succeeded and halted/failed branches,
 // otherwise every scoped run leaks one capacity slot.
 describe("handleDaemonMessage - scoped-job-completion (C4)", () => {
   beforeEach(() => {
@@ -1441,7 +1441,7 @@ describe("handleDaemonMessage - scoped-job-completion (C4)", () => {
 
     expect(mockDecrementActiveCount).toHaveBeenCalled();
     expect(mockDecrementDaemonActiveJobs).toHaveBeenCalledWith("daemon-scoped-halted");
-    // halted is contractually a non-failure outcome — executions row should
+    // halted is contractually a non-failure outcome, executions row should
     // NOT be marked failed, but it MUST receive a terminal write so the
     // row leaves 'running'.
     expect(mockMarkExecutionFailed).not.toHaveBeenCalled();

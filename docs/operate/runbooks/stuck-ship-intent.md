@@ -1,4 +1,4 @@
-# Runbook — stuck `bot:ship` session
+# Runbook: stuck `bot:ship` session
 
 A shepherding session that doesn't terminate cleanly leaves a row in `ship_intents` with status other than `ready_awaiting_human_merge` or `merged_externally`. This page is a guide to figuring out which class of stuck and what to do.
 
@@ -17,16 +17,16 @@ Migration files live under `src/db/migrations/`. The ship lifecycle was added in
 
 ## Status values
 
-| Status                       | Meaning                                                | Recoverable?                                |
-| ---------------------------- | ------------------------------------------------------ | ------------------------------------------- |
-| `active`                     | Session is in flight (or about to be tickled).         | —                                           |
-| `paused`                     | `bot:stop` issued. Deadline keeps counting.            | Yes — `bot:resume`.                         |
-| `ready_awaiting_human_merge` | Probe verdict was `ready`; tracking comment finalised. | Terminal — human merge expected.            |
-| `merged_externally`          | PR was merged while session was active.                | Terminal.                                   |
-| `pr_closed`                  | PR was closed (not merged) while session was active.   | Terminal.                                   |
-| `human_took_over`            | Foreign push detected, iteration cap, or flake cap.    | Terminal — see `terminal_blocker_category`. |
-| `deadline_exceeded`          | `MAX_WALL_CLOCK_PER_SHIP_RUN` elapsed.                 | Terminal.                                   |
-| `aborted_by_user`            | `bot:abort-ship` issued.                               | Terminal — no further mutations.            |
+| Status                       | Meaning                                                | Recoverable?                               |
+| ---------------------------- | ------------------------------------------------------ | ------------------------------------------ |
+| `active`                     | Session is in flight (or about to be tickled).         | _none_                                     |
+| `paused`                     | `bot:stop` issued. Deadline keeps counting.            | Yes, `bot:resume`.                         |
+| `ready_awaiting_human_merge` | Probe verdict was `ready`; tracking comment finalised. | Terminal, human merge expected.            |
+| `merged_externally`          | PR was merged while session was active.                | Terminal.                                  |
+| `pr_closed`                  | PR was closed (not merged) while session was active.   | Terminal.                                  |
+| `human_took_over`            | Foreign push detected, iteration cap, or flake cap.    | Terminal, see `terminal_blocker_category`. |
+| `deadline_exceeded`          | `MAX_WALL_CLOCK_PER_SHIP_RUN` elapsed.                 | Terminal.                                  |
+| `aborted_by_user`            | `bot:abort-ship` issued.                               | Terminal, no further mutations.            |
 
 ## Terminal blocker categories
 
@@ -109,14 +109,14 @@ ORDER BY attempts DESC, last_seen_at DESC;
 
 ```text
 Is status terminal?
-├── Yes — read terminal_blocker_category. Use the table above.
-└── No  — status is active or paused.
-    ├── status=paused — stopped by user, awaiting resume or abort.
-    └── status=active — read ship_continuations for this intent.
-        ├── wake_at in the past — tickle scheduler should pick it up next cycle.
+├── Yes, read terminal_blocker_category. Use the table above.
+└── No , status is active or paused.
+    ├── status=paused, stopped by user, awaiting resume or abort.
+    └── status=active, read ship_continuations for this intent.
+        ├── wake_at in the past, tickle scheduler should pick it up next cycle.
         │     If multiple cycles pass with no progress, check tickle-scheduler logs
         │     (event:"ship.tickle.due") and ship.iteration.* events.
-        └── wake_at in the future — session is waiting on a check_run / review_comment / synchronize event
+        └── wake_at in the future, session is waiting on a check_run / review_comment / synchronize event
               to fire the reactor. Verify the GitHub App is subscribed to those events.
 ```
 

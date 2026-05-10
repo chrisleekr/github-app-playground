@@ -50,7 +50,7 @@ export type DispatchOutcome =
  * checked before the mutex so a refusal does not strip unrelated `bot:*`
  * labels from the target.
  *
- * ALLOWED_OWNERS enforcement is intentionally out of scope here — the
+ * ALLOWED_OWNERS enforcement is intentionally out of scope here: the
  * webhook event handler drops those events before calling the dispatcher
  * (no DB row, no queue job, no comment; see FR-015).
  */
@@ -110,7 +110,7 @@ export async function dispatchByLabel(params: DispatchByLabelParams): Promise<Di
           err: err instanceof Error ? err.message : String(err),
           reason: "workflow-dispatch-inflight",
         },
-        "Workflow dispatch refused — in-flight run already exists",
+        "Workflow dispatch refused, in-flight run already exists",
       );
       const reason = "an in-flight run already exists for this workflow and target";
       await postRefusalComment({ octokit, logger }, target, entry.name, reason);
@@ -148,7 +148,7 @@ export async function dispatchByLabel(params: DispatchByLabelParams): Promise<Di
     // executions row may or may not have been written; the compensating
     // `markFailed` on the workflow_runs row is what matters for the partial
     // unique index. The capacity slot is owned by handleAccept/handleResult
-    // — nothing to release here.
+    //, nothing to release here.
     logger.error(
       {
         runId: runRow.id,
@@ -192,7 +192,7 @@ export interface DispatchByIntentParams {
    * For pull_request_review_comment triggers, the parent (top-level)
    * comment id of the review thread when this comment is itself a
    * reply. Used by the chat-thread executor to scope conversation
-   * history to the right thread (FIX #1 — without this, replies see
+   * history to the right thread (FIX #1: without this, replies see
    * an empty conversation). Absent on issue_comment triggers.
    */
   readonly triggerInReplyToId?: number;
@@ -231,7 +231,7 @@ export async function dispatchByIntent(params: DispatchByIntentParams): Promise<
       { octokit, logger },
       target,
       "unknown",
-      `unsupported request — ${verdict.rationale}`,
+      `unsupported request, ${verdict.rationale}`,
     );
     return { status: "refused", workflowName: "unknown", reason: verdict.rationale };
   }
@@ -240,7 +240,7 @@ export async function dispatchByIntent(params: DispatchByIntentParams): Promise<
   // conversational executor instead of refusing. The chat-thread
   // executor decides whether to answer, propose a workflow with
   // human-confirm, or decline honestly. Replaces the legacy
-  // postClarifyComment dead-end (issue #N — freeform UX).
+  // postClarifyComment dead-end (issue #N, freeform UX).
   if (
     verdict.workflow === "chat-thread" ||
     verdict.workflow === "clarify" ||
@@ -294,7 +294,7 @@ export async function dispatchByIntent(params: DispatchByIntentParams): Promise<
 }
 
 /**
- * Direct workflow dispatch by name — extracted from `dispatchByIntent`
+ * Direct workflow dispatch by name: extracted from `dispatchByIntent`
  * (FIX #6) so callers that already know the workflow (e.g. the
  * chat-thread proposal-approval path) can dispatch without bouncing
  * back through the LLM classifier with a synthetic comment body. The
@@ -385,7 +385,7 @@ export async function dispatchWorkflowByName(input: {
           err: err instanceof Error ? err.message : String(err),
           reason: "workflow-dispatch-inflight",
         },
-        "Workflow dispatch refused — in-flight run already exists",
+        "Workflow dispatch refused, in-flight run already exists",
       );
       const reason = "an in-flight run already exists for this workflow and target";
       await postRefusalComment({ octokit, logger }, target, entry.name, reason);
@@ -455,8 +455,8 @@ export async function dispatchWorkflowByName(input: {
 /**
  * Detect the Postgres unique-violation on `idx_workflow_runs_inflight` that
  * FR-011 relies on to reject a second in-flight row for the same (workflow,
- * target). Anything else — transport errors, check violations, permission
- * errors — must not be silently converted to "in-flight already exists".
+ * target). Anything else: transport errors, check violations, permission
+ * errors: must not be silently converted to "in-flight already exists".
  */
 function isInflightCollision(err: unknown): boolean {
   if (typeof err !== "object" || err === null) {
@@ -488,12 +488,12 @@ async function runChatThreadFromDispatcher(input: {
 }): Promise<void> {
   // chat-thread relies on the conversation cache and chat_proposals
   // tables for state. Inline-mode deployments (no DATABASE_URL) cannot
-  // run it — fall back to the legacy clarify-style refusal so the user
+  // run it, fall back to the legacy clarify-style refusal so the user
   // gets a coherent reply instead of a hung request.
   if (getDb() === null) {
     input.logger.info(
       { target: input.target },
-      "runChatThreadFromDispatcher: DATABASE_URL not configured — posting clarify refusal instead",
+      "runChatThreadFromDispatcher: DATABASE_URL not configured, posting clarify refusal instead",
     );
     try {
       await postRefusalComment(

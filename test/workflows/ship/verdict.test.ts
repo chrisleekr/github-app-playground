@@ -1,7 +1,7 @@
 /**
  * Tests for src/workflows/ship/verdict.ts.
  *
- * Pure-function tests — no I/O. Covers the verdict priority ladder
+ * Pure-function tests: no I/O. Covers the verdict priority ladder
  * documented in `verdict.ts` JSDoc and the test-fixture matrix from
  * `contracts/probe-graphql-query.md` §"Test fixtures".
  */

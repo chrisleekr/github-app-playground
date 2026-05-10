@@ -80,7 +80,7 @@ async function readCapturedFiles(
  * Build the options object passed to `finalizeTrackingComment` on success.
  *
  * `exactOptionalPropertyTypes` forbids assigning `undefined` to optional
- * properties — we must omit them instead. Extracted so the conditional
+ * properties: we must omit them instead. Extracted so the conditional
  * branches don't count against runPipeline's cyclomatic complexity budget.
  */
 function buildFinalOpts(result: ExecutionResult): {
@@ -98,7 +98,7 @@ function buildFinalOpts(result: ExecutionResult): {
     opts.costUsd = result.costUsd;
   }
   // The raw `result.errorMessage` is intentionally NOT forwarded into the
-  // tracking comment — the comment is publicly visible on GitHub and an
+  // tracking comment: the comment is publicly visible on GitHub and an
   // upstream error string can carry credentials (octokit error stacks
   // include the request URL with the installation token), file paths, or
   // other sensitive context. The error message is still propagated to the
@@ -121,7 +121,7 @@ export interface RunPipelineOverrides {
   onWorkDirReady?: (workDir: string) => void;
   /**
    * Basenames (e.g. "IMPLEMENT.md") for files the agent may have written to
-   * the workspace. Read best-effort BEFORE cleanup — content is returned in
+   * the workspace. Read best-effort BEFORE cleanup: content is returned in
    * `ExecutionResult.capturedFiles`. Missing files are not errors. Used so
    * a workflow handler can include a structured agent report in its
    * tracking comment without duplicating the pipeline machinery.
@@ -131,7 +131,7 @@ export interface RunPipelineOverrides {
    * Pre-existing tracking comment id (typically created by a workflow
    * handler via `setState` before invoking the pipeline). When set, the
    * pipeline does NOT call `createTrackingComment`/`finalizeTrackingComment`
-   * — the orchestrator's tracking-mirror owns the comment lifecycle, and
+   * the orchestrator's tracking-mirror owns the comment lifecycle, and
    * the pipeline only wires the id into the prompt + MCP server so the
    * agent can post mid-run progress via `update_claude_comment`.
    */
@@ -147,13 +147,13 @@ export interface RunPipelineOverrides {
   /**
    * Opt-in for the resolve-review-thread MCP server (T029/T030). Set
    * `true` from the `resolve` handler when the PR has open review threads
-   * — registers the server and adds its tool to the allowed-tools list.
+   * registers the server and adds its tool to the allowed-tools list.
    * Off by default so other workflows don't see the tool.
    */
   enableResolveReviewThread?: boolean;
   /**
    * Opt-in for the read-only `github-state` MCP server (issue #117).
-   * Defaults to `true` because the tool surface is additive — the agent
+   * Defaults to `true` because the tool surface is additive: the agent
    * can fetch fresh CI rollup, check output, branch protection, PR
    * diff, and paginated comments on demand instead of reasoning from
    * the prompt-stuffed snapshot. Set `false` to suppress (e.g., for a
@@ -164,7 +164,7 @@ export interface RunPipelineOverrides {
 
 /**
  * Write orchestrator-provided env vars as `.env` in the agent workspace so the
- * agent subprocess (cwd=workDir) can read them. Values are written verbatim —
+ * agent subprocess (cwd=workDir) can read them. Values are written verbatim,
  * callers own escaping.
  */
 function writeEnvFile(
@@ -183,7 +183,7 @@ function writeEnvFile(
 
 /**
  * Claude Agent SDK execution pipeline. Every dispatched job runs through this
- * function — currently only invoked by the daemon job-executor.
+ * function: currently only invoked by the daemon job-executor.
  *
  * Pipeline:
  * 1. Create tracking comment ("Working...")
@@ -202,7 +202,7 @@ export async function runPipeline(
 ): Promise<ExecutionResult> {
   let trackingCommentId: number | undefined;
   // When the caller (workflow handler) seeded the tracking comment, the
-  // pipeline must NOT finalize it — the handler's terminal `setState` writes
+  // pipeline must NOT finalize it: the handler's terminal `setState` writes
   // the final body via tracking-mirror, and a pipeline finalize would
   // overwrite it with the legacy "completed" template.
   const callerOwnsTrackingComment = overrides.trackingCommentId !== undefined;
@@ -244,7 +244,7 @@ export async function runPipeline(
     if (ctx.dryRun === true) {
       ctx.log.info(
         { promptLength: prompt.length, headBranch: enrichedCtx.headBranch },
-        "Dry-run complete — skipping checkout, MCP, and Claude execution",
+        "Dry-run complete, skipping checkout, MCP, and Claude execution",
       );
       return { success: true, durationMs: 0, costUsd: 0, numTurns: 0, dryRun: true };
     }
@@ -269,7 +269,7 @@ export async function runPipeline(
       mkdirSync(artifactsDir, { recursive: true });
       writeEnvFile(workDir, enrichedCtx.envVars, enrichedCtx.log);
 
-      // Default the github-state MCP server ON for PRs only — most of its
+      // Default the github-state MCP server ON for PRs only, most of its
       // tools require a pr_number, and on issue contexts the agent would
       // burn API quota on "PR not found" errors. Issue-side workflows can
       // explicitly opt in via overrides.enableGithubState=true if needed.

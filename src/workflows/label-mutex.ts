@@ -28,7 +28,7 @@ export interface EnforceResult {
  * `reason: "bot-label-mutex"` for audit.
  *
  * Silently swallows a per-label removal failure (e.g. the label was already
- * removed by a concurrent webhook) because the mutex is best-effort —
+ * removed by a concurrent webhook) because the mutex is best-effort,
  * dispatch still proceeds with the newly-applied label.
  */
 export async function enforceSingleBotLabel(
@@ -73,7 +73,7 @@ export async function enforceSingleBotLabel(
           err: err instanceof Error ? err.message : String(err),
           reason: "bot-label-mutex",
         },
-        "Failed to remove sibling bot label — continuing",
+        "Failed to remove sibling bot label, continuing",
       );
     }
   }

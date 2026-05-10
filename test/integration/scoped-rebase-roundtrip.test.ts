@@ -1,5 +1,5 @@
 /**
- * T028 — scoped-rebase contract round-trip integration test (FR-020).
+ * T028: scoped-rebase contract round-trip integration test (FR-020).
  *
  * Exercises the full WS message contract for one scoped kind end-to-end:
  *
@@ -18,7 +18,7 @@
  *        was emitted.
  *
  * Why "round-trip" without a real WS server: FR-020 cares about the
- * *contract* — that producer-side envelopes parse cleanly through the
+ * *contract*: that producer-side envelopes parse cleanly through the
  * consumer-side schema and that the orchestrator's bookkeeping releases
  * resources on completion. A live `Bun.serve`/`WebSocket` pair would only
  * exercise transport, which the existing `ws-server.test.ts` covers.
@@ -32,7 +32,7 @@ import { createMessageEnvelope } from "../../src/shared/ws-messages";
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
-// Tracker state — mutated by the mock job-dispatcher / concurrency / daemon-registry
+// Tracker state, mutated by the mock job-dispatcher / concurrency / daemon-registry
 // modules and asserted on after the round-trip.
 const removePendingOfferSpy = mock(() => {});
 const decrementActiveCountSpy = mock(() => {});
@@ -41,12 +41,12 @@ const markExecutionFailedSpy = mock(() => Promise.resolve());
 
 const FAKE_DAEMON_ID = "daemon-test-1";
 // `offerId` doubles as the WS envelope id (per handleScopedAccept), which is
-// validated as `z.uuid()` — generate a real UUID up-front so both
+// validated as `z.uuid()`, generate a real UUID up-front so both
 // schema parses and the orchestrator's ownership check match.
 const FAKE_OFFER_ID = crypto.randomUUID();
 const FAKE_DELIVERY_ID = "delivery-rebase-1";
 
-// Pending offer the daemon "claimed" — handleScopedJobCompletion's ownership
+// Pending offer the daemon "claimed", handleScopedJobCompletion's ownership
 // check matches `offer.daemonId` against `ws.data.daemonId`.
 const fakePendingOffer: PendingOffer = {
   offerId: FAKE_OFFER_ID,
@@ -135,7 +135,7 @@ function makeMockServerSocket(daemonId: string): {
 
 // ─── Test ─────────────────────────────────────────────────────────────────────
 
-describe("T028 — scoped-rebase WS contract round-trip", () => {
+describe("T028: scoped-rebase WS contract round-trip", () => {
   beforeAll(() => {
     removePendingOfferSpy.mockClear();
     decrementActiveCountSpy.mockClear();

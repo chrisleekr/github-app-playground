@@ -1,8 +1,8 @@
 /**
- * Tests for src/orchestrator/history.ts — Execution history in Postgres.
+ * Tests for src/orchestrator/history.ts: Execution history in Postgres.
  *
  * Mocks the db module (getDb) and valkey module (requireValkeyClient).
- * Does NOT mock daemon-registry — it uses the real module with mocked valkey
+ * Does NOT mock daemon-registry: it uses the real module with mocked valkey
  * dependencies underneath, avoiding mock.module conflicts with
  * daemon-registry.test.ts in multi-file runs.
  *
@@ -45,7 +45,7 @@ void mock.module("../../src/orchestrator/valkey", () => ({
   closeValkey: (): void => {},
 }));
 
-// Mock DB — SQL tagged template function
+// Mock DB, SQL tagged template function
 let mockDbResult: unknown[] = [];
 const mockDbFn = mock((_strings: TemplateStringsArray, ..._values: unknown[]) =>
   Promise.resolve(mockDbResult),
@@ -75,7 +75,7 @@ void mock.module("../../src/config", () => ({
   config: mockConfig,
 }));
 
-// Import AFTER mocks — history.ts will use the mocked valkey for its
+// Import AFTER mocks, history.ts will use the mocked valkey for its
 // transitive import of daemon-registry.decrementDaemonActiveJobs
 const {
   createExecution,
@@ -94,7 +94,7 @@ const _daemonRegistry = await import("../../src/orchestrator/daemon-registry");
 
 // Helpers
 
-/** Type-safe accessor for mock call args — avoids `!` assertions and `as NonNullable<>`. */
+/** Type-safe accessor for mock call args, avoids `!` assertions and `as NonNullable<>`. */
 function firstCall<T>(m: { mock: { calls: T[][] } }): T[] {
   const call = m.mock.calls[0];
   if (call === undefined) {
@@ -576,7 +576,7 @@ describe("recoverStaleExecutions", () => {
 
     await recoverStaleExecutions(mockDirectDb as unknown as SQL);
 
-    // Should not throw — the error is caught and logged
+    // Should not throw, the error is caught and logged
     expect(mockLoggerDebug).toHaveBeenCalledWith(
       expect.objectContaining({
         daemonId: "daemon-err",

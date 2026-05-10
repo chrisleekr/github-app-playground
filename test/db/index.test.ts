@@ -1,8 +1,8 @@
 /**
- * Tests for src/db/index.ts — the database connection pool singleton.
+ * Tests for src/db/index.ts: the database connection pool singleton.
  *
  * The SQL constructor from Bun is a built-in that cannot be replaced via
- * mock.module("bun"). However, `new SQL(url)` is lazy — it doesn't attempt
+ * mock.module("bun"). However, `new SQL(url)` is lazy: it doesn't attempt
  * an actual connection until a query is executed, and `close()` is a no-op
  * on an idle pool. This lets us exercise every code path with a dummy URL
  * and no running database.
@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 
 const mockLoggerInfo = mock(() => undefined);
 
-// Mutable config reference — tests mutate databaseUrl between runs
+// Mutable config reference, tests mutate databaseUrl between runs
 const mockConfig: { databaseUrl: string | undefined } = {
   databaseUrl: undefined,
 };
@@ -47,7 +47,7 @@ void mock.module("../../src/logger", () => ({
   },
 }));
 
-// Single import — keeps coverage attribution consistent.
+// Single import, keeps coverage attribution consistent.
 import { closeDb, getDb, requireDb } from "../../src/db/index";
 
 /** Dummy URL that satisfies the SQL constructor but never connects (lazy pool). */
@@ -99,7 +99,7 @@ describe("getDb", () => {
     const second = getDb();
 
     expect(first).toBe(second);
-    // Should not log "initialized" again — mockClear above resets call count
+    // Should not log "initialized" again, mockClear above resets call count
     expect(mockLoggerInfo).not.toHaveBeenCalled();
   });
 });

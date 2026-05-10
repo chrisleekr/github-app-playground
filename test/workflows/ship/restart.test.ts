@@ -1,5 +1,5 @@
 /**
- * T048 — restart-safety integration test. Simulates process termination
+ * T048: restart-safety integration test. Simulates process termination
  * mid-iteration: write a continuation row, then re-resume from a fresh
  * call site as if the prior process had exited via `process.exit(1)`.
  *
@@ -27,7 +27,7 @@ try {
 }
 
 function requireConn(): SQL {
-  if (sql === null) throw new Error("Database not available — test should have been skipped");
+  if (sql === null) throw new Error("Database not available, test should have been skipped");
   return sql;
 }
 
@@ -53,7 +53,7 @@ const baseInsert = (): {
   tracking_comment_marker: "<!-- ship-intent:restart-test -->",
 });
 
-describe.skipIf(sql === null)("restart safety — T048", () => {
+describe.skipIf(sql === null)("restart safety, T048", () => {
   beforeAll(async () => {
     const { runMigrations } = await import("../../../src/db/migrate");
     await runMigrations(requireConn());
@@ -68,12 +68,12 @@ describe.skipIf(sql === null)("restart safety — T048", () => {
     await requireConn().close();
   });
 
-  it("a process that wrote a continuation then `exited` resumes against the persisted state — no duplicate intent created", async () => {
+  it("a process that wrote a continuation then `exited` resumes against the persisted state, no duplicate intent created", async () => {
     const { insertIntent, findActiveIntent } = await import("../../../src/db/queries/ship");
     const { persistContinuation, resumeContinuation } =
       await import("../../../src/workflows/ship/continuation");
 
-    // Process #1 — creates intent, sets tracking_comment_id (the
+    // Process #1, creates intent, sets tracking_comment_id (the
     // post-create CAS step in handlers/ship.ts), writes a continuation,
     // then "crashes".
     const intentInsert = await insertIntent(baseInsert(), requireConn());
@@ -94,10 +94,10 @@ describe.skipIf(sql === null)("restart safety — T048", () => {
       },
       requireConn(),
     );
-    // Simulate process termination: nothing actually exits — we just
+    // Simulate process termination: nothing actually exits, we just
     // re-enter via fresh imports below and assert state was preserved.
 
-    // Process #2 — restart, look up the intent by (owner, repo, pr) and
+    // Process #2, restart, look up the intent by (owner, repo, pr) and
     // resume the continuation.
     const found = await findActiveIntent(
       "chrisleekr",

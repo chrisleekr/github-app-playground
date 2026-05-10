@@ -28,7 +28,7 @@ export async function registerDaemon(msg: DaemonRegisterMessage): Promise<Daemon
 
   // Valkey: store daemon liveness with TTL + add to active set for O(1) lookup.
   // The active_jobs counter shares the same TTL so an orchestrator crash without
-  // graceful deregister leaks neither key — both expire together.
+  // graceful deregister leaks neither key, both expire together.
   const valkeyPayload = JSON.stringify(capabilities);
   await valkey.send("SETEX", [`daemon:${daemonId}`, String(DAEMON_TTL_SECONDS), valkeyPayload]);
   await valkey.send("SET", [
@@ -39,11 +39,11 @@ export async function registerDaemon(msg: DaemonRegisterMessage): Promise<Daemon
   ]);
   await valkey.send("SADD", ["active_daemons", daemonId]);
 
-  // Postgres upsert — resources column separated per data-model.md
+  // Postgres upsert, resources column separated per data-model.md
   const db = getDb();
   if (db !== null) {
     const { resources, ...capabilitiesWithoutResources } = capabilities;
-    // Pass objects directly — Bun.sql handles JSONB serialization (no JSON.stringify).
+    // Pass objects directly, Bun.sql handles JSONB serialization (no JSON.stringify).
     await db`
       INSERT INTO daemons (id, hostname, platform, os_version, capabilities, resources, status, first_seen_at, last_seen_at)
       VALUES (
@@ -85,7 +85,7 @@ export async function registerDaemon(msg: DaemonRegisterMessage): Promise<Daemon
 }
 
 /**
- * Deregister a daemon — remove from Valkey, set Postgres status to inactive.
+ * Deregister a daemon: remove from Valkey, set Postgres status to inactive.
  */
 export async function deregisterDaemon(daemonId: string): Promise<void> {
   const valkey = requireValkeyClient();
@@ -127,7 +127,7 @@ export async function refreshDaemonTtl(
 
 /**
  * Get all active daemon IDs from Valkey.
- * Uses SMEMBERS on the `active_daemons` set — O(N) in set size, not keyspace.
+ * Uses SMEMBERS on the `active_daemons` set: O(N) in set size, not keyspace.
  * Prunes stale entries whose liveness key has expired (TTL miss without explicit SREM).
  */
 export async function getActiveDaemons(): Promise<string[]> {
@@ -142,7 +142,7 @@ export async function getActiveDaemons(): Promise<string[]> {
     if (exists === 1) {
       alive.push(id);
     } else {
-      // Stale entry — liveness key expired without explicit deregister. Clean up.
+      // Stale entry, liveness key expired without explicit deregister. Clean up.
       // eslint-disable-next-line no-await-in-loop
       await valkey.send("SREM", ["active_daemons", id]);
       logger.debug({ daemonId: id }, "Pruned stale daemon from active_daemons set");
@@ -184,7 +184,7 @@ const DECR_IF_POSITIVE_LUA = `
 `;
 
 /**
- * Sum the spare capacity across the persistent daemon pool — i.e.
+ * Sum the spare capacity across the persistent daemon pool: i.e.
  * `maxConcurrentJobs - activeJobs` for every active non-ephemeral daemon.
  * Used by the ephemeral-daemon scaler to decide whether an overflow spawn
  * is actually justified.
@@ -195,7 +195,7 @@ const DECR_IF_POSITIVE_LUA = `
  *    status + its local concurrency cap.
  *  - `daemon:{id}:active_jobs` carries the current in-flight count.
  *
- * Silently treats parse/read failures as 0 contribution — a mis-shaped
+ * Silently treats parse/read failures as 0 contribution: a mis-shaped
  * Valkey value must not starve the scaler.
  */
 export async function getPersistentPoolFreeSlots(): Promise<number> {
@@ -204,7 +204,7 @@ export async function getPersistentPoolFreeSlots(): Promise<number> {
   try {
     // Matches the defensive posture of `getQueueLength()`: a Valkey blip
     // must not throw out of the scaler and fail dispatch for every event.
-    // Return 0 so the scaler treats the pool as saturated — if heavy or
+    // Return 0 so the scaler treats the pool as saturated, if heavy or
     // overflow still fires, an ephemeral spawn is attempted; otherwise
     // routing proceeds to the persistent queue unchanged.
     valkey = requireValkeyClient();
@@ -212,7 +212,7 @@ export async function getPersistentPoolFreeSlots(): Promise<number> {
   } catch (err) {
     logger.warn(
       { err: err instanceof Error ? err.message : String(err) },
-      "Failed to enumerate active daemons — treating persistent free slots as 0",
+      "Failed to enumerate active daemons, treating persistent free slots as 0",
     );
     return 0;
   }
@@ -233,7 +233,7 @@ export async function getPersistentPoolFreeSlots(): Promise<number> {
     } catch (err) {
       logger.debug(
         { err: err instanceof Error ? err.message : String(err), daemonId: id },
-        "Failed to read daemon capacity — skipping",
+        "Failed to read daemon capacity, skipping",
       );
     }
   }
@@ -246,6 +246,6 @@ export async function decrementDaemonActiveJobs(daemonId: string): Promise<void>
   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Valkey EVAL returns number
   const result: number = await valkey.send("EVAL", [DECR_IF_POSITIVE_LUA, "1", key]);
   if (result === -1) {
-    logger.warn({ daemonId }, "Skipped DECR — active_jobs already at zero or below");
+    logger.warn({ daemonId }, "Skipped DECR, active_jobs already at zero or below");
   }
 }

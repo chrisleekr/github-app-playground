@@ -2,7 +2,7 @@
  * Integration tests for workflow_runs persistence.
  *
  * Requires Postgres (bun run dev:deps). Skipped automatically when the
- * database is unreachable — matches the pattern in test/db/migrate.test.ts
+ * database is unreachable: matches the pattern in test/db/migrate.test.ts
  * so the suite does not fail on machines without local infra.
  */
 
@@ -24,7 +24,7 @@ try {
 }
 
 function requireSql(): SQL {
-  if (sql === null) throw new Error("Database not available — test should have been skipped");
+  if (sql === null) throw new Error("Database not available, test should have been skipped");
   return sql;
 }
 
@@ -239,7 +239,7 @@ describe.skipIf(sql === null)("runs-store", () => {
     );
     await markSucceeded(first.id, {}, requireSql());
 
-    // Ensure a distinct created_at tick — created_at defaults to now().
+    // Ensure a distinct created_at tick, created_at defaults to now().
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     const second = await insertQueued(

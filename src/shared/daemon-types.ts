@@ -76,7 +76,7 @@ export const daemonCapabilitiesSchema = z.object({
   // that predates this refactor will omit the field entirely, and the
   // orchestrator must still be able to register it (zod fills in 3 so the
   // capabilities row parses cleanly and the daemon stays in the pool). The
-  // field is still effectively required for any daemon built from this PR —
+  // field is still effectively required for any daemon built from this PR,
   // the daemon-side `detectCapabilities()` always sets it.
   maxConcurrentJobs: z.number().int().positive().default(3),
 });

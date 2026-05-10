@@ -4,7 +4,7 @@
  * Drives `checkoutRepo` against a local fixture remote so the supplemental
  * base-branch fetch is exercised end-to-end. Uses git's `GIT_CONFIG_COUNT`
  * env-var family to redirect the hardcoded `https://github.com/...` URL to
- * a bare repo on disk — keeps the production path under test without
+ * a bare repo on disk: keeps the production path under test without
  * mocking the bun shell.
  */
 
@@ -49,7 +49,7 @@ async function buildBareFixture(): Promise<string> {
   await $`git -C ${seedDir} checkout -q main`;
   await $`git -C ${seedDir} commit --allow-empty -m base-only -q`;
 
-  // Bare clone — the "remote" the tests will pull from
+  // Bare clone, the "remote" the tests will pull from
   await $`git clone --bare -q ${seedDir} ${barePath}`;
 
   return barePath;
@@ -70,13 +70,13 @@ beforeAll(async () => {
   };
   process.env["GIT_CONFIG_COUNT"] = "1";
   // file:// (rather than a bare path) so git treats the redirect as a non-local
-  // clone — local-path clones silently ignore --depth, which would mask any
+  // clone, local-path clones silently ignore --depth, which would mask any
   // future regression in the supplemental fetch's shallow-fetch behaviour.
   process.env["GIT_CONFIG_KEY_0"] = `url.file://${bareRepoPath}.insteadOf`;
   process.env["GIT_CONFIG_VALUE_0"] = FIXTURE_URL;
 
   originalCloneBaseDir = config.cloneBaseDir;
-  // Mutate the config singleton — pattern matches other suites in the repo
+  // Mutate the config singleton, pattern matches other suites in the repo
   (config as { cloneBaseDir: string }).cloneBaseDir = cloneBaseDirOverride;
 });
 
@@ -125,7 +125,7 @@ async function listRemoteRefs(workDir: string): Promise<string[]> {
 }
 
 describe("checkoutRepo supplemental base-branch fetch", () => {
-  it("PR with head ≠ base — both refs resolvable after checkout", async () => {
+  it("PR with head ≠ base: both refs resolvable after checkout", async () => {
     const ctx = makeCtx({ isPR: true, headBranch: "feat/x" });
 
     const { workDir, cleanup } = await checkoutRepo(ctx, "ignored-token", "main");
@@ -140,18 +140,18 @@ describe("checkoutRepo supplemental base-branch fetch", () => {
     await $`git -C ${workDir} rev-parse origin/main`.quiet();
   });
 
-  it("PR with head == base — no duplicate fetch attempted", async () => {
+  it("PR with head == base: no duplicate fetch attempted", async () => {
     const ctx = makeCtx({ isPR: true, headBranch: "main" });
 
     const { workDir, cleanup } = await checkoutRepo(ctx, "ignored-token", "main");
     cleanups.push(cleanup);
 
     const refs = await listRemoteRefs(workDir);
-    // Only one remote-tracking branch — the supplemental fetch is skipped
+    // Only one remote-tracking branch, the supplemental fetch is skipped
     expect(refs).toEqual(["origin/main"]);
   });
 
-  it("issue event (isPR=false) — no supplemental fetch even when baseBranch supplied", async () => {
+  it("issue event (isPR=false): no supplemental fetch even when baseBranch supplied", async () => {
     const ctx = makeCtx({ isPR: false });
 
     const { workDir, cleanup } = await checkoutRepo(ctx, "ignored-token", "feat/x");
@@ -162,7 +162,7 @@ describe("checkoutRepo supplemental base-branch fetch", () => {
     expect(refs).toEqual(["origin/main"]);
   });
 
-  it("PR with no baseBranch supplied — no supplemental fetch", async () => {
+  it("PR with no baseBranch supplied: no supplemental fetch", async () => {
     const ctx = makeCtx({ isPR: true, headBranch: "feat/x" });
 
     const { workDir, cleanup } = await checkoutRepo(ctx, "ignored-token");
@@ -172,10 +172,10 @@ describe("checkoutRepo supplemental base-branch fetch", () => {
     expect(refs).toEqual(["origin/feat/x"]);
   });
 
-  it("PR with non-existent baseBranch — fetch fails best-effort, head ref intact", async () => {
+  it("PR with non-existent baseBranch: fetch fails best-effort, head ref intact", async () => {
     const ctx = makeCtx({ isPR: true, headBranch: "feat/x" });
 
-    // Should NOT throw — supplemental fetch failure is wrapped in try/catch + warn
+    // Should NOT throw, supplemental fetch failure is wrapped in try/catch + warn
     const { workDir, cleanup } = await checkoutRepo(ctx, "ignored-token", "ghost-branch");
     cleanups.push(cleanup);
 
@@ -186,7 +186,7 @@ describe("checkoutRepo supplemental base-branch fetch", () => {
     await $`git -C ${workDir} rev-parse origin/feat/x`.quiet();
   });
 
-  it("set-branches --add persists — later `git fetch origin` updates origin/<base>", async () => {
+  it("set-branches --add persists, later `git fetch origin` updates origin/<base>", async () => {
     const ctx = makeCtx({ isPR: true, headBranch: "feat/x" });
 
     const { workDir, cleanup } = await checkoutRepo(ctx, "ignored-token", "main");
@@ -205,7 +205,7 @@ describe("checkoutRepo supplemental base-branch fetch", () => {
     await rm(pusher, { recursive: true, force: true });
 
     // A plain `git fetch origin` (the form `branch-refresh.ts` uses) must pick up
-    // the new commit — proves `remote set-branches --add origin <base>` persisted.
+    // the new commit, proves `remote set-branches --add origin <base>` persisted.
     await $`git -C ${workDir} fetch -q origin`;
     const afterSha = (await $`git -C ${workDir} rev-parse origin/main`.text()).trim();
     expect(afterSha).not.toEqual(beforeSha);
@@ -232,7 +232,7 @@ describe("checkoutRepo supplemental base-branch fetch", () => {
       cleanups.push(cleanup);
 
       // Both clone and supplemental fetch ran with --depth=1 against a non-local
-      // (file://) URL — git's "warning: --depth is ignored in local clones"
+      // (file://) URL, git's "warning: --depth is ignored in local clones"
       // doesn't apply, so each ref must resolve to exactly 1 reachable commit.
       const headCount = (await $`git -C ${workDir} rev-list --count origin/feat/x`.text()).trim();
       const baseCount = (await $`git -C ${workDir} rev-list --count origin/main`.text()).trim();

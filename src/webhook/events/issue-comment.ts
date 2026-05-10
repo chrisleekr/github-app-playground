@@ -16,7 +16,7 @@ import { isOwnerAllowed } from "../authorize";
  *
  * When a comment mentions `@chrisleekr-bot`, the body is routed through the
  * intent classifier (T039) and dispatched to the matching workflow. The old
- * ad-hoc `processRequest` pipeline path is removed for comment triggers —
+ * ad-hoc `processRequest` pipeline path is removed for comment triggers,
  * all comment-driven work now lands in `workflow_runs` via the same
  * dispatcher the label trigger uses.
  */
@@ -27,7 +27,7 @@ export function handleIssueComment(
 ): void {
   // Cache write-through (chat-thread): every created/edited/deleted action
   // hits the cache before any dispatch so subsequent chat-thread turns see
-  // the freshest body. Bot self-comments are cached too — chat-thread reads
+  // the freshest body. Bot self-comments are cached too, chat-thread reads
   // them as prior conversation turns.
   void writeCommentCacheThrough(payload).catch((err: unknown) => {
     logger.warn({ err, deliveryId }, "issue-comment: cache write-through failed");
@@ -36,7 +36,7 @@ export function handleIssueComment(
   if (payload.action !== "created") return;
   if (payload.comment.user.type === "Bot") return;
 
-  // Authorize before dispatch — both the canonical (`dispatchCommentSurface`)
+  // Authorize before dispatch, both the canonical (`dispatchCommentSurface`)
   // and legacy (`dispatchByIntent`) paths share the same allowlist gate so
   // a dropped repo can't slip through canonical routing. Mirrors the
   // structure used in `issues.ts`, `pull-request.ts`, and `review-comment.ts`.
@@ -52,7 +52,7 @@ export function handleIssueComment(
 
   const auth = isOwnerAllowed(ownerLogin, log);
   if (!auth.allowed) {
-    log.info({ reason: auth.reason }, "issue_comment dropped — owner not allowlisted");
+    log.info({ reason: auth.reason }, "issue_comment dropped, owner not allowlisted");
     return;
   }
 
@@ -69,7 +69,7 @@ export function handleIssueComment(
   // Trigger-surface dispatch (T028e + T090). PR comments and Issue
   // comments share the same `issue_comment` event; the
   // `payload.issue.pull_request` flag distinguishes them. The
-  // `event_surface` tag enforces per-intent eligibility — e.g.,
+  // `event_surface` tag enforces per-intent eligibility, e.g.,
   // `bot:investigate` only fires on Issue comments and `bot:summarize`
   // only on PR comments. Canonical wins; legacy `dispatchByIntent`
   // runs only when canonical produced no command.
@@ -91,7 +91,7 @@ export function handleIssueComment(
     }
 
     if (canonicalHandled || !containsTrigger(commentBody)) {
-      // Piggyback proposal-poll BEFORE returning — even comments that
+      // Piggyback proposal-poll BEFORE returning, even comments that
       // didn't trigger the bot may carry an approval reply by the
       // original asker (the user reacts 👍 and then types something
       // unrelated). Running the poll here ensures the bot picks up
@@ -100,7 +100,7 @@ export function handleIssueComment(
       return;
     }
 
-    log.info("Trigger detected in issue_comment — routing via intent classifier");
+    log.info("Trigger detected in issue_comment, routing via intent classifier");
 
     void addReaction({
       octokit,
@@ -127,7 +127,7 @@ export function handleIssueComment(
       log.error({ err }, "dispatchByIntent threw for issue_comment");
     }
 
-    // Piggyback proposal-poll on the trigger path too — the early-
+    // Piggyback proposal-poll on the trigger path too: the early-
     // return branch above already covered the non-trigger case.
     piggybackProposalPoll(octokit, installationId, owner, repo, log);
   })();
@@ -137,7 +137,7 @@ export function handleIssueComment(
  * Cache write-through for the chat-thread executor. Runs on every
  * `created` / `edited` / `deleted` action so the cache stays a faithful
  * projection of GitHub state. Inline-mode deployments (no DB) silently
- * skip — `upsertComment` requires `requireDb()` which throws if not
+ * skip: `upsertComment` requires `requireDb()` which throws if not
  * configured, so wrap in try/catch and downgrade DB-not-configured to
  * a no-op.
  */
@@ -173,7 +173,7 @@ async function writeCommentCacheThrough(payload: IssueCommentEvent): Promise<voi
     }
   } catch (err) {
     // DB not configured (inline mode) → harmless skip. Other errors are
-    // surfaced via the caller's outer .catch — we still throw here.
+    // surfaced via the caller's outer .catch: we still throw here.
     if (err instanceof Error && /DATABASE_URL/i.test(err.message)) return;
     throw err;
   }
@@ -182,7 +182,7 @@ async function writeCommentCacheThrough(payload: IssueCommentEvent): Promise<voi
 /**
  * Piggyback proposal-poll: after dispatching the webhook, scan any
  * pending chat-thread proposals for this target. The most common UX is
- * "user reacts then types something" — this poll is what flips that
+ * "user reacts then types something": this poll is what flips that
  * proposal during the same delivery without waiting for the periodic
  * scanner.
  */

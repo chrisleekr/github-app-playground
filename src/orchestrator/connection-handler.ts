@@ -72,7 +72,7 @@ const connections = new Map<string, ServerWebSocket<WsConnectionData>>();
 const daemonInfoMap = new Map<string, DaemonInfo>();
 const heartbeatTimers = new Map<string, HeartbeatState>();
 
-/** Daemon IDs that sent daemon:draining — excluded from dispatch. */
+/** Daemon IDs that sent daemon:draining, excluded from dispatch. */
 const drainingDaemons = new Set<string>();
 
 /** Cached Octokit App singleton for minting installation tokens. */
@@ -177,7 +177,7 @@ async function cleanupAfterDisconnect(daemonId: string): Promise<void> {
  * top-level run's surface (the surface the user is actually watching) rather
  * than on a per-child comment they may not have noticed.
  *
- * Best-effort throughout — a missing GitHub App config or a comment-update
+ * Best-effort throughout: a missing GitHub App config or a comment-update
  * failure must never bubble up and prevent the rest of cleanup from running.
  */
 async function notifyOrphanedWorkflowRuns(daemonId: string): Promise<void> {
@@ -227,7 +227,7 @@ async function notifyOrphanedWorkflowRuns(daemonId: string): Promise<void> {
  */
 async function findTopAncestor(row: WorkflowRunRow): Promise<WorkflowRunRow | null> {
   let current: WorkflowRunRow | null = row;
-  // Bound at 8 levels of nesting — defensive cap for a chain that should
+  // Bound at 8 levels of nesting, defensive cap for a chain that should
   // realistically never exceed depth 2 (ship → step). A null parent ends
   // the walk naturally.
   for (let i = 0; i < 8; i++) {
@@ -238,7 +238,7 @@ async function findTopAncestor(row: WorkflowRunRow): Promise<WorkflowRunRow | nu
   }
   logger.warn(
     { startRunId: row.id, lastSeenRunId: current?.id ?? null },
-    "findTopAncestor: parent chain exceeded 8 levels — skipping orphan notification to avoid touching the wrong comment",
+    "findTopAncestor: parent chain exceeded 8 levels, skipping orphan notification to avoid touching the wrong comment",
   );
   return null;
 }
@@ -247,14 +247,14 @@ async function postOrphanNotification(ancestor: WorkflowRunRow): Promise<void> {
   if (config.appId === undefined || config.privateKey === undefined) {
     logger.debug(
       { ancestorRunId: ancestor.id },
-      "Skipping orphan notification — GitHub App credentials not configured",
+      "Skipping orphan notification, GitHub App credentials not configured",
     );
     return;
   }
 
   // PAT mode short-circuit: when GITHUB_PERSONAL_ACCESS_TOKEN is set, the
   // contract is that the PAT replaces the installation token for ALL GitHub
-  // API calls — orphan-notification comments and reactions included, so the
+  // API calls, orphan-notification comments and reactions included, so the
   // operator-visible identity stays consistent with other bot replies.
   let octokit: Awaited<ReturnType<App["getInstallationOctokit"]>> | Octokit;
   if (config.githubPersonalAccessToken !== undefined) {
@@ -269,7 +269,7 @@ async function postOrphanNotification(ancestor: WorkflowRunRow): Promise<void> {
   }
 
   const humanMessage = [
-    `❌ **Daemon disconnected during execution** — likely an OOM kill on the workflow pod.`,
+    `❌ **Daemon disconnected during execution**, likely an OOM kill on the workflow pod.`,
     ``,
     `The in-flight step has been marked failed. Its workflow_run row will be flipped`,
     `to \`failed\` by the liveness reaper. To resume, re-trigger the workflow:`,
@@ -280,7 +280,7 @@ async function postOrphanNotification(ancestor: WorkflowRunRow): Promise<void> {
   ].join("\n");
 
   // Re-uses tracking-mirror.setState so the cascade refresh and `_lastHumanMessage`
-  // bookkeeping stay consistent — and so the parent's composite body picks up the
+  // bookkeeping stay consistent, and so the parent's composite body picks up the
   // failure narrative on the next render.
   const installationOctokit = octokit as unknown as Octokit;
   await setState(
@@ -346,7 +346,7 @@ async function handleRegister(
   // FM-8: Check for existing connection with same daemon ID
   const existing = connections.get(daemonId);
   if (existing !== undefined) {
-    logger.info({ daemonId }, "Daemon reconnected — closing old connection (FM-8)");
+    logger.info({ daemonId }, "Daemon reconnected, closing old connection (FM-8)");
     // Clear daemonId BEFORE close so handleWsClose's cleanup is a no-op,
     // preventing a race where deregisterDaemon runs after registerDaemon.
     existing.data.daemonId = undefined;
@@ -369,7 +369,7 @@ async function handleRegister(
         // eslint-disable-next-line no-await-in-loop
         await markExecutionFailed(
           orphan.deliveryId,
-          "daemon reconnected — previous session orphaned",
+          "daemon reconnected, previous session orphaned",
         );
       } catch (err) {
         logger.error({ err, deliveryId: orphan.deliveryId }, "Failed to mark orphaned execution");
@@ -377,7 +377,7 @@ async function handleRegister(
     }
   }
 
-  // Version compatibility check (T042, Phase 7 — basic check here)
+  // Version compatibility check (T042, Phase 7, basic check here)
   // Major protocol version mismatch -> reject
   const ourMajor = "1";
   const theirMajor = msg.payload.protocolVersion.split(".")[0];
@@ -436,7 +436,7 @@ async function handleRegister(
     if (isDaemonOutdated(daemonAppVersion, ORCHESTRATOR_APP_VERSION)) {
       logger.warn(
         { daemonId, daemonAppVersion, orchestratorVersion: ORCHESTRATOR_APP_VERSION },
-        "Daemon appVersion is older than orchestrator — sending daemon:update-required",
+        "Daemon appVersion is older than orchestrator, sending daemon:update-required",
       );
       ws.sendText(
         JSON.stringify({
@@ -452,7 +452,7 @@ async function handleRegister(
     } else {
       logger.info(
         { daemonId, daemonAppVersion, orchestratorVersion: ORCHESTRATOR_APP_VERSION },
-        "Daemon appVersion is ahead of orchestrator — tolerating during rollout",
+        "Daemon appVersion is ahead of orchestrator, tolerating during rollout",
       );
     }
   }
@@ -478,7 +478,7 @@ function sendHeartbeatPing(ws: ServerWebSocket<WsConnectionData>, daemonId: stri
   if (state === undefined) return;
 
   if (state.awaitingPong) {
-    // Already waiting for a pong — this means we missed one
+    // Already waiting for a pong: this means we missed one
     state.missedPongs++;
     logger.warn({ daemonId, missedPongs: state.missedPongs }, "Heartbeat pong not received");
   }
@@ -496,7 +496,7 @@ function sendHeartbeatPing(ws: ServerWebSocket<WsConnectionData>, daemonId: stri
   // Start pong timeout
   if (state.pongTimer !== null) clearTimeout(state.pongTimer);
   state.pongTimer = setTimeout(() => {
-    logger.warn({ daemonId }, "Heartbeat timeout — closing connection (FM-2)");
+    logger.warn({ daemonId }, "Heartbeat timeout, closing connection (FM-2)");
     ws.close(WS_CLOSE_CODES.HEARTBEAT_TIMEOUT.code, WS_CLOSE_CODES.HEARTBEAT_TIMEOUT.reason);
   }, config.heartbeatTimeoutMs);
 }
@@ -546,7 +546,7 @@ function handleDraining(
 
   logger.info(
     { daemonId, activeJobs: msg.payload.activeJobs, reason: msg.payload.reason },
-    "Daemon draining — removed from dispatch eligibility",
+    "Daemon draining, removed from dispatch eligibility",
   );
 }
 
@@ -578,7 +578,7 @@ function handleUpdateAcknowledged(
  * the pending offer + capacity slot and emits a telemetry log line. The
  * user-facing Octokit reply is posted by the daemon executor itself
  * (using the installation token it already holds), so this handler
- * does not need to format another comment — doing so would double-post.
+ * does not need to format another comment: doing so would double-post.
  *
  * Validation: payload arrives via the Zod discriminated union from
  * `serverMessageSchema` / `daemonMessageSchema` parse, so unknown
@@ -593,7 +593,7 @@ async function handleScopedJobCompletion(
   const offerId = msg.payload.offerId;
   const { jobKind, status, deliveryId } = msg.payload;
 
-  // Reject completions from sockets that have not finished registration —
+  // Reject completions from sockets that have not finished registration,
   // a pre-register socket (or a misbehaving daemon) must not be able to
   // mutate another daemon's offer state or capacity counters.
   if (daemonId === undefined) {
@@ -619,7 +619,7 @@ async function handleScopedJobCompletion(
         assignedDaemon: state?.daemonId ?? null,
         currentStatus: state?.status ?? null,
       },
-      "scoped-job-completion failed ownership/finality validation — ignoring",
+      "scoped-job-completion failed ownership/finality validation, ignoring",
     );
     return;
   }
@@ -680,7 +680,7 @@ async function handleScopedJobCompletion(
 /**
  * Finalize the executions row for a scoped completion.
  *
- * `succeeded` and `halted` both leave the row out of the failed state —
+ * `succeeded` and `halted` both leave the row out of the failed state,
  * `halted` is the contractual outcome for scaffolding-only executors and
  * for "no work needed" cases (e.g., rebase already up-to-date). Only
  * `failed` writes the failure reason so operator dashboards can branch
@@ -701,7 +701,7 @@ async function finalizeScopedExecution(
     }
     return;
   }
-  // succeeded / halted — handleScopedAccept already called
+  // succeeded / halted, handleScopedAccept already called
   // markExecutionRunning, so the row is in 'running'. Without a terminal
   // write here, succeeded/halted scoped executions stay 'running' forever,
   // which breaks the FM-4 stale-execution recovery and any operator query
@@ -810,8 +810,8 @@ async function handleAccept(
         rowCount: rows.length,
         hint:
           rows.length === 0
-            ? "no executions row for this deliveryId — producer did not call createExecution"
-            : "executions row exists but context_json is NULL — row was written without context",
+            ? "no executions row for this deliveryId, producer did not call createExecution"
+            : "executions row exists but context_json is NULL, row was written without context",
       },
       "No execution context found",
     );
@@ -889,7 +889,7 @@ async function handleAccept(
 /**
  * Mint a token for a scoped offer and forward the scoped context into
  * `job:payload`. Skips the legacy `executions.context_json` shape and the
- * `BotContext`-shaped allowed-tool resolution — scoped executors run their
+ * `BotContext`-shaped allowed-tool resolution: scoped executors run their
  * own deterministic / single-purpose pipelines on the daemon side.
  *
  * Capacity decrement on success happens in `handleScopedJobCompletion`;
@@ -922,7 +922,7 @@ async function handleScopedAccept(
   const scopedJob: ScopedQueuedJob = reparsed.data;
 
   try {
-    // Same PAT short-circuit as in handleJobOfferAccept — `getInstallationOctokit`
+    // Same PAT short-circuit as in handleJobOfferAccept, `getInstallationOctokit`
     // hits the GitHub API to mint a token, which is wasted work in PAT mode.
     let token: string;
     if (config.githubPersonalAccessToken !== undefined) {
@@ -957,7 +957,7 @@ async function handleScopedAccept(
   }
 }
 
-/** Narrow type — only the fields handleScopedAccept needs from PendingOffer.
+/** Narrow type, only the fields handleScopedAccept needs from PendingOffer.
  * `scoped` is optional on the source but is checked non-undefined at the
  * call site, so the helper can require it. */
 interface PendingOfferLike {
@@ -1038,7 +1038,7 @@ async function resolveDeliveryId(
   const deliveryId = offer?.deliveryId ?? payloadDeliveryId;
   if (deliveryId !== undefined) return deliveryId;
 
-  logger.debug({ offerId, daemonId }, "Result for offer not in pending map — querying DB");
+  logger.debug({ offerId, daemonId }, "Result for offer not in pending map, querying DB");
   const { getDb } = await import("../db");
   const db = getDb();
   if (db === null) return undefined;
@@ -1117,7 +1117,7 @@ async function finalizeExecution(
 }
 
 /**
- * Handle job:result — FM-6 late result guard + finalize execution.
+ * Handle job:result, FM-6 late result guard + finalize execution.
  */
 async function handleResult(
   daemonId: string,
@@ -1134,13 +1134,13 @@ async function handleResult(
 
   if (actualDeliveryId === undefined) return;
 
-  // FM-6: Late result guard — check if execution is already finalized
+  // FM-6: Late result guard, check if execution is already finalized
   const state = await getExecutionState(actualDeliveryId);
   if (state !== null) {
     if (state.status === "completed" || state.status === "failed") {
       logger.info(
         { deliveryId: actualDeliveryId, daemonId, currentStatus: state.status },
-        "Late result received for already-finalized execution (FM-6) — discarding",
+        "Late result received for already-finalized execution (FM-6), discarding",
       );
       return;
     }
@@ -1148,7 +1148,7 @@ async function handleResult(
     if (state.daemonId !== null && state.daemonId !== daemonId) {
       logger.info(
         { deliveryId: actualDeliveryId, daemonId, assignedDaemonId: state.daemonId },
-        "Result from non-assigned daemon (FM-6) — discarding",
+        "Result from non-assigned daemon (FM-6), discarding",
       );
       return;
     }

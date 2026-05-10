@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # hadolint global ignore=DL3008
 
-# Orchestrator image — webhook server + WebSocket daemon registry + triage.
+# Orchestrator image: webhook server + WebSocket daemon registry + triage.
 # Stays lean: no developer CLI toolchain, no docker CLI (orchestrator does not
 # shell to docker). Daemon tooling lives in Dockerfile.daemon.
 #
@@ -16,7 +16,7 @@ WORKDIR /app
 # Node.js required by Claude Code CLI; git required for repo checkout.
 # GPG-based NodeSource installation (avoids curl-pipe-bash pattern).
 # ca-certificates and gnupg are required for GPG key verification.
-# curl is REQUIRED by the production HEALTHCHECK — do not remove.
+# curl is REQUIRED by the production HEALTHCHECK: do not remove.
 RUN apt-get update && apt-get install -y --no-install-recommends \
   curl git ca-certificates gnupg && \
   mkdir -p /etc/apt/keyrings && \
@@ -28,7 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   apt-get install -y --no-install-recommends nodejs && \
   rm -rf /var/lib/apt/lists/*
 
-# AFTER — trixie-correct package names + pin to patched version
+# AFTER: trixie-correct package names + pin to patched version
 RUN apt-get update && \
   apt-get install --only-upgrade -y --no-install-recommends \
   openssl libssl3 && \
@@ -39,7 +39,7 @@ RUN npm install -g npm@11 && \
   # Claude Code CLI required by @anthropic-ai/claude-agent-sdk.
   npm install -g @anthropic-ai/claude-code@2.1.114
 
-# Stage: Build — install all deps and bundle the main app.
+# Stage: Build: install all deps and bundle the main app.
 FROM base AS development
 ENV HUSKY=0
 # Bun's bundler inlines `process.env.NODE_ENV` at build time and defaults to
@@ -54,7 +54,7 @@ RUN bun run build
 # Stage: Production deps only.
 FROM base AS deps
 COPY package.json bun.lock ./
-# --ignore-scripts: husky is a devDependency — skip prepare/postinstall hooks.
+# --ignore-scripts: husky is a devDependency: skip prepare/postinstall hooks.
 RUN bun install --frozen-lockfile --production --ignore-scripts
 # --- SHARED-BASE-END ---
 
@@ -78,7 +78,7 @@ LABEL com.chrisleekr.bot.variant=orchestrator
 COPY --from=development --chown=bun:bun /app/dist ./dist
 COPY --from=development --chown=bun:bun /app/package.json ./
 
-# SQL migration files — not bundled by Bun.build, copied as-is.
+# SQL migration files: not bundled by Bun.build, copied as-is.
 COPY --from=development --chown=bun:bun /app/src/db/migrations ./src/db/migrations
 
 # Production node_modules (runtime dependencies only).

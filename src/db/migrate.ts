@@ -17,14 +17,14 @@ const MIGRATION_LOCK_KEY = 819_283_746;
  * Run all pending SQL migrations in order.
  *
  * Tracks applied migrations in a `_migrations` table. Each migration runs
- * inside a transaction for atomicity — if a migration fails, the transaction
+ * inside a transaction for atomicity: if a migration fails, the transaction
  * is rolled back and subsequent migrations are not attempted.
  *
  * Migration files are plain `.sql` files in `src/db/migrations/`, sorted by
  * filename (use numeric prefixes like `001_`, `002_` for ordering).
  */
 export async function runMigrations(sql: SQL): Promise<void> {
-  // Verify connectivity before attempting migrations — produces a clear error
+  // Verify connectivity before attempting migrations, produces a clear error
   // instead of a raw Postgres connection failure deep in a DDL statement.
   try {
     await sql`SELECT 1`;
@@ -46,11 +46,11 @@ export async function runMigrations(sql: SQL): Promise<void> {
   `;
 
   // Reserve a single connection so the advisory lock and unlock execute on the
-  // same session — pool-dispatched queries can land on different connections,
+  // same session, pool-dispatched queries can land on different connections,
   // leaving the lock orphaned until the connection is recycled.
   const conn = await sql.reserve();
   // Track whether the advisory lock was actually acquired so the matching
-  // unlock runs exactly when needed — and always runs, even if a migration
+  // unlock runs exactly when needed, and always runs, even if a migration
   // throws. Session-level locks otherwise stay held on the pooled connection
   // and block the next migrator.
   let locked = false;

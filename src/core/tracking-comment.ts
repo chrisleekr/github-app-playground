@@ -14,18 +14,18 @@ const SPINNER_HTML = `<img src="https://github.com/user-attachments/assets/5ac38
 export function renderDispatchReasonLine(reason: DispatchReason, target: DispatchTarget): string {
   switch (reason) {
     case "persistent-daemon":
-      return `Routed to \`${target}\` — claimed by the persistent daemon pool.`;
+      return `Routed to \`${target}\`, claimed by the persistent daemon pool.`;
     case "ephemeral-daemon-triage":
-      return `Routed to \`${target}\` — triage flagged the request as heavy; spawned an ephemeral daemon Pod.`;
+      return `Routed to \`${target}\`, triage flagged the request as heavy; spawned an ephemeral daemon Pod.`;
     case "ephemeral-daemon-overflow":
-      return `Routed to \`${target}\` — persistent queue at capacity; spawned an ephemeral daemon Pod.`;
+      return `Routed to \`${target}\`, persistent queue at capacity; spawned an ephemeral daemon Pod.`;
     case "ephemeral-spawn-failed":
       return `\`${target}\` scale-up rejected: ephemeral-daemon Pod spawn failed (Kubernetes infrastructure unavailable).`;
   }
 }
 
 /**
- * Triage payload surfaced in tracking comments. A narrow shape — decoupled
+ * Triage payload surfaced in tracking comments. A narrow shape: decoupled
  * from `TriageResult` so this module has no dependency on the orchestrator.
  */
 export interface TriageCommentSection {
@@ -62,7 +62,7 @@ export function renderTriageSection(triage: TriageCommentSection): string {
   const heavyLabel = triage.heavy ? "heavy" : "not heavy";
   return [
     "<details>",
-    `<summary>Triage details — classification: <code>${heavyLabel}</code>, confidence: ${confidencePct}%</summary>`,
+    `<summary>Triage details, classification: <code>${heavyLabel}</code>, confidence: ${confidencePct}%</summary>`,
     "",
     `**Rationale:** ${safeRationale}`,
     "",
@@ -97,7 +97,7 @@ export async function isAlreadyProcessed(ctx: BotContext): Promise<boolean> {
 
   // Scope the scan with `since=triggerTimestamp` so we only see comments at-or-after the
   // webhook trigger. The per-issue listComments endpoint orders strictly by ascending ID
-  // and accepts only `since`, `per_page`, `page` — `direction`/`sort` are silently dropped
+  // and accepts only `since`, `per_page`, `page`, `direction`/`sort` are silently dropped
   // (only the repo-level sibling endpoint honours them). Without `since`, page 1 would be
   // the OLDEST 100 comments, leaving the tracking marker stranded on page 2+ for any
   // PR/issue with >100 prior comments and breaking the durable idempotency check on retry.
@@ -123,7 +123,7 @@ export async function isAlreadyProcessed(ctx: BotContext): Promise<boolean> {
 export async function createTrackingComment(ctx: BotContext): Promise<number> {
   const { octokit, owner, repo, entityNumber, log } = ctx;
 
-  // Embed the deliveryId marker for durable idempotency — survives pod restarts.
+  // Embed the deliveryId marker for durable idempotency, survives pod restarts.
   // The in-memory processed Map in router.ts is the fast-path check;
   // this marker is the durable fallback.
   const body = `${deliveryMarker(ctx.deliveryId)}\n${SPINNER_HTML} **${config.triggerPhrase}** is working on this...\n\n_Analyzing your request..._`;
@@ -171,7 +171,7 @@ export async function updateTrackingComment(
 
   // The body here is composed by `finalizeTrackingComment` from the existing
   // (agent-updated) comment body plus a system header. Tag as `agent` so the
-  // LLM scanner runs — the agent's MCP-emitted progress text reaches here.
+  // LLM scanner runs: the agent's MCP-emitted progress text reaches here.
   const guarded = await safePostToGitHub({
     body,
     source: "agent",

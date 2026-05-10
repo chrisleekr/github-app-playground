@@ -66,7 +66,7 @@ afterEach(() => {
   }
 });
 
-describe("spawnEphemeralDaemon — Pod spec", () => {
+describe("spawnEphemeralDaemon: Pod spec", () => {
   it("submits a Pod to the configured namespace with DAEMON_EPHEMERAL=true", async () => {
     await spawnEphemeralDaemon({
       deliveryId: "del-abc-123",
@@ -89,7 +89,7 @@ describe("spawnEphemeralDaemon — Pod spec", () => {
     expect(envMap.get("DAEMON_EPHEMERAL")).toBe("true");
     expect(envMap.get("ORCHESTRATOR_URL")).toBe("wss://orch.example.com");
     // Credentials (including DAEMON_AUTH_TOKEN) must come from the
-    // `daemon-secrets` Secret via envFrom — never inline in the Pod spec,
+    // `daemon-secrets` Secret via envFrom, never inline in the Pod spec,
     // where they'd be readable via `kubectl get pod -o yaml`.
     expect(envMap.has("DAEMON_AUTH_TOKEN")).toBe(false);
     expect(envMap.get("EPHEMERAL_DAEMON_IDLE_TIMEOUT_MS")).toBeDefined();
@@ -150,7 +150,7 @@ describe("spawnEphemeralDaemon — Pod spec", () => {
   });
 });
 
-describe("spawnEphemeralDaemon — error kinds", () => {
+describe("spawnEphemeralDaemon: error kinds", () => {
   it("throws infra-absent when neither KUBERNETES_SERVICE_HOST nor KUBECONFIG is set", async () => {
     delete process.env["KUBERNETES_SERVICE_HOST"];
     delete process.env["KUBECONFIG"];

@@ -20,7 +20,7 @@ import { z } from "zod";
 /**
  * Shape of the `context_json` blob written by the ship iteration handler.
  * Additive: existing rows without `shipIntentId` parse cleanly because the
- * field is optional at the schema layer — the cascade simply skips them.
+ * field is optional at the schema layer: the cascade simply skips them.
  */
 export const ShipIntentContextSchema = z
   .object({

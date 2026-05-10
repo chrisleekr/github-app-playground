@@ -10,7 +10,7 @@ import type {
 } from "../types";
 import { retryWithBackoff } from "../utils/retry";
 
-/** Bound on per-review overflow fan-out — prevents one large PR from
+/** Bound on per-review overflow fan-out, prevents one large PR from
  *  spawning hundreds of concurrent GraphQL calls and tripping abuse limits.
  *  5 mirrors what `octokit.graphql.paginate` itself does for top-level pages. */
 const REVIEW_OVERFLOW_CONCURRENCY = 5;
@@ -18,7 +18,7 @@ const REVIEW_OVERFLOW_CONCURRENCY = 5;
 /**
  * GraphQL queries for pull-request and issue data.
  *
- * Pagination contract — `@octokit/plugin-paginate-graphql` is strict:
+ * Pagination contract: `@octokit/plugin-paginate-graphql` is strict:
  *
  *   1. The cursor variable MUST be named exactly `$cursor`. The plugin
  *      mutates `parameters.cursor` between pages (see
@@ -28,7 +28,7 @@ const REVIEW_OVERFLOW_CONCURRENCY = 5;
  *      second iteration.
  *   2. Each query MUST contain at most ONE paginatable connection.
  *      `extractPageInfos` does a depth-first search for the first
- *      `pageInfo` block and ignores all others — combining files +
+ *      `pageInfo` block and ignores all others: combining files +
  *      comments + reviews in one query silently truncates two of the
  *      three to page 1.
  *
@@ -362,7 +362,7 @@ export async function fetchGitHubData(ctx: BotContext): Promise<FetchedData> {
 /**
  * Trim `items` to the most recent `cap` entries. GitHub's GraphQL
  * connections return ASC by `createdAt`/`submittedAt` by default, so the
- * newest items live at the end of the merged array — slicing the tail
+ * newest items live at the end of the merged array: slicing the tail
  * keeps the discussion turns the agent is most likely to need (including,
  * crucially, the comment that triggered the bot).
  *
@@ -370,7 +370,7 @@ export async function fetchGitHubData(ctx: BotContext): Promise<FetchedData> {
  * tell that a `MAX_FETCHED_*` cap is materially clipping context.
  *
  * Caller is responsible for filtering (isMinimized, TOCTOU) BEFORE invoking
- * this — the cap measures items that will actually reach the prompt, not
+ * this: the cap measures items that will actually reach the prompt, not
  * raw GraphQL nodes that the next step is about to drop.
  */
 function applyCap<T>(
@@ -425,7 +425,7 @@ async function pMap<T, R>(
  *
  * Wrapped in `retryWithBackoff` so a transient 5xx / 429 on one review's
  * follow-up doesn't fail the entire fetch. After all retries exhaust we
- * log a warn and return an empty page — the agent will see the first 100
+ * log a warn and return an empty page: the agent will see the first 100
  * inline comments for that review with no further degradation.
  */
 async function fetchRemainingReviewComments(
@@ -466,7 +466,7 @@ async function fetchPRData({
   // fields ride along on PR_FIRST_QUERY because mergeResponses preserves
   // non-paginated fields from the first page.
   //
-  // Each call gets its OWN parameters object literal — the plugin mutates
+  // Each call gets its OWN parameters object literal: the plugin mutates
   // `parameters.cursor` between pages, so a shared object would race
   // across the three concurrent paginations and corrupt cursors.
   const [first, commentsResult, reviewsResult] = await Promise.all([
@@ -478,7 +478,7 @@ async function fetchPRData({
   const pr = first.repository.pullRequest;
   if (pr === null) throw new Error(`PR #${number} not found`);
 
-  // The comments / reviews paginate calls are independent — if the PR
+  // The comments / reviews paginate calls are independent, if the PR
   // disappeared between calls (deleted mid-flight) one of these could
   // come back null. Treat as empty rather than throwing twice.
   const prComments = commentsResult.repository.pullRequest?.comments.nodes ?? [];
@@ -499,7 +499,7 @@ async function fetchPRData({
   // Reviews cap is applied here (pre-fan-out) because its purpose is to
   // bound the cost of the follow-up REVIEW_COMMENTS_QUERY fan-out, not to
   // shape user-visible output. Reviews themselves don't appear in
-  // FetchedData — only their nested inline comments do, and those are
+  // FetchedData, only their nested inline comments do, and those are
   // filtered + capped separately below.
   const cappedReviews = applyCap(prReviews, config.maxFetchedReviews, "reviews", log);
   if (cappedReviews.truncated) truncated.reviews = true;
@@ -511,7 +511,7 @@ async function fetchPRData({
   // retryWithBackoff so transient 5xx/429s degrade per-review instead of
   // failing the whole fetch.
   // pageInfo is always selected by PR_REVIEWS_QUERY, but legacy test
-  // fixtures elide it — `?.` keeps those tests working without forcing a
+  // fixtures elide it, `?.` keeps those tests working without forcing a
   // sweep, at the cost of one redundant chain in production.
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   const overflowReviews = cappedReviews.items.filter((r) => r.comments.pageInfo?.hasNextPage);

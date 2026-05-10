@@ -116,7 +116,7 @@ describe("safePostToGitHub", () => {
     expect(log.errors[0]?.["event"]).toBe("secret_redaction_emptied_body");
   });
 
-  it("fails open when the LLM scanner throws — body that survived the regex pass still posts", async () => {
+  it("fails open when the LLM scanner throws: body that survived the regex pass still posts", async () => {
     const log = makeTestLogger();
     _setLlmScannerClientForTests(
       stubScannerWith(() => Promise.reject(new Error("bedrock unavailable"))),

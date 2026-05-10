@@ -51,7 +51,7 @@ export async function isCancelled(
  *   if (await checkpointCancelled(intent_id)) return;
  *   ```
  *
- * Workers do NOT clear the flag on bail — the lifecycle command that
+ * Workers do NOT clear the flag on bail: the lifecycle command that
  * set the flag is the sole owner of its lifecycle (it transitions the
  * intent to terminal and lets the 1-hour TTL expire the flag).
  */

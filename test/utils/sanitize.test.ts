@@ -254,7 +254,7 @@ MIICXgIBAAKBgQDABCDEFGHIJ
     expect(r.kinds.sort()).toEqual(["AWS_ACCESS_KEY_ID", "GITHUB_TOKEN"]);
   });
 
-  it("never logs the matched bytes — body never contains the original secret substring", () => {
+  it("never logs the matched bytes: body never contains the original secret substring", () => {
     const token = `ghp_${"x".repeat(36)}`;
     const r = redactSecrets(token);
     expect(r.body).toBe("");

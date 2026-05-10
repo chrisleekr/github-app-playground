@@ -5,7 +5,7 @@
  *
  * Catches the silent-rot case where a refactor shifts line numbers but
  * the doc keeps citing the old offset. We only flag citations that
- * include a `:line` suffix — bare `src/foo.ts` pointers (e.g. "see
+ * include a `:line` suffix: bare `src/foo.ts` pointers (e.g. "see
  * `src/app.ts`") are explicitly out of scope; they don't claim a line
  * and can't go stale on a line-shift.
  *
@@ -25,7 +25,7 @@ const DOCS_ROOT = join(repoRoot, "docs");
 
 // Match `src/<path>.<ext>:<line>` or `:<start>-<end>`. Path may include
 // `[A-Za-z0-9_./-]`; extension is one of the source-code extensions we
-// actually cite. `:<line>` is required — bare paths are ignored.
+// actually cite. `:<line>` is required; bare paths are ignored.
 const CITATION_RE = /\bsrc\/([A-Za-z0-9_./-]+\.(?:ts|tsx|mts|cts|mjs|cjs|js)):(\d+)(?:-(\d+))?\b/g;
 
 interface BrokenCitation {
@@ -88,7 +88,7 @@ function check(): BrokenCitation[] {
         const end = endStr === undefined ? start : Number.parseInt(endStr, 10);
         const citation =
           endStr === undefined ? `${relPath}:${startStr}` : `${relPath}:${startStr}-${endStr}`;
-        // Reject `..` segments — `CITATION_RE` allows them in the path
+        // Reject `..` segments. `CITATION_RE` allows them in the path
         // component, so a doc citing `src/../foo.ts:1` would otherwise
         // statSync a path that escapes `src/` and report "OK" for a
         // citation that no longer points into the source tree.
@@ -97,7 +97,7 @@ function check(): BrokenCitation[] {
             docFile: relative(repoRoot, md),
             docLine: i + 1,
             citation,
-            reason: `path contains a \`..\` segment — citations must point inside src/`,
+            reason: `path contains a \`..\` segment, citations must point inside src/`,
           });
           continue;
         }
@@ -143,7 +143,7 @@ function main(): void {
   }
   console.error(`ERROR: ${String(broken.length)} stale src citation(s) in docs/:\n`);
   for (const b of broken) {
-    console.error(`  - ${b.docFile}:${String(b.docLine)} cites \`${b.citation}\` — ${b.reason}`);
+    console.error(`  - ${b.docFile}:${String(b.docLine)} cites \`${b.citation}\`, ${b.reason}`);
   }
   console.error(
     "\nFix: update the citation to the current line range, or drop the `:<line>` suffix if the file no longer needs an anchor.",

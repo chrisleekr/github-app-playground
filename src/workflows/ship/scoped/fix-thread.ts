@@ -2,7 +2,7 @@
  * `bot:fix-thread` scoped command (FR-029). Applies a mechanical fix
  * requested in a review thread, replies with the resulting commit SHA
  * (FR-005), and resolves the thread (via the MCP `resolve-review-thread`
- * server from T029). Stateless one-shot — no `ship_intents` row, no
+ * server from T029). Stateless one-shot: no `ship_intents` row, no
  * tracking comment.
  *
  * **Conservatism (FR-004):** the bot refuses to act on threads that
@@ -10,7 +10,7 @@
  * heuristic is a simple keyword scan; ambiguous threads default to
  * refusal so the maintainer decides.
  *
- * Eligible only on the `review-comment` event surface — the trigger
+ * Eligible only on the `review-comment` event surface: the trigger
  * MUST originate from a `pull_request_review_comment` event so a
  * concrete `thread_id` is available.
  *
@@ -95,7 +95,7 @@ export async function runFixThread(input: RunFixThreadInput): Promise<FixThreadO
 
   // All reply paths below route through this helper so the output secret
   // guard (regex + LLM scanner) runs once, in one place. Reply bodies may
-  // include agent-supplied `result.reasoning` text — flag as "agent" source.
+  // include agent-supplied `result.reasoning` text, flag as "agent" source.
   const postReply = async (body: string, callsite: string): Promise<number> => {
     const guarded = await safePostToGitHub({
       body,
@@ -119,7 +119,7 @@ export async function runFixThread(input: RunFixThreadInput): Promise<FixThreadO
     return guarded.result.data.id;
   };
 
-  // Conservatism gate (FR-004) — refuse design-discussion requests.
+  // Conservatism gate (FR-004), refuse design-discussion requests.
   if (isDesignDiscussion(input.thread.thread_body)) {
     const body = formatReply({
       status: "_💬 Design discussion_",
@@ -139,7 +139,7 @@ export async function runFixThread(input: RunFixThreadInput): Promise<FixThreadO
     const body = formatReply({
       status: "_⏭️ Skipped_",
       title: "No mechanical fix applied.",
-      reasoning: `I couldn't apply a mechanical fix here — ${reason}.`,
+      reasoning: `I couldn't apply a mechanical fix here, ${reason}.`,
     });
     const reply_id = await postReply(body, "ship.scoped.fix_thread.skipped");
     log.info({ reply_id, reason }, "fix_thread skipped");
@@ -147,7 +147,7 @@ export async function runFixThread(input: RunFixThreadInput): Promise<FixThreadO
   }
 
   if (result.commit_sha === undefined) {
-    // Partial success — callback claimed it applied a fix but withheld
+    // Partial success, callback claimed it applied a fix but withheld
     // the SHA. Surfaced at warn so the buggy callback is discoverable
     // in logs; behaviour matches the no-applied path otherwise.
     const reason =
@@ -155,7 +155,7 @@ export async function runFixThread(input: RunFixThreadInput): Promise<FixThreadO
     const body = formatReply({
       status: "_⏭️ Skipped_",
       title: "No mechanical fix applied.",
-      reasoning: `I couldn't apply a mechanical fix here — ${reason}.`,
+      reasoning: `I couldn't apply a mechanical fix here, ${reason}.`,
     });
     const reply_id = await postReply(body, "ship.scoped.fix_thread.skipped-partial");
     log.warn({ reply_id, reason }, "fix_thread skipped (partial success)");
@@ -165,7 +165,7 @@ export async function runFixThread(input: RunFixThreadInput): Promise<FixThreadO
   const trimmedReasoning = result.reasoning?.trim() ?? "";
   const body = formatReply({
     status: "_✅ Fix applied_",
-    meta: ` — commit \`${result.commit_sha}\``,
+    meta: `, commit \`${result.commit_sha}\``,
     title: "Mechanical fix pushed.",
     reasoning:
       trimmedReasoning.length > 0 ? trimmedReasoning : "See the linked commit for the change.",
@@ -173,7 +173,7 @@ export async function runFixThread(input: RunFixThreadInput): Promise<FixThreadO
   const reply_id = await postReply(body, "ship.scoped.fix_thread.applied");
 
   // Best-effort thread resolution (FR-005). A failure here does not undo
-  // the commit — the reply with the SHA already documents the fix.
+  // the commit: the reply with the SHA already documents the fix.
   try {
     await input.resolveThread({ thread_id: input.thread_node_id });
   } catch (err) {

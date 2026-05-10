@@ -157,7 +157,7 @@ describe("runOpenPr", () => {
       issue: { title: "Spoofed", body: "..." },
       existingBackLink: {
         id: 6060,
-        body: "I think we already have one — <!-- bot:open-pr:99 -->",
+        body: "I think we already have one, <!-- bot:open-pr:99 -->",
         user_type: "User",
       },
     });

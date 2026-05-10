@@ -20,7 +20,7 @@ import {
  * are shared with the single-turn `runWithTools` path so MCP and inline
  * dispatch surface identical responses.
  *
- * Repo scope is hard-pinned via env (REPO_OWNER + REPO_NAME) — the
+ * Repo scope is hard-pinned via env (REPO_OWNER + REPO_NAME): the
  * model cannot fan out queries to arbitrary repos.
  *
  * Required env: GITHUB_TOKEN, REPO_OWNER, REPO_NAME.

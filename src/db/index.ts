@@ -5,7 +5,7 @@ import { logger } from "../logger";
 
 /**
  * Postgres connection pool singleton.
- * Lazy-initialized on first access — inline-mode deployments (no DATABASE_URL)
+ * Lazy-initialized on first access: inline-mode deployments (no DATABASE_URL)
  * never open a connection.
  */
 let pool: SQL | null = null;

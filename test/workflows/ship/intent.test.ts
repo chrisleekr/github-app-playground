@@ -1,5 +1,5 @@
 /**
- * T037 — intent state-machine tests covering data-model.md §"State machine"
+ * T037: intent state-machine tests covering data-model.md §"State machine"
  * transitions plus the cascade base-ref Q2-round1 behaviour: when probe
  * detects a `baseRefOid` mismatch, intent updates `target_base_sha` in
  * place WITHOUT resetting `deadline_at` or `spent_usd`.
@@ -23,7 +23,7 @@ try {
 }
 
 function requireConn(): SQL {
-  if (sql === null) throw new Error("Database not available — test should have been skipped");
+  if (sql === null) throw new Error("Database not available, test should have been skipped");
   return sql;
 }
 
@@ -108,7 +108,7 @@ describe.skipIf(sql === null)("intent.ts state machine", () => {
     expect(after?.terminated_at).not.toBeNull();
   });
 
-  it("transitionToTerminal is idempotent — second call to a terminal returns null (no-op)", async () => {
+  it("transitionToTerminal is idempotent: second call to a terminal returns null (no-op)", async () => {
     const { createIntent, transitionToTerminal } =
       await import("../../../src/workflows/ship/intent");
     const created = await createIntent(baseInput(), requireConn());

@@ -5,7 +5,7 @@
  * through `dispatchByIntent` and produces a `workflow_runs` row whose shape
  * is indistinguishable from the row created by the label trigger
  * `dispatchByLabel("bot:ship")`. This is the contract the registry depends
- * on — downstream consumers (orchestrator, tracking-mirror) must not care
+ * on: downstream consumers (orchestrator, tracking-mirror) must not care
  * which trigger produced the run.
  *
  * Strategy:
@@ -41,7 +41,7 @@ try {
 }
 
 function requireSql(): SQL {
-  if (sql === null) throw new Error("Database not available — test should have been skipped");
+  if (sql === null) throw new Error("Database not available, test should have been skipped");
   return sql;
 }
 

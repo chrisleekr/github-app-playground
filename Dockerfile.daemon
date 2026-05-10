@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # hadolint global ignore=DL3008,DL3015,DL3059,DL4006
 
-# Daemon image — Claude Code execution worker. Ships with a rich CLI toolchain
+# Daemon image: Claude Code execution worker. Ships with a rich CLI toolchain
 # so Claude's Bash tool can handle arbitrary tasks autonomously, PLUS a
 # scope-narrowed sudoers rule that lets `bun` install additional packages on
 # demand. See Dockerfile.orchestrator for the thin twin.
@@ -17,7 +17,7 @@ WORKDIR /app
 # Node.js required by Claude Code CLI; git required for repo checkout.
 # GPG-based NodeSource installation (avoids curl-pipe-bash pattern).
 # ca-certificates and gnupg are required for GPG key verification.
-# curl is REQUIRED by the production HEALTHCHECK — do not remove.
+# curl is REQUIRED by the production HEALTHCHECK: do not remove.
 RUN apt-get update && apt-get install -y --no-install-recommends \
   curl git ca-certificates gnupg && \
   mkdir -p /etc/apt/keyrings && \
@@ -29,7 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   apt-get install -y --no-install-recommends nodejs && \
   rm -rf /var/lib/apt/lists/*
 
-# AFTER — trixie-correct package names + pin to patched version
+# AFTER: trixie-correct package names + pin to patched version
 RUN apt-get update && \
   apt-get install --only-upgrade -y --no-install-recommends \
   openssl libssl3 && \
@@ -40,7 +40,7 @@ RUN npm install -g npm@11 && \
   # Claude Code CLI required by @anthropic-ai/claude-agent-sdk.
   npm install -g @anthropic-ai/claude-code@2.1.114
 
-# Stage: Build — install all deps and bundle the main app.
+# Stage: Build: install all deps and bundle the main app.
 FROM base AS development
 ENV HUSKY=0
 # Bun's bundler inlines `process.env.NODE_ENV` at build time and defaults to
@@ -55,19 +55,17 @@ RUN bun run build
 # Stage: Production deps only.
 FROM base AS deps
 COPY package.json bun.lock ./
-# --ignore-scripts: husky is a devDependency — skip prepare/postinstall hooks.
+# --ignore-scripts: husky is a devDependency: skip prepare/postinstall hooks.
 RUN bun install --frozen-lockfile --production --ignore-scripts
 # --- SHARED-BASE-END ---
 
-# -----------------------------------------------------------------------------
-# Stage: daemon-tools — apt packages + third-party repos + sha-pinned binaries
-# -----------------------------------------------------------------------------
+# Stage: daemon-tools: apt packages + third-party repos + sha-pinned binaries
 FROM base AS daemon-tools
 ARG TARGETARCH
 ARG INSTALL_GCLOUD=true
 ARG INSTALL_LANGS="go rust"
 
-# Tool versions — auto-bumped by Renovate via the per-line annotations below.
+# Tool versions: auto-bumped by Renovate via the per-line annotations below.
 # Trivy gate catches any CVE regressions on the next scan. See renovate.json
 # at the repo root for the custom manager that parses these annotations, the
 # weekly schedule, and the auto-merge policy (minor/patch/digest only).
@@ -181,7 +179,7 @@ RUN set -eux; \
   curl -fsSL "https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VERSION}/hadolint-Linux-${HAD_ARCH}" \
   -o /usr/local/bin/hadolint && chmod +x /usr/local/bin/hadolint
 
-# 5. AWS CLI v2 — official installer, arch-aware.
+# 5. AWS CLI v2: official installer, arch-aware.
 # hadolint ignore=DL4001
 RUN set -eux; \
   AWS_ARCH="x86_64"; [ "${TARGETARCH}" = "arm64" ] && AWS_ARCH="aarch64" || true; \
@@ -190,7 +188,7 @@ RUN set -eux; \
   /tmp/aws/install && rm -rf /tmp/awscliv2.zip /tmp/aws
 
 # 6. uv (astral-sh) + poetry via pipx. Redirect installer output to /usr/local
-#    — /root is mode 700 in oven/bun:1.3.13, unreadable to the final USER bun
+#   : /root is mode 700 in oven/bun:1.3.13, unreadable to the final USER bun
 #    (UID 1000), so default $HOME/.local/bin targets would land dead-on-arrival.
 ENV PIPX_HOME=/usr/local/pipx \
   PIPX_BIN_DIR=/usr/local/bin \
@@ -236,7 +234,7 @@ RUN if [ "${INSTALL_GCLOUD}" = "true" ]; then \
 
 # 11. Sudoers carve-out: scoped apt access for the `bun` user.
 #     Allows `apt-get update` and `apt-get install [--no-install-recommends] -y
-#     <pkg>` where <pkg> matches Debian Policy §5.6.7 package names only —
+#     <pkg>` where <pkg> matches Debian Policy §5.6.7 package names only,
 #     starts with [a-z0-9], body is [a-z0-9+.-]*. This blocks local .deb
 #     (./evil.deb), absolute paths (/tmp/x.deb), URLs (http://...), and any
 #     arg containing `/`, because sudoers globs use fnmatch and the char
@@ -260,7 +258,7 @@ RUN set -eux; \
   [ -d "$d" ] && chown -R bun:bun "$d" || true; \
   done
 
-# 12. Docker CLI — Claude agents shell `docker build`/`docker compose` against a
+# 12. Docker CLI: Claude agents shell `docker build`/`docker compose` against a
 #     dind sidecar. Matches src/k8s/job-spawner.ts major pin for client/daemon
 #     compatibility. docker:29-cli ships Go 1.26.x which patches CVE-2025-47907
 #     + CVE-2026-32282 (net/http, archive/tar, database/sql). Copied BEFORE
@@ -279,9 +277,7 @@ RUN bun install --frozen-lockfile --production --ignore-scripts \
   && bun run scripts/generate-capabilities-manifest.ts /app/daemon-capabilities.static.json \
   && rm -rf node_modules scripts/generate-capabilities-manifest.ts src/ package.json bun.lock tsconfig.json
 
-# -----------------------------------------------------------------------------
-# Stage: production — final daemon image.
-# -----------------------------------------------------------------------------
+# Stage: production: final daemon image.
 FROM daemon-tools AS production
 
 ARG PACKAGE_VERSION=untagged
@@ -289,7 +285,7 @@ ARG GIT_HASH=unspecified
 
 # Pin the Claude Code native binary path. The Agent SDK auto-detects the
 # platform package via `process.report.header.glibcVersionRuntime`, which
-# Bun does not expose — under Bun the SDK falsely picks the `-musl` variant
+# Bun does not expose: under Bun the SDK falsely picks the `-musl` variant
 # on glibc systems, so we bypass auto-detection by pointing at the
 # `@anthropic-ai/claude-code` global install (correct libc for this image).
 ENV CLAUDE_CODE_PATH=/usr/bin/claude
@@ -303,7 +299,7 @@ LABEL com.chrisleekr.bot.variant=daemon
 COPY --from=development --chown=bun:bun /app/dist ./dist
 COPY --from=development --chown=bun:bun /app/package.json ./
 
-# SQL migration files — not bundled, copied as-is (daemon may run migrations).
+# SQL migration files: not bundled, copied as-is (daemon may run migrations).
 COPY --from=development --chown=bun:bun /app/src/db/migrations ./src/db/migrations
 
 # Production node_modules (runtime dependencies only).

@@ -4,7 +4,7 @@
  * Thin typed wrappers over `Bun.sql` for the four queries defined in
  * `specs/20260415-000159-triage-dispatch-modes/contracts/dispatch-telemetry.md`
  * §5. Operator dashboards and ad-hoc reports read through this module so
- * the SQL stays in one place — any future schema migration only needs to
+ * the SQL stays in one place: any future schema migration only needs to
  * update the queries here.
  *
  * All queries accept a `days` window (default 30) and use parameterised
@@ -53,7 +53,7 @@ export interface TriageRateRow {
  * is the raw mean; `sub_threshold_rate` is the share of calls whose
  * confidence fell below 1.0 (i.e. the router used the secondary target
  * on a "default-fallback" reason). Both are NULL when no triage calls
- * landed in the window — consumers must treat that explicitly.
+ * landed in the window: consumers must treat that explicitly.
  */
 export interface ConfidenceAndFallbackRow {
   readonly avg_confidence: number | null;
@@ -69,7 +69,7 @@ export interface TriageSpendRow {
 }
 
 /**
- * 5.1 — Events per dispatch target, last `days` days.
+ * 5.1: Events per dispatch target, last `days` days.
  *
  * Returns rows ordered by event count descending. Targets with zero
  * events in the window are omitted (GROUP BY only surfaces observed
@@ -90,11 +90,11 @@ export async function eventsPerTarget(
 }
 
 /**
- * 5.2 — Triage-driven ephemeral spawn rate per day, last `days` days.
+ * 5.2: Triage-driven ephemeral spawn rate per day, last `days` days.
  *
  * Post dispatch-collapse, triage runs on every request, so the useful
  * aggregate is no longer "did triage run?" but rather "did triage drive
- * a scale-up?" — `dispatch_reason = 'ephemeral-daemon-triage'`.
+ * a scale-up?": `dispatch_reason = 'ephemeral-daemon-triage'`.
  */
 export async function triageRate(days = 30, sql: SQL = requireDb()): Promise<TriageRateRow[]> {
   const rows: TriageRateRow[] = await sql`
@@ -124,14 +124,14 @@ export async function triageRate(days = 30, sql: SQL = requireDb()): Promise<Tri
 }
 
 /**
- * 5.3 — Average classifier confidence and sub-threshold fallback rate.
+ * 5.3: Average classifier confidence and sub-threshold fallback rate.
  *
  * Reads `triage_results` directly so the avg is over _successful_
- * triage parses only — failures (timeout / parse-error / circuit-open)
+ * triage parses only: failures (timeout / parse-error / circuit-open)
  * never reach this table.
  *
  * `sub_threshold_rate` uses a hardcoded `confidence < 1.0` predicate to
- * measure "any doubt" from the classifier — this is intentionally distinct
+ * measure "any doubt" from the classifier: this is intentionally distinct
  * from the configurable `TRIAGE_CONFIDENCE_THRESHOLD` env var used at
  * runtime for routing decisions. Keep them separate on future edits so
  * dashboards don't silently change meaning when operators tune the
@@ -153,7 +153,7 @@ export async function avgConfidenceAndFallback(
 }
 
 /**
- * 5.4 — Total triage spend in USD, last `days` days. Used as a rough
+ * 5.4: Total triage spend in USD, last `days` days. Used as a rough
  * budget monitor; returns `{ total_triage_spend_usd: null }` when no
  * triage calls landed in the window.
  */

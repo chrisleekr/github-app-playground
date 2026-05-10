@@ -1,5 +1,5 @@
 /**
- * T018 — tickle-scheduler integration test against real Postgres + Valkey.
+ * T018: tickle-scheduler integration test against real Postgres + Valkey.
  *
  * Boots `createTickleScheduler` with a short `intervalMs`, seeds a paused
  * intent + a `ship_continuations` row whose `wake_at` is in the past, and
@@ -30,7 +30,7 @@ try {
 }
 
 function requireSql(): SQL {
-  if (sql === null) throw new Error("Database not available — test should have been skipped");
+  if (sql === null) throw new Error("Database not available, test should have been skipped");
   return sql;
 }
 

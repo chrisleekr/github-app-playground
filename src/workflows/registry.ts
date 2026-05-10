@@ -33,13 +33,13 @@ export type WorkflowContext = z.infer<typeof WorkflowContextSchema>;
  * enqueued a child run and wants the parent row to stay `running` until the
  * last child completes (FR-006, handoff-protocol.md §Parent status). The
  * executor merges `state` into the parent's row but does NOT transition the
- * parent's `status` — the orchestrator's cascade does that on the final
+ * parent's `status`: the orchestrator's cascade does that on the final
  * child's completion.
  *
  * `incomplete` is the "agent ran cleanly but work remains" terminal state
  * (issue #93). The pipeline returned `success: true`, but a handler-side
  * post-execution gate (e.g., the `resolve` handler's CI re-check) found
- * surviving failures — typically when the agent hit `FIX_ATTEMPTS_CAP=3`
+ * surviving failures: typically when the agent hit `FIX_ATTEMPTS_CAP=3`
  * with red CI. Distinct from `failed` so downstream surfaces can tell a
  * clean-run-but-blocked outcome from a true pipeline error.
  */
@@ -132,7 +132,7 @@ export const RegistrySchema = z
 export type Registry = z.infer<typeof RegistrySchema>;
 
 /**
- * The sole authoritative list of bot workflows. FR-023 — no other module may
+ * The sole authoritative list of bot workflows. FR-023: no other module may
  * hard-code workflow names. Adding a workflow is one entry here plus one
  * handler file plus one docs section (FR-024). Parsed at module load so a
  * mistyped entry fails the process at boot, not mid-flight.

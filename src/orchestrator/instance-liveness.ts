@@ -22,18 +22,18 @@ async function publishAlive(instanceId: string): Promise<void> {
  * use the absence of this key to identify dead instances whose per-instance
  * processing lists need to be drained back to the shared queue.
  *
- * Idempotent — calling twice does not start a second timer.
+ * Idempotent: calling twice does not start a second timer.
  */
 export async function startInstanceHeartbeat(): Promise<void> {
   if (timer !== null) return;
   const id = getInstanceId();
-  // Set the timer BEFORE awaiting so a concurrent call early-returns — avoids
+  // Set the timer BEFORE awaiting so a concurrent call early-returns, avoids
   // both a duplicate interval and the require-atomic-updates lint flag.
   timer = setInterval(() => {
     void publishAlive(id).catch((err: unknown) => {
       logger.warn(
         { err: err instanceof Error ? err.message : String(err), instanceId: id },
-        "Failed to refresh orchestrator liveness key — reaper may treat this instance as dead",
+        "Failed to refresh orchestrator liveness key, reaper may treat this instance as dead",
       );
     });
   }, REFRESH_INTERVAL_MS);
@@ -42,7 +42,7 @@ export async function startInstanceHeartbeat(): Promise<void> {
   } catch (err) {
     logger.warn(
       { err: err instanceof Error ? err.message : String(err), instanceId: id },
-      "Initial liveness publish failed — interval will retry",
+      "Initial liveness publish failed, interval will retry",
     );
   }
   logger.info({ instanceId: id, ttlSeconds: ALIVE_TTL_SECONDS }, "Orchestrator heartbeat started");
@@ -62,7 +62,7 @@ export async function stopInstanceHeartbeat(): Promise<void> {
     const valkey = requireValkeyClient();
     await valkey.send("DEL", [instanceAliveKey(getInstanceId())]);
   } catch (err) {
-    // Valkey may already be closed during late shutdown — that's fine,
+    // Valkey may already be closed during late shutdown, that's fine,
     // the key will TTL out within 60s and the reaper handles it.
     logger.debug(
       { err: err instanceof Error ? err.message : String(err) },

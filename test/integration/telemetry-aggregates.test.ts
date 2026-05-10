@@ -24,11 +24,11 @@ try {
 }
 
 function requireSql(): SQL {
-  if (sql === null) throw new Error("Database not available — test should have been skipped");
+  if (sql === null) throw new Error("Database not available, test should have been skipped");
   return sql;
 }
 
-describe.skipIf(sql === null)("FR-014 aggregate queries — dispatch-stats.ts", () => {
+describe.skipIf(sql === null)("FR-014 aggregate queries, dispatch-stats.ts", () => {
   beforeAll(async () => {
     const db = requireSql();
     await db.unsafe(`
@@ -68,7 +68,7 @@ describe.skipIf(sql === null)("FR-014 aggregate queries — dispatch-stats.ts", 
         ('d-old','o', 'r', 99, 'issue', 'issue_comment', 'u', 'daemon', 'daemon', 'persistent-daemon',         NULL, NULL, 'queued', NOW() - INTERVAL '60 days')
     `;
 
-    // Triage rows — three in-window (two with confidence < 1.0) plus one outside.
+    // Triage rows, three in-window (two with confidence < 1.0) plus one outside.
     await db`
       INSERT INTO triage_results (
         delivery_id, mode, confidence, heavy, rationale,
@@ -101,7 +101,7 @@ describe.skipIf(sql === null)("FR-014 aggregate queries — dispatch-stats.ts", 
     await db.close();
   });
 
-  it("eventsPerTarget — all rows collapse to 'daemon' post-migration", async () => {
+  it("eventsPerTarget, all rows collapse to 'daemon' post-migration", async () => {
     const { eventsPerTarget } = await import("../../src/db/queries/dispatch-stats");
     const rows = await eventsPerTarget(30, requireSql());
     expect(rows.length).toBe(1);
@@ -110,7 +110,7 @@ describe.skipIf(sql === null)("FR-014 aggregate queries — dispatch-stats.ts", 
     expect(rows[0]?.events).toBe(6);
   });
 
-  it("triageRate — counts ephemeral-daemon-triage as triaged", async () => {
+  it("triageRate: counts ephemeral-daemon-triage as triaged", async () => {
     const { triageRate } = await import("../../src/db/queries/dispatch-stats");
     const rows = await triageRate(30, requireSql());
 
@@ -127,7 +127,7 @@ describe.skipIf(sql === null)("FR-014 aggregate queries — dispatch-stats.ts", 
     }
   });
 
-  it("avgConfidenceAndFallback — averages over triage_results only, in-window", async () => {
+  it("avgConfidenceAndFallback: averages over triage_results only, in-window", async () => {
     const { avgConfidenceAndFallback } = await import("../../src/db/queries/dispatch-stats");
     const row = await avgConfidenceAndFallback(30, requireSql());
 
@@ -140,7 +140,7 @@ describe.skipIf(sql === null)("FR-014 aggregate queries — dispatch-stats.ts", 
     expect(row.sub_threshold_rate).toBeCloseTo(2 / 3, 5);
   });
 
-  it("triageSpend — sums cost_usd across in-window triage_results", async () => {
+  it("triageSpend: sums cost_usd across in-window triage_results", async () => {
     const { triageSpend } = await import("../../src/db/queries/dispatch-stats");
     const row = await triageSpend(30, requireSql());
 
@@ -148,7 +148,7 @@ describe.skipIf(sql === null)("FR-014 aggregate queries — dispatch-stats.ts", 
     expect(row.total_triage_spend_usd).toBeCloseTo(0.0027, 6);
   });
 
-  it("queries honour the `days` parameter — shrinking the window drops rows", async () => {
+  it("queries honour the `days` parameter, shrinking the window drops rows", async () => {
     const { eventsPerTarget, triageSpend } = await import("../../src/db/queries/dispatch-stats");
 
     // 1-day window: only d-1, d-2, d-3 survive (3 rows).

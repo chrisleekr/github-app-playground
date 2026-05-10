@@ -21,7 +21,7 @@ try {
 }
 
 function requireConn(): SQL {
-  if (sql === null) throw new Error("Database not available — test should have been skipped");
+  if (sql === null) throw new Error("Database not available, test should have been skipped");
   return sql;
 }
 
@@ -52,7 +52,7 @@ const baseInsert = (
 
 describe.skipIf(sql === null)("src/db/queries/ship.ts", () => {
   beforeAll(async () => {
-    // Ensure schema is in place — the migrate.test suite may run first or last.
+    // Ensure schema is in place, the migrate.test suite may run first or last.
     const { runMigrations } = await import("../../../src/db/migrate");
     await runMigrations(requireConn());
   });

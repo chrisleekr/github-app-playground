@@ -1,5 +1,5 @@
 /**
- * `runShipFromCommand` (T028) — entry point for the v2 ship lifecycle
+ * `runShipFromCommand` (T028): entry point for the v2 ship lifecycle
  * driven by a `CanonicalCommand` from `trigger-router.routeTrigger(...)`.
  * Distinct from the legacy `WorkflowHandler` exported by
  * `src/workflows/handlers/ship.ts`, which drives the workflow_runs
@@ -18,7 +18,7 @@
  *        (3) transition `ship_intents.status` to `ready_awaiting_human_merge`
  *
  * Deferred to follow-ups (intentionally scoped out of this slice):
- *   (d) continuation loop swap (US2 — fix iteration lives there)
+ *   (d) continuation loop swap (US2: fix iteration lives there)
  *   - label self-removal after acting (FR-026a; needs `label_name` carried
  *     in CanonicalCommand)
  *   - reply-as-thread (currently posts a fresh issue comment)
@@ -49,13 +49,13 @@ import type { NonReadinessReason } from "./verdict";
 
 /**
  * Probe verdict reasons that ship cannot make progress on at iteration 0
- * — the workflow would post a tracking comment that immediately
+ * the workflow would post a tracking comment that immediately
  * terminates with the same verdict it started with (issue #119). For
  * these we skip intent creation entirely and either reroute the trigger
  * to chat-thread (when the trigger carries a comment body) or post a
  * single human-readable refusal (label triggers).
  *
- * Currently scoped to `human_took_over` — a human-authored head SHA
+ * Currently scoped to `human_took_over`: a human-authored head SHA
  * means the bot must not push, so no amount of iteration helps. Other
  * non-readiness reasons are recoverable by ship (rebase, fix CI, wait
  * for checks, etc.) and stay on the iteration path.
@@ -96,7 +96,7 @@ export async function runShipFromCommand(input: RunShipFromCommandInput): Promis
     principal_login: command.principal_login,
   });
 
-  // (b) Eligibility first — never create state for ineligible PRs.
+  // (b) Eligibility first, never create state for ineligible PRs.
   const verdict = await checkEligibility({
     octokit,
     owner: command.pr.owner,
@@ -107,7 +107,7 @@ export async function runShipFromCommand(input: RunShipFromCommandInput): Promis
   if (!verdict.eligible) {
     log.info(
       { event: "ship.ineligible", reason: verdict.reason, surface: command.surface },
-      "ship trigger rejected — eligibility failed",
+      "ship trigger rejected, eligibility failed",
     );
     await postRefusal(octokit, command, verdict.message, log);
     return;
@@ -129,7 +129,7 @@ export async function runShipFromCommand(input: RunShipFromCommandInput): Promis
   if (pr === undefined || pr === null) {
     log.warn(
       { event: "ship.probe_pr_missing" },
-      "probe returned no pullRequest — aborting (eligibility verified moments ago)",
+      "probe returned no pullRequest, aborting (eligibility verified moments ago)",
     );
     return;
   }
@@ -147,7 +147,7 @@ export async function runShipFromCommand(input: RunShipFromCommandInput): Promis
         verdict_reason: verdictReason,
         verdict_detail: verdictDetail,
       },
-      "ship: probe verdict is unrecoverable at iteration 0 — handing off to chat-thread",
+      "ship: probe verdict is unrecoverable at iteration 0, handing off to chat-thread",
     );
     if (command.comment_body !== undefined && command.trigger_comment_id !== undefined) {
       await runChatThreadFromCommand(command, { octokit, log });
@@ -162,14 +162,14 @@ export async function runShipFromCommand(input: RunShipFromCommandInput): Promis
     if (await refusalAlreadyPosted(octokit, command, refusalMarker, log)) {
       log.info(
         { event: "ship.reroute_refusal_already_posted", verdict_reason: verdictReason },
-        "ship: prior reroute refusal already on PR — skipping duplicate",
+        "ship: prior reroute refusal already on PR, skipping duplicate",
       );
       return;
     }
     await postRefusal(
       octokit,
       command,
-      `${refusalMarker}\nthe ship workflow can't take over this PR — ${verdictDetail}. Comment \`${config.triggerPhrase}\` to discuss next steps.`,
+      `${refusalMarker}\nthe ship workflow can't take over this PR, ${verdictDetail}. Comment \`${config.triggerPhrase}\` to discuss next steps.`,
       log,
     );
     return;
@@ -178,7 +178,7 @@ export async function runShipFromCommand(input: RunShipFromCommandInput): Promis
   const deadlineMs = clampDeadline(command.deadline_ms);
   const deadlineAt = new Date(Date.now() + deadlineMs);
 
-  // (c) Create intent — partial unique index rejects re-trigger.
+  // (c) Create intent, partial unique index rejects re-trigger.
   const result = await createIntent({
     installation_id: command.pr.installation_id,
     owner: command.pr.owner,
@@ -193,7 +193,7 @@ export async function runShipFromCommand(input: RunShipFromCommandInput): Promis
   if (!result.ok) {
     log.info(
       { event: "ship.already_in_progress", existing_intent_id: result.existing.id },
-      "ship trigger rejected — session already in progress",
+      "ship trigger rejected, session already in progress",
     );
     await postReply(
       octokit,
@@ -233,7 +233,7 @@ export async function runShipFromCommand(input: RunShipFromCommandInput): Promis
     trigger_login: command.principal_login,
     deadline_at: deadlineAt,
     phase: "probing",
-    last_action: `Probed merge-readiness — verdict: ${verdictLabel(probe.verdict)}`,
+    last_action: `Probed merge-readiness, verdict: ${verdictLabel(probe.verdict)}`,
     iteration_n: 0,
     spent_usd: 0,
   });
@@ -256,7 +256,7 @@ export async function runShipFromCommand(input: RunShipFromCommandInput): Promis
     return;
   }
 
-  // (e) Terminal shortcut — verdict is `ready`.
+  // (e) Terminal shortcut, verdict is `ready`.
   if (probe.verdict.ready) {
     await terminalReady({
       octokit,
@@ -282,7 +282,7 @@ export async function runShipFromCommand(input: RunShipFromCommandInput): Promis
   // so the next iteration re-enters via the tickle scheduler (US2).
   log.info(
     { event: "ship.session_started", intent_id: intent.id, verdict: verdictLabel(probe.verdict) },
-    "ship session created — bridging non-ready verdict to iteration handler",
+    "ship session created, bridging non-ready verdict to iteration handler",
   );
 
   await runIteration({
@@ -294,7 +294,7 @@ export async function runShipFromCommand(input: RunShipFromCommandInput): Promis
 
 /**
  * Resume a paused (or active-but-tickled) intent by re-running the probe
- * and bridging the verdict back to the iteration handler. Idempotent —
+ * and bridging the verdict back to the iteration handler. Idempotent,
  * terminal intents are no-ops; cap/deadline are re-checked inside
  * `runIteration` at every resume so a slow PR cannot accidentally exceed
  * its budget.
@@ -319,14 +319,14 @@ export async function resumeShipIntent(input: ResumeShipIntentInput): Promise<vo
   if (intent === null) {
     log.warn(
       { event: "ship.tickle.skip_terminal", reason: "intent_not_found" },
-      "resumeShipIntent: intent not found — tickle entry stale, skipping",
+      "resumeShipIntent: intent not found, tickle entry stale, skipping",
     );
     return;
   }
   if (intent.status !== "active" && intent.status !== "paused") {
     log.info(
       { event: "ship.tickle.skip_terminal", status: intent.status },
-      "resumeShipIntent: intent already terminal — tickle entry obsolete, skipping",
+      "resumeShipIntent: intent already terminal, tickle entry obsolete, skipping",
     );
     return;
   }
@@ -348,7 +348,7 @@ export async function resumeShipIntent(input: ResumeShipIntentInput): Promise<vo
       status: intent.status,
       verdict: verdictLabel(probe.verdict),
     },
-    "ship intent resumed by tickle — bridging verdict to iteration handler",
+    "ship intent resumed by tickle, bridging verdict to iteration handler",
   );
 
   if (probe.verdict.ready) {
@@ -387,7 +387,7 @@ async function postRefusal(
   reason: string,
   log: Logger,
 ): Promise<void> {
-  const body = `\`bot:ship\` declined — ${reason}`;
+  const body = `\`bot:ship\` declined, ${reason}`;
   try {
     await safePostToGitHub({
       body,
@@ -411,7 +411,7 @@ async function postRefusal(
  * Returns true when a prior reroute-refusal carrying the same marker is
  * already present on the PR. Used to dedup label-trigger reroute refusals
  * against repeat label applies (each apply is a fresh webhook delivery).
- * Best-effort — on listComments failure we fall through and post (the
+ * Best-effort: on listComments failure we fall through and post (the
  * dup-comment cost is small; missing the refusal would be worse).
  */
 async function refusalAlreadyPosted(
@@ -519,7 +519,7 @@ async function terminalReady(input: TerminalReadyInput): Promise<void> {
     return;
   }
 
-  // (e)(1) markPullRequestReadyForReview — gated on isDraft. Failure
+  // (e)(1) markPullRequestReadyForReview, gated on isDraft. Failure
   // MUST NOT block (2)/(3) but MUST be surfaced.
   let markReadyError: string | null = null;
   if (isDraft && pullRequestNodeId !== null) {
@@ -535,14 +535,14 @@ async function terminalReady(input: TerminalReadyInput): Promise<void> {
       markReadyError = err instanceof Error ? err.message : String(err);
       log.error(
         { err, event: "ship.ready_for_review_failed", intent_id: intentId },
-        "markPullRequestReadyForReview failed — proceeding with terminal transition",
+        "markPullRequestReadyForReview failed, proceeding with terminal transition",
       );
     }
   } else if (isDraft && pullRequestNodeId === null) {
     markReadyError = "could not resolve pull request node id";
     log.warn(
       { event: "ship.ready_for_review_skipped", intent_id: intentId },
-      "skipped markPullRequestReadyForReview — node id unavailable",
+      "skipped markPullRequestReadyForReview, node id unavailable",
     );
   }
 
@@ -554,8 +554,8 @@ async function terminalReady(input: TerminalReadyInput): Promise<void> {
     phase: "terminal",
     last_action:
       markReadyError === null
-        ? "PR is merge-ready — handed back for human merge"
-        : `PR is merge-ready — handed back for human merge (markReadyForReview failed: ${markReadyError})`,
+        ? "PR is merge-ready, handed back for human merge"
+        : `PR is merge-ready, handed back for human merge (markReadyForReview failed: ${markReadyError})`,
     iteration_n: 0,
     spent_usd: 0,
     terminal_state: "ready_awaiting_human_merge",

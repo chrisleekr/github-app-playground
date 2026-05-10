@@ -68,7 +68,7 @@ const workflowRunRefSchema = z.object({
 /**
  * Per-kind context passed alongside `job:payload` for scoped jobs. Mirrors
  * the discriminator in `scoped-job-offer` so the daemon's executor can route
- * via the same Zod parse — discriminator at the schema level, not via runtime
+ * via the same Zod parse: discriminator at the schema level, not via runtime
  * presence checks (per contracts/ws-messages.md validation requirement).
  */
 const scopedThreadRefSchema = z
@@ -385,7 +385,7 @@ export const WS_CLOSE_CODES = {
   INCOMPATIBLE_PROTOCOL: { code: 4003, reason: "incompatible protocol version" },
 } as const;
 
-// Reject taxonomy — canonical reason strings the daemon may emit on
+// Reject taxonomy, canonical reason strings the daemon may emit on
 // `job:reject`. The wire-level type stays `z.string()` for forward-compat;
 // these constants are the contract for callers that branch on reason.
 export const WS_REJECT_REASONS = {

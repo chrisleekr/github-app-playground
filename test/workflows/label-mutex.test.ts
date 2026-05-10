@@ -1,7 +1,7 @@
 /**
  * Unit tests for enforceSingleBotLabel.
  *
- * Octokit is stubbed — the function's only side effects are three REST calls,
+ * Octokit is stubbed: the function's only side effects are three REST calls,
  * and we assert exactly which are made.
  */
 

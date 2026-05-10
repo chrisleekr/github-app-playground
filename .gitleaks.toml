@@ -11,11 +11,11 @@ useDefault = true
 # Uses the canonical v8 [[allowlists]] plural syntax. The legacy singular
 # [allowlist] form is NOT used because gitleaks rejects mixing the two
 # in the same file ("[allowlist] is deprecated, it cannot be used alongside
-# [[allowlists]]") — see https://github.com/gitleaks/gitleaks v8.21.0 release notes.
-# Keep entries narrow and explanatory — broad allowlists defeat the purpose.
+# [[allowlists]]"): see https://github.com/gitleaks/gitleaks v8.21.0 release notes.
+# Keep entries narrow and explanatory: broad allowlists defeat the purpose.
 
 # Paths where secret-like content is intentional (examples, test fixtures).
-# Note: bun.lock is NOT here — it gets a scoped allowlist below that only
+# Note: bun.lock is NOT here: it gets a scoped allowlist below that only
 # suppresses integrity hashes, preserving scanning for embedded tokens.
 [[allowlists]]
 description = "Project paths with documented placeholder content"
@@ -65,9 +65,9 @@ targetRules = ["private-key"]
 # placeholder blocks (e.g. <YOUR_BASE64_ENCODED_KEY_CONTENT_HERE>). The
 # `private-key` rule matches the -----BEGIN/END----- envelope even with
 # placeholder content. Scope narrowly: only the two paths MkDocs produces,
-# only the `private-key` rule — any other rule hit in gh-pages still fires.
+# only the `private-key` rule: any other rule hit in gh-pages still fires.
 [[allowlists]]
-description = "MkDocs gh-pages output — placeholder PEM blocks from docs/SETUP.md"
+description = "MkDocs gh-pages output, placeholder PEM blocks from docs/SETUP.md"
 paths = [
   '''^SETUP/index\.html$''',
   '''^search/search_index\.json$''',

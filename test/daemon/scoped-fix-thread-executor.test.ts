@@ -54,7 +54,7 @@ describe("executeScopedFixThread", () => {
   });
 
   // H2: 4xx from `createReplyForReviewComment` must map to `halted` (with a
-  // structured reason), NOT `failed` — operator dashboards must distinguish
+  // structured reason), NOT `failed`, operator dashboards must distinguish
   // "user deleted the comment" from "executor crashed."
   it("maps Octokit 4xx errors to halted with a structured reason (H2)", async () => {
     mockCreateReply.mockClear();

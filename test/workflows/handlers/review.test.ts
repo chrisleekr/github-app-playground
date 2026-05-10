@@ -7,7 +7,7 @@
  * REVIEW.md capture, state shape, and the human-readable headline.
  *
  * The agent's actual behaviour (reading files, posting findings via
- * `gh api`) is covered by the integration smoke test, not here — that
+ * `gh api`) is covered by the integration smoke test, not here: that
  * needs a real PR and is out of scope for unit tests.
  */
 
@@ -29,7 +29,7 @@ void mock.module("../../../src/core/pipeline", () => ({
   runPipeline: mock(async () => Promise.resolve(pipelineResult)),
 }));
 
-// Stub the runs-store DB read — the handler reads back the seeded
+// Stub the runs-store DB read, the handler reads back the seeded
 // tracking_comment_id after the first setState call. Tests don't run
 // against a real DB, so return a row with a deterministic id.
 void mock.module("../../../src/workflows/runs-store", () => ({
@@ -62,9 +62,9 @@ interface PrOverrides {
   changedFiles?: number;
   additions?: number;
   deletions?: number;
-  /** Default 0 — branch is up-to-date. */
+  /** Default 0, branch is up-to-date. */
   behindBy?: number;
-  /** Default false — head is on the same repo as base. */
+  /** Default false, head is on the same repo as base. */
   isFork?: boolean;
 }
 
@@ -136,7 +136,7 @@ describe("review handler", () => {
       durationMs: 60000,
       capturedFiles: {
         "REVIEW.md":
-          "## Summary\n\nReviewed 3 files. One inline finding posted.\n\n## What was checked\n\n- src/foo.ts\n- src/bar.ts\n- src/baz.ts\n\n## Findings\n\n- [major] src/foo.ts:42 — example finding for the test fixture",
+          "## Summary\n\nReviewed 3 files. One inline finding posted.\n\n## What was checked\n\n- src/foo.ts\n- src/bar.ts\n- src/baz.ts\n\n## Findings\n\n- [major] src/foo.ts:42, example finding for the test fixture",
       },
     };
   });
@@ -273,7 +273,7 @@ Found 4 issues.
   it("returns all-zeros for an empty or no-findings report", async () => {
     const { countFindings } = await import("../../../src/workflows/handlers/review");
     expect(countFindings("")).toEqual({ blocker: 0, major: 0, minor: 0, nit: 0, total: 0 });
-    expect(countFindings("## Summary\n\nNo findings — all clean.")).toEqual({
+    expect(countFindings("## Summary\n\nNo findings, all clean.")).toEqual({
       blocker: 0,
       major: 0,
       minor: 0,

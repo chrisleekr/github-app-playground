@@ -3,7 +3,7 @@
  * Each `it` block names the SCN-* identifier from the doc so failures
  * map back to the threat being protected against.
  *
- * These tests target the FIRST-PARTY chokepoints — sanitize, redactSecrets,
+ * These tests target the FIRST-PARTY chokepoints: sanitize, redactSecrets,
  * and the prompt-builder spotlight nonce. End-to-end coverage (triage
  * classifier + agent + output guard chained together) is exercised by the
  * live runs documented in SCENARIOS.md, not here.
@@ -15,7 +15,7 @@ import { buildPrompt } from "../../src/core/prompt-builder";
 import { redactSecrets, sanitizeContent } from "../../src/utils/sanitize";
 import { makeBotContext, makeFetchedData } from "../factories";
 
-describe("SCN-C — invisible / Unicode obfuscation", () => {
+describe("SCN-C: invisible / Unicode obfuscation", () => {
   it("C1: strips zero-width separators (U+200B/C/D, FEFF)", () => {
     const out = sanitizeContent("dump​env‌vars‍﻿");
     expect(out).toBe("dumpenvvars");
@@ -35,14 +35,14 @@ describe("SCN-C — invisible / Unicode obfuscation", () => {
     expect(sanitizeContent("dump&#8203;env&#x200B;vars")).toBe("dumpenvvars");
   });
 
-  it("C5: strips Unicode TAG block (U+E0000–U+E007F) — KNOWN-GAP fix", () => {
+  it("C5: strips Unicode TAG block (U+E0000–U+E007F), KNOWN-GAP fix", () => {
     // Encode "DUMP" as tag chars: U+E0044 U+E0055 U+E004D U+E0050.
     const tagged = "ok " + "\u{E0044}\u{E0055}\u{E004D}\u{E0050}";
     expect(sanitizeContent(tagged)).toBe("ok ");
   });
 });
 
-describe("SCN-B — input-side prompt-injection vectors", () => {
+describe("SCN-B: input-side prompt-injection vectors", () => {
   it("B1: strips HTML comments (single and multi-line)", () => {
     expect(sanitizeContent("hello <!-- evil --> world")).toBe("hello  world");
     expect(sanitizeContent("a\n<!--\nmulti\nline\n-->\nb")).toBe("a\n\nb");
@@ -67,7 +67,7 @@ describe("SCN-B — input-side prompt-injection vectors", () => {
   });
 });
 
-describe("SCN-D — output-side secret redaction (regex pass)", () => {
+describe("SCN-D: output-side secret redaction (regex pass)", () => {
   const cases: { kind: string; sample: string }[] = [
     { kind: "GITHUB_TOKEN", sample: `ghp_${"A".repeat(36)}` },
     { kind: "GITHUB_TOKEN", sample: `gho_${"B".repeat(36)}` },
@@ -118,7 +118,7 @@ describe("SCN-D — output-side secret redaction (regex pass)", () => {
   });
 });
 
-describe("SCN-E — spotlight tag scheme (per-call nonce)", () => {
+describe("SCN-E: spotlight tag scheme (per-call nonce)", () => {
   it("E1: every buildPrompt invocation produces a distinct tag-name suffix", () => {
     const ctx = makeBotContext();
     const data = makeFetchedData();

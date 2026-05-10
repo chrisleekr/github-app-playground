@@ -1,7 +1,7 @@
 <!-- markdownlint-disable MD041 -->
 <!-- cspell:ignore WCAG -->
 <!--
-Bot-authored PR template — used by the `implement` workflow. Mirrors the
+Bot-authored PR template, used by the `implement` workflow. Mirrors the
 human PR template's top-level shape (Summary / Diagram / Changes / Related
 Issues / Test plan) but adds machine-fillable sections the bot already
 captures during its run (Files changed, Commits, Tests run, Verification).
@@ -19,7 +19,7 @@ should be omitted if they would only contain placeholder text.
 ## Diagram
 
 <!-- Required when behaviour or flow changes (new code paths, new state, new
-external calls, new error handling, sequence shifts) — include a single
+external calls, new error handling, sequence shifts), include a single
 mermaid block. Only omit this section entirely for pure refactors, typo
 fixes, or test-only changes.
 GitHub-compat rules: WCAG 2 AA contrast pairs in classDef, `<br/>` for

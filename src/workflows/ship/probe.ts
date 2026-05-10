@@ -4,7 +4,7 @@
  * `mergeable=null` backoff schedule from `MERGEABLE_NULL_BACKOFF_MS_LIST`,
  * and returns a `MergeReadiness` verdict via `verdict.ts`.
  *
- * On schedule exhaustion the verdict is `mergeable_pending` — the
+ * On schedule exhaustion the verdict is `mergeable_pending`: the
  * session yields per FR-020 and the loop never terminates on a null
  * mergeable status.
  */
@@ -55,9 +55,9 @@ export interface RunProbeInput {
   readonly pr_number: number;
   readonly botAppLogin: string;
   readonly botPushedShas: ReadonlySet<string>;
-  /** Override the env-driven backoff list — primarily for tests. */
+  /** Override the env-driven backoff list, primarily for tests. */
   readonly mergeableBackoffMs?: readonly number[];
-  /** Override the sleep function — required for deterministic tests. */
+  /** Override the sleep function, required for deterministic tests. */
   readonly sleep?: (ms: number) => Promise<void>;
 }
 
@@ -75,7 +75,7 @@ const defaultSleep = (ms: number): Promise<void> =>
  * Paginate `reviewThreads` past the first 100 nodes returned by
  * `PROBE_QUERY`. Early-exits as soon as any unresolved + non-outdated
  * thread is found (the verdict only needs to know whether at least one
- * exists — exact count past the first hit is irrelevant).
+ * exists: exact count past the first hit is irrelevant).
  *
  * Network/rate-limit blips during pagination are handled by
  * `retryWithBackoff`; if a page genuinely cannot be fetched the helper
@@ -152,7 +152,7 @@ export async function runProbe(input: RunProbeInput): Promise<ProbeResult> {
 
   // Each individual GraphQL call is wrapped in retryWithBackoff so a
   // single rate-limit or network blip cannot tear down the whole probe
-  // — turning a recoverable yield into a session-aborting error. The
+  //, turning a recoverable yield into a session-aborting error. The
   // outer mergeable=null backoff loop is preserved separately because
   // it has different semantics (waiting for GitHub to finish computing
   // mergeable, not retrying a transient failure).
@@ -188,7 +188,7 @@ export async function runProbe(input: RunProbeInput): Promise<ProbeResult> {
     }
   }
 
-  // Schedule exhausted — return mergeable_pending; caller yields per FR-020.
+  // Schedule exhausted, return mergeable_pending; caller yields per FR-020.
   if (lastResponse === null) {
     throw new Error("runProbe: no GraphQL response captured (this is a bug)");
   }
@@ -205,7 +205,7 @@ export async function runProbe(input: RunProbeInput): Promise<ProbeResult> {
   return { verdict, response: fullResponse };
 }
 
-// ─── T044/T052 — `runProbeIntegrated`: opt-in wrapper that adds the
+// ─── T044/T052, `runProbeIntegrated`: opt-in wrapper that adds the
 // review-barrier, flake-tracker, base-ref resync, and verdict_json
 // persistence layers around `runProbe`. Existing callers of `runProbe`
 // are unaffected.
@@ -222,7 +222,7 @@ export interface RunProbeIntegratedInput extends RunProbeInput {
   /** Sequential history of check entries observed across iterations. */
   readonly flakeHistory?: readonly CheckHistoryEntry[];
   /**
-   * REST octokit for `POST /check-runs/:id/rerequest` (T041). Optional —
+   * REST octokit for `POST /check-runs/:id/rerequest` (T041). Optional,
    * when omitted, flake reruns are skipped (the verdict still flips
    * away from `ready`).
    */
@@ -247,7 +247,7 @@ export async function runProbeIntegrated(
   const pr = result.response.repository?.pullRequest;
   let verdict = result.verdict;
 
-  // T043 — base-ref resync (cascade base change).
+  // T043, base-ref resync (cascade base change).
   let baseShaResynced = false;
   if (pr !== undefined && pr !== null) {
     const observedBase = pr.baseRefOid;
@@ -261,7 +261,7 @@ export async function runProbeIntegrated(
     }
   }
 
-  // T044 — review-barrier: gate `ready` verdicts.
+  // T044, review-barrier: gate `ready` verdicts.
   if (verdict.ready && input.applyReviewBarrier !== undefined) {
     // The barrier shape is declared narrowly in `review-barrier.ts` and
     // doesn't fully overlap with `ProbeResponseShape`'s nested types
@@ -285,7 +285,7 @@ export async function runProbeIntegrated(
     }
   }
 
-  // T044 — flake tracker: project history; trigger reruns; re-write
+  // T044, flake tracker: project history; trigger reruns; re-write
   // verdict if flakes observed AND we'd otherwise have said ready.
   const projectedHistory = projectHistoryFromProbe(result.response);
   const fullHistory: readonly CheckHistoryEntry[] = input.flakeHistory
@@ -312,7 +312,7 @@ export async function runProbeIntegrated(
     }
   }
 
-  // T052 — write verdict_json + full GraphQL response to ship_iterations.
+  // T052, write verdict_json + full GraphQL response to ship_iterations.
   try {
     await appendIteration(
       {
@@ -324,7 +324,7 @@ export async function runProbeIntegrated(
       sql,
     );
   } catch (err) {
-    // Best-effort — audit-row failure must not abort the iteration.
+    // Best-effort, audit-row failure must not abort the iteration.
     // Log so an unexpected persistence failure shows up in observability.
     logger.warn(
       { err, intent_id: input.intent_id, event: "ship.probe.audit_row_failed" },

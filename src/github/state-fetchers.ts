@@ -2,7 +2,7 @@
  * Read-only GitHub state fetchers shared between the github-state MCP
  * subprocess server (Agent SDK callers) and the single-turn `runWithTools`
  * loop (chat-thread, triage). One source of truth for the tool surface
- * — adding a new GitHub-state tool means editing one file, and every
+ * adding a new GitHub-state tool means editing one file, and every
  * consumer inherits.
  *
  * Each fetcher returns a JSON-serialised string suitable for an MCP
@@ -228,7 +228,7 @@ export async function getBranchProtection(deps: GithubStateDeps, branch: string)
       restrictions: result.data.restrictions ?? null,
     });
   } catch (err) {
-    // 404 is expected for unprotected branches — return a structured payload, not an error.
+    // 404 is expected for unprotected branches, return a structured payload, not an error.
     // Octokit RequestError carries `status` directly; that's more reliable than
     // matching the message string (which varies by SDK version and locale).
     if (
@@ -325,7 +325,7 @@ export const GITHUB_STATE_TOOLS: readonly LLMTool[] = [
   {
     name: "get_pr_state_check_rollup",
     description:
-      "Fetch the head-commit CI rollup (state + per-check rows + is_required) for a PR in the current repo. Use this when answering questions about CI status, why a PR isn't merging, or which checks failed. Returns one JSON object — call once and reason from the result.",
+      "Fetch the head-commit CI rollup (state + per-check rows + is_required) for a PR in the current repo. Use this when answering questions about CI status, why a PR isn't merging, or which checks failed. Returns one JSON object, call once and reason from the result.",
     input_schema: {
       type: "object",
       properties: {
@@ -373,7 +373,7 @@ export const GITHUB_STATE_TOOLS: readonly LLMTool[] = [
   {
     name: "get_pr_diff",
     description:
-      "Fetch the unified diff for a PR (capped at ~50KB). Use sparingly — diffs are token-expensive; prefer the file list and inline reviews where possible.",
+      "Fetch the unified diff for a PR (capped at ~50KB). Use sparingly, diffs are token-expensive; prefer the file list and inline reviews where possible.",
     input_schema: {
       type: "object",
       properties: {

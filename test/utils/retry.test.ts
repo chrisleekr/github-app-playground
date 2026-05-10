@@ -27,7 +27,7 @@ async function expectImmedateThrow(
   expect((op as ReturnType<typeof mock>).mock.calls.length).toBe(expectedCalls);
 }
 
-describe("retryWithBackoff — success path", () => {
+describe("retryWithBackoff: success path", () => {
   it("returns the result on first successful attempt", async () => {
     const op = mock(() => Promise.resolve("ok"));
     const result = await retryWithBackoff(op, { log: silentLog });
@@ -52,7 +52,7 @@ describe("retryWithBackoff — success path", () => {
   });
 });
 
-describe("retryWithBackoff — 4xx non-retriable errors", () => {
+describe("retryWithBackoff: 4xx non-retriable errors", () => {
   it("does NOT retry on 400 Bad Request", async () => {
     const op = mock(() => Promise.reject(makeStatusError(400)));
     await expectImmedateThrow(op, "HTTP 400", 1);
@@ -74,7 +74,7 @@ describe("retryWithBackoff — 4xx non-retriable errors", () => {
   });
 });
 
-describe("retryWithBackoff — 429 Too Many Requests (should retry)", () => {
+describe("retryWithBackoff: 429 Too Many Requests (should retry)", () => {
   it("retries on 429 and succeeds on the next attempt", async () => {
     let calls = 0;
     const op = mock(() => {
@@ -92,7 +92,7 @@ describe("retryWithBackoff — 429 Too Many Requests (should retry)", () => {
   });
 });
 
-describe("retryWithBackoff — 5xx server errors (should retry)", () => {
+describe("retryWithBackoff: 5xx server errors (should retry)", () => {
   it("retries on 500 Internal Server Error", async () => {
     let calls = 0;
     const op = mock(() => {
@@ -126,7 +126,7 @@ describe("retryWithBackoff — 5xx server errors (should retry)", () => {
   });
 });
 
-describe("retryWithBackoff — exhaustion", () => {
+describe("retryWithBackoff: exhaustion", () => {
   it("throws the last error after all attempts are exhausted", async () => {
     const op = mock(() => Promise.reject(new Error("always fails")));
     let thrownMsg = "";
@@ -140,7 +140,7 @@ describe("retryWithBackoff — exhaustion", () => {
   });
 });
 
-describe("retryWithBackoff — input validation", () => {
+describe("retryWithBackoff: input validation", () => {
   /**
    * Helper: invoke retryWithBackoff with an invalid option and capture the
    * rejection. Asserts that the operation was NEVER called (validation must

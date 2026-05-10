@@ -122,7 +122,7 @@ describe.skipIf(sql === null)("fix-attempts ledger (T033)", () => {
     expect(row?.attempts).toBe(2);
   });
 
-  it("isolation between intents — same signature, different intents", async () => {
+  it("isolation between intents: same signature, different intents", async () => {
     const idA = await makeIntent(4);
     const idB = await makeIntent(5);
     await recordAttempt({ intent_id: idA, signature: "sig-Z", tier: 1 });

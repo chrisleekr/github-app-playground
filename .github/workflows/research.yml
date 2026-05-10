@@ -61,13 +61,13 @@ jobs:
 
       # Pre-install mermaid-cli so the agent can validate every Mermaid
       # block in /tmp/issue-body.md BEFORE calling `gh issue create`.
-      # See the "Mermaid validation" step in the agent prompt — invalid
+      # See the "Mermaid validation" step in the agent prompt: invalid
       # diagrams used to slip through and render as a parse error block
       # on GitHub (see issue #86 for an example), and prompt-only rules
       # alone did not hold.
       - name: Install mermaid-cli for diagram validation
         # Pinned to a specific version so the validation gate behaves
-        # reproducibly across runs. Bump deliberately — see
+        # reproducibly across runs. Bump deliberately: see
         # https://github.com/mermaid-js/mermaid-cli/releases.
         run: |
           npm install -g @mermaid-js/mermaid-cli@11.14.0
@@ -104,9 +104,9 @@ jobs:
           echo "area=$selected" >> "$GITHUB_OUTPUT"
 
       # Workarounds inherited from anthropics/claude-code-action:
-      # - PAT auth (not OIDC) — cron triggers fail OIDC token exchange (#814)
-      # - allowed_bots: '*' — checkHumanActor blocks scheduled triggers (#900)
-      # - --disallowedTools "" — WebSearch/WebFetch are denied by default (#690)
+      # - PAT auth (not OIDC): cron triggers fail OIDC token exchange (#814)
+      # - allowed_bots: '*': checkHumanActor blocks scheduled triggers (#900)
+      # - --disallowedTools "": WebSearch/WebFetch are denied by default (#690)
       - name: Run research with Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
@@ -134,7 +134,7 @@ jobs:
             subsystem can be improved, then create AT MOST ONE deeply
             researched GitHub issue.
 
-            ## Quality Gate (HARD — failures discard the finding)
+            ## Quality Gate (HARD: failures discard the finding)
 
             Every finding MUST satisfy ALL of the following before becoming an
             issue:
@@ -146,7 +146,7 @@ jobs:
                `src/` structure and conventions in CLAUDE.md.
             3. **100% accurate references**: every cited file path, function
                name, and line number is VERIFIED by reading the actual files
-               in this repo (use Read/Glob/Grep — the repo is checked out at
+               in this repo (use Read/Glob/Grep: the repo is checked out at
                the working directory).
             4. **Non-duplicate**: does not materially overlap with any
                existing research-labelled issue (open OR closed) in the same
@@ -159,11 +159,11 @@ jobs:
             for a different finding within the SAME FOCUS_AREA. Do not switch
             areas.
 
-            ## Strict Workflow — Follow In Order
+            ## Strict Workflow: Follow In Order
 
             You have a LIMITED turn budget (~200 turns). Do NOT read every file.
 
-            ### Step 1 — Architecture overview (2-3 turns max)
+            ### Step 1: Architecture overview (2-3 turns max)
 
             - Read `CLAUDE.md` for the project overview, conventions, and
               recent changes.
@@ -172,7 +172,7 @@ jobs:
               `specs/20260410-164348-scheduled-research-workflow/spec.md` so
               you do not file a meta-finding about this very workflow.
 
-            ### Step 2 — Duplicate check (1 turn)
+            ### Step 2: Duplicate check (1 turn)
 
             Run:
 
@@ -184,7 +184,7 @@ jobs:
             If your candidate finding overlaps with any existing one, find a
             DIFFERENT finding within the same FOCUS_AREA. Do NOT switch areas.
 
-            ### Step 3 — Subsystem deep-dive (5-15 turns)
+            ### Step 3: Subsystem deep-dive (5-15 turns)
 
             Read the key files for the FOCUS_AREA. Mappings:
 
@@ -203,13 +203,13 @@ jobs:
 
             Understand the CURRENT behaviour before proposing improvements.
 
-            ### Step 4 — External research (3-8 turns)
+            ### Step 4: External research (3-8 turns)
 
             Use WebSearch / WebFetch to find current best practices for the
             FOCUS_AREA. Look for: new patterns, libraries, security
             advisories, performance techniques, recent CVEs, etc.
 
-            ### Step 4.5 — Validate every Mermaid block (HARD GATE)
+            ### Step 4.5: Validate every Mermaid block (HARD GATE)
 
             BEFORE calling `gh issue create`, every ```mermaid``` block in
             /tmp/issue-body.md MUST validate via `mmdc`. The workflow
@@ -220,7 +220,7 @@ jobs:
             1. As you write the issue body in Step 5, ALSO write each Mermaid
                block to its own file using a heredoc. Number them
                sequentially: `/tmp/diag-1.mmd`, `/tmp/diag-2.mmd`, etc. The
-               file content is JUST the diagram — NOT wrapped in
+               file content is JUST the diagram, NOT wrapped in
                ` ```mermaid ` fences.
             2. Validate each one:
                `mmdc -i /tmp/diag-N.mmd -o /tmp/diag-N.svg --quiet`
@@ -231,26 +231,26 @@ jobs:
             4. If a block STILL fails after 3 attempts: DISCARD the issue
                entirely. Do NOT call `gh issue create`. Output a `## No
                Finding` block to your final reply with the last `mmdc`
-               stderr — this counts as a "no finding qualified" run.
+               stderr: this counts as a "no finding qualified" run.
             5. Only proceed to `gh issue create` when EVERY block has
                validated cleanly.
 
             Common Mermaid pitfalls that trip GitHub's renderer (and
             `mmdc` agrees with):
-              - `classDef foo fill:#xxx,color:#yyy` — comma between
+              - `classDef foo fill:#xxx,color:#yyy`, comma between
                 properties is invalid; use SEMICOLON: `fill:#xxx;color:#yyy`.
-              - Literal `\n` inside node labels — use `<br/>`.
+              - Literal `\n` inside node labels: use `<br/>`.
               - Unicode/control characters silently injected by heredoc
-                quoting — if `mmdc` reports a parse error with weird
+                quoting, if `mmdc` reports a parse error with weird
                 characters in the offending line, re-write the block
                 from scratch using only ASCII for syntax (hex colours
                 and labels are still ASCII).
               - Parentheses inside node labels.
               - Node IDs shorter than 3 chars or matching reserved words.
 
-            ### Step 5 — Create the issue (3-5 turns)
+            ### Step 5: Create the issue (3-5 turns)
 
-            First, create the labels (idempotent — `--force` makes this a
+            First, create the labels (idempotent, `--force` makes this a
             no-op if they already exist):
 
             ```
@@ -267,21 +267,21 @@ jobs:
             Use a heredoc to write the body to `/tmp/issue-body.md`. The body
             MUST contain (in this exact order):
 
-            1. `## Finding` — 1-3 paragraphs of plain prose. Cite exact file
+            1. `## Finding`, 1-3 paragraphs of plain prose. Cite exact file
                paths and line numbers. Explain current behaviour and how it
                can be improved.
-            2. `## Diagram` — a fenced ` ```mermaid ` code block containing a
+            2. `## Diagram`: a fenced ` ```mermaid ` code block containing a
                Mermaid diagram that EXPLAINS the finding. See Mermaid Rules
                below.
-            3. `## Rationale` — 1-3 paragraphs explaining why this matters.
+            3. `## Rationale`, 1-3 paragraphs explaining why this matters.
                Include metrics or quantitative estimates where possible.
-            4. `## References` — both `**Internal**:` and `**External**:`
+            4. `## References`, both `**Internal**:` and `**External**:`
                sub-bullets, each with at least one entry. Internal entries
                cite verified file paths; external entries are URLs from
                WebSearch/WebFetch.
-            5. `## Suggested Next Steps` — a numbered list with at least one
+            5. `## Suggested Next Steps`: a numbered list with at least one
                concrete action.
-            6. `## Areas Evaluated` — what you looked at this run.
+            6. `## Areas Evaluated`, what you looked at this run.
             7. Footer line: `*Generated by scheduled research workflow run
                #${{ github.run_id }} on YYYY-MM-DD*` (use `$(date -u
                +%Y-%m-%d)` for the date).
@@ -316,19 +316,19 @@ jobs:
               - GOOD: `classDef foo fill:#196f3d;color:#ffffff`
               - BAD:  `classDef foo fill:#196f3d,color:#ffffff` (silently
                 breaks)
-            - Use `<br/>` for line breaks inside node labels — NEVER literal
+            - Use `<br/>` for line breaks inside node labels: NEVER literal
               `\n`.
-            - NO parentheses inside node labels — they break the parser.
+            - NO parentheses inside node labels: they break the parser.
               - GOOD: `nodeA["label without parens"]`
               - BAD:  `nodeA["foo(bar)"]`
             - Use `:::className` inline syntax with `classDef`. Separate
               `class NodeId className` statements fail in GitHub's renderer.
-            - Avoid multiple `subgraph` blocks — flatten or use one.
+            - Avoid multiple `subgraph` blocks: flatten or use one.
             - Node IDs must be >=3 characters (avoid Mermaid reserved-word
               collisions).
             - Use WCAG AA contrast colour pairs (>=4.5:1).
             - Diagram MUST EXPLAIN the finding, not decorate it.
-            - Wrap the diagram in a fenced ` ```mermaid ` code block —
+            - Wrap the diagram in a fenced ` ```mermaid ` code block,
               required for GitHub Markdown to render it.
 
             ## If No Finding Qualifies
@@ -364,25 +364,25 @@ jobs:
                   covered by this rule.
                 * Placeholder titles such as "smoke", "wip", "todo",
                   "delete me", "can-delete", or "scratch".
-                * Single-word or cryptic titles (e.g. "test-can-delete" —
+                * Single-word or cryptic titles (e.g. "test-can-delete",
                   see issue #73 for an example of what NOT to file).
                 * Empty or near-empty bodies (anything under ~500 chars
                   that is not a fully-templated finding).
-                * "Heredoc test" or "gh CLI smoke test" issues — if you
+                * "Heredoc test" or "gh CLI smoke test" issues: if you
                   need to verify your shell environment, use
                   `gh --version` or `gh auth status`, NEVER `gh issue
                   create`.
               Every created issue MUST contain ALL seven sections from
               the Issue Body Template above, with REAL content in each.
               The Mermaid validation gate (Step 4.5) is independent of
-              this rule — both must pass.
+              this rule, both must pass.
             - Only the final issue with the complete body via
               `--body-file /tmp/issue-body.md`.
 
       # FR-018 (structured outcome log) + FR-015 enforcement (technical guard
       # against the agent creating more than one issue per run). Outcome
       # categories match data-model.md §1's ScheduledRun.outcome enum exactly.
-      # The fr_015_violation outcome is a safety net — it should never fire
+      # The fr_015_violation outcome is a safety net: it should never fire
       # in practice because the prompt forbids multiple issues, but if it
       # does, the workflow fails so the maintainer is notified via the
       # standard GHA workflow-failure email.

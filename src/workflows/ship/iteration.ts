@@ -53,12 +53,12 @@ export type RunIterationOutcome =
   | { readonly outcome: "in-flight"; readonly runId: string };
 
 /**
- * Drive one iteration. Pure-ish — no GitHub API calls; only Postgres +
+ * Drive one iteration. Pure-ish: no GitHub API calls; only Postgres +
  * Valkey writes via injected dependencies. Returns the outcome so the
  * caller can decide whether to short-circuit (e.g., on `ready-shortcut`).
  *
  * @throws when `probeVerdict` is non-ready but lacks a `reason` field
- *         (defensive — the verdict shape guarantees this, but we surface
+ *         (defensive: the verdict shape guarantees this, but we surface
  *         a clear error if a regression slips a malformed verdict in).
  */
 export async function runIteration(input: RunIterationInput): Promise<RunIterationOutcome> {
@@ -87,7 +87,7 @@ export async function runIteration(input: RunIterationInput): Promise<RunIterati
         run_id: inflight.id,
         run_status: inflight.status,
       },
-      "ship iteration skipped — non-terminal workflow_run already in flight for this intent",
+      "ship iteration skipped, non-terminal workflow_run already in flight for this intent",
     );
     return { outcome: "in-flight", runId: inflight.id };
   }
@@ -105,7 +105,7 @@ export async function runIteration(input: RunIterationInput): Promise<RunIterati
         cap: config.maxShipIterations,
         completed_actions: completedActions,
       },
-      "ship iteration cap reached — intent terminated",
+      "ship iteration cap reached, intent terminated",
     );
     return { outcome: "terminal-cap" };
   }
@@ -118,7 +118,7 @@ export async function runIteration(input: RunIterationInput): Promise<RunIterati
         event: SHIP_LOG_EVENTS.iteration.terminalDeadline,
         deadline_at: intent.deadline_at.toISOString(),
       },
-      "ship deadline exceeded — intent terminated",
+      "ship deadline exceeded, intent terminated",
     );
     return { outcome: "terminal-deadline" };
   }
@@ -184,9 +184,9 @@ export async function runIteration(input: RunIterationInput): Promise<RunIterati
   // 7. Persist the `executions` row BEFORE enqueueing so the daemon's
   //    accept handler can resolve `context_json` via this `deliveryId`.
   //    Without this, the daemon side rejects the offer with
-  //    `No execution context found — producer did not call createExecution`
+  //    `No execution context found, producer did not call createExecution`
   //    (surfaced by T042 S2 against `@chrisleekr-bot-dev`). The legacy
-  //    workflow dispatcher writes this row before its enqueue too — the
+  //    workflow dispatcher writes this row before its enqueue too, the
   //    iteration handler must mirror that contract.
   const childDeliveryId = `${intent.id}::iteration::${String(actionIterationN)}`;
   await recordWorkflowExecution({
@@ -271,7 +271,7 @@ async function findInflightShipIntentRun(
 /**
  * Count action-flavored `ship_iterations` rows (kind ∈ {resolve, review,
  * branch-refresh}) for an intent. Probe rows do not consume the iteration
- * budget — only actions that mutate PR state do.
+ * budget: only actions that mutate PR state do.
  */
 async function countActionIterations(intentId: string, sql: SQL): Promise<number> {
   const rows: { count: number | string }[] = await sql`
@@ -309,7 +309,7 @@ function selectNextWorkflow(reason: NonReadinessReason): WorkflowName {
       // the orchestrator cascade cannot cause harm with.
       return "review";
     default: {
-      // Exhaustiveness guard — the `isNonReadinessReason` check at the
+      // Exhaustiveness guard: the `isNonReadinessReason` check at the
       // entry of `runIteration` already rejects unknown strings, so this
       // branch is unreachable; a `never` assignment surfaces a type error
       // if the enum grows without an accompanying case here.

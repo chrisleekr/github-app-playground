@@ -15,7 +15,7 @@ import { logger } from "../logger";
  * Counts in-flight work AT daemons (offered+accepted), not enqueued work.
  * `isAtCapacity()` is read in router.ts to gate webhook admission. Cascade
  * children dispatched from inside the daemon process never touch this
- * counter on the daemon side — their offer/accept on the orchestrator side
+ * counter on the daemon side: their offer/accept on the orchestrator side
  * is the only event that mutates it.
  */
 

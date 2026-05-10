@@ -3,7 +3,7 @@
  *
  * Covers the exported Zod schemas (serverMessageSchema, daemonMessageSchema),
  * constants (PROTOCOL_VERSION, WS_CLOSE_CODES, WS_ERROR_CODES), and the
- * createMessageEnvelope() helper — the only function in the file, currently
+ * createMessageEnvelope() helper: the only function in the file, currently
  * at 0% function coverage.
  */
 

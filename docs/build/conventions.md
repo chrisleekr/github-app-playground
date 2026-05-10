@@ -1,12 +1,12 @@
 # Code conventions
 
-The repo enforces conventions through tooling, not docs — every rule below is checked by `bun run check`. This page is a tour of what's wired so you know what to expect.
+The repo enforces conventions through tooling, not docs, every rule below is checked by `bun run check`. This page is a tour of what's wired so you know what to expect.
 
 ## Runtime and language
 
 - **Runtime.** Bun for the application; Node.js 20 for the Claude Code CLI subprocess. Both are installed in the Docker `base` stage.
 - **Bun version.** Pinned in `.tool-versions` (`bun 1.3.13`). All workflows use `oven-sh/setup-bun@v2` with `bun-version-file: .tool-versions`.
-- **TypeScript.** Strict mode plus the strictest flags: `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `useUnknownInCatchVariables`, `noUnusedLocals`, `noUnusedParameters`, `noImplicitReturns`, `noFallthroughCasesInSwitch`, `noImplicitOverride`, `noPropertyAccessFromIndexSignature`. Module resolution is `bundler` — imports do not need `.js` extensions.
+- **TypeScript.** Strict mode plus the strictest flags: `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `useUnknownInCatchVariables`, `noUnusedLocals`, `noUnusedParameters`, `noImplicitReturns`, `noFallthroughCasesInSwitch`, `noImplicitOverride`, `noPropertyAccessFromIndexSignature`. Module resolution is `bundler`, imports do not need `.js` extensions.
 
 ## ESLint
 
@@ -18,10 +18,10 @@ The repo enforces conventions through tooling, not docs — every rule below is 
   - `@typescript-eslint/strict-boolean-expressions: error`
   - `@typescript-eslint/no-explicit-any: warn`
   - `@typescript-eslint/no-unused-vars` (underscore-prefix exempted)
-  - `simple-import-sort/imports`, `simple-import-sort/exports` — auto-fixable
+  - `simple-import-sort/imports`, `simple-import-sort/exports`: auto-fixable
   - `complexity: warn` (15), `max-lines-per-function: warn` (120), `max-nested-callbacks: error` (3)
   - Security rules from `eslint-plugin-security:recommended`
-- **Special restriction.** `src/workflows/ship/scoped/triage.ts` carries a `no-restricted-syntax` rule forbidding GitHub mutations — ship-side triage is suggest-only.
+- **Special restriction.** `src/workflows/ship/scoped/triage.ts` carries a `no-restricted-syntax` rule forbidding GitHub mutations: ship-side triage is suggest-only.
 
 ## Prettier
 
@@ -38,12 +38,16 @@ The repo enforces conventions through tooling, not docs — every rule below is 
 | `arrowParens`    | `"always"` |
 | `bracketSpacing` | `true`     |
 
+## Em dashes
+
+The repo-wide style rule (per `~/.claude/CLAUDE.md`) forbids em dashes (U+2014). Use commas, colons, semicolons, or parentheses instead. Enforced in CI via `scripts/em-dash-sweep.ts --check` (also wired into the umbrella `bun run check`). The check skips `specs/`, `src/db/migrations/`, `CHANGELOG.md`, `test/**/fixtures/`, build outputs, and spec-kit-managed assets (`.specify/`, `.claude/skills/speckit*`, `.github/agents/speckit*`); those are sync'd from upstream and editing them in-repo gets clobbered. To remediate an offending line locally, run `bun run scripts/em-dash-sweep.ts <path>` to apply the heuristic rewrite, then hand-review the result. See issue #116 for the original sweep.
+
 ## Pre-commit hooks
 
 `.husky/pre-commit`:
 
-1. `gitleaks protect --staged` — secret scan. Hard exit 1 if `gitleaks` is missing.
-2. `bunx lint-staged` — Prettier and ESLint on staged files.
+1. `gitleaks protect --staged`, secret scan. Hard exit 1 if `gitleaks` is missing.
+2. `bunx lint-staged`, Prettier and ESLint on staged files.
 
 `.husky/commit-msg` runs `commitlint` against `@commitlint/config-conventional`. Allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`, `build`, `ci`, `revert`, `localize`, `bump`.
 
@@ -55,7 +59,7 @@ The repo enforces conventions through tooling, not docs — every rule below is 
 ## Configuration
 
 - All process-level configuration is validated via `zod` at startup in `src/config.ts`. The process exits with a clear error if any required variable is missing or malformed.
-- Environment variable group is the canonical doc surface — see [`../operate/configuration.md`](../operate/configuration.md).
+- Environment variable group is the canonical doc surface: see [`../operate/configuration.md`](../operate/configuration.md).
 
 ## Scripts
 

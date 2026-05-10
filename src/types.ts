@@ -42,7 +42,7 @@ export interface BotContext {
   dryRun?: boolean;
   /** Pre-loaded repo memory from orchestrator (daemon mode only) */
   repoMemory?: { id: string; category: string; content: string; pinned: boolean }[];
-  /** Daemon capabilities — set when running in daemon mode to enable capability-based tools */
+  /** Daemon capabilities, set when running in daemon mode to enable capability-based tools */
   daemonCapabilities?: DaemonCapabilities;
   /**
    * Orchestrator-provided env vars (daemon mode only). Written as `.env` in
@@ -86,7 +86,7 @@ export interface ExecutionResult {
   /**
    * Contents of files the caller asked the pipeline to capture from the
    * workspace before cleanup. Keyed by basename (e.g. "IMPLEMENT.md").
-   * Missing files are simply absent from the map — callers must handle
+   * Missing files are simply absent from the map: callers must handle
    * undefined, since an agent may legitimately decline to write a report.
    */
   capturedFiles?: Record<string, string>;
