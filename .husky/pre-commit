@@ -14,3 +14,7 @@ fi
 gitleaks protect --verbose --staged --config .gitleaks.toml || exit 1
 
 bunx lint-staged
+
+# Block em-dashes from creeping back in. Cosmetic gate, kept local-only (no CI cost).
+# Bypass with `git commit --no-verify` if you really need to (don't).
+bun run check:no-em-dashes || exit 1
