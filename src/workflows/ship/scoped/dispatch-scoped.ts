@@ -204,6 +204,43 @@ async function resolveThreadRef(
 }
 
 /**
+ * Run the chat-thread conversational executor against a `CanonicalCommand`.
+ * Exported so non-scoped callers (e.g. ship's iteration-0 reroute in
+ * `session-runner.ts`) can hand off to chat-thread without rebuilding
+ * the LLM caller or surface mapping. Refuses dispatch when the command
+ * lacks the comment fields chat-thread needs (label triggers, etc.).
+ */
+export async function runChatThreadFromCommand(
+  command: CanonicalCommand,
+  deps: ScopedCommandDeps,
+): Promise<void> {
+  if (command.comment_body === undefined || command.trigger_comment_id === undefined) {
+    deps.log?.warn(
+      { intent: command.intent },
+      "chat-thread: missing comment_body or trigger_comment_id on canonical command — refusing dispatch",
+    );
+    return;
+  }
+  const targetType: "issue" | "pr" = command.event_surface === "issue-comment" ? "issue" : "pr";
+  const triggerEventType: "issue_comment" | "pull_request_review_comment" =
+    command.event_surface === "review-comment" ? "pull_request_review_comment" : "issue_comment";
+  await runChatThread({
+    octokit: deps.octokit,
+    owner: command.pr.owner,
+    repo: command.pr.repo,
+    targetType,
+    targetNumber: command.pr.number,
+    threadId: command.thread_id ?? null,
+    triggerCommentId: command.trigger_comment_id,
+    triggerCommentBody: command.comment_body,
+    triggerEventType,
+    principalLogin: command.principal_login,
+    callLlm: buildCallLlm(),
+    ...(deps.log ? { log: deps.log } : {}),
+  });
+}
+
+/**
  * Stateless one-shot dispatch. The whole body is wrapped in a top-level
  * try/catch so any Octokit, LLM, or callback error is logged and
  * swallowed at the per-intent boundary — a misbehaving scoped command
@@ -323,32 +360,7 @@ async function runScopedCommand(command: CanonicalCommand, deps: ScopedCommandDe
       // Inline: chat-thread runs the conversational LLM call in-process,
       // replies via Octokit, and (when the user approves) hands off to
       // existing handlers — no daemon enqueue.
-      if (command.comment_body === undefined || command.trigger_comment_id === undefined) {
-        deps.log?.warn(
-          { intent: command.intent },
-          "chat-thread: missing comment_body or trigger_comment_id on canonical command — refusing dispatch",
-        );
-        return;
-      }
-      const targetType: "issue" | "pr" = command.event_surface === "issue-comment" ? "issue" : "pr";
-      const triggerEventType: "issue_comment" | "pull_request_review_comment" =
-        command.event_surface === "review-comment"
-          ? "pull_request_review_comment"
-          : "issue_comment";
-      await runChatThread({
-        octokit: deps.octokit,
-        owner: command.pr.owner,
-        repo: command.pr.repo,
-        targetType,
-        targetNumber: command.pr.number,
-        threadId: command.thread_id ?? null,
-        triggerCommentId: command.trigger_comment_id,
-        triggerCommentBody: command.comment_body,
-        triggerEventType,
-        principalLogin: command.principal_login,
-        callLlm,
-        ...(deps.log ? { log: deps.log } : {}),
-      });
+      await runChatThreadFromCommand(command, deps);
       return;
     }
     case "rebase": {

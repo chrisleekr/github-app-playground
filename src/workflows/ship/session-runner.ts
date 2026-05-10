@@ -36,6 +36,7 @@ import { checkEligibility } from "./eligibility";
 import { createIntent, getIntentById, transitionToTerminal } from "./intent";
 import { runIteration } from "./iteration";
 import { runProbe } from "./probe";
+import { runChatThreadFromCommand } from "./scoped/dispatch-scoped";
 import {
   buildIntentMarker,
   createTrackingComment,
@@ -43,6 +44,24 @@ import {
   renderTrackingComment,
   updateTrackingComment,
 } from "./tracking-comment";
+import type { NonReadinessReason } from "./verdict";
+
+/**
+ * Probe verdict reasons that ship cannot make progress on at iteration 0
+ * — the workflow would post a tracking comment that immediately
+ * terminates with the same verdict it started with (issue #119). For
+ * these we skip intent creation entirely and either reroute the trigger
+ * to chat-thread (when the trigger carries a comment body) or post a
+ * single human-readable refusal (label triggers).
+ *
+ * Currently scoped to `human_took_over` — a human-authored head SHA
+ * means the bot must not push, so no amount of iteration helps. Other
+ * non-readiness reasons are recoverable by ship (rebase, fix CI, wait
+ * for checks, etc.) and stay on the iteration path.
+ */
+const SHIP_REROUTE_REASONS: ReadonlySet<NonReadinessReason> = new Set<NonReadinessReason>([
+  "human_took_over",
+]);
 
 const MARK_READY_FOR_REVIEW_MUTATION = `
   mutation MarkReady($pullRequestId: ID!) {
@@ -110,6 +129,36 @@ export async function runShipFromCommand(input: RunShipFromCommandInput): Promis
     log.warn(
       { event: "ship.probe_pr_missing" },
       "probe returned no pullRequest — aborting (eligibility verified moments ago)",
+    );
+    return;
+  }
+
+  // Iteration-0 reroute (issue #119). Probe verdicts ship cannot recover
+  // from at iteration 0 (currently `human_took_over`) skip intent
+  // creation: a tracking comment that opens and immediately closes on
+  // the same verdict is JSON-dump noise, not a useful answer.
+  if (!probe.verdict.ready && SHIP_REROUTE_REASONS.has(probe.verdict.reason)) {
+    const verdictReason = probe.verdict.reason;
+    const verdictDetail = probe.verdict.detail;
+    log.info(
+      {
+        event: "ship.reroute_iteration_zero",
+        verdict_reason: verdictReason,
+        verdict_detail: verdictDetail,
+      },
+      "ship: probe verdict is unrecoverable at iteration 0 — handing off to chat-thread",
+    );
+    if (command.comment_body !== undefined && command.trigger_comment_id !== undefined) {
+      await runChatThreadFromCommand(command, { octokit, log });
+      return;
+    }
+    // Label trigger (no comment surface to converse on). Post a single
+    // prose refusal that names the blocker, then exit without state.
+    await postRefusal(
+      octokit,
+      command,
+      `the ship workflow can't take over this PR — ${verdictDetail}. Comment \`${config.triggerPhrase}\` to discuss next steps.`,
+      log,
     );
     return;
   }
