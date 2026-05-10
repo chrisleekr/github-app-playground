@@ -59,9 +59,7 @@ COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile --production --ignore-scripts
 # --- SHARED-BASE-END ---
 
-# -----------------------------------------------------------------------------
 # Stage: daemon-tools: apt packages + third-party repos + sha-pinned binaries
-# -----------------------------------------------------------------------------
 FROM base AS daemon-tools
 ARG TARGETARCH
 ARG INSTALL_GCLOUD=true
@@ -279,9 +277,7 @@ RUN bun install --frozen-lockfile --production --ignore-scripts \
   && bun run scripts/generate-capabilities-manifest.ts /app/daemon-capabilities.static.json \
   && rm -rf node_modules scripts/generate-capabilities-manifest.ts src/ package.json bun.lock tsconfig.json
 
-# -----------------------------------------------------------------------------
 # Stage: production: final daemon image.
-# -----------------------------------------------------------------------------
 FROM daemon-tools AS production
 
 ARG PACKAGE_VERSION=untagged
