@@ -94,7 +94,13 @@ type Result = {
   path: string;
   before: number;
   after: number;
+  /** Em dashes the heuristic could NOT auto-resolve (file still contains them). */
   unresolved: { line: number; text: string }[];
+  /** Em dashes present in the original (post-skip), even if the heuristic
+   *  would clean them. Used by --check to report file/line pointers when
+   *  someone slips an em dash into a file the rules would otherwise
+   *  silently rewrite. */
+  offending: { line: number; text: string }[];
 };
 
 function isSkipped(rel: string): boolean {
@@ -219,7 +225,7 @@ function transformLine(line: string): string {
 function processFile(path: string, write: boolean): Result {
   const original = readFileSync(path, "utf8");
   if (!original.includes(EM)) {
-    return { path, before: 0, after: 0, unresolved: [] };
+    return { path, before: 0, after: 0, unresolved: [], offending: [] };
   }
   const lines = original.split("\n");
   const out: string[] = [];
@@ -230,23 +236,28 @@ function processFile(path: string, write: boolean): Result {
   // extensions never use ```-as-fence semantics, but the toggle is harmless.
   let inFence = false;
   let beforeCount = 0;
-  for (const line of lines) {
+  const offending: Result["offending"] = [];
+  lines.forEach((line, i) => {
     if (/^\s{0,3}```/.test(line)) {
       inFence = !inFence;
       out.push(line);
-      continue;
+      return;
     }
     if (inFence) {
       out.push(line);
-      continue;
+      return;
     }
-    beforeCount += (line.match(/—/g) ?? []).length;
+    const hits = (line.match(/—/g) ?? []).length;
+    if (hits > 0) {
+      beforeCount += hits;
+      offending.push({ line: i + 1, text: line });
+    }
     out.push(transformLine(line));
-  }
+  });
   if (beforeCount === 0) {
     // All em dashes were inside fences. Treat as a no-op for both write
     // mode and --check (the gate intentionally ignores fenced code).
-    return { path, before: 0, after: 0, unresolved: [] };
+    return { path, before: 0, after: 0, unresolved: [], offending: [] };
   }
   const next = out.join("\n");
   // Count residual em dashes the same way as the pre-pass: only outside
@@ -268,7 +279,7 @@ function processFile(path: string, write: boolean): Result {
     }
   });
   if (write && next !== original) writeFileSync(path, next);
-  return { path, before: beforeCount, after: afterCount, unresolved };
+  return { path, before: beforeCount, after: afterCount, unresolved, offending };
 }
 
 function main() {
@@ -294,6 +305,7 @@ function main() {
   let totalBefore = 0;
   let totalAfter = 0;
   let touched = 0;
+  const offendingFiles: Result[] = [];
   const unresolvedFiles: Result[] = [];
 
   for (const f of files) {
@@ -302,6 +314,7 @@ function main() {
       totalBefore += r.before;
       totalAfter += r.after;
       if (!checkMode && r.before !== r.after) touched++;
+      offendingFiles.push(r);
       if (r.after > 0) unresolvedFiles.push(r);
     }
   }
@@ -309,13 +322,18 @@ function main() {
   if (checkMode) {
     if (totalBefore > 0) {
       console.error(
-        `em-dash check: FAIL (${totalBefore} occurrences across ${unresolvedFiles.length} files)`,
+        `em-dash check: FAIL (${totalBefore} occurrences across ${offendingFiles.length} files)`,
       );
-      for (const f of unresolvedFiles) {
+      for (const f of offendingFiles) {
         console.error(`  ${relative(REPO_ROOT, f.path)}: ${f.before}`);
-        for (const u of f.unresolved.slice(0, 3)) {
+        for (const u of f.offending.slice(0, 3)) {
           console.error(`    L${u.line}: ${u.text.trim().slice(0, 120)}`);
         }
+      }
+      if (unresolvedFiles.length > 0) {
+        console.error(
+          `\nNote: ${unresolvedFiles.length} file(s) above contain em dashes the heuristic could not auto-resolve. Hand-edit those lines.`,
+        );
       }
       process.exit(1);
     }

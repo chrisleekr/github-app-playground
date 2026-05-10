@@ -34,8 +34,8 @@ The skill MUST fail with a clear error message if either is unset.
 2. If either is missing, stop immediately and tell the user:
    ```
    Missing required env vars for /local-e2e:
-     LOCAL_E2E_TEST_REPO , set to owner/repo (e.g. myorg/my-test-repo)
-     LOCAL_E2E_TEST_ENTITY, set to issue or PR number
+     LOCAL_E2E_TEST_REPO: set to owner/repo (e.g. myorg/my-test-repo)
+     LOCAL_E2E_TEST_ENTITY: set to issue or PR number
    Add them to .env or export in your shell.
    ```
 
