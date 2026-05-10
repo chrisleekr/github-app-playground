@@ -148,19 +148,47 @@ describe.skipIf(sql === null)("repo-knowledge ANY() array binding regression", (
   });
 });
 
-describe.skipIf(sql === null)("saveRepoLearnings sanitization at durability boundary", () => {
-  // Issue #112 defence-in-depth: repo-knowledge.ts is the orchestrator-side
-  // chokepoint that re-applies sanitizeRepoMemoryContent before INSERT, and
-  // skips rows whose content collapses to empty. These tests cover the
-  // wiring (helper-layer sanitize tests live in test/utils/sanitize.test.ts).
+// Issue #112 defence-in-depth: repo-knowledge.ts is the orchestrator-side
+// chokepoint that re-applies sanitizeRepoMemoryContent before INSERT, and
+// skips rows whose content collapses to empty. These tests cover the
+// wiring (helper-layer sanitize tests live in test/utils/sanitize.test.ts).
+// Owns its own SQL connection so it is independent of the prior suite's
+// afterAll close().
 
+let sql2: SQL | null = null;
+if (TEST_DATABASE_URL !== undefined && TEST_DATABASE_URL.length > 0) {
+  try {
+    const conn = new SQL(TEST_DATABASE_URL);
+    await conn`SELECT 1 AS ok`;
+    sql2 = conn;
+  } catch {
+    sql2 = null;
+  }
+}
+
+function requireSql2(): SQL {
+  if (sql2 === null) throw new Error("Database not available, test should have been skipped");
+  return sql2;
+}
+
+describe.skipIf(sql2 === null)("saveRepoLearnings sanitization at durability boundary", () => {
   beforeAll(async () => {
-    const db = requireSql();
+    const db = requireSql2();
     await db`DELETE FROM repo_memory WHERE repo_owner = ${TEST_OWNER}`;
   });
 
+  afterAll(async () => {
+    const db = sql2;
+    if (db === null) return;
+    try {
+      await db`DELETE FROM repo_memory WHERE repo_owner = ${TEST_OWNER}`;
+    } finally {
+      await db.close();
+    }
+  });
+
   it("skips a learning whose content collapses to empty after sanitization", async () => {
-    const db = requireSql();
+    const db = requireSql2();
     const { saveRepoLearnings } = await import("../../src/orchestrator/repo-knowledge");
 
     const saved = await saveRepoLearnings(
@@ -179,7 +207,7 @@ describe.skipIf(sql === null)("saveRepoLearnings sanitization at durability boun
   });
 
   it("collapses embedded newlines and strips HTML comments before INSERT", async () => {
-    const db = requireSql();
+    const db = requireSql2();
     const { saveRepoLearnings } = await import("../../src/orchestrator/repo-knowledge");
 
     const poisoned =
@@ -207,7 +235,7 @@ describe.skipIf(sql === null)("saveRepoLearnings sanitization at durability boun
   });
 
   it("redacts GitHub token shapes inside saved learnings", async () => {
-    const db = requireSql();
+    const db = requireSql2();
     const { saveRepoLearnings } = await import("../../src/orchestrator/repo-knowledge");
 
     const tok = `ghp_${"A".repeat(36)}`;
