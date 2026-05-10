@@ -77,6 +77,7 @@
     "check:docs-sync": "bun run scripts/check-docs-sync.ts",
     "check:docs-versions": "bun run scripts/check-docs-versions.ts",
     "check:docs-citations": "bun run scripts/check-docs-citations.ts",
+    "check:mcp-bundle": "bun run scripts/check-mcp-bundle.ts",
     "prepare": "husky"
   },
   "license": "MIT",

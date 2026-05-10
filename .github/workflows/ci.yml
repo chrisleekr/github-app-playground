@@ -141,3 +141,11 @@ jobs:
 
       - name: Build
         run: bun run build
+
+      - name: MCP bundle smoke check
+        # Validates that every MCP server name registered in src/mcp/registry.ts
+        # resolves to an existing dist/mcp/servers/<name>.js when consumed from
+        # both bundle locations (dist/app.js + dist/daemon/main.js). Catches the
+        # build/resolve drift class that shipped in 001990d before the daemon
+        # image hits production. Must run AFTER `bun run build`.
+        run: bun run check:mcp-bundle
