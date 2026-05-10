@@ -28,9 +28,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const registrySrc = readFileSync("src/mcp/registry.ts", "utf8");
-const registeredNames = Array.from(registrySrc.matchAll(/resolveServerPath\("([^"]+)"\)/g), (m) => {
-  if (m[1] === undefined) throw new Error("regex group 1 missing");
-  return m[1];
+// Tolerate single or double quotes and surrounding whitespace. Template
+// literals are intentionally not matched: a dynamic name would defeat the
+// smoke check, so the failure surfaces here rather than silently regressing.
+const callRegex = /resolveServerPath\(\s*(['"])([^'"]+)\1\s*\)/g;
+const registeredNames = Array.from(registrySrc.matchAll(callRegex), (m) => {
+  if (m[2] === undefined) throw new Error("regex group 2 missing");
+  return m[2];
 });
 
 if (registeredNames.length === 0) {

@@ -122,13 +122,16 @@ describe("MCP server registration vs build discovery", () => {
   const registryPath = join(import.meta.dir, "../../src/mcp/registry.ts");
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- registryPath is a fixed test fixture path, not user input
   const registrySrc = readFileSync(registryPath, "utf8");
-  const registeredNames = Array.from(
-    registrySrc.matchAll(/resolveServerPath\("([^"]+)"\)/g),
-    (m) => {
-      if (m[1] === undefined) throw new Error("regex group 1 missing");
-      return m[1];
-    },
-  );
+  // Match resolveServerPath("name") or resolveServerPath('name'), tolerating
+  // whitespace around the argument. Template-literal calls would defeat the
+  // invariant (dynamic name) and are intentionally not matched: the test fails
+  // loudly if the source switches to a form this regex does not understand,
+  // forcing reconsideration rather than silently passing.
+  const callRegex = /resolveServerPath\(\s*(['"])([^'"]+)\1\s*\)/g;
+  const registeredNames = Array.from(registrySrc.matchAll(callRegex), (m) => {
+    if (m[2] === undefined) throw new Error("regex group 2 missing");
+    return m[2];
+  });
 
   const serversDir = join(import.meta.dir, "../../src/mcp/servers");
   const discovered = new Set(

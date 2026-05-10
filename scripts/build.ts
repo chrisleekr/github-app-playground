@@ -39,8 +39,13 @@ const serversDir = "./src/mcp/servers";
 // resolveServerPath("...") name in registry.ts is in this discovered set, so
 // adding a `.mts`/`.cts` server without broadening this filter trips CI
 // instead of silently shipping a missing bundle.
+//
+// Sort the result: `readdirSync` order is not guaranteed across filesystems,
+// and a stable order keeps Bun.build output deterministic so artifact diffs
+// only reflect real changes.
 const stdioEntrypoints = readdirSync(serversDir)
   .filter((f) => f.endsWith(".ts"))
+  .sort()
   .map((f) => join(serversDir, f))
   .filter((p) => readFileSync(p, "utf8").includes("StdioServerTransport"));
 

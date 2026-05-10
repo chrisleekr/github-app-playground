@@ -8,32 +8,37 @@ import { context7Server } from "./servers/context7";
 
 /**
  * Resolve the absolute filesystem path of an MCP server module by name.
- * registry.ts is consumed from three locations: unbundled at src/mcp/ in dev,
- * inlined into dist/app.js, and inlined into dist/daemon/main.js. After Bun
- * bundles, `import.meta.url` points at the bundle, not the original source,
- * so a single `./servers/${name}.js` URL only resolves correctly in dev.
- * The MCP servers are always emitted to dist/mcp/servers/ by scripts/build.ts;
- * try each plausible base relative to `import.meta.url` and return the first
- * `existsSync` hit. existsSync (not heuristics on the URL string) keeps this
+ * registry.ts is consumed from three locations: unbundled at src/mcp/ in dev
+ * (servers exist only as `.ts` siblings), inlined into dist/app.js (servers
+ * live one level up at dist/mcp/servers/), and inlined into dist/daemon/main.js
+ * (servers live two levels up). After `Bun.build`, `import.meta.url` points at
+ * the bundle, not the original source, so the base directory of `./servers/x`
+ * shifts per consumer. The compiled `.js` files are always emitted to
+ * dist/mcp/servers/ by scripts/build.ts; try each plausible base relative to
+ * `import.meta.url` and return the first `existsSync` hit, with `.ts` last as
+ * the dev fallback. existsSync (not heuristics on the URL string) keeps this
  * resilient to WORKDIR shapes that contain a `/src/` segment.
  */
 function resolveServerPath(name: string): string {
   const candidates = [
-    `./servers/${name}.js`, // dev: src/mcp/registry.ts → src/mcp/servers/
+    `./servers/${name}.js`, // bundled `.js` sitting next to the registry (rare, kept for symmetry)
     `./mcp/servers/${name}.js`, // bundled: dist/app.js → dist/mcp/servers/
     `../mcp/servers/${name}.js`, // bundled: dist/daemon/main.js → dist/mcp/servers/
-    `./servers/${name}.ts`, // dev fallback when only the .ts source is present
+    `./servers/${name}.ts`, // dev: src/mcp/registry.ts → src/mcp/servers/<name>.ts
   ];
+  const tried: string[] = [];
   for (const candidate of candidates) {
     const resolved = fileURLToPath(new URL(candidate, import.meta.url));
+    tried.push(resolved);
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- candidate is a hardcoded relative URL; only `name` is dynamic and is constrained to known server names by callers in this file
     if (existsSync(resolved)) return resolved;
   }
   // Surface a clear, actionable error rather than letting bun fail with a
   // bare ENOENT inside an MCP server subprocess (which only shows up as
-  // status:"failed" in the SDK init message).
+  // status:"failed" in the SDK init message). Include the absolute paths so
+  // a daemon Pod stack trace points directly at the missing files.
   throw new Error(
-    `MCP server module not found for "${name}": none of [${candidates.join(", ")}] resolved relative to ${import.meta.url}`,
+    `MCP server module not found for "${name}" (registry consumed from ${import.meta.url}). Checked: ${tried.join(", ")}`,
   );
 }
 
