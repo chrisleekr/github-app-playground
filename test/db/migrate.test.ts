@@ -76,7 +76,7 @@ describe.skipIf(sql === null)("runMigrations", () => {
     const versions: { version: string }[] = await requireDb()`
       SELECT version FROM _migrations ORDER BY version
     `;
-    expect(versions.length).toBe(11);
+    expect(versions.length).toBe(12);
     expect(versions[0]?.version).toBe("001_initial");
     expect(versions[1]?.version).toBe("002_repo_knowledge");
     expect(versions[2]?.version).toBe("003_dispatch_decisions");
@@ -88,6 +88,7 @@ describe.skipIf(sql === null)("runMigrations", () => {
     expect(versions[8]?.version).toBe("009_workflow_runs_incomplete");
     expect(versions[9]?.version).toBe("010_chat_proposals");
     expect(versions[10]?.version).toBe("011_conversation_cache");
+    expect(versions[11]?.version).toBe("012_repo_memory_sanitize_backfill");
   });
 
   it("is idempotent: second run is a no-op", async () => {
@@ -97,7 +98,7 @@ describe.skipIf(sql === null)("runMigrations", () => {
     const versions: { version: string }[] = await requireDb()`
       SELECT version FROM _migrations ORDER BY version
     `;
-    expect(versions.length).toBe(11);
+    expect(versions.length).toBe(12);
   });
 
   it("creates the executions table with expected columns", async () => {
