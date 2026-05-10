@@ -1,3 +1,10 @@
+## [1.12.1](https://github.com/chrisleekr/github-app-playground/compare/v1.12.0...v1.12.1) (2026-05-10)
+
+
+### Bug Fixes
+
+* **bot:** restore inline review comments on PRs ([#123](https://github.com/chrisleekr/github-app-playground/issues/123)) ([a5d0990](https://github.com/chrisleekr/github-app-playground/commit/a5d09906a8df2cee72ed0ac9d81060ecce6febda))
+
 # [1.12.0](https://github.com/chrisleekr/github-app-playground/compare/v1.11.1...v1.12.0) (2026-05-10)
 
 
