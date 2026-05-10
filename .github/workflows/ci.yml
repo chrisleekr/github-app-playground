@@ -98,6 +98,9 @@ jobs:
       - name: Dockerfile base-sync guard
         run: bun run check:dockerfile-base-sync
 
+      - name: Em-dash regression gate (issue #116)
+        run: bun run check:no-em-dashes
+
       - name: Docs-sync guard (bot workflows, FR-019)
         if: github.event_name == 'pull_request'
         env:
@@ -132,7 +135,7 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://bot:bot@localhost:5432/github_app_test
           # `VALKEY_URL` (no `TEST_` prefix) is what the test code actually
-          # reads — `test/preload.ts` defaults it and `liveness-reaper.test.ts`
+          # reads: `test/preload.ts` defaults it and `liveness-reaper.test.ts`
           # references `process.env["VALKEY_URL"]`. Setting it explicitly here
           # makes CI independent of the preload default so a future preload
           # tweak (or port-mapping change) cannot silently regress this job.

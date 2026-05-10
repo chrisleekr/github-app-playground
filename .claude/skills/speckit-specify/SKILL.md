@@ -106,7 +106,7 @@ Given that feature description, do this:
 
    **IMPORTANT**:
    - You must only create one feature per `/speckit-specify` invocation
-   - The spec directory name and the git branch name are independent — they may be the same but that is the user's choice
+   - The spec directory name and the git branch name are independent: they may be the same but that is the user's choice
    - The spec directory and file are always created by this command, never by the hook
 
 4. Load `.specify/templates/spec-template.md` to understand required sections.
@@ -231,8 +231,8 @@ Given that feature description, do this:
    d. **Update Checklist**: After each validation iteration, update the checklist file with current pass/fail status
 
 8. **Report completion** to the user with:
-   - `SPECIFY_FEATURE_DIRECTORY` — the feature directory path
-   - `SPEC_FILE` — the spec file path
+   - `SPECIFY_FEATURE_DIRECTORY`: the feature directory path
+   - `SPEC_FILE`: the spec file path
    - Checklist results summary
    - Readiness for the next phase (`/speckit-clarify` or `/speckit-plan`)
 

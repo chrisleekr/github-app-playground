@@ -27,7 +27,7 @@ bun install
 
 # 3. Copy and fill in the environment file
 cp .env.example .env
-# Edit .env — see docs/SETUP.md for the full variable reference
+# Edit .env: see docs/SETUP.md for the full variable reference
 ```
 
 ---
@@ -47,7 +47,7 @@ The server starts on `PORT` (default `3000`) and restarts automatically on file 
 GitHub must reach your webhook URL over the internet. Use a tunnelling tool during development:
 
 ```bash
-# ngrok — generates a public HTTPS URL
+# ngrok: generates a public HTTPS URL
 bun run dev:ngrok   # alias for: ngrok http 3000
 ```
 
@@ -70,7 +70,7 @@ lines and 90% functions** via Bun's native `coverageThreshold`. Any PR that
 drops a file below either threshold will fail `bun test` locally and in CI.
 
 **Mocking**: External dependencies (GitHub API, Claude Agent SDK, git CLI)
-MUST be mocked in tests — no real API calls in the test suite. See the
+MUST be mocked in tests, no real API calls in the test suite. See the
 existing `test/webhook/router.test.ts` for the project's mocking patterns
 using Bun's `mock.module()`.
 
@@ -78,11 +78,11 @@ using Bun's `mock.module()`.
 
 Some suites run against a real Postgres + Valkey instance instead of
 mocks. They are identified by **a `describe.skipIf(sql === null)` (or
-equivalent) gate against `process.env["TEST_DATABASE_URL"]`** — that is
+equivalent) gate against `process.env["TEST_DATABASE_URL"]`**: that is
 the contract, not the file list below. Locate every current opt-in suite
 with `grep -rn 'TEST_DATABASE_URL' test/`. Each suite skips cleanly when
 the services are unreachable, so a default `bun test` works without
-local infrastructure — but those suites only **exercise** their
+local infrastructure, but those suites only **exercise** their
 assertions when both services are running.
 
 Today's suites covered by this contract:
@@ -102,11 +102,11 @@ When you add a new suite that touches Postgres, gate it on
 `process.env["TEST_DATABASE_URL"]` the same way and **drop every table
 your migrations create** in `beforeAll`/`afterAll` (`_migrations`,
 `workflow_runs`, `repo_memory`, `triage_results`, `executions`,
-`daemons`, …) — Bun runs each test file in its own process under
+`daemons`, …), Bun runs each test file in its own process under
 `scripts/test-isolated.sh`, so any table left behind by an earlier file
 makes the next file's migration re-run fail with `relation … already
 exists`. There is no need to update this section's table when adding a
-new suite — the contract above is what readers should follow.
+new suite: the contract above is what readers should follow.
 
 To run them locally:
 
@@ -114,7 +114,7 @@ To run them locally:
 # 1. Bring up Postgres + Valkey via Docker Compose
 bun run dev:deps
 
-# 2. Run the suite — defaults match docker-compose.dev.yml
+# 2. Run the suite: defaults match docker-compose.dev.yml
 bun test
 ```
 
@@ -130,7 +130,7 @@ Override either env var if you point the suites at a different host.
 > `beforeAll` hook drops and re-creates the `repo_memory`,
 > `triage_results`, `executions`, `daemons`, and `workflow_runs` tables.
 > To prevent accidental data loss against a development DB, this suite
-> is opt-in — it only runs when `TEST_DATABASE_URL` is **explicitly
+> is opt-in: it only runs when `TEST_DATABASE_URL` is **explicitly
 > set**. Set it on the CLI (`TEST_DATABASE_URL=… bun test`) and aim it
 > at a throwaway database, never your `DATABASE_URL` target.
 
@@ -138,15 +138,15 @@ CI provisions Postgres-17 and Valkey-9 as service containers and exports
 `TEST_DATABASE_URL` + `VALKEY_URL` on the `Test` step (see
 `.github/workflows/ci.yml`), so PRs run these suites end-to-end on every
 push. `scripts/test-isolated.sh` treats any non-zero `skip` count as a
-failure, so a silent skip — caused by, for example, a missing service
-container or a broken `TEST_DATABASE_URL` — fails the build instead of
+failure, so a silent skip, caused by, for example, a missing service
+container or a broken `TEST_DATABASE_URL`, fails the build instead of
 masquerading as green.
 
 ---
 
 ## Code Quality
 
-Before opening a pull request, run the unified quality gate — it runs
+Before opening a pull request, run the unified quality gate: it runs
 typecheck, lint, format check, and tests sequentially:
 
 ```bash
@@ -176,7 +176,7 @@ These checks are enforced by Husky on every commit:
 - **pre-commit** runs, in order:
   1. `gitleaks protect --verbose --staged --config .gitleaks.toml` scans
      staged files for secrets (API keys, tokens, private keys). The
-     `gitleaks` binary is **required** — install via `brew install gitleaks`
+     `gitleaks` binary is **required**, install via `brew install gitleaks`
      on macOS, `sudo apt install gitleaks` on Debian/Ubuntu, or
      `go install github.com/gitleaks/gitleaks/v8@latest`. The hook fails
      closed: if the binary is missing, the commit is blocked with install
@@ -215,7 +215,7 @@ Commit messages are validated by
 | `feat`     | A new feature                                         |
 | `fix`      | A bug fix                                             |
 | `docs`     | Documentation changes only                            |
-| `style`    | Formatting, whitespace — no logic change              |
+| `style`    | Formatting, whitespace, no logic change               |
 | `refactor` | Code change that is neither a fix nor a feature       |
 | `test`     | Adding or updating tests                              |
 | `chore`    | Build scripts, dependency updates, tooling            |
@@ -243,10 +243,10 @@ chore: upgrade @anthropic-ai/claude-agent-sdk to 0.3.0
 - Keep each PR focused on a single concern.
 - Fill in the PR template (`.github/PULL_REQUEST_TEMPLATE.md`).
 - All checks must pass before requesting review:
-  - `bun test` — all tests green
-  - `bun run typecheck` — no type errors
-  - `bun run lint` — no lint errors
-  - `bun run format` — no formatting violations
+  - `bun test`: all tests green
+  - `bun run typecheck`: no type errors
+  - `bun run lint`: no lint errors
+  - `bun run format`: no formatting violations
 
 ---
 

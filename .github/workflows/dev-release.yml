@@ -1,11 +1,11 @@
 # Feature-branch release pipeline.
 #
 # Flow on a push to feat/fix/refactor/perf/revert/* branches:
-#   1. ci.yml runs as a called workflow — gates everything below
+#   1. ci.yml runs as a called workflow: gates everything below
 #   2. semantic-release runs in dev mode (cuts a v<x.y.z>-dev-<sha7>.N
-#      git tag only — no GitHub release entry and no CHANGELOG bump in
+#      git tag only: no GitHub release entry and no CHANGELOG bump in
 #      dev mode; see release.config.mjs)
-#   3. docker-build.yml builds and pushes the dev image to Docker Hub —
+#   3. docker-build.yml builds and pushes the dev image to Docker Hub,
 #      only if step 2 published a new pre-release tag
 #
 # A CI failure means no tag is cut and no image is built. A no-op
@@ -68,7 +68,7 @@ jobs:
           token: ${{ secrets.RELEASE_TOKEN }}
 
       # Why this step exists:
-      # dev-release re-runs on every push to a feature branch — including
+      # dev-release re-runs on every push to a feature branch: including
       # force-pushes (rebase, amend, --force-with-lease). semantic-release
       # computes the next pre-release counter by walking tags *reachable
       # from HEAD*; an orphaned tag (one pointing at a commit that was
@@ -79,13 +79,13 @@ jobs:
       # rebase/amend on a feature branch wedges the dev pipeline until
       # the stale tag is manually deleted.
       #
-      # Dev tags are ephemeral by contract — release.config.mjs publishes
+      # Dev tags are ephemeral by contract: release.config.mjs publishes
       # NO GitHub Release and NO CHANGELOG entry in dev mode, so nothing
       # downstream pins to a specific `.N`. Resetting the counter on each
       # force-push is correct semantics, not data loss.
       #
       # github.ref_name is normalised to a branch slug via env (defense
-      # in depth — ref_name is already constrained by Git ref grammar).
+      # in depth: ref_name is already constrained by Git ref grammar).
       - name: Clean stale dev pre-release tags for this branch
         env:
           BRANCH_REF: ${{ github.ref_name }}

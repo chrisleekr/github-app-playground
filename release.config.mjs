@@ -1,11 +1,11 @@
 /* eslint-disable no-undef */
 /**
- * Semantic Release configuration — single file for both dev and prod.
+ * Semantic Release configuration: single file for both dev and prod.
  *
  * Mode is selected by SEMREL_CHANNEL env var (set by the caller workflow):
  *   - SEMREL_CHANNEL=dev  → pre-release tags on feat/fix/refactor/perf/revert
  *                          branches (no changelog, no release commit, no GitHub
- *                          release entry — pre-release only via tag).
+ *                          release entry: pre-release only via tag).
  *   - SEMREL_CHANNEL=prod → release on main (changelog, release commit,
  *                          GitHub release entry).
  *

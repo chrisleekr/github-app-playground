@@ -1,4 +1,4 @@
-# Reusable image builder. No checks, no release — orchestrators invoke this
+# Reusable image builder. No checks, no release: orchestrators invoke this
 # via workflow_call after gating on ci.yml + semantic-release.
 #
 # Ships TWO images per release:
@@ -112,7 +112,7 @@ jobs:
           TAG_NAME: ${{ inputs.tag-name }}
         run: |
           # Prod release: v1.2.3
-          # Dev pre-release: v1.2.3-<sanitized-branch>.N — branch name is
+          # Dev pre-release: v1.2.3-<sanitized-branch>.N: branch name is
           # alphanumerics+hyphens (release.config.mjs strips slashes), and N
           # is the prerelease counter semantic-release auto-increments.
           if ! [[ "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z][a-zA-Z0-9-]*\.[0-9]+)?$ ]]; then
@@ -253,7 +253,7 @@ jobs:
         run: |
           # The leaf digests below are *index* digests emitted by BuildKit
           # when `provenance: mode=max` + `sbom: true` are set on the build
-          # step — each index references both the per-arch image manifest
+          # step: each index references both the per-arch image manifest
           # AND its `vnd.docker.reference.type=attestation-manifest`
           # sibling. `imagetools create` walks each index and copies all
           # descriptors into the merged list, so SBOM + provenance survive
@@ -361,7 +361,7 @@ jobs:
           limit-severities-for-sarif: true
           ignore-unfixed: true
           # Daemon image ships a full toolchain (nvm, Docker CLI, apt, etc.) so
-          # CVEs are a permanent fact of life — scan it for visibility in the
+          # CVEs are a permanent fact of life: scan it for visibility in the
           # GitHub Security tab but don't block CI. Orchestrator still gates.
           exit-code: ${{ matrix.variant == 'daemon' && '0' || '1' }}
           trivyignores: .trivyignore.yaml

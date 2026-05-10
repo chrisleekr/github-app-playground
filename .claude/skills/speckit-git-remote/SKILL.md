@@ -47,4 +47,4 @@ Supported URL formats:
 
 If Git is not installed, the directory is not a Git repository, or no remote is configured:
 - Return an empty result
-- Do NOT error — other workflows should continue without Git remote information
+- Do NOT error: other workflows should continue without Git remote information

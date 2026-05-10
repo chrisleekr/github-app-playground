@@ -10,8 +10,8 @@ on:
       - "CHANGELOG.md"
       - ".github/workflows/docs.yml"
   # Run on every PR (no paths filter) so code-side changes that invalidate
-  # doc facts — Renovate Bun bumps, src/ refactors that shift cited line
-  # numbers, .tool-versions updates — still trip the docs gate. The
+  # doc facts: Renovate Bun bumps, src/ refactors that shift cited line
+  # numbers, .tool-versions updates: still trip the docs gate. The
   # `Deploy to GitHub Pages` step further down stays guarded by
   # `if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'`,
   # so PRs validate but never publish.

@@ -1,4 +1,4 @@
-# GitHub App Playground — @chrisleekr-bot
+# GitHub App Playground: @chrisleekr-bot
 
 A GitHub App that responds to `@chrisleekr-bot` mentions on pull requests and issues, powered by the Claude Agent SDK. Every event is handed to a daemon for execution; when triage flags a job as heavy or the queue overflows, the orchestrator spawns an ephemeral daemon Pod on demand so one deployment can serve both trivial chores and long-running refactors.
 
@@ -6,10 +6,10 @@ A GitHub App that responds to `@chrisleekr-bot` mentions on pull requests and is
 
 ## What it does
 
-- **Code review** — mention the bot on a PR for AI-powered review.
-- **Code changes** — ask it to fix bugs, refactor, or implement features.
-- **Q&A** — ask questions about the codebase on issues or PRs.
-- **Extensible** — add new webhook events or MCP servers without touching the core pipeline.
+- **Code review**: mention the bot on a PR for AI-powered review.
+- **Code changes**: ask it to fix bugs, refactor, or implement features.
+- **Q&A**: ask questions about the codebase on issues or PRs.
+- **Extensible**: add new webhook events or MCP servers without touching the core pipeline.
 
 ## Architecture at a glance
 
@@ -53,12 +53,12 @@ The docs site is built from Markdown in `docs/` using [MkDocs Material](https://
 ```bash
 bun run docs:install            # One-time: pip install -r docs/requirements.txt
 bun run docs:serve              # Live reload at http://localhost:8000
-bun run docs:build              # Strict build — run before opening a doc PR
+bun run docs:build              # Strict build, run before opening a doc PR
 ```
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for local setup, testing, linting, and commit message conventions. Any PR that touches env-var validation, dispatch logic, or MCP surfaces must update the matching page under `docs/` in the same change — see the `## Documentation` section of [CLAUDE.md](./CLAUDE.md).
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for local setup, testing, linting, and commit message conventions. Any PR that touches env-var validation, dispatch logic, or MCP surfaces must update the matching page under `docs/` in the same change, see the `## Documentation` section of [CLAUDE.md](./CLAUDE.md).
 
 ## License
 

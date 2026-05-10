@@ -1,15 +1,15 @@
 # Production release pipeline.
 #
-# Manual only — there is no automatic publish on push to main. Trigger
+# Manual only: there is no automatic publish on push to main. Trigger
 # from the Actions UI or `gh workflow run release.yml` when a release is
 # desired.
 #
 # Flow:
-#   1. ci.yml runs as a called workflow — gates everything below
+#   1. ci.yml runs as a called workflow: gates everything below
 #   2. semantic-release runs in prod mode (cuts a v<x.y.z> tag, generates
 #      CHANGELOG.md, creates a GitHub release, commits the version bump)
 #   3. docker-build.yml builds and pushes the prod image to Docker Hub
-#      with `latest` tag — only if step 2 published a new release
+#      with `latest` tag: only if step 2 published a new release
 name: Release
 
 on:
