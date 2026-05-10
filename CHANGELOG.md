@@ -1,3 +1,11 @@
+## [1.12.2](https://github.com/chrisleekr/github-app-playground/compare/v1.12.1...v1.12.2) (2026-05-10)
+
+
+### Bug Fixes
+
+* **mcp:** bundle all stdio servers and resolve paths from any bundle ([#125](https://github.com/chrisleekr/github-app-playground/issues/125)) ([6e34790](https://github.com/chrisleekr/github-app-playground/commit/6e34790f0ea4853b0d11029fb60a2d8ac5aeed3b))
+* **security:** close cross-session prompt injection via repo_memory ([#124](https://github.com/chrisleekr/github-app-playground/issues/124)) ([001990d](https://github.com/chrisleekr/github-app-playground/commit/001990da19d7f4220112bc7d7df8cc5512db6565))
+
 ## [1.12.1](https://github.com/chrisleekr/github-app-playground/compare/v1.12.0...v1.12.1) (2026-05-10)
 
 
