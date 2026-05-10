@@ -311,7 +311,13 @@ export async function executeAgent({
 
         if (msgType === "system") {
           log.info(
-            { sdkMsgType: msgType, subtype: msg["subtype"], model: msg["model"] },
+            {
+              sdkMsgType: msgType,
+              subtype: msg["subtype"],
+              model: msg["model"],
+              tools: msg["tools"],
+              mcp_servers: msg["mcp_servers"],
+            },
             "SDK system message",
           );
         } else if (msgType === "assistant") {

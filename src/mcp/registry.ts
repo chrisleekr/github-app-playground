@@ -93,10 +93,20 @@ function commentServerDef(
   trackingCommentId: number,
   deliveryId: string,
 ): McpServerDef {
+  // The SDK spawns MCP servers with cwd = the cloned-repo workDir, so a bare
+  // "dist/mcp/servers/comment.js" resolves inside the user's repo (where no
+  // dist/ exists) and the server exits ENOENT. Init then reports
+  // status:"failed" and the tools never reach the model. Resolve absolutely
+  // via import.meta.url, matching every other server in this file. Dev runs
+  // the .ts directly; prod the compiled .js.
+  const isDev = import.meta.url.includes("/src/");
+  const serverPath = isDev
+    ? new URL("./servers/comment.ts", import.meta.url).pathname
+    : new URL("./servers/comment.js", import.meta.url).pathname;
   return {
     type: "stdio",
     command: "bun",
-    args: ["run", "dist/mcp/servers/comment.js"],
+    args: ["run", serverPath],
     env: {
       ...sharedEnv,
       CLAUDE_COMMENT_ID: trackingCommentId.toString(),
@@ -110,10 +120,15 @@ function commentServerDef(
  * Inline comment server definition (stdio transport, PRs only).
  */
 function inlineCommentServerDef(sharedEnv: Record<string, string>, prNumber: number): McpServerDef {
+  // Same absolute-path requirement as commentServerDef above.
+  const isDev = import.meta.url.includes("/src/");
+  const serverPath = isDev
+    ? new URL("./servers/inline-comment.ts", import.meta.url).pathname
+    : new URL("./servers/inline-comment.js", import.meta.url).pathname;
   return {
     type: "stdio",
     command: "bun",
-    args: ["run", "dist/mcp/servers/inline-comment.js"],
+    args: ["run", serverPath],
     env: {
       ...sharedEnv,
       PR_NUMBER: prNumber.toString(),
