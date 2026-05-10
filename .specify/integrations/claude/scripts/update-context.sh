@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# update-context.sh: Claude Code integration: create/update CLAUDE.md
+# update-context.sh — Claude Code integration: create/update CLAUDE.md
 #
 # Thin wrapper that delegates to the shared update-agent-context script.
 # Activated in Stage 7 when the shared script uses integration.json dispatch.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Git-specific common functions for the git extension.
-# Extracted from scripts/bash/common.sh: contains only git-specific
+# Extracted from scripts/bash/common.sh — contains only git-specific
 # branch validation and detection logic.
 
 # Check if we have git available at the repo root

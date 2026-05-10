@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# update-context.sh: Cursor integration: create/update .cursor/rules/specify-rules.mdc
+# update-context.sh — Cursor integration: create/update .cursor/rules/specify-rules.mdc
 #
 # Thin wrapper that delegates to the shared update-agent-context script.
 # Activated in Stage 7 when the shared script uses integration.json dispatch.

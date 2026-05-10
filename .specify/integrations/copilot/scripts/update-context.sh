@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# update-context.sh: Copilot integration: create/update .github/copilot-instructions.md
+# update-context.sh — Copilot integration: create/update .github/copilot-instructions.md
 #
 # This is the copilot-specific implementation that produces the GitHub
 # Copilot instructions file. The shared dispatcher reads

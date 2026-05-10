@@ -15,7 +15,7 @@
     was intended to prevent agent-loop bypasses, not pure
     inference. The carve-out is guarded by the circuit-breaker,
     latency, and cost requirements in FR-020, SC-003, and SC-005
-    of that spec. PATCH-level per §Amendment Procedure, existing
+    of that spec. PATCH-level per §Amendment Procedure — existing
     guidance is clarified, no principle removed or redefined.
   Added sections: None
   Removed sections: None
@@ -292,7 +292,7 @@ async processing, and MCP server management happen within one
 process. Complexity MUST NOT be introduced through microservice
 decomposition unless the single-process model demonstrably fails to
 meet scaling requirements. Daemon worker processes that connect as
-WebSocket clients to the server are permitted, they share the
+WebSocket clients to the server are permitted — they share the
 codebase and Docker image but run as separate OS processes with a
 distinct entrypoint. They are clients, not decomposed services.
 
@@ -374,7 +374,7 @@ Reviewers MUST reject PRs where exported symbols lack JSDoc, where
 JSDoc describes outdated behavior, or where Mermaid diagrams are
 missing for flows that would materially benefit from visual
 explanation. Documentation updates MUST land in the same commit as
-the implementation change, not as a follow-up.
+the implementation change — not as a follow-up.
 
 ## Governance
 

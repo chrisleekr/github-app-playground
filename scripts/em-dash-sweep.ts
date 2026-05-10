@@ -37,6 +37,9 @@
  *   specs/**, src/db/migrations/**, CHANGELOG.md,
  *   test/**\/fixtures/**, node_modules/**, .git/**,
  *   build outputs (dist/, coverage/, site/),
+ *   spec-kit-managed assets (.specify/, .claude/skills/speckit*,
+ *   .github/agents/speckit*) — these are sync'd from upstream
+ *   and editing them in-repo gets clobbered,
  *   this script itself.
  */
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -56,6 +59,11 @@ const SKIP_PATTERNS: RegExp[] = [
   /^dist\//,
   /^coverage\//,
   /^site\//,
+  // Externally managed by spec-kit. Editing these files in-repo would be
+  // overwritten on the next spec-kit sync; the rule is to leave them alone.
+  /^\.specify\//,
+  /^\.claude\/skills\/speckit/,
+  /^\.github\/agents\/speckit/,
   new RegExp(`^${SCRIPT_REL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`),
 ];
 
@@ -96,10 +104,19 @@ function isSkipped(rel: string): boolean {
 function isTextFile(path: string): boolean {
   const ext = extname(path).toLowerCase();
   if (TEXT_EXT.has(ext)) return true;
-  // No extension (e.g. Dockerfile, Makefile)
-  if (ext === "") {
-    const base = path.split("/").pop() ?? "";
-    if (/^(Dockerfile|Makefile|README|CONTRIBUTING|LICENSE)/i.test(base)) return true;
+  const base = path.split("/").pop() ?? "";
+  // Filenames where the prefix (not the extension) is the load-bearing
+  // identifier: `Dockerfile`, `Dockerfile.daemon`, `Makefile.in`, `README`,
+  // `CONTRIBUTING.md` (already covered by .md), `LICENSE`. Match by prefix
+  // so multi-segment names like `Dockerfile.orchestrator` are included.
+  if (/^(Dockerfile|Makefile|README|CONTRIBUTING|LICENSE)/i.test(base)) return true;
+  // Dotfiles: `.env`, `.env.example`, `.gitleaks.toml`, `.trivyignore.yaml`.
+  // `extname` returns '' for `.env` and `.example` for `.env.example`, so
+  // neither matches TEXT_EXT directly. Include any dotfile whose name
+  // contains a known text token.
+  if (base.startsWith(".")) {
+    if (/^\.env(\.|$)/i.test(base)) return true;
+    if (/\.(toml|ya?ml|json|jsonc|md|sh|fish|bash)$/i.test(base)) return true;
   }
   return false;
 }

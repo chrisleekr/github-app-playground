@@ -198,7 +198,7 @@ clean_branch_name() {
 # Search locations in priority order:
 #  1. .specify/scripts/bash/common.sh under the project root (installed project)
 #  2. scripts/bash/common.sh under the project root (source checkout fallback)
-#  3. git-common.sh next to this script (minimal fallback: lacks resolve_template)
+#  3. git-common.sh next to this script (minimal fallback — lacks resolve_template)
 # ---------------------------------------------------------------------------
 SCRIPT_DIR="$(CDPATH="" cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
