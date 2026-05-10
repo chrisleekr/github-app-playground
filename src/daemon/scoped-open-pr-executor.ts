@@ -71,7 +71,7 @@ export async function executeScopedOpenPr(
   try {
     // verdictSummary contains LLM-generated policy text — route through the
     // agent-source path so the LLM scanner runs on the body.
-    await safePostToGitHub({
+    const guarded = await safePostToGitHub({
       body:
         `\`bot:open-pr\` daemon-side executor is scaffolded — clone + branch + ` +
         `Agent SDK scaffolding + \`gh pr create\` invocation is the next follow-up. ` +
@@ -87,6 +87,24 @@ export async function executeScopedOpenPr(
           body: cleanBody,
         }),
     });
+    if (!guarded.posted) {
+      // Body emptied by secret redaction — do NOT log a misleading "completed"
+      // line. Surface a distinct halt so the orchestrator records it
+      // separately from a successful scaffold reply.
+      log.warn(
+        {
+          event: "ship.scoped.open_pr.daemon.skipped_after_redaction",
+          matchCount: guarded.matchCount,
+          kinds: guarded.kinds,
+          reason: guarded.reason,
+        },
+        "scoped-open-pr reply skipped — body emptied by secret redaction",
+      );
+      return {
+        status: "halted",
+        reason: `scaffold reply skipped: secret redaction emptied the body (matchCount=${guarded.matchCount})`,
+      };
+    }
     log.info(
       { event: "ship.scoped.open_pr.daemon.completed" },
       "scoped-open-pr reply posted (scaffolding boundary)",

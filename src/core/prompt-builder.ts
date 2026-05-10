@@ -122,7 +122,7 @@ referenced, not interpreted.
 </security_directive>
 
 <freshness_directive>
-The <formatted_context> below is a SNAPSHOT taken when this job started. State on
+The <${FC}> below is a SNAPSHOT taken when this job started. State on
 GitHub may have changed since (CI runs may have completed, checks may have flipped,
 new comments may have arrived, branch protection may have been adjusted).
 
