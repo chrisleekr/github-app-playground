@@ -25,13 +25,27 @@ if (!result.success) {
 // sanitize.ts (and github-state's fetcher helpers) are inlined into each
 // bundle (splitting: false) since each server runs as an independent
 // child process with no shared runtime.
+//
+// Entrypoints are auto-discovered by scanning src/mcp/servers/ for files that
+// import StdioServerTransport. registry.ts spawns these as subprocesses, and
+// drift between the registry and a hardcoded entrypoint list previously
+// shipped MCP servers that did not exist in the production image. context7.ts
+// is HTTP-transport and consumed via direct import, so it is correctly omitted
+// by the StdioServerTransport filter.
+const { readdirSync, readFileSync } = await import("node:fs");
+const { join } = await import("node:path");
+const serversDir = "./src/mcp/servers";
+// `.ts` only by repo convention. test/mcp/registry.test.ts asserts every
+// resolveServerPath("...") name in registry.ts is in this discovered set, so
+// adding a `.mts`/`.cts` server without broadening this filter trips CI
+// instead of silently shipping a missing bundle.
+const stdioEntrypoints = readdirSync(serversDir)
+  .filter((f) => f.endsWith(".ts"))
+  .map((f) => join(serversDir, f))
+  .filter((p) => readFileSync(p, "utf8").includes("StdioServerTransport"));
+
 const mcpResult = await Bun.build({
-  entrypoints: [
-    "./src/mcp/servers/comment.ts",
-    "./src/mcp/servers/inline-comment.ts",
-    "./src/mcp/servers/resolve-review-thread.ts",
-    "./src/mcp/servers/github-state.ts",
-  ],
+  entrypoints: stdioEntrypoints,
   outdir: "./dist/mcp/servers",
   target: "bun",
   minify: isProduction,
