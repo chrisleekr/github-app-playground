@@ -229,6 +229,13 @@ export async function executeAgent({
     permissionMode: "bypassPermissions",
     allowDangerouslySkipPermissions: true,
     allowedTools,
+    // ToolSearch enumerates only deferred (lazily-loaded) tools. Opus 4.7
+    // misreads its output as the authoritative tool catalog, then concludes
+    // that eagerly-loaded MCP tools (mcp__github_inline_comment__*,
+    // mcp__github_comment__*) are unavailable and silently downgrades to a
+    // single fat tracking-comment dump. Block it so the model uses the eager
+    // tool list delivered in the SDK init message instead.
+    disallowedTools: ["ToolSearch"],
     mcpServers,
     systemPrompt: { type: "preset", preset: "claude_code" },
     env: buildProviderEnv(installationToken, artifactsDir),
@@ -278,6 +285,7 @@ export async function executeAgent({
       queryMaxTurns: queryOptions.maxTurns,
       queryCwd: queryOptions.cwd,
       queryAllowedTools: queryOptions.allowedTools,
+      queryDisallowedTools: queryOptions.disallowedTools,
     },
     "Agent SDK query options built",
   );
@@ -303,7 +311,13 @@ export async function executeAgent({
 
         if (msgType === "system") {
           log.info(
-            { sdkMsgType: msgType, subtype: msg["subtype"], model: msg["model"] },
+            {
+              sdkMsgType: msgType,
+              subtype: msg["subtype"],
+              model: msg["model"],
+              tools: msg["tools"],
+              mcp_servers: msg["mcp_servers"],
+            },
             "SDK system message",
           );
         } else if (msgType === "assistant") {

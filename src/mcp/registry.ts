@@ -1,7 +1,32 @@
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { config } from "../config";
 import type { DaemonCapabilities } from "../shared/daemon-types";
 import type { BotContext, McpServerConfig, McpServerDef } from "../types";
 import { context7Server } from "./servers/context7";
+
+/**
+ * Resolve the absolute filesystem path of an MCP server module by name,
+ * preferring the compiled `.js` if present (prod image) and falling back to
+ * `.ts` for dev. Heuristics like `import.meta.url.includes("/src/")` are
+ * brittle: container images with a `/src/` segment in their WORKDIR would
+ * false-positive and pick a `.ts` that does not exist after compilation.
+ * existsSync against both candidates is path-shape-agnostic and removes the
+ * 6-fold duplication that previously lived in this file.
+ */
+function resolveServerPath(name: string): string {
+  const jsPath = fileURLToPath(new URL(`./servers/${name}.js`, import.meta.url));
+  if (existsSync(jsPath)) return jsPath;
+  const tsPath = fileURLToPath(new URL(`./servers/${name}.ts`, import.meta.url));
+  if (existsSync(tsPath)) return tsPath;
+  // Surface a clear, actionable error rather than letting bun fail with a
+  // bare ENOENT inside an MCP server subprocess (which only shows up as
+  // status:"failed" in the SDK init message).
+  throw new Error(
+    `MCP server module not found for "${name}": neither ${jsPath} nor ${tsPath} exists.`,
+  );
+}
 
 /**
  * Resolve which MCP servers to activate based on the BotContext.
@@ -93,10 +118,11 @@ function commentServerDef(
   trackingCommentId: number,
   deliveryId: string,
 ): McpServerDef {
+  const serverPath = resolveServerPath("comment");
   return {
     type: "stdio",
     command: "bun",
-    args: ["run", "dist/mcp/servers/comment.js"],
+    args: ["run", serverPath],
     env: {
       ...sharedEnv,
       CLAUDE_COMMENT_ID: trackingCommentId.toString(),
@@ -110,10 +136,11 @@ function commentServerDef(
  * Inline comment server definition (stdio transport, PRs only).
  */
 function inlineCommentServerDef(sharedEnv: Record<string, string>, prNumber: number): McpServerDef {
+  const serverPath = resolveServerPath("inline-comment");
   return {
     type: "stdio",
     command: "bun",
-    args: ["run", "dist/mcp/servers/inline-comment.js"],
+    args: ["run", serverPath],
     env: {
       ...sharedEnv,
       PR_NUMBER: prNumber.toString(),
@@ -131,10 +158,7 @@ function resolveReviewThreadServerDef(
   sharedEnv: Record<string, string>,
   prNumber: number,
 ): McpServerDef {
-  const isDev = import.meta.url.includes("/src/");
-  const serverPath = isDev
-    ? new URL("./servers/resolve-review-thread.ts", import.meta.url).pathname
-    : "dist/mcp/servers/resolve-review-thread.js";
+  const serverPath = resolveServerPath("resolve-review-thread");
   return {
     type: "stdio",
     command: "bun",
@@ -152,10 +176,7 @@ function resolveReviewThreadServerDef(
  * model cannot fan out to arbitrary repos.
  */
 function githubStateServerDef(sharedEnv: Record<string, string>): McpServerDef {
-  const isDev = import.meta.url.includes("/src/");
-  const serverPath = isDev
-    ? new URL("./servers/github-state.ts", import.meta.url).pathname
-    : "dist/mcp/servers/github-state.js";
+  const serverPath = resolveServerPath("github-state");
   return {
     type: "stdio",
     command: "bun",
@@ -169,10 +190,7 @@ function githubStateServerDef(sharedEnv: Record<string, string>): McpServerDef {
  * Passes the full DaemonCapabilities JSON via env var.
  */
 function daemonCapabilitiesServerDef(capabilities: DaemonCapabilities): McpServerDef {
-  const isDev = import.meta.url.includes("/src/");
-  const serverPath = isDev
-    ? new URL("./servers/daemon-capabilities.ts", import.meta.url).pathname
-    : new URL("./servers/daemon-capabilities.js", import.meta.url).pathname;
+  const serverPath = resolveServerPath("daemon-capabilities");
 
   return {
     type: "stdio",
@@ -189,10 +207,7 @@ function daemonCapabilitiesServerDef(capabilities: DaemonCapabilities): McpServe
  * Passes the workDir and pre-loaded memory via env vars.
  */
 function repoMemoryServerDef(workDir: string, memory: RepoMemoryEntry[]): McpServerDef {
-  const isDev = import.meta.url.includes("/src/");
-  const serverPath = isDev
-    ? new URL("./servers/repo-memory.ts", import.meta.url).pathname
-    : new URL("./servers/repo-memory.js", import.meta.url).pathname;
+  const serverPath = resolveServerPath("repo-memory");
 
   return {
     type: "stdio",
