@@ -6,19 +6,37 @@
  *   bun scripts/em-dash-sweep.ts <path> [<path> ...]   # rewrite files in place
  *   bun scripts/em-dash-sweep.ts --check               # exit 1 if any in-scope file contains U+2014
  *
- * Heuristic (applied per line in this priority order):
- *   1. Markdown table empty cell  |  —  |   ->  | _none_ |
- *   2. Heading line (^#+ ...)     —  ->  : (first hit only)
- *   3. Bullet term definition    ^\s*[-*]\s+TERM — EXPL  ->  TERM: EXPL
- *   4. Default                    —  ->  ,
- *   5. No-space                  a—b           ->  a-b
+ * Rules, applied per line in this priority order:
+ *   1.  Markdown table empty cell  |  —  |   ->  | _none_ |
+ *   2.  Heading line (^#+ ...)              ->  first ` — ` becomes ': '
+ *   3a. Bullet definition  ^\s*[-*+]\s+TERM — EXPL  ->  TERM: EXPL
+ *       (TERM excludes ':' so it never re-fires on a term that already has a
+ *       colon; also skipped when TERM has unbalanced backticks so we don't
+ *       mutate a markdown inline-code span.)
+ *   3b. Inline aside `X — Y — Z` (≤60 chars between em dashes) -> `, X, `
+ *   3c. JSDoc continuation `^\s*\* — ` -> drop the em dash
+ *   3d. Test-name string `describe|it|test("X — Y")` -> `:`
+ *   4.  Default ` — ` substitution. Outside a Markdown table row, when the
+ *       right side begins with an article/pronoun (the/this/that/these/those/
+ *       it/we/you/a/an), use `: `; otherwise `, `. Inside a `|...|` table
+ *       row always use `, ` so cells stay compact.
+ *   5.  No-space `a—b` -> `a, b`. The em dash without surrounding spaces
+ *       is the emphatic-correction idiom in American English (`tasks—not
+ *       dilution`), NOT a hyphen — collapsing to `a-b` would manufacture
+ *       non-words like `tasks-not`.
+ *   6.  End-of-line continuation ` —` -> `,`
  *
- * After step 5, any remaining — is reported and the file is left
- * untouched; the human resolves it.
+ * Fenced code blocks ` ``` ` are NOT processed: lines between fences are
+ * passed through verbatim, since em dashes inside code samples are usually
+ * load-bearing.
+ *
+ * After all rules, any remaining U+2014 is reported per file and the file
+ * is left untouched at that line; the human resolves it.
  *
  * Skip list (hard-coded so the gate stays trustworthy):
  *   specs/**, src/db/migrations/**, CHANGELOG.md,
  *   test/**\/fixtures/**, node_modules/**, .git/**,
+ *   build outputs (dist/, coverage/, site/),
  *   this script itself.
  */
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -119,12 +137,17 @@ function transformLine(line: string): string {
   //   ^\s*[-*+]\s+TERM — EXPL  ->  TERM: EXPL
   // TERM is restricted to non-colon text so the rule does NOT re-fire on a
   // bullet whose term already ends in `:` (e.g. `- **Foo:** body — note`),
-  // which would produce a double colon. Runs BEFORE the parenthetical
-  // rule (3b) so a bullet's leading em dash is consumed as a definition
-  // colon rather than misread as half of an inline aside.
+  // which would produce a double colon. We also require TERM to have a
+  // balanced backtick count so we don't fire on a bullet whose ` — `
+  // sits inside a markdown inline-code span (which would mutate the code
+  // sample). Runs BEFORE the parenthetical rule (3b) so a bullet's leading
+  // em dash is consumed as a definition colon rather than misread as half
+  // of an inline aside.
   {
     const m = line.match(/^(\s*[-*+]\s+)([^:\n]*?) — (.*)$/);
-    if (m) line = `${m[1]}${m[2]}: ${m[3]}`;
+    if (m && (m[2].match(/`/g)?.length ?? 0) % 2 === 0) {
+      line = `${m[1]}${m[2]}: ${m[3]}`;
+    }
   }
 
   // Rule 3b: parenthetical double em dash `X — Y — Z` (inline aside).
@@ -164,8 +187,11 @@ function transformLine(line: string): string {
     line = line.replaceAll(` ${EM} `, ", ");
   }
 
-  // Rule 5: no-space `a—b` -> `a-b` (only when both sides are word chars)
-  line = line.replace(/(\w)—(\w)/g, "$1-$2");
+  // Rule 5: no-space `a—b` -> `a, b`. The space-less em dash is the
+  // emphatic-correction idiom in American English (`tasks—not dilution`
+  // means "tasks, NOT dilution"), not a hyphen. Collapsing to `a-b` would
+  // manufacture non-words like `tasks-not`, `detected-are`, `yet-explicitly`.
+  line = line.replace(/(\w)—(\w)/g, "$1, $2");
 
   // Rule 6: end-of-line continuation ` —` (clause carries to next line) -> `,`
   line = line.replace(/ —\s*$/, ",");
@@ -175,21 +201,55 @@ function transformLine(line: string): string {
 
 function processFile(path: string, write: boolean): Result {
   const original = readFileSync(path, "utf8");
-  const beforeCount = (original.match(/—/g) ?? []).length;
-  if (beforeCount === 0) {
+  if (!original.includes(EM)) {
     return { path, before: 0, after: 0, unresolved: [] };
   }
   const lines = original.split("\n");
   const out: string[] = [];
-  for (const line of lines) out.push(transformLine(line));
-  const next = out.join("\n");
-  const afterCount = (next.match(/—/g) ?? []).length;
-  const unresolved: Result["unresolved"] = [];
-  if (afterCount > 0) {
-    out.forEach((l, i) => {
-      if (l.includes(EM)) unresolved.push({ line: i + 1, text: l });
-    });
+  // Track Markdown fenced-code-block state across lines. Em dashes inside
+  // ``` blocks are usually load-bearing (code samples, verbatim output,
+  // diagrams), so leave them verbatim AND exclude them from both the sweep
+  // count and the --check gate count. Only matters for .md / .mdx; other
+  // extensions never use ```-as-fence semantics, but the toggle is harmless.
+  let inFence = false;
+  let beforeCount = 0;
+  for (const line of lines) {
+    if (/^\s{0,3}```/.test(line)) {
+      inFence = !inFence;
+      out.push(line);
+      continue;
+    }
+    if (inFence) {
+      out.push(line);
+      continue;
+    }
+    beforeCount += (line.match(/—/g) ?? []).length;
+    out.push(transformLine(line));
   }
+  if (beforeCount === 0) {
+    // All em dashes were inside fences. Treat as a no-op for both write
+    // mode and --check (the gate intentionally ignores fenced code).
+    return { path, before: 0, after: 0, unresolved: [] };
+  }
+  const next = out.join("\n");
+  // Count residual em dashes the same way as the pre-pass: only outside
+  // fenced code blocks. Otherwise the gate would report a regression for
+  // a verbatim em dash a contributor put inside a code sample.
+  let afterCount = 0;
+  const unresolved: Result["unresolved"] = [];
+  let resInFence = false;
+  out.forEach((l, i) => {
+    if (/^\s{0,3}```/.test(l)) {
+      resInFence = !resInFence;
+      return;
+    }
+    if (resInFence) return;
+    const hits = (l.match(/—/g) ?? []).length;
+    if (hits > 0) {
+      afterCount += hits;
+      unresolved.push({ line: i + 1, text: l });
+    }
+  });
   if (write && next !== original) writeFileSync(path, next);
   return { path, before: beforeCount, after: afterCount, unresolved };
 }

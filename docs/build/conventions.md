@@ -38,6 +38,10 @@ The repo enforces conventions through tooling, not docs, every rule below is che
 | `arrowParens`    | `"always"` |
 | `bracketSpacing` | `true`     |
 
+## Em dashes
+
+The repo-wide style rule (per `~/.claude/CLAUDE.md`) forbids em dashes (U+2014). Use commas, colons, semicolons, or parentheses instead. Enforced in CI via `scripts/em-dash-sweep.ts --check` (also wired into the umbrella `bun run check`). The check skips `specs/`, `src/db/migrations/`, `CHANGELOG.md`, `test/**/fixtures/`, and build outputs. To remediate an offending line locally, run `bun run scripts/em-dash-sweep.ts <path>` to apply the heuristic rewrite, then hand-review the result. See issue #116 for the original sweep.
+
 ## Pre-commit hooks
 
 `.husky/pre-commit`:
