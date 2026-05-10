@@ -69,15 +69,15 @@ describe("SCN-B — input-side prompt-injection vectors", () => {
 
 describe("SCN-D — output-side secret redaction (regex pass)", () => {
   const cases: { kind: string; sample: string }[] = [
-    { kind: "GITHUB_TOKEN", sample: `ghp_${  "A".repeat(36)}` },
-    { kind: "GITHUB_TOKEN", sample: `gho_${  "B".repeat(36)}` },
-    { kind: "GITHUB_TOKEN", sample: `ghs_${  "C".repeat(36)}` },
-    { kind: "GITHUB_TOKEN", sample: `ghr_${  "D".repeat(36)}` },
-    { kind: "GITHUB_TOKEN", sample: `github_pat_${  "E".repeat(60)}` },
-    { kind: "ANTHROPIC_API_KEY", sample: `sk-ant-api03-${  "F".repeat(95)}` },
-    { kind: "ANTHROPIC_OAUTH", sample: `sk-ant-oat01-${  "G".repeat(95)}` },
-    { kind: "AWS_ACCESS_KEY_ID", sample: `AKIA${  "H".repeat(16).toUpperCase()}` },
-    { kind: "AWS_ACCESS_KEY_ID", sample: `ASIA${  "I".repeat(16).toUpperCase()}` },
+    { kind: "GITHUB_TOKEN", sample: `ghp_${"A".repeat(36)}` },
+    { kind: "GITHUB_TOKEN", sample: `gho_${"B".repeat(36)}` },
+    { kind: "GITHUB_TOKEN", sample: `ghs_${"C".repeat(36)}` },
+    { kind: "GITHUB_TOKEN", sample: `ghr_${"D".repeat(36)}` },
+    { kind: "GITHUB_TOKEN", sample: `github_pat_${"E".repeat(60)}` },
+    { kind: "ANTHROPIC_API_KEY", sample: `sk-ant-api03-${"F".repeat(95)}` },
+    { kind: "ANTHROPIC_OAUTH", sample: `sk-ant-oat01-${"G".repeat(95)}` },
+    { kind: "AWS_ACCESS_KEY_ID", sample: `AKIA${"H".repeat(16).toUpperCase()}` },
+    { kind: "AWS_ACCESS_KEY_ID", sample: `ASIA${"I".repeat(16).toUpperCase()}` },
     {
       kind: "PRIVATE_KEY_PEM",
       sample: "-----BEGIN RSA PRIVATE KEY-----\nMIIabcdef\n-----END RSA PRIVATE KEY-----",
@@ -103,7 +103,7 @@ describe("SCN-D — output-side secret redaction (regex pass)", () => {
   }
 
   it("D2: counts each kind once even when multiple secrets of that kind appear", () => {
-    const body = `ghp_${  "A".repeat(36)} and ghp_${  "B".repeat(36)}`;
+    const body = `ghp_${"A".repeat(36)} and ghp_${"B".repeat(36)}`;
     const result = redactSecrets(body);
     expect(result.matchCount).toBe(2);
     expect(result.kinds).toEqual(["GITHUB_TOKEN"]);
@@ -124,8 +124,8 @@ describe("SCN-E — spotlight tag scheme (per-call nonce)", () => {
     const data = makeFetchedData();
     const a = buildPrompt(ctx, data, 1);
     const b = buildPrompt(ctx, data, 1);
-    const aSuffix = (/untrusted_pr_or_issue_body_([0-9a-f]{8})/.exec(a))?.[1];
-    const bSuffix = (/untrusted_pr_or_issue_body_([0-9a-f]{8})/.exec(b))?.[1];
+    const aSuffix = /untrusted_pr_or_issue_body_([0-9a-f]{8})/.exec(a)?.[1];
+    const bSuffix = /untrusted_pr_or_issue_body_([0-9a-f]{8})/.exec(b)?.[1];
     expect(aSuffix).toBeDefined();
     expect(bSuffix).toBeDefined();
     expect(aSuffix).not.toBe(bSuffix);
@@ -135,8 +135,8 @@ describe("SCN-E — spotlight tag scheme (per-call nonce)", () => {
     const ctx = makeBotContext();
     const data = makeFetchedData();
     const out = buildPrompt(ctx, data, 1);
-    const open = (/<untrusted_pr_or_issue_body_([0-9a-f]{8})>/.exec(out))?.[1];
-    const close = (/<\/untrusted_pr_or_issue_body_([0-9a-f]{8})>/.exec(out))?.[1];
+    const open = /<untrusted_pr_or_issue_body_([0-9a-f]{8})>/.exec(out)?.[1];
+    const close = /<\/untrusted_pr_or_issue_body_([0-9a-f]{8})>/.exec(out)?.[1];
     expect(open).toBeDefined();
     expect(close).toBe(open);
   });
@@ -153,7 +153,7 @@ describe("SCN-E — spotlight tag scheme (per-call nonce)", () => {
     expect(realClose).not.toBeNull();
     // There are two closing tags: the real one (after the body) plus the
     // embedded fake one. The fake's suffix is not the current nonce.
-    const liveNonce = (/<untrusted_pr_or_issue_body_([0-9a-f]{8})>/.exec(out))?.[1];
+    const liveNonce = /<untrusted_pr_or_issue_body_([0-9a-f]{8})>/.exec(out)?.[1];
     expect(liveNonce).toBeDefined();
     expect(liveNonce).not.toBe("deadbeef");
   });
