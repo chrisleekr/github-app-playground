@@ -714,6 +714,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#iteration-0-reroute" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Iteration-0 reroute
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#re-triggering" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1583,6 +1594,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#iteration-0-reroute" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Iteration-0 reroute
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#re-triggering" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1794,6 +1816,25 @@
 </tbody>
 </table>
 <p>If the target branch matches <code>SHIP_FORBIDDEN_TARGET_BRANCHES</code> (e.g. <code>main,production</code>), the trigger is refused before any session is created.</p>
+<h2 id="iteration-0-reroute">Iteration-0 reroute<a class="headerlink" href="#iteration-0-reroute" title="Permanent link">&para;</a></h2>
+<p>Some merge-readiness probe verdicts cannot be recovered by ship at iteration 0 — no amount of further work would change them. When the first probe returns one of these, the workflow skips intent creation entirely (no <code>ship_intents</code> row, no session-tracker tracking comment) and reroutes the trigger:</p>
+<table>
+<thead>
+<tr>
+<th>Verdict reason</th>
+<th>Why ship can't proceed</th>
+<th>What happens instead</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>human_took_over</code></td>
+<td>head SHA was authored by a human, not the bot</td>
+<td>Comment triggers (NL or literal) hand off to the conversational <code>chat-thread</code> executor for a tools-driven reply. Label triggers post a single prose refusal.</td>
+</tr>
+</tbody>
+</table>
+<p>Other non-readiness reasons (<code>failing_checks</code>, <code>behind_base</code>, <code>pending_checks</code>, etc.) are recoverable by the iteration loop and stay on the normal path. The reroute set is defined as <code>SHIP_REROUTE_REASONS</code> in <code>src/workflows/ship/session-runner.ts</code>.</p>
 <h2 id="re-triggering">Re-triggering<a class="headerlink" href="#re-triggering" title="Permanent link">&para;</a></h2>
 <p>Re-applying the <code>bot:ship</code> label or re-commenting <code>bot:ship</code> on the same PR while a session is <strong>active</strong> is a no-op. Re-applying after the session is <strong>terminal</strong> starts a fresh session — the prior <code>ship_intents</code> row is preserved for audit.</p>
 <h2 id="tuning-knobs">Tuning knobs<a class="headerlink" href="#tuning-knobs" title="Permanent link">&para;</a></h2>
