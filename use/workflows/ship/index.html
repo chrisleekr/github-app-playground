@@ -758,6 +758,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#output-secret-redaction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Output secret-redaction
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#auto-defer-on-anthropic-usage-limit" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1638,6 +1649,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#output-secret-redaction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Output secret-redaction
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#auto-defer-on-anthropic-usage-limit" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1869,6 +1891,8 @@
 <li><code>merge-conflict-needs-human</code> — the rebase produced conflicts the bot would not resolve confidently.</li>
 </ul>
 <p>For Day-2 SQL and the other terminal categories, see <a href="../../../operate/runbooks/stuck-ship-intent/"><code>operate/runbooks/stuck-ship-intent.md</code></a>.</p>
+<h2 id="output-secret-redaction">Output secret-redaction<a class="headerlink" href="#output-secret-redaction" title="Permanent link">&para;</a></h2>
+<p>Every comment the ship workflow posts to GitHub — tracking-comment create / update, scoped-command marker upserts (<code>bot:investigate</code>, <code>bot:triage</code>, <code>bot:summarize</code>, <code>bot:open-pr</code>, <code>bot:rebase</code>), lifecycle replies (<code>bot:stop</code> / <code>bot:resume</code> / <code>bot:abort-ship</code>), and the orchestrator's tracking-mirror cascade — flows through <code>safePostToGitHub</code> (<code>src/utils/github-output-guard.ts</code>). The wrapper runs the regex secret-redactor (and, for <code>source: "agent"</code> bodies, the Bedrock LLM scanner) before the body reaches GitHub, so a successful prompt-injection that convinces the agent to echo a token still cannot leak it through the comment surface. See <code>test/security/SCENARIOS.md</code> for the threat model.</p>
 <h2 id="auto-defer-on-anthropic-usage-limit">Auto-defer on Anthropic usage-limit<a class="headerlink" href="#auto-defer-on-anthropic-usage-limit" title="Permanent link">&para;</a></h2>
 <p>A child workflow run that fails because the Claude Agent SDK reported <code>"You've hit your limit · resets &lt;time&gt; UTC"</code> (subscription-token quota or per-tier rate limit) is treated as a <strong>transient</strong> failure rather than a permanent one. The orchestrator's <code>maybeEarlyWakeShipIntent</code> cascade:</p>
 <ol>
