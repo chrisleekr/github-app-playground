@@ -1,4 +1,4 @@
-# Runbook — triage
+# Runbook: triage
 
 Triage is a binary `heavy` classifier. It runs on every event (subject to the kill-switch and circuit breaker) and answers one question: should this job prefer an ephemeral daemon? `heavy=true` is one of the two triggers that can spawn an ephemeral daemon Pod (the other is queue overflow).
 
@@ -8,11 +8,11 @@ Triage is a binary `heavy` classifier. It runs on every event (subject to the ki
 { "heavy": true, "confidence": 0.92, "rationale": "..." }
 ```
 
-There is no `complexity` field and no `maxTurns` mapping — `maxTurns` always comes from `config.defaultMaxTurns` regardless of the triage outcome.
+There is no `complexity` field and no `maxTurns` mapping, `maxTurns` always comes from `config.defaultMaxTurns` regardless of the triage outcome.
 
 ## Confidence threshold
 
-At or above `TRIAGE_CONFIDENCE_THRESHOLD`, `heavy` is accepted as-is. Below it, the router treats the signal as `heavy=false` — the job routes to `persistent-daemon` and the log line carries `triage_fallback_reason=sub-threshold`. Day-one default is `1.0` so only perfectly confident results route an ephemeral spawn.
+At or above `TRIAGE_CONFIDENCE_THRESHOLD`, `heavy` is accepted as-is. Below it, the router treats the signal as `heavy=false`: the job routes to `persistent-daemon` and the log line carries `triage_fallback_reason=sub-threshold`. Day-one default is `1.0` so only perfectly confident results route an ephemeral spawn.
 
 ## Circuit breaker
 
@@ -24,7 +24,7 @@ All emitted as `triage_fallback_reason` in pino logs.
 
 | Reason          | Trigger                                                             |
 | --------------- | ------------------------------------------------------------------- |
-| `disabled`      | `TRIAGE_ENABLED=false` — short-circuits without calling the LLM.    |
+| `disabled`      | `TRIAGE_ENABLED=false`, short-circuits without calling the LLM.     |
 | `circuit-open`  | Breaker tripped after consecutive failures.                         |
 | `timeout`       | The call exceeded `TRIAGE_TIMEOUT_MS`.                              |
 | `llm-error`     | The provider returned an error.                                     |
@@ -37,7 +37,7 @@ Every event attempts triage. When `TRIAGE_ENABLED=false` or the breaker is open 
 
 Mitigations:
 
-- `TRIAGE_CONFIDENCE_THRESHOLD` defaults to `1.0` (strictest). Lower toward `0.8`–`0.9` to accept more heavy verdicts; raising above `1.0` is unsupported and gates out every response. The compute cost is unchanged either way — the knob only controls whether the result routes an ephemeral spawn.
+- `TRIAGE_CONFIDENCE_THRESHOLD` defaults to `1.0` (strictest). Lower toward `0.8`–`0.9` to accept more heavy verdicts; raising above `1.0` is unsupported and gates out every response. The compute cost is unchanged either way: the knob only controls whether the result routes an ephemeral spawn.
 - Flip `TRIAGE_ENABLED=false` during a provider incident to suppress spend without redeploying.
 - Keep `TRIAGE_MAX_TOKENS` low (the response schema is ~40 tokens).
 

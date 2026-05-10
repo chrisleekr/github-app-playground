@@ -15,11 +15,11 @@ Direct link: <https://github.com/settings/apps/new>.
 
 ### 1.2 Basic information
 
-| Field           | Value                                                                                  | Notes                                                            |
-| --------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| GitHub App name | `chrisleekr-bot`                                                                       | Globally unique, ≤ 34 chars, slugified to lowercase-with-dashes. |
-| Homepage URL    | `https://github.com/chrisleekr/github-app-playground`                                  | Required; any valid HTTPS URL.                                   |
-| Description     | `AI-powered code review bot — responds to @chrisleekr-bot mentions on PRs and issues.` | Optional.                                                        |
+| Field           | Value                                                                                 | Notes                                                            |
+| --------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| GitHub App name | `chrisleekr-bot`                                                                      | Globally unique, ≤ 34 chars, slugified to lowercase-with-dashes. |
+| Homepage URL    | `https://github.com/chrisleekr/github-app-playground`                                 | Required; any valid HTTPS URL.                                   |
+| Description     | `AI-powered code review bot, responds to @chrisleekr-bot mentions on PRs and issues.` | Optional.                                                        |
 
 ### 1.3 Webhook configuration
 
@@ -27,7 +27,7 @@ Direct link: <https://github.com/settings/apps/new>.
 | ---------------- | ------------------------------------------------------------------ |
 | Active           | ✅                                                                 |
 | Webhook URL      | `https://<your-public-host>/api/github/webhooks`                   |
-| SSL verification | Enabled (default — keep it).                                       |
+| SSL verification | Enabled (default, keep it).                                        |
 | Webhook secret   | Output of `openssl rand -hex 32`. Save as `GITHUB_WEBHOOK_SECRET`. |
 
 The path `/api/github` is set by `pathPrefix` in `createNodeMiddleware` (`src/app.ts`). Don't change the path unless you also change the source.
@@ -57,7 +57,7 @@ Repository permissions:
 | Metadata      | Read-only    | Auto-granted; required for all GitHub Apps.                           |
 | Workflows     | Read & Write | Modify `.github/workflows/*.yml` when an `implement` task touches CI. |
 
-Leave all organisation and account permissions at **No access**. Principle of least privilege — see [Choosing permissions for a GitHub App](https://docs.github.com/en/apps/creating-github-apps/setting-up-a-github-app/choosing-permissions-for-a-github-app).
+Leave all organisation and account permissions at **No access**. Principle of least privilege, see [Choosing permissions for a GitHub App](https://docs.github.com/en/apps/creating-github-apps/setting-up-a-github-app/choosing-permissions-for-a-github-app).
 
 ### 1.6 Subscribe to events
 
@@ -72,7 +72,7 @@ Leave all organisation and account permissions at **No access**. Principle of le
 | Check runs                   | `check_run.completed`                                           | `src/webhook/events/check-run.ts`      |
 | Check suites                 | `check_suite.completed`                                         | `src/webhook/events/check-suite.ts`    |
 
-The shepherding reactor uses `synchronize`, `closed`, `edited`, `deleted`, `check_run`, and `check_suite` to early-wake active sessions on `Valkey ZADD ship:tickle`. Every subscribed event you do not handle still hits your webhook URL — keep this list tight.
+The shepherding reactor uses `synchronize`, `closed`, `edited`, `deleted`, `check_run`, and `check_suite` to early-wake active sessions on `Valkey ZADD ship:tickle`. Every subscribed event you do not handle still hits your webhook URL, keep this list tight.
 
 > GitHub does not emit a `pull_request_review_thread.created` action. The only valid actions for that event are `resolved` and `unresolved`.
 
@@ -90,7 +90,7 @@ Click **Create GitHub App**. GitHub assigns the **App ID** and redirects to the 
 On the App's General settings:
 
 1. Scroll to **Private keys**.
-2. Click **Generate a private key** — GitHub immediately downloads `chrisleekr-bot.YYYY-MM-DD.private-key.pem`.
+2. Click **Generate a private key**, GitHub immediately downloads `chrisleekr-bot.YYYY-MM-DD.private-key.pem`.
 3. Move it to a password manager or secrets vault. **Never commit it.**
 
 The full PEM (including `-----BEGIN…` / `-----END…` lines) is the value of `GITHUB_APP_PRIVATE_KEY`. Single-line `.env` form:
@@ -124,7 +124,7 @@ After installation, the bot only responds to mentions in repositories where the 
 
 ## 5. Verify
 
-1. **Settings → Developer settings → GitHub Apps → your app → Advanced** — redeliver a recent webhook.
+1. **Settings → Developer settings → GitHub Apps → your app → Advanced**, redeliver a recent webhook.
 2. Open an issue in an installed repository and post `@chrisleekr-bot triage this` (or `@chrisleekr-bot-dev` locally).
 3. The bot posts a tracking comment within seconds.
 

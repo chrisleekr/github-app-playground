@@ -2,7 +2,7 @@
 
 This page enumerates the boundary the bot enforces on itself. The boundary is defended in two places: handler code and a static guard at `scripts/check-no-destructive-actions.ts` that runs in `bun run check`.
 
-## Static guard — destructive actions
+## Static guard: destructive actions
 
 `scripts/check-no-destructive-actions.ts` scans `src/workflows/ship/` (recursive) and the four scoped daemon executors for the following patterns. The CI gate fails the build on any match outside of comments.
 
@@ -14,7 +14,7 @@ This page enumerates the boundary the bot enforces on itself. The boundary is de
 | `git filter-branch` / `git filter-repo`                                | History rewriting is out of scope.                              |
 | `gh pr merge` / `mergePullRequest` (GraphQL) / `mergeBranch` (GraphQL) | The bot never merges.                                           |
 
-`src/workflows/handlers/resolve.ts` documents a non-negotiable requirement that `octokit.rest.pulls.merge` must never be called (header comment + a step in the agent's instruction set). It is a documented constraint, not a runtime guard — the static guard above is what fails the build if anyone tries.
+`src/workflows/handlers/resolve.ts` documents a non-negotiable requirement that `octokit.rest.pulls.merge` must never be called (header comment + a step in the agent's instruction set). It is a documented constraint, not a runtime guard: the static guard above is what fails the build if anyone tries.
 
 ## Pause / resume / abort (ship sessions)
 
@@ -42,8 +42,8 @@ The shepherding probe detects when a non-bot principal has pushed to the PR's he
 
 ## Idempotency
 
-A duplicate webhook delivery — same `X-GitHub-Delivery` header or same tracking-comment marker — is dropped before any work runs. The fast in-memory `Map` is lost on restart; the durable check (looking for the bot's hidden delivery marker in existing tracking comments) survives crash loops.
+A duplicate webhook delivery, same `X-GitHub-Delivery` header or same tracking-comment marker, is dropped before any work runs. The fast in-memory `Map` is lost on restart; the durable check (looking for the bot's hidden delivery marker in existing tracking comments) survives crash loops.
 
 ## Fork PRs
 
-The bot's installation token cannot push to a fork branch. PR-side workflows (`review`, `resolve`, `ship`) detect this, post a top-level comment asking the contributor to rebase, and proceed against the stale head — flagging affected findings in the final report.
+The bot's installation token cannot push to a fork branch. PR-side workflows (`review`, `resolve`, `ship`) detect this, post a top-level comment asking the contributor to rebase, and proceed against the stale head, flagging affected findings in the final report.

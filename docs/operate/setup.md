@@ -9,9 +9,9 @@ This page covers running the bot on your laptop against a real GitHub App. For f
 | [Bun](https://bun.sh)   | from `.tool-versions` (currently `1.3.13`) | Runtime and package manager.                                                     |
 | Git                     | any                                        | Repository checkout during agent execution.                                      |
 | Docker                  | any recent                                 | Local Postgres + Valkey via `docker-compose.dev.yml`.                            |
-| GitHub account          | —                                          | Admin access to the org or personal account where the App is registered.         |
-| Tunnelling tool         | —                                          | ngrok or smee.io to expose `localhost:3000` to GitHub.                           |
-| AI provider credentials | —                                          | One of: Anthropic API key, Claude Code OAuth token, AWS credentials for Bedrock. |
+| GitHub account          | _none_                                     | Admin access to the org or personal account where the App is registered.         |
+| Tunnelling tool         | _none_                                     | ngrok or smee.io to expose `localhost:3000` to GitHub.                           |
+| AI provider credentials | _none_                                     | One of: Anthropic API key, Claude Code OAuth token, AWS credentials for Bedrock. |
 
 ## First run
 
@@ -25,7 +25,7 @@ bun run dev:deps
 
 # Copy and fill .env
 cp .env.example .env
-# Edit .env — see configuration.md for every variable.
+# Edit .env: see configuration.md for every variable.
 
 # Run database migrations
 bun run db:migrate
@@ -46,7 +46,7 @@ bun run dev:ngrok
 # Copy the https://....ngrok.io URL into the GitHub App's webhook URL field.
 ```
 
-Alternative — smee.io:
+Alternative, smee.io:
 
 ```bash
 smee --url https://smee.io/<your-channel> --path /api/github/webhooks --port 3000
@@ -91,10 +91,10 @@ bun run docs:build      # Strict build (CI also runs this)
 The webhook server embeds an orchestrator that talks to daemons over WebSocket. To exercise the full pipeline locally:
 
 ```bash
-# Terminal 1 — orchestrator (webhook server)
+# Terminal 1: orchestrator (webhook server)
 bun run dev
 
-# Terminal 2 — local daemon
+# Terminal 2: local daemon
 bun run dev:daemon
 ```
 

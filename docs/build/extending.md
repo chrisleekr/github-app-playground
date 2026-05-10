@@ -6,7 +6,7 @@ Two extension points in this codebase: workflow handlers and MCP servers. Both f
 
 A workflow is a verb the bot performs on a target (issue or PR). Six are registered today; adding a seventh is appending one entry to `src/workflows/registry.ts` plus a handler file.
 
-### Step 1 — write the handler
+### Step 1: write the handler
 
 `src/workflows/handlers/<name>.ts` exports a `WorkflowHandler` (`src/workflows/registry.ts`):
 
@@ -38,7 +38,7 @@ export type WorkflowHandler = (ctx: WorkflowRunContext) => Promise<HandlerResult
 
 Capture exactly one Markdown artifact (`<NAME>.md`) so the tracking comment is self-documenting; the executor finalises the comment with `state.report` if present.
 
-### Step 2 — register
+### Step 2: register
 
 Append one `RegistryEntry` to `rawRegistry` in `src/workflows/registry.ts`:
 
@@ -53,7 +53,7 @@ Append one `RegistryEntry` to `rawRegistry` in `src/workflows/registry.ts`:
 }
 ```
 
-The Zod schema validates at module load — a mistyped entry fails the process at boot.
+The Zod schema validates at module load: a mistyped entry fails the process at boot.
 
 | Field           | Type                        | Notes                                    |
 | --------------- | --------------------------- | ---------------------------------------- |
@@ -64,14 +64,14 @@ The Zod schema validates at module load — a mistyped entry fails the process a
 | `steps`         | `WorkflowName[]`            | Empty for leaf; populated for composite. |
 | `handler`       | `WorkflowHandler`           | Function reference.                      |
 
-### Step 3 — make it discoverable from comments
+### Step 3: make it discoverable from comments
 
 If the workflow should be reachable via mentions, extend the system prompt in `src/workflows/intent-classifier.ts` with at least three fixture comments and add it to `test/workflows/fixtures/intent-comments.json`. The enum the classifier returns is driven by the registry; the prompt narrative just needs to mention the new verb so the classifier picks it.
 
-### Step 4 — document and test
+### Step 4: document and test
 
 - Add `docs/use/workflows/<name>.md` matching the template used by the six built-ins.
-- Add `test/workflows/handlers/<name>.test.ts` covering the happy path and one failure mode. Integration via `test/workflows/dispatcher.test.ts` is automatic — if the registry entry is valid, dispatch works.
+- Add `test/workflows/handlers/<name>.test.ts` covering the happy path and one failure mode. Integration via `test/workflows/dispatcher.test.ts` is automatic: if the registry entry is valid, dispatch works.
 - The `check:docs-sync` script in CI fails any PR that touches `src/workflows/**` without updating the workflow docs tree.
 
 ## Adding an MCP server
@@ -80,14 +80,14 @@ The MCP registry lives at `src/mcp/registry.ts`. `resolveMcpServers()` returns a
 
 ### Existing servers
 
-| Name                    | Transport | Purpose                                                                                                                   |
-| ----------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `comment_update`        | stdio     | Updates the tracking comment owned by the bot. Always on.                                                                 |
-| `inline_comments`       | stdio     | Posts inline review comments and replies on PR diffs. PR runs only.                                                       |
-| `resolve_review_thread` | stdio     | Resolves a single PR review thread — bound to one `(owner, repo, pullNumber)` per server instance. Wired by `resolve.ts`. |
-| `daemon_capabilities`   | stdio     | Reports the executing daemon's local environment (CPU, memory, language toolchain) to the agent.                          |
-| `repo_memory`           | stdio     | Persistent per-repo memory keyed by `(owner, repo, category)`. Backed by the `repo_memory` Postgres table.                |
-| `context7`              | http      | Library documentation snippets via Upstash Context7. Auto-skipped when `CONTEXT7_API_KEY` is unset.                       |
+| Name                    | Transport | Purpose                                                                                                                  |
+| ----------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `comment_update`        | stdio     | Updates the tracking comment owned by the bot. Always on.                                                                |
+| `inline_comments`       | stdio     | Posts inline review comments and replies on PR diffs. PR runs only.                                                      |
+| `resolve_review_thread` | stdio     | Resolves a single PR review thread, bound to one `(owner, repo, pullNumber)` per server instance. Wired by `resolve.ts`. |
+| `daemon_capabilities`   | stdio     | Reports the executing daemon's local environment (CPU, memory, language toolchain) to the agent.                         |
+| `repo_memory`           | stdio     | Persistent per-repo memory keyed by `(owner, repo, category)`. Backed by the `repo_memory` Postgres table.               |
+| `context7`              | http      | Library documentation snippets via Upstash Context7. Auto-skipped when `CONTEXT7_API_KEY` is unset.                      |
 
 ### Transport types
 
@@ -96,7 +96,7 @@ The MCP registry lives at `src/mcp/registry.ts`. `resolveMcpServers()` returns a
 | `stdio` | Local process; needs per-request secrets injected via env vars.  | `comment_update`. |
 | `http`  | Remote service with a stable URL; no per-request process needed. | `context7`.       |
 
-### Option A — stdio server
+### Option A: stdio server
 
 `src/mcp/servers/<name>.ts`:
 
@@ -146,7 +146,7 @@ servers["my_server"] = myServerDef(sharedEnv);
 
 `sharedEnv` already carries `GITHUB_TOKEN`, `REPO_OWNER`, `REPO_NAME`, and `GITHUB_EVENT_NAME`.
 
-The Dockerfile copies all of `src/mcp/` to the production image, so new server files are picked up automatically. No Dockerfile change is needed. **Bundling is not automatic**, however — add the new entrypoint to `scripts/build.ts` (Build 2's `entrypoints` array) so `dist/mcp/servers/<name>.js` exists in production.
+The Dockerfile copies all of `src/mcp/` to the production image, so new server files are picked up automatically. No Dockerfile change is needed. **Bundling is not automatic**, however, add the new entrypoint to `scripts/build.ts` (Build 2's `entrypoints` array) so `dist/mcp/servers/<name>.js` exists in production.
 
 ### Sharing a tool surface between MCP and single-turn callers
 
@@ -159,7 +159,7 @@ The `runWithTools` loop in `src/ai/llm-client.ts` lets single-turn LLM callers (
 
 `src/github/state-fetchers.ts` (issue #117) is the reference implementation.
 
-### Option B — HTTP server
+### Option B: HTTP server
 
 ```typescript
 export function myRemoteServer(): McpServerDef {
@@ -186,7 +186,7 @@ Add the env var to `src/config.ts` following the existing `context7ApiKey` patte
 If your extension reacts to a GitHub event the bot does not yet handle (e.g. `push`, `pull_request_target`), the work splits in two:
 
 1. **Subscribe** to the event in the GitHub App settings (Permissions & events).
-2. **Add a webhook handler** in `src/webhook/events/<event>.ts` that parses the payload and dispatches via `dispatchByLabel` (label path) or `dispatchByIntent` (comment path). Webhook handlers must return within 10 s — fire `processRequest` with fire-and-forget semantics.
+2. **Add a webhook handler** in `src/webhook/events/<event>.ts` that parses the payload and dispatches via `dispatchByLabel` (label path) or `dispatchByIntent` (comment path). Webhook handlers must return within 10 s, fire `processRequest` with fire-and-forget semantics.
 3. **Register the event handler** in `src/app.ts` alongside the existing `app.webhooks.on(...)` calls.
 
-Webhook handlers do **not** run business logic — they parse the event, build a `BotContext`, and dispatch. All bot work happens in workflow handlers, called from the daemon.
+Webhook handlers do **not** run business logic, they parse the event, build a `BotContext`, and dispatch. All bot work happens in workflow handlers, called from the daemon.

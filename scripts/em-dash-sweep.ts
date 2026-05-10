@@ -115,21 +115,24 @@ function transformLine(line: string): string {
     line = line.replace(` ${EM} `, ": ");
   }
 
-  // Rule 3a: parenthetical double em dash `X — Y — Z` (inline aside).
-  // Convert both em dashes to commas so the aside reads naturally as
-  // `X, Y, Z`. Must run BEFORE rules 3b/3 so a bullet with a parenthetical
-  // doesn't lose half the aside to the bullet-definition rule.
-  line = line.replace(/(?<!^)\s—\s([^—\n]+?)\s—\s/g, ", $1, ");
-
-  // Rule 3b: bullet/list term definition
+  // Rule 3a: bullet/list term definition
   //   ^\s*[-*+]\s+TERM — EXPL  ->  TERM: EXPL
   // TERM is restricted to non-colon text so the rule does NOT re-fire on a
   // bullet whose term already ends in `:` (e.g. `- **Foo:** body — note`),
-  // which would produce a double colon.
+  // which would produce a double colon. Runs BEFORE the parenthetical
+  // rule (3b) so a bullet's leading em dash is consumed as a definition
+  // colon rather than misread as half of an inline aside.
   {
     const m = line.match(/^(\s*[-*+]\s+)([^:\n]*?) — (.*)$/);
     if (m) line = `${m[1]}${m[2]}: ${m[3]}`;
   }
+
+  // Rule 3b: parenthetical double em dash `X — Y — Z` (inline aside).
+  // Content between the em dashes is capped at 60 chars so this only fires
+  // for true inline asides. Long stretches of prose between em dashes are
+  // almost always two separate clause-introducers, each of which deserves
+  // its own ': ' or ', ' decision from rule 4 below.
+  line = line.replace(/(?<!^)\s—\s([^—\n]{1,60})\s—\s/g, ", $1, ");
 
   // Rule 3c: JSDoc/block-comment continuation `^\s*\* — ` (em dash carries
   // a clause from the previous JSDoc line). Drop the em dash; the line still
@@ -146,8 +149,20 @@ function transformLine(line: string): string {
     "$1($2$3: $4$2",
   );
 
-  // Rule 4: default ` — ` -> `, `
-  line = line.replaceAll(` ${EM} `, ", ");
+  // Rule 4: default ` — ` substitution.
+  //
+  // In Markdown table rows (line starts with `|`), use `, ` so cell content
+  // stays compact. In prose lines, when the right-hand side begins with an
+  // article/pronoun/demonstrative ("the", "this", "that", "these", "those",
+  // "it", "we", "you", "a", "an"), use `: ` because the right side is a
+  // clarifying clause (en-dash idiom) and `, ` would produce a comma splice.
+  // Otherwise default to `, ` (mid-sentence pause).
+  if (/^\s*\|/.test(line)) {
+    line = line.replaceAll(` ${EM} `, ", ");
+  } else {
+    line = line.replace(/ — (the |this |that |these |those |it |we |you |a |an )/g, ": $1");
+    line = line.replaceAll(` ${EM} `, ", ");
+  }
 
   // Rule 5: no-space `a—b` -> `a-b` (only when both sides are word chars)
   line = line.replace(/(\w)—(\w)/g, "$1-$2");

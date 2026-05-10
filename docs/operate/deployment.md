@@ -1,6 +1,6 @@
 # Deployment
 
-The repository ships **two container images** — an orchestrator and a daemon — built from separate Dockerfiles that share a byte-identical base.
+The repository ships **two container images**, an orchestrator and a daemon, built from separate Dockerfiles that share a byte-identical base.
 
 ## Image topology
 
@@ -27,10 +27,10 @@ The two images intentionally diverge after the shared base because their cost an
 
 ### Daemon-only stages
 
-| Stage          | Base           | Purpose                                                                                                                                                                                                                               |
-| -------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `daemon-tools` | `base`         | Installs the full toolchain — kubectl, helm, terraform, kustomize, k9s, stern, argocd, flux, tflint, yq, aws-cli, gcloud, docker CLI, go, rust, poetry, gh, azure-cli — and bakes `daemon-capabilities.static.json` for fast startup. |
-| `production`   | `daemon-tools` | Copies `dist/` and production `node_modules/`. Runs as `bun`.                                                                                                                                                                         |
+| Stage          | Base           | Purpose                                                                                                                                                                                                                             |
+| -------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `daemon-tools` | `base`         | Installs the full toolchain, kubectl, helm, terraform, kustomize, k9s, stern, argocd, flux, tflint, yq, aws-cli, gcloud, docker CLI, go, rust, poetry, gh, azure-cli, and bakes `daemon-capabilities.static.json` for fast startup. |
+| `production`   | `daemon-tools` | Copies `dist/` and production `node_modules/`. Runs as `bun`.                                                                                                                                                                       |
 
 Tool versions are parameterised by `ARG` (`KUBECTL_VERSION`, `HELM_VERSION`, etc.) and bumped together by Renovate/Dependabot. The Trivy scan in CI gates CVE regressions.
 
@@ -42,7 +42,7 @@ bun run docker:build:daemon         # → chrisleekr/github-app-playground:local
 bun run docker:build                # both
 ```
 
-There is no default `Dockerfile` — always pass `-f`.
+There is no default `Dockerfile`, always pass `-f`.
 
 ### Build arguments
 
@@ -71,7 +71,7 @@ docker build -f Dockerfile.orchestrator \
 
 > Note: As SBOM file size is over 16MB, temporary disable SBOM attestations.
 
-Every published tag — both `-orchestrator` and `-daemon` variants and the bare `<version>` / `latest` aliases — ships with two Sigstore-signed attestations bound to the manifest-list digest:
+Every published tag, both `-orchestrator` and `-daemon` variants and the bare `<version>` / `latest` aliases, ships with two Sigstore-signed attestations bound to the manifest-list digest:
 
 | Predicate type                   | What it proves                                                                                                                                                                                                              | Source                                                |
 | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
@@ -81,13 +81,13 @@ Every published tag — both `-orchestrator` and `-daemon` variants and the bare
 Verify before pulling into production. `gh attestation verify` checks the attestation against GitHub's transparency log and the Sigstore trust root:
 
 ```bash
-# Provenance — fails if missing or signed by anything other than this repo's workflow
+# Provenance: fails if missing or signed by anything other than this repo's workflow
 gh attestation verify \
   oci://chrisleekr/github-app-playground:1.3.0-orchestrator \
   --repo chrisleekr/github-app-playground \
   --predicate-type https://slsa.dev/provenance/v1
 
-# SBOM — same shape, different predicate
+# SBOM: same shape, different predicate
 gh attestation verify \
   oci://chrisleekr/github-app-playground:1.3.0-orchestrator \
   --repo chrisleekr/github-app-playground \
@@ -96,14 +96,14 @@ gh attestation verify \
 
 The same commands apply to the `-daemon` tags. The `scan` job in `docker-build.yml` runs both calls before Trivy on every release, so any future regression that drops an attestation fails the workflow at the verify step.
 
-You can also pull the BuildKit-emitted SPDX SBOM and SLSA provenance attached to each per-arch leaf manifest directly via the registry — useful for offline supply-chain audits and the only source for arm64 package coverage (the Sigstore CycloneDX flavour above is amd64-only):
+You can also pull the BuildKit-emitted SPDX SBOM and SLSA provenance attached to each per-arch leaf manifest directly via the registry, useful for offline supply-chain audits and the only source for arm64 package coverage (the Sigstore CycloneDX flavour above is amd64-only):
 
 ```bash
 # Provenance JSON (per platform)
 docker buildx imagetools inspect chrisleekr/github-app-playground:1.3.0-orchestrator \
   --format '{{ json .Provenance }}'
 
-# SBOM JSON (per platform — SPDX 2.3, distinct from the CycloneDX one above)
+# SBOM JSON (per platform: SPDX 2.3, distinct from the CycloneDX one above)
 docker buildx imagetools inspect chrisleekr/github-app-playground:1.3.0-orchestrator \
   --format '{{ json .SBOM }}'
 ```
@@ -122,8 +122,8 @@ docker run \
   chrisleekr/github-app-playground:local-orchestrator
 ```
 
-- `3000` — HTTP: webhook listener, `/healthz`, `/readyz`.
-- `3002` — WebSocket: daemon registry (`WS_PORT`). Expose only on networks the daemons connect from.
+- `3000`: HTTP: webhook listener, `/healthz`, `/readyz`.
+- `3002`: WebSocket: daemon registry (`WS_PORT`). Expose only on networks the daemons connect from.
 
 Shortcut: `bun run docker:run:orchestrator` (mounts `~/.aws` read-only for local Bedrock testing).
 
@@ -138,7 +138,7 @@ docker run \
   chrisleekr/github-app-playground:local-daemon
 ```
 
-The daemon does **not** expose any HTTP port and does **not** need GitHub App credentials — the orchestrator mints installation tokens and hands them off per job.
+The daemon does **not** expose any HTTP port and does **not** need GitHub App credentials: the orchestrator mints installation tokens and hands them off per job.
 
 Shortcut: `bun run docker:run:daemon` (connects back to `ws://host.docker.internal:3002`).
 
@@ -146,10 +146,10 @@ Shortcut: `bun run docker:run:daemon` (connects back to `ws://host.docker.intern
 
 Endpoints exist on the **orchestrator image only**. Daemon liveness is tracked via the WebSocket heartbeat in the orchestrator's daemon registry.
 
-| Endpoint   | Method | Success     | Failure         | Purpose                                                                                                                                       |
-| ---------- | ------ | ----------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/healthz` | GET    | `200 ok`    | —               | Liveness — process is alive (no external deps).                                                                                               |
-| `/readyz`  | GET    | `200 ready` | `503 not ready` | Readiness — config validated and data layer reachable. Returns `503 not ready` during startup, when a dependency is down, or after `SIGTERM`. |
+| Endpoint   | Method | Success     | Failure         | Purpose                                                                                                                                      |
+| ---------- | ------ | ----------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/healthz` | GET    | `200 ok`    | _none_          | Liveness, process is alive (no external deps).                                                                                               |
+| `/readyz`  | GET    | `200 ready` | `503 not ready` | Readiness, config validated and data layer reachable. Returns `503 not ready` during startup, when a dependency is down, or after `SIGTERM`. |
 
 `Dockerfile.orchestrator` ships with a Docker `HEALTHCHECK` invoking `curl -f http://localhost:3000/healthz`. Honoured by Docker Compose, ECS, Nomad, Swarm. Kubernetes ignores Docker `HEALTHCHECK` and uses the probe spec below.
 
@@ -169,14 +169,14 @@ readinessProbe:
   periodSeconds: 5
 ```
 
-For the daemon, replace HTTP probes with an `exec` probe that checks the WebSocket connection — see [`runbooks/daemon-fleet.md`](runbooks/daemon-fleet.md).
+For the daemon, replace HTTP probes with an `exec` probe that checks the WebSocket connection, see [`runbooks/daemon-fleet.md`](runbooks/daemon-fleet.md).
 
 ## Graceful shutdown
 
 The orchestrator handles `SIGTERM` and `SIGINT`:
 
 1. Flips `/readyz` to `503` so the load balancer stops routing.
-2. Calls `server.close()` — waits for in-flight HTTP requests.
+2. Calls `server.close()`, waits for in-flight HTTP requests.
 3. MCP stdio child processes exit via their own `finally` blocks.
 4. Force-exits after 290 seconds if shutdown hasn't completed (`src/app.ts`).
 
@@ -188,7 +188,7 @@ The daemon has its own drain contract driven by `DAEMON_DRAIN_TIMEOUT_MS`: it fi
 
 ### Orchestrator
 
-I/O-bound — never runs the pipeline itself. 1 GB is typically enough.
+I/O-bound, never runs the pipeline itself. 1 GB is typically enough.
 
 | `MAX_CONCURRENT_REQUESTS` | Memory | CPU      |
 | ------------------------- | ------ | -------- |
@@ -266,7 +266,7 @@ Without these verbs every spawn yields `dispatch_reason=ephemeral-spawn-failed` 
 
 Spawned ephemeral Pods get their config via `envFrom: secretRef: daemon-secrets`. Create this Secret once in `EPHEMERAL_DAEMON_NAMESPACE` with at minimum:
 
-- `DAEMON_AUTH_TOKEN` — daemon ⇄ orchestrator handshake. **Only source.** The spawner does not inline this into the Pod spec, so it cannot leak via `kubectl get pod -o yaml` or the Pod audit log.
+- `DAEMON_AUTH_TOKEN`: daemon ⇄ orchestrator handshake. **Only source.** The spawner does not inline this into the Pod spec, so it cannot leak via `kubectl get pod -o yaml` or the Pod audit log.
 - `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` (and `ALLOWED_OWNERS`) or Bedrock `AWS_*` vars.
 - `VALKEY_URL`, `DATABASE_URL`.
 
@@ -276,7 +276,7 @@ GitHub App private-key material is **not** placed in this Secret. The orchestrat
 
 The spawner hardens every ephemeral Pod (see `src/k8s/ephemeral-daemon-spawner.ts`):
 
-- `automountServiceAccountToken: false` — the daemon never calls the K8s API itself.
+- `automountServiceAccountToken: false`: the daemon never calls the K8s API itself.
 - Pod `securityContext`: `runAsNonRoot: true`, `runAsUser: 1000`, `runAsGroup: 1000`, `seccompProfile: RuntimeDefault`.
 - Container: `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]`.
 - `restartPolicy: Never` and `activeDeadlineSeconds: 3600` cap the Pod hard.
@@ -290,6 +290,6 @@ The full schema lives at [`configuration.md`](configuration.md). At minimum:
 | `NODE_ENV`                | `production`                                                 |
 | `LOG_LEVEL`               | `info` (`debug` exposes webhook payloads)                    |
 | `MAX_CONCURRENT_REQUESTS` | Start at `3`, tune against memory and LLM budget             |
-| `AGENT_TIMEOUT_MS`        | Stay below 3600 s — the GitHub installation-token TTL        |
+| `AGENT_TIMEOUT_MS`        | Stay below 3600 s, the GitHub installation-token TTL         |
 | `CLONE_BASE_DIR`          | Override if `/tmp` is small or shared                        |
 | `PORT`, `WS_PORT`         | `3000`, `3002` (must match probes and the `WS_PORT` env var) |

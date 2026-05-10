@@ -1,6 +1,6 @@
-# Runbook — daemon fleet
+# Runbook: daemon fleet
 
-A daemon is a standalone worker process that connects to the orchestrator over WebSocket, accepts job offers, and runs each job through `src/core/pipeline.ts`. The webhook server never runs the pipeline in-process — every execution happens on a daemon.
+A daemon is a standalone worker process that connects to the orchestrator over WebSocket, accepts job offers, and runs each job through `src/core/pipeline.ts`. The webhook server never runs the pipeline in-process, every execution happens on a daemon.
 
 ## Persistent vs ephemeral
 
@@ -52,8 +52,8 @@ The full list lives at [`../configuration.md`](../configuration.md#orchestrator-
 
 | Variable                           | Default  | Notes                                                                              |
 | ---------------------------------- | -------- | ---------------------------------------------------------------------------------- |
-| `ORCHESTRATOR_URL`                 | —        | Required. `wss://` in production; `ws://` emits a warning.                         |
-| `DAEMON_AUTH_TOKEN`                | —        | Shared secret with the orchestrator.                                               |
+| `ORCHESTRATOR_URL`                 | _none_   | Required. `wss://` in production; `ws://` emits a warning.                         |
+| `DAEMON_AUTH_TOKEN`                | _none_   | Shared secret with the orchestrator.                                               |
 | `DAEMON_EPHEMERAL`                 | `false`  | `true` on ephemeral daemon Pods (injected by the spawner). Enables idle-exit.      |
 | `EPHEMERAL_DAEMON_IDLE_TIMEOUT_MS` | `120000` | Ephemeral daemons exit after this idle window.                                     |
 | `HEARTBEAT_INTERVAL_MS`            | `30000`  | Ping cadence.                                                                      |
@@ -105,7 +105,7 @@ Match `terminationGracePeriodSeconds` to `DAEMON_DRAIN_TIMEOUT_MS` so `SIGTERM` 
 
 ## Concurrency and scaling
 
-A daemon process handles up to its advertised `maxConcurrentJobs` at a time. Scale **horizontally** by running multiple persistent daemon pods. The orchestrator adds ephemeral daemons for bursts (triage `heavy=true` or queue overflow) — see [`../observability.md`](../observability.md#dispatch-reasons).
+A daemon process handles up to its advertised `maxConcurrentJobs` at a time. Scale **horizontally** by running multiple persistent daemon pods. The orchestrator adds ephemeral daemons for bursts (triage `heavy=true` or queue overflow), see [`../observability.md`](../observability.md#dispatch-reasons).
 
 ### Scale-up rule
 
@@ -113,7 +113,7 @@ On every event the orchestrator evaluates:
 
 1. **Triage.** A single-turn Haiku call returns `{heavy, confidence, rationale}`. `heavy=true` is one trigger.
 2. **Overflow.** If `queue_length ≥ EPHEMERAL_DAEMON_SPAWN_QUEUE_THRESHOLD` **and** the persistent pool has zero free slots, that's the other trigger.
-3. **Cooldown.** Spawns are rate-limited by `EPHEMERAL_DAEMON_SPAWN_COOLDOWN_MS`. During cooldown, heavy/overflow signals **don't** spawn — the job falls back to `persistent-daemon` and waits.
+3. **Cooldown.** Spawns are rate-limited by `EPHEMERAL_DAEMON_SPAWN_COOLDOWN_MS`. During cooldown, heavy/overflow signals **don't** spawn: the job falls back to `persistent-daemon` and waits.
 4. **Spawn.** When both a trigger fires and cooldown has elapsed, the orchestrator creates a bare Pod via the K8s API. A K8s API failure yields `dispatch_reason=ephemeral-spawn-failed` and the job is rejected with a tracking-comment infra error.
 
 ## Hard constraints
@@ -126,7 +126,7 @@ On every event the orchestrator evaluates:
 
 `DAEMON_AUTH_TOKEN` is a long-lived shared secret. Treat it like any other production credential: rotate on a defined cadence (OWASP guidance is **at least every 90 days**) and immediately on suspected compromise. The orchestrator's bearer-token comparison is constant-time (`crypto.timingSafeEqual`) but the secret itself still needs hygiene.
 
-The `DAEMON_AUTH_TOKEN_PREVIOUS` slot exists so rotation does not require a synchronised fleet restart — the orchestrator accepts either token while you roll daemons one at a time.
+The `DAEMON_AUTH_TOKEN_PREVIOUS` slot exists so rotation does not require a synchronised fleet restart: the orchestrator accepts either token while you roll daemons one at a time.
 
 ```mermaid
 sequenceDiagram
@@ -147,7 +147,7 @@ Step-by-step:
 
 1. **Generate** a new secret: `openssl rand -hex 32`. Persist it in your secret store next to the existing value.
 2. **Stage the overlap.** Update the orchestrator Deployment's `daemon-secrets` to set `DAEMON_AUTH_TOKEN=<NEW>` **and** `DAEMON_AUTH_TOKEN_PREVIOUS=<OLD>`. Roll the orchestrator. Existing daemon connections (still presenting the old token) keep authenticating, and any daemons that come up with the new token also pass.
-3. **Roll daemons.** Update the daemon Deployment's `daemon-secrets` to set `DAEMON_AUTH_TOKEN=<NEW>` (no `_PREVIOUS` needed — daemons only ever send the primary). Roll daemons one by one (`kubectl rollout restart deployment/github-app-playground-daemon`). Watch `auth-failed` warn-logs in the orchestrator — they should stay flat.
+3. **Roll daemons.** Update the daemon Deployment's `daemon-secrets` to set `DAEMON_AUTH_TOKEN=<NEW>` (no `_PREVIOUS` needed, daemons only ever send the primary). Roll daemons one by one (`kubectl rollout restart deployment/github-app-playground-daemon`). Watch `auth-failed` warn-logs in the orchestrator, they should stay flat.
 4. **Drop the previous slot.** Once every connected daemon presents the new token, redeploy the orchestrator with `DAEMON_AUTH_TOKEN_PREVIOUS` removed (or empty). The old secret is now dead.
 5. **Verify.** A `curl` with the old Bearer should now return `401`; a curl with the new Bearer should hit the upgrade-failed path (`500 WebSocket upgrade failed`).
 

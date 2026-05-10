@@ -6,7 +6,7 @@ Short version: open a PR, keep `bun run check` green, update the matching docs p
 
 | Branch           | Purpose                                                                                                                   |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `main`           | Always green. Push triggers `ci.yml` only — production releases are manual.                                               |
+| `main`           | Always green. Push triggers `ci.yml` only, production releases are manual.                                                |
 | Feature branches | Any name **other** than `main` and `v*`. Triggers `dev-release.yml` (CI → dev semantic-release → multi-arch image build). |
 
 ## Commit format
@@ -23,8 +23,8 @@ Example: `feat(ship): wire ship iteration loop, tickle scheduler, and four scope
 
 `.husky/pre-commit` runs:
 
-1. `gitleaks protect --staged` — secret scan (hard exit if `gitleaks` is missing; install with your package manager).
-2. `bunx lint-staged` — Prettier and ESLint on staged files.
+1. `gitleaks protect --staged`, secret scan (hard exit if `gitleaks` is missing; install with your package manager).
+2. `bunx lint-staged`, Prettier and ESLint on staged files.
 
 `.husky/commit-msg` runs `commitlint` on the message itself.
 
@@ -55,7 +55,7 @@ If you add or rename an environment variable in `src/config.ts`, update [`../ope
 
 ## Where to file issues
 
-Use the GitHub issue tracker on the repo. The bot also responds to mentions on issues — `@chrisleekr-bot triage this` is a perfectly valid first move (see [`../use/workflows/triage.md`](../use/workflows/triage.md)).
+Use the GitHub issue tracker on the repo. The bot also responds to mentions on issues, `@chrisleekr-bot triage this` is a perfectly valid first move (see [`../use/workflows/triage.md`](../use/workflows/triage.md)).
 
 ## Running the docs site locally
 
