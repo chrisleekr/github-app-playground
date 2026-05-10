@@ -162,11 +162,11 @@ describe("SCN-E — spotlight tag scheme (per-call nonce)", () => {
     const ctx = makeBotContext();
     const data = makeFetchedData();
     const out = buildPrompt(ctx, data, 1);
-    const open = (/<formatted_context_([0-9a-f]{8})>/.exec(out))?.[1];
-    const close = (/<\/formatted_context_([0-9a-f]{8})>/.exec(out))?.[1];
+    const open = /<formatted_context_([0-9a-f]{8})>/.exec(out)?.[1];
+    const close = /<\/formatted_context_([0-9a-f]{8})>/.exec(out)?.[1];
     expect(open).toBeDefined();
     expect(close).toBe(open);
-    const bodyNonce = (/<untrusted_pr_or_issue_body_([0-9a-f]{8})>/.exec(out))?.[1];
+    const bodyNonce = /<untrusted_pr_or_issue_body_([0-9a-f]{8})>/.exec(out)?.[1];
     expect(bodyNonce).toBe(open);
   });
 });
