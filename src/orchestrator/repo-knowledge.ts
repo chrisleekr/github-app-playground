@@ -2,6 +2,7 @@ import type { SQL } from "bun";
 
 import { requireDb } from "../db";
 import { logger } from "../logger";
+import { sanitizeRepoMemoryContent } from "../utils/sanitize";
 
 // Types
 
@@ -98,27 +99,36 @@ export async function getRepoMemory(
 
 /**
  * Save learnings discovered during execution.
- * Skips entries that already exist with the same (owner, repo, category, content).
+ * Skips entries that already exist with the same (owner, repo, category, content),
+ * and also silently skips entries whose content collapses to empty after
+ * sanitizeRepoMemoryContent (e.g. content was entirely an HTML comment or
+ * invisibles), so `saved < learnings.length` can mean either case.
  */
 export async function saveRepoLearnings(
   owner: string,
   repo: string,
   learnings: { category: string; content: string }[],
+  db: SQL = requireDb(),
 ): Promise<number> {
   if (learnings.length === 0) return 0;
 
-  const db = requireDb();
   let saved = 0;
 
   // Process each learning sequentially, DB writes are inherently serial per-connection
   // and the volume is tiny (typically 1-5 learnings per execution).
   for (const learning of learnings) {
+    // Defense in depth: the MCP server already sanitizes on write, but the
+    // daemon scratch file is attacker-reachable if a future executor regresses,
+    // so re-sanitize at the durability boundary too. Skip empty rows that
+    // collapsed to nothing after sanitization.
+    const safeContent = sanitizeRepoMemoryContent(learning.content);
+    if (safeContent === "") continue;
     try {
       // Upsert: insert if new, bump updated_at if duplicate
       // eslint-disable-next-line no-await-in-loop
       const result: { id: string }[] = await db`
           INSERT INTO repo_memory (repo_owner, repo_name, category, content, pinned)
-          VALUES (${owner}, ${repo}, ${learning.category}, ${learning.content}, false)
+          VALUES (${owner}, ${repo}, ${learning.category}, ${safeContent}, false)
           ON CONFLICT DO NOTHING
           RETURNING id
         `;
@@ -130,7 +140,7 @@ export async function saveRepoLearnings(
         await db`
           UPDATE repo_memory SET updated_at = now()
           WHERE repo_owner = ${owner} AND repo_name = ${repo}
-            AND category = ${learning.category} AND content = ${learning.content}
+            AND category = ${learning.category} AND content = ${safeContent}
         `;
       }
     } catch (err) {

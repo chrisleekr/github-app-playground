@@ -5,6 +5,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
+import { sanitizeRepoMemoryContent } from "../../utils/sanitize";
+
 /**
  * MCP server for persistent repo memory.
  * Provides tools for Claude to save, delete, and read learnings about a repository.
@@ -90,12 +92,17 @@ server.registerTool(
     },
   },
   ({ category, content }) => {
-    appendAction({ type: "save", category, content });
+    // Untrusted-input boundary: memory rows are surfaced as data on every
+    // future run, so strip injection vectors before they reach the daemon
+    // scratch file. See docs/build/security.md (repo-memory hardening) and
+    // issue #112 for the cross-session indirect-injection chain.
+    const safeContent = sanitizeRepoMemoryContent(content);
+    appendAction({ type: "save", category, content: safeContent });
     return {
       content: [
         {
           type: "text" as const,
-          text: JSON.stringify({ saved: true, category, content }),
+          text: JSON.stringify({ saved: true, category, content: safeContent }),
         },
       ],
     };

@@ -189,3 +189,21 @@ export function sanitizeContent(content: string): string {
   content = redactGitHubTokens(content);
   return content;
 }
+
+/**
+ * Repo-memory write-side sanitizer.
+ *
+ * Memory rows persist across sessions and are re-injected as data on every
+ * future run, so the standard prompt sanitizer alone is not enough: an
+ * embedded LF/CR can break out of the per-line `[id:UUID] [category] content`
+ * shape rendered by `prompt-builder.ts`, and a NUL byte can desync downstream
+ * Postgres/JSON readers. Replace line terminators with a single space and
+ * drop NUL bytes; the standard pipeline handles HTML comments, invisibles,
+ * and known-format token redaction.
+ */
+export function sanitizeRepoMemoryContent(content: string): string {
+  let body = sanitizeContent(content);
+  body = body.replace(/[\r\n\u2028\u2029]+/g, " ");
+  body = body.replace(/\0/g, "");
+  return body.trim();
+}
