@@ -1,6 +1,7 @@
 import type { Octokit } from "octokit";
 import type pino from "pino";
 
+import { safePostToGitHub } from "../utils/github-output-guard";
 import type { WorkflowName } from "./registry";
 import {
   findById,
@@ -121,11 +122,19 @@ export async function setState(
   if (row.tracking_comment_id === null) {
     resultRow = await createOrAdoptTrackingComment(deps, row, body, humanMessage);
   } else {
-    await octokit.rest.issues.updateComment({
-      owner: row.target_owner,
-      repo: row.target_repo,
-      comment_id: row.tracking_comment_id,
+    const commentId = row.tracking_comment_id;
+    await safePostToGitHub({
       body,
+      source: "system",
+      callsite: "workflows.tracking-mirror.update",
+      log: logger,
+      post: (cleanBody) =>
+        octokit.rest.issues.updateComment({
+          owner: row.target_owner,
+          repo: row.target_repo,
+          comment_id: commentId,
+          body: cleanBody,
+        }),
     });
     resultRow = row;
   }
@@ -180,12 +189,29 @@ async function createOrAdoptTrackingComment(
 
   let createErr: unknown = null;
   try {
-    await octokit.rest.issues.createComment({
-      owner: row.target_owner,
-      repo: row.target_repo,
-      issue_number: row.target_number,
+    const guarded = await safePostToGitHub({
       body,
+      source: "system",
+      callsite: "workflows.tracking-mirror.create",
+      log: deps.logger,
+      post: (cleanBody) =>
+        octokit.rest.issues.createComment({
+          owner: row.target_owner,
+          repo: row.target_repo,
+          issue_number: row.target_number,
+          body: cleanBody,
+        }),
     });
+    // safePostToGitHub returns posted:false when the body is emptied by
+    // secret redaction. Surface that as a synthetic createErr so the
+    // post-scan branch below produces a clear failure instead of silently
+    // dropping the create and falling through to the misleading
+    // "createComment returned no row" path.
+    if (!guarded.posted) {
+      createErr = new Error(
+        `workflows.tracking-mirror.create: post skipped after secret redaction (matchCount=${guarded.matchCount}, reason=${guarded.reason ?? "unknown"})`,
+      );
+    }
   } catch (err) {
     createErr = err;
   }
@@ -269,11 +295,18 @@ async function createOrAdoptTrackingComment(
   // human message survives. `_lastHumanMessage` is merged before this
   // function runs, so the post-merge view already contains it.
   const latest = (await findById(runId)) ?? row;
-  await octokit.rest.issues.updateComment({
-    owner: latest.target_owner,
-    repo: latest.target_repo,
-    comment_id: winningId,
+  await safePostToGitHub({
     body: renderCommentBody(latest, humanMessage),
+    source: "system",
+    callsite: "workflows.tracking-mirror.post-create-update",
+    log: deps.logger,
+    post: (cleanBody) =>
+      octokit.rest.issues.updateComment({
+        owner: latest.target_owner,
+        repo: latest.target_repo,
+        comment_id: winningId,
+        body: cleanBody,
+      }),
   });
   return { ...latest, tracking_comment_id: winningId };
 }
@@ -333,11 +366,18 @@ async function tryAdoptExistingMarkerComment(
   }
 
   const latest = (await findById(row.id)) ?? row;
-  await octokit.rest.issues.updateComment({
-    owner: latest.target_owner,
-    repo: latest.target_repo,
-    comment_id: winningId,
+  await safePostToGitHub({
     body: renderCommentBody(latest, humanMessage),
+    source: "system",
+    callsite: "workflows.tracking-mirror.adopt-update",
+    log: deps.logger,
+    post: (cleanBody) =>
+      octokit.rest.issues.updateComment({
+        owner: latest.target_owner,
+        repo: latest.target_repo,
+        comment_id: winningId,
+        body: cleanBody,
+      }),
   });
   return { ...latest, tracking_comment_id: winningId };
 }
@@ -360,12 +400,20 @@ async function refreshParentCompositeBody(
 
   const children = await listChildrenByParent(parentRunId);
   const body = renderCompositeBody(parent, children);
+  const commentId = parent.tracking_comment_id;
 
-  await octokit.rest.issues.updateComment({
-    owner: parent.target_owner,
-    repo: parent.target_repo,
-    comment_id: parent.tracking_comment_id,
+  await safePostToGitHub({
     body,
+    source: "system",
+    callsite: "workflows.tracking-mirror.composite-refresh",
+    log: deps.logger,
+    post: (cleanBody) =>
+      octokit.rest.issues.updateComment({
+        owner: parent.target_owner,
+        repo: parent.target_repo,
+        comment_id: commentId,
+        body: cleanBody,
+      }),
   });
 }
 
@@ -460,11 +508,18 @@ export async function postRefusalComment(
 ): Promise<void> {
   const body = `**bot workflow \`${workflowName}\`** refused: ${reason}`;
   try {
-    await deps.octokit.rest.issues.createComment({
-      owner: target.owner,
-      repo: target.repo,
-      issue_number: target.number,
+    await safePostToGitHub({
       body,
+      source: "system",
+      callsite: "workflows.tracking-mirror.postRefusalComment",
+      log: deps.logger,
+      post: (cleanBody) =>
+        deps.octokit.rest.issues.createComment({
+          owner: target.owner,
+          repo: target.repo,
+          issue_number: target.number,
+          body: cleanBody,
+        }),
     });
     deps.logger.info({ target, workflowName, reason }, "Posted workflow refusal comment");
   } catch (err) {

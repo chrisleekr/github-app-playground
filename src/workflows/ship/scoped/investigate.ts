@@ -95,6 +95,8 @@ export async function runInvestigate(input: RunInvestigateInput): Promise<{ comm
     issue_number: input.issue_number,
     marker,
     body,
+    source: "agent",
+    log,
   });
 
   log.info({ comment_id }, "ship.scoped.investigate posted");

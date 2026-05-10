@@ -134,6 +134,10 @@ The tracking comment puts the answer at the top: any terminal status other than 
 
 For Day-2 SQL and the other terminal categories, see [`operate/runbooks/stuck-ship-intent.md`](../../operate/runbooks/stuck-ship-intent.md).
 
+## Output secret-redaction
+
+Every comment the ship workflow posts to GitHub — tracking-comment create / update, scoped-command marker upserts (`bot:investigate`, `bot:triage`, `bot:summarize`, `bot:open-pr`, `bot:rebase`), lifecycle replies (`bot:stop` / `bot:resume` / `bot:abort-ship`), and the orchestrator's tracking-mirror cascade — flows through `safePostToGitHub` (`src/utils/github-output-guard.ts`). The wrapper runs the regex secret-redactor (and, for `source: "agent"` bodies, the Bedrock LLM scanner) before the body reaches GitHub, so a successful prompt-injection that convinces the agent to echo a token still cannot leak it through the comment surface. See `test/security/SCENARIOS.md` for the threat model.
+
 ## Auto-defer on Anthropic usage-limit
 
 A child workflow run that fails because the Claude Agent SDK reported `"You've hit your limit · resets <time> UTC"` (subscription-token quota or per-tier rate limit) is treated as a **transient** failure rather than a permanent one. The orchestrator's `maybeEarlyWakeShipIntent` cascade:

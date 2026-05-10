@@ -62,8 +62,10 @@ describe("buildPrompt", () => {
 
     expect(result).toContain("<is_pr>true</is_pr>");
     expect(result).toContain("<pr_number>11</pr_number>");
-    expect(result).toContain("<untrusted_review_comments>");
-    expect(result).toContain("<untrusted_changed_files>");
+    // Spotlight tags carry a per-call random suffix (`_<8hex>`) so attacker
+    // content cannot forge a closing tag — match the prefix only.
+    expect(result).toMatch(/<untrusted_review_comments_[0-9a-f]{8}>/);
+    expect(result).toMatch(/<untrusted_changed_files_[0-9a-f]{8}>/);
     expect(result).toContain("PR Title: Add feature X");
   });
 
@@ -127,7 +129,9 @@ describe("buildPrompt", () => {
     const ctx = makeBotContext({ triggerUsername: "bob" });
     const result = buildPrompt(ctx, makeIssueData(), 1);
 
-    expect(result).toContain("<untrusted_trigger_username>bob</untrusted_trigger_username>");
+    expect(result).toMatch(
+      /<untrusted_trigger_username_[0-9a-f]{8}>bob<\/untrusted_trigger_username_[0-9a-f]{8}>/,
+    );
   });
 
   it("includes the security_directive treating tagged content as data not instructions", () => {

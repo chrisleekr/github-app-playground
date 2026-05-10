@@ -23,6 +23,7 @@ import { config } from "../../config";
 import { requireDb } from "../../db";
 import { getValkeyClient } from "../../orchestrator/valkey";
 import type { CanonicalCommand } from "../../shared/ship-types";
+import { safePostToGitHub } from "../../utils/github-output-guard";
 import { clearAbort, requestAbort } from "./abort";
 import {
   forceAbortIntent,
@@ -61,11 +62,18 @@ async function postReply(
   log: Logger,
 ): Promise<void> {
   try {
-    await octokit.rest.issues.createComment({
-      owner: command.pr.owner,
-      repo: command.pr.repo,
-      issue_number: command.pr.number,
+    await safePostToGitHub({
       body,
+      source: "system",
+      callsite: "ship.lifecycle-commands.postReply",
+      log,
+      post: (cleanBody) =>
+        octokit.rest.issues.createComment({
+          owner: command.pr.owner,
+          repo: command.pr.repo,
+          issue_number: command.pr.number,
+          body: cleanBody,
+        }),
     });
   } catch (err) {
     log.warn({ err }, "lifecycle reply failed (best-effort)");

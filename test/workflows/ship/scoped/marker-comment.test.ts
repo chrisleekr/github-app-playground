@@ -11,6 +11,7 @@ import {
   findCommentByMarker,
   upsertMarkerComment,
 } from "../../../../src/workflows/ship/scoped/marker-comment";
+import { makeSilentLogger } from "../../../factories";
 
 interface FakeComment {
   readonly id: number;
@@ -142,6 +143,8 @@ describe("upsertMarkerComment", () => {
       issue_number: 11,
       marker,
       body: `body\n${marker}`,
+      source: "system",
+      log: makeSilentLogger(),
     });
     expect(id).toBe(999_001);
     expect(fake.createComment).toHaveBeenCalledTimes(1);
@@ -163,6 +166,8 @@ describe("upsertMarkerComment", () => {
       issue_number: 12,
       marker,
       body: `updated summary\n${marker}`,
+      source: "system",
+      log: makeSilentLogger(),
     });
     expect(id).toBe(501);
     expect(fake.updateComment).toHaveBeenCalledTimes(1);
