@@ -54,7 +54,7 @@ export interface SafePostInput<R> {
   callsite: string;
   log: Logger;
   /** Optional GitHub delivery ID for cross-log correlation. */
-  deliveryId?: string;
+  deliveryId?: string | undefined;
   /**
    * Performs the actual GitHub write with the cleaned body. The helper
    * passes the redacted body string; the callback supplies all other

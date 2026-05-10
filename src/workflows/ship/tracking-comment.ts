@@ -11,9 +11,11 @@
 
 import type { SQL } from "bun";
 import type { Octokit } from "octokit";
+import type { Logger } from "pino";
 
 import { config } from "../../config";
 import { requireDb } from "../../db";
+import { safePostToGitHub } from "../../utils/github-output-guard";
 
 export const SHIP_INTENT_MARKER_PREFIX = "<!-- ship-intent:";
 
@@ -27,20 +29,37 @@ export interface CreateTrackingCommentInput {
   readonly repo: string;
   readonly issue_number: number;
   readonly body: string;
+  readonly log: Logger;
+  readonly deliveryId?: string;
 }
 
 /**
  * POST a new comment and return its id. Caller is responsible for
  * persisting the id back onto `ship_intents.tracking_comment_id`.
+ * Routed through `safePostToGitHub` so any secrets that surfaced into
+ * the rendered body are stripped before reaching GitHub.
  */
 export async function createTrackingComment(input: CreateTrackingCommentInput): Promise<number> {
-  const result = await input.octokit.rest.issues.createComment({
-    owner: input.owner,
-    repo: input.repo,
-    issue_number: input.issue_number,
+  const guarded = await safePostToGitHub({
     body: input.body,
+    source: "system",
+    callsite: "ship.tracking-comment.create",
+    log: input.log,
+    deliveryId: input.deliveryId,
+    post: (cleanBody) =>
+      input.octokit.rest.issues.createComment({
+        owner: input.owner,
+        repo: input.repo,
+        issue_number: input.issue_number,
+        body: cleanBody,
+      }),
   });
-  return result.data.id;
+  if (!guarded.posted || guarded.result === undefined) {
+    throw new Error(
+      `ship.tracking-comment.create: post skipped after secret redaction (matchCount=${guarded.matchCount})`,
+    );
+  }
+  return guarded.result.data.id;
 }
 
 export interface UpdateTrackingCommentInput {
@@ -49,14 +68,24 @@ export interface UpdateTrackingCommentInput {
   readonly repo: string;
   readonly comment_id: number;
   readonly body: string;
+  readonly log: Logger;
+  readonly deliveryId?: string;
 }
 
 export async function updateTrackingComment(input: UpdateTrackingCommentInput): Promise<void> {
-  await input.octokit.rest.issues.updateComment({
-    owner: input.owner,
-    repo: input.repo,
-    comment_id: input.comment_id,
+  await safePostToGitHub({
     body: input.body,
+    source: "system",
+    callsite: "ship.tracking-comment.update",
+    log: input.log,
+    deliveryId: input.deliveryId,
+    post: (cleanBody) =>
+      input.octokit.rest.issues.updateComment({
+        owner: input.owner,
+        repo: input.repo,
+        comment_id: input.comment_id,
+        body: cleanBody,
+      }),
   });
 }
 

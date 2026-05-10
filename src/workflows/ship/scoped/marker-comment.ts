@@ -11,6 +11,9 @@
  */
 
 import type { Octokit } from "octokit";
+import type { Logger } from "pino";
+
+import { safePostToGitHub } from "../../../utils/github-output-guard";
 
 export interface ScopedMarker {
   readonly verb: string;
@@ -59,6 +62,9 @@ export interface UpsertMarkerCommentInput {
   readonly issue_number: number;
   readonly marker: string;
   readonly body: string;
+  readonly source: "agent" | "system";
+  readonly log: Logger;
+  readonly deliveryId?: string;
 }
 
 /**
@@ -67,6 +73,9 @@ export interface UpsertMarkerCommentInput {
  * the marker inside `body` (it MUST appear verbatim somewhere in the
  * rendered Markdown — typically the trailing line as an HTML comment).
  * Returns the comment id of the upserted comment.
+ *
+ * Routed through `safePostToGitHub` so any secrets that surfaced into the
+ * agent-rendered body are stripped before reaching GitHub.
  */
 export async function upsertMarkerComment(input: UpsertMarkerCommentInput): Promise<number> {
   const existing = await findCommentByMarker({
@@ -77,19 +86,40 @@ export async function upsertMarkerComment(input: UpsertMarkerCommentInput): Prom
     marker: input.marker,
   });
   if (existing !== null) {
-    await input.octokit.rest.issues.updateComment({
-      owner: input.owner,
-      repo: input.repo,
-      comment_id: existing,
+    await safePostToGitHub({
       body: input.body,
+      source: input.source,
+      callsite: "ship.scoped.marker-comment.update",
+      log: input.log,
+      deliveryId: input.deliveryId,
+      post: (cleanBody) =>
+        input.octokit.rest.issues.updateComment({
+          owner: input.owner,
+          repo: input.repo,
+          comment_id: existing,
+          body: cleanBody,
+        }),
     });
     return existing;
   }
-  const created = await input.octokit.rest.issues.createComment({
-    owner: input.owner,
-    repo: input.repo,
-    issue_number: input.issue_number,
+  const guarded = await safePostToGitHub({
     body: input.body,
+    source: input.source,
+    callsite: "ship.scoped.marker-comment.create",
+    log: input.log,
+    deliveryId: input.deliveryId,
+    post: (cleanBody) =>
+      input.octokit.rest.issues.createComment({
+        owner: input.owner,
+        repo: input.repo,
+        issue_number: input.issue_number,
+        body: cleanBody,
+      }),
   });
-  return created.data.id;
+  if (!guarded.posted || guarded.result === undefined) {
+    throw new Error(
+      `ship.scoped.marker-comment.create: post skipped after secret redaction (matchCount=${guarded.matchCount})`,
+    );
+  }
+  return guarded.result.data.id;
 }

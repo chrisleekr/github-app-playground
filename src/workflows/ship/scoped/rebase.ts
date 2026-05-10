@@ -21,6 +21,7 @@ import type { Octokit } from "octokit";
 import type { Logger } from "pino";
 
 import { logger as rootLogger } from "../../../logger";
+import { safePostToGitHub } from "../../../utils/github-output-guard";
 
 export interface RunMergeResult {
   readonly status: "up-to-date" | "merged" | "conflict";
@@ -68,14 +69,26 @@ export async function runRebase(input: RunRebaseInput): Promise<RebaseOutcome> {
   });
 
   if (pr.data.state === "closed") {
-    const comment = await input.octokit.rest.issues.createComment({
-      owner: input.owner,
-      repo: input.repo,
-      issue_number: input.pr_number,
+    const guarded = await safePostToGitHub({
       body: `I'm not going to rebase a **${pr.data.merged ? "merged" : "closed"}** PR.`,
+      source: "system",
+      callsite: "ship.scoped.rebase.closed",
+      log,
+      post: (cleanBody) =>
+        input.octokit.rest.issues.createComment({
+          owner: input.owner,
+          repo: input.repo,
+          issue_number: input.pr_number,
+          body: cleanBody,
+        }),
     });
-    log.info({ comment_id: comment.data.id }, "rebase refused (closed PR)");
-    return { kind: "closed", comment_id: comment.data.id };
+    if (!guarded.posted || guarded.result === undefined) {
+      throw new Error(
+        `ship.scoped.rebase.closed: post skipped after secret redaction (matchCount=${guarded.matchCount})`,
+      );
+    }
+    log.info({ comment_id: guarded.result.data.id }, "rebase refused (closed PR)");
+    return { kind: "closed", comment_id: guarded.result.data.id };
   }
 
   const result = await input.runMerge({
@@ -84,37 +97,73 @@ export async function runRebase(input: RunRebaseInput): Promise<RebaseOutcome> {
   });
 
   if (result.status === "up-to-date") {
-    const comment = await input.octokit.rest.issues.createComment({
-      owner: input.owner,
-      repo: input.repo,
-      issue_number: input.pr_number,
+    const guarded = await safePostToGitHub({
       body: `Already up to date with \`${pr.data.base.ref}\` — nothing to merge.`,
+      source: "system",
+      callsite: "ship.scoped.rebase.up-to-date",
+      log,
+      post: (cleanBody) =>
+        input.octokit.rest.issues.createComment({
+          owner: input.owner,
+          repo: input.repo,
+          issue_number: input.pr_number,
+          body: cleanBody,
+        }),
     });
-    log.info({ comment_id: comment.data.id }, "rebase no-op (up to date)");
-    return { kind: "up-to-date", comment_id: comment.data.id };
+    if (!guarded.posted || guarded.result === undefined) {
+      throw new Error(
+        `ship.scoped.rebase.up-to-date: post skipped after secret redaction (matchCount=${guarded.matchCount})`,
+      );
+    }
+    log.info({ comment_id: guarded.result.data.id }, "rebase no-op (up to date)");
+    return { kind: "up-to-date", comment_id: guarded.result.data.id };
   }
 
   if (result.status === "conflict") {
     const conflicts = result.conflict_paths ?? [];
     const list = conflicts.length > 0 ? conflicts.map((p) => `- \`${p}\``).join("\n") : "_(none)_";
-    const comment = await input.octokit.rest.issues.createComment({
-      owner: input.owner,
-      repo: input.repo,
-      issue_number: input.pr_number,
+    const guarded = await safePostToGitHub({
       body: `Merge from \`${pr.data.base.ref}\` produced conflicts. I haven't pushed anything; please resolve manually.\n\n**Conflicting paths:**\n${list}`,
+      source: "system",
+      callsite: "ship.scoped.rebase.conflict",
+      log,
+      post: (cleanBody) =>
+        input.octokit.rest.issues.createComment({
+          owner: input.owner,
+          repo: input.repo,
+          issue_number: input.pr_number,
+          body: cleanBody,
+        }),
     });
-    log.info({ comment_id: comment.data.id, conflicts }, "rebase halted (conflicts)");
-    return { kind: "conflict", comment_id: comment.data.id, conflict_paths: conflicts };
+    if (!guarded.posted || guarded.result === undefined) {
+      throw new Error(
+        `ship.scoped.rebase.conflict: post skipped after secret redaction (matchCount=${guarded.matchCount})`,
+      );
+    }
+    log.info({ comment_id: guarded.result.data.id, conflicts }, "rebase halted (conflicts)");
+    return { kind: "conflict", comment_id: guarded.result.data.id, conflict_paths: conflicts };
   }
 
   // status === "merged"
   const sha = result.merge_commit_sha ?? "(unknown)";
-  const comment = await input.octokit.rest.issues.createComment({
-    owner: input.owner,
-    repo: input.repo,
-    issue_number: input.pr_number,
+  const guarded = await safePostToGitHub({
     body: `Merged \`${pr.data.base.ref}\` into \`${pr.data.head.ref}\` as \`${sha}\` and pushed forward (no force-push).`,
+    source: "system",
+    callsite: "ship.scoped.rebase.merged",
+    log,
+    post: (cleanBody) =>
+      input.octokit.rest.issues.createComment({
+        owner: input.owner,
+        repo: input.repo,
+        issue_number: input.pr_number,
+        body: cleanBody,
+      }),
   });
-  log.info({ comment_id: comment.data.id, merge_commit_sha: sha }, "rebase merged");
-  return { kind: "merged", comment_id: comment.data.id, merge_commit_sha: sha };
+  if (!guarded.posted || guarded.result === undefined) {
+    throw new Error(
+      `ship.scoped.rebase.merged: post skipped after secret redaction (matchCount=${guarded.matchCount})`,
+    );
+  }
+  log.info({ comment_id: guarded.result.data.id, merge_commit_sha: sha }, "rebase merged");
+  return { kind: "merged", comment_id: guarded.result.data.id, merge_commit_sha: sha };
 }

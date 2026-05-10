@@ -21,6 +21,7 @@ import type { Octokit } from "octokit";
 import type { Logger } from "pino";
 
 import { logger as rootLogger } from "../../../logger";
+import { safePostToGitHub } from "../../../utils/github-output-guard";
 import {
   classifyMetaIssue,
   type ClassifyMetaIssueInput,
@@ -179,16 +180,31 @@ export async function runOpenPrPolicy(
     issue_number: input.issue_number,
   });
   if (existingMarkerId !== null) {
-    const reply = await input.octokit.rest.issues.createComment({
-      owner: input.owner,
-      repo: input.repo,
-      issue_number: input.issue_number,
+    const guarded = await safePostToGitHub({
       body: `I already opened a PR for this issue — see comment #${existingMarkerId}. Re-trigger refused to avoid duplicates.`,
+      source: "system",
+      callsite: "ship.scoped.open-pr.duplicate",
+      log,
+      post: (cleanBody) =>
+        input.octokit.rest.issues.createComment({
+          owner: input.owner,
+          repo: input.repo,
+          issue_number: input.issue_number,
+          body: cleanBody,
+        }),
     });
-    log.info({ comment_id: reply.data.id, existingMarkerId }, "open_pr refused (duplicate)");
+    if (!guarded.posted || guarded.result === undefined) {
+      throw new Error(
+        `ship.scoped.open-pr.duplicate: post skipped after secret redaction (matchCount=${guarded.matchCount})`,
+      );
+    }
+    log.info(
+      { comment_id: guarded.result.data.id, existingMarkerId },
+      "open_pr refused (duplicate)",
+    );
     return {
       kind: "duplicate",
-      comment_id: reply.data.id,
+      comment_id: guarded.result.data.id,
       existing_marker_comment_id: existingMarkerId,
     };
   }
@@ -214,25 +230,52 @@ export async function runOpenPrPolicy(
     // bearer tokens, prompt fragments). The structured `error_message`
     // is still surfaced via the return value for operator dashboards
     // and the warn log line below carries the full `err`.
-    const reply = await input.octokit.rest.issues.createComment({
-      owner: input.owner,
-      repo: input.repo,
-      issue_number: input.issue_number,
+    const guarded = await safePostToGitHub({
       body: `I couldn't classify this issue. No PR opened — see server logs for details.`,
+      source: "system",
+      callsite: "ship.scoped.open-pr.classifier-failed",
+      log,
+      post: (cleanBody) =>
+        input.octokit.rest.issues.createComment({
+          owner: input.owner,
+          repo: input.repo,
+          issue_number: input.issue_number,
+          body: cleanBody,
+        }),
     });
-    log.warn({ err, comment_id: reply.data.id }, "open_pr classifier failed");
-    return { kind: "classifier-failed", comment_id: reply.data.id, error_message };
+    if (!guarded.posted || guarded.result === undefined) {
+      throw new Error(
+        `ship.scoped.open-pr.classifier-failed: post skipped after secret redaction (matchCount=${guarded.matchCount})`,
+        { cause: err },
+      );
+    }
+    log.warn({ err, comment_id: guarded.result.data.id }, "open_pr classifier failed");
+    return { kind: "classifier-failed", comment_id: guarded.result.data.id, error_message };
   }
 
   if (!verdict.actionable) {
-    const reply = await input.octokit.rest.issues.createComment({
-      owner: input.owner,
-      repo: input.repo,
-      issue_number: input.issue_number,
+    // verdict.kind/verdict.reason are LLM-classifier output; route through
+    // the agent-source path so the LLM scanner runs on the body.
+    const guarded = await safePostToGitHub({
       body: `I'm not opening a PR for this — classifier kind is \`${verdict.kind}\`.\n\n> ${verdict.reason}`,
+      source: "agent",
+      callsite: "ship.scoped.open-pr.non-actionable",
+      log,
+      post: (cleanBody) =>
+        input.octokit.rest.issues.createComment({
+          owner: input.owner,
+          repo: input.repo,
+          issue_number: input.issue_number,
+          body: cleanBody,
+        }),
     });
-    log.info({ comment_id: reply.data.id, kind: verdict.kind }, "open_pr non-actionable");
-    return { kind: "non-actionable", comment_id: reply.data.id, verdict };
+    if (!guarded.posted || guarded.result === undefined) {
+      throw new Error(
+        `ship.scoped.open-pr.non-actionable: post skipped after secret redaction (matchCount=${guarded.matchCount})`,
+      );
+    }
+    log.info({ comment_id: guarded.result.data.id, kind: verdict.kind }, "open_pr non-actionable");
+    return { kind: "non-actionable", comment_id: guarded.result.data.id, verdict };
   }
 
   return { kind: "actionable", verdict, issue_title: issue.data.title };
@@ -276,14 +319,27 @@ export async function runOpenPr(input: RunOpenPrInput): Promise<OpenPrOutcome> {
     // token (`https://x-access-token:GHS_xxx@…`). The structured
     // `error_message` still flows out via the return value for operator
     // surfaces; the full `err` is logged below.
-    const reply = await input.octokit.rest.issues.createComment({
-      owner: input.owner,
-      repo: input.repo,
-      issue_number: input.issue_number,
+    const guarded = await safePostToGitHub({
       body: `I classified this issue as actionable but couldn't create the draft PR — see server logs for details.`,
+      source: "system",
+      callsite: "ship.scoped.open-pr.branch-failed",
+      log,
+      post: (cleanBody) =>
+        input.octokit.rest.issues.createComment({
+          owner: input.owner,
+          repo: input.repo,
+          issue_number: input.issue_number,
+          body: cleanBody,
+        }),
     });
-    log.warn({ err, comment_id: reply.data.id }, "open_pr branch/PR creation failed");
-    return { kind: "classifier-failed", comment_id: reply.data.id, error_message };
+    if (!guarded.posted || guarded.result === undefined) {
+      throw new Error(
+        `ship.scoped.open-pr.branch-failed: post skipped after secret redaction (matchCount=${guarded.matchCount})`,
+        { cause: err },
+      );
+    }
+    log.warn({ err, comment_id: guarded.result.data.id }, "open_pr branch/PR creation failed");
+    return { kind: "classifier-failed", comment_id: guarded.result.data.id, error_message };
   }
 
   // Post the back-link comment with the marker so future re-triggers
@@ -293,12 +349,25 @@ export async function runOpenPr(input: RunOpenPrInput): Promise<OpenPrOutcome> {
   const marker = buildBackLinkMarker(created.pr_number);
   let reply: { data: { id: number } };
   try {
-    reply = await input.octokit.rest.issues.createComment({
-      owner: input.owner,
-      repo: input.repo,
-      issue_number: input.issue_number,
+    const guarded = await safePostToGitHub({
       body: `Opened draft PR #${created.pr_number} (\`${created.branch_name}\`): ${created.pr_url}\n\n${marker}`,
+      source: "system",
+      callsite: "ship.scoped.open-pr.back-link",
+      log,
+      post: (cleanBody) =>
+        input.octokit.rest.issues.createComment({
+          owner: input.owner,
+          repo: input.repo,
+          issue_number: input.issue_number,
+          body: cleanBody,
+        }),
     });
+    if (!guarded.posted || guarded.result === undefined) {
+      throw new Error(
+        `ship.scoped.open-pr.back-link: post skipped after secret redaction (matchCount=${guarded.matchCount})`,
+      );
+    }
+    reply = guarded.result;
   } catch (err) {
     const error_message = err instanceof Error ? err.message : String(err);
     log.error(

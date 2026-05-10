@@ -79,6 +79,8 @@ export async function runSummarize(input: RunSummarizeInput): Promise<{ comment_
     issue_number: input.pr_number,
     marker,
     body,
+    source: "agent",
+    log,
   });
 
   log.info({ comment_id }, "ship.scoped.summarize posted");

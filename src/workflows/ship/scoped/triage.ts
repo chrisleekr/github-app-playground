@@ -91,6 +91,8 @@ export async function runTriage(input: RunTriageInput): Promise<{ comment_id: nu
     issue_number: input.issue_number,
     marker,
     body,
+    source: "agent",
+    log,
   });
 
   log.info({ comment_id }, "ship.scoped.triage posted");

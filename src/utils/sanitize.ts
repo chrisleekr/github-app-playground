@@ -19,6 +19,10 @@ export function stripInvisibleCharacters(content: string): string {
   content = content.replace(controlCharRegex, "");
   content = content.replace(/\u00AD/g, "");
   content = content.replace(/[\u202A-\u202E\u2066-\u2069]/g, "");
+  // Unicode TAG block (U+E0000 to U+E007F): invisible "tag" codepoints used by
+  // recent prompt-injection variants (Cisco / Promptfoo write-ups). They
+  // render zero-width but encode ASCII letters that the model can read.
+  content = content.replace(/[\u{E0000}-\u{E007F}]/gu, "");
   return content;
 }
 

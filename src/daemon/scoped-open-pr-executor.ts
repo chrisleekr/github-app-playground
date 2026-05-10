@@ -22,6 +22,7 @@
 import { Octokit } from "octokit";
 
 import { logger } from "../logger";
+import { safePostToGitHub } from "../utils/github-output-guard";
 import { SHIP_LOG_EVENTS } from "../workflows/ship/log-fields";
 
 export interface ScopedOpenPrExecutorInput {
@@ -68,14 +69,23 @@ export async function executeScopedOpenPr(
   // Octokit-level errors (closed issue, missing repo) are contractually
   // `halted`, not `failed` — see scoped-fix-thread for rationale.
   try {
-    await octokit.rest.issues.createComment({
-      owner: input.owner,
-      repo: input.repo,
-      issue_number: input.issueNumber,
+    // verdictSummary contains LLM-generated policy text — route through the
+    // agent-source path so the LLM scanner runs on the body.
+    await safePostToGitHub({
       body:
         `\`bot:open-pr\` daemon-side executor is scaffolded — clone + branch + ` +
         `Agent SDK scaffolding + \`gh pr create\` invocation is the next follow-up. ` +
         `Policy verdict (verbatim):\n\n> ${truncatedSummary.replaceAll("\n", "\n> ")}`,
+      source: "agent",
+      callsite: "daemon.scoped-open-pr-executor.scaffold-reply",
+      log,
+      post: (cleanBody) =>
+        octokit.rest.issues.createComment({
+          owner: input.owner,
+          repo: input.repo,
+          issue_number: input.issueNumber,
+          body: cleanBody,
+        }),
     });
     log.info(
       { event: "ship.scoped.open_pr.daemon.completed" },

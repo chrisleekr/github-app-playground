@@ -243,6 +243,7 @@ export async function runShipFromCommand(input: RunShipFromCommandInput): Promis
     repo: command.pr.repo,
     issue_number: command.pr.number,
     body: initialBody,
+    log,
   });
   await persistTrackingCommentId(intent.id, trackingCommentId, sql);
 
@@ -445,11 +446,18 @@ async function postReply(
   log: Logger,
 ): Promise<void> {
   try {
-    await octokit.rest.issues.createComment({
-      owner: command.pr.owner,
-      repo: command.pr.repo,
-      issue_number: command.pr.number,
+    await safePostToGitHub({
       body,
+      source: "system",
+      callsite: "ship.session-runner.postReply",
+      log,
+      post: (cleanBody) =>
+        octokit.rest.issues.createComment({
+          owner: command.pr.owner,
+          repo: command.pr.repo,
+          issue_number: command.pr.number,
+          body: cleanBody,
+        }),
     });
   } catch (err) {
     log.warn({ err }, "ship reply failed (best-effort)");
@@ -559,6 +567,7 @@ async function terminalReady(input: TerminalReadyInput): Promise<void> {
       repo: command.pr.repo,
       comment_id: trackingCommentId,
       body: terminalBody,
+      log,
     });
   } catch (err) {
     log.warn({ err }, "terminal tracking-comment update failed (best-effort)");

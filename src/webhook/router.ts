@@ -16,6 +16,7 @@ import { triageRequest, type TriageResult } from "../orchestrator/triage";
 import { isValkeyHealthy } from "../orchestrator/valkey";
 import type { DispatchReason, DispatchTarget } from "../shared/dispatch-types";
 import { type BotContext, serializeBotContext } from "../types";
+import { safePostToGitHub } from "../utils/github-output-guard";
 import { isOwnerAllowed } from "./authorize";
 import { getTriageLLMClient } from "./triage-client-factory";
 
@@ -114,11 +115,19 @@ export async function processRequest(ctx: BotContext): Promise<void> {
       "Concurrency limit reached, rejecting request",
     );
     try {
-      await ctx.octokit.rest.issues.createComment({
-        owner: ctx.owner,
-        repo: ctx.repo,
-        issue_number: ctx.entityNumber,
+      await safePostToGitHub({
         body: `**${config.triggerPhrase}** is at capacity (${currentCount}/${config.maxConcurrentRequests} concurrent requests active). Please re-trigger in a moment.`,
+        source: "system",
+        callsite: "webhook.router.capacity",
+        log: ctx.log,
+        deliveryId: ctx.deliveryId,
+        post: (cleanBody) =>
+          ctx.octokit.rest.issues.createComment({
+            owner: ctx.owner,
+            repo: ctx.repo,
+            issue_number: ctx.entityNumber,
+            body: cleanBody,
+          }),
       });
     } catch (commentError) {
       ctx.log.error({ err: commentError }, "Failed to post capacity comment");
@@ -320,18 +329,26 @@ async function recordSpawnFailedRejection(
   }
 
   try {
-    await ctx.octokit.rest.issues.createComment({
-      owner: ctx.owner,
-      repo: ctx.repo,
-      issue_number: ctx.entityNumber,
-      // Public comment — do NOT include `decision.spawnError`. The raw
-      // text can carry K8s API URLs, RBAC detail, or other operational
-      // info. The structured spawn error is already on the log line and
-      // in the executions row for operators.
+    // Public comment — do NOT include `decision.spawnError`. The raw
+    // text can carry K8s API URLs, RBAC detail, or other operational
+    // info. The structured spawn error is already on the log line and
+    // in the executions row for operators.
+    await safePostToGitHub({
       body:
         `**${config.triggerPhrase}** cannot dispatch this request: scaling up the ephemeral ` +
         `daemon pool requires Kubernetes infrastructure that is unavailable right now. ` +
         `Please re-trigger in a few minutes; if this persists, check server logs.`,
+      source: "system",
+      callsite: "webhook.router.ephemeral-spawn-failed",
+      log: ctx.log,
+      deliveryId: ctx.deliveryId,
+      post: (cleanBody) =>
+        ctx.octokit.rest.issues.createComment({
+          owner: ctx.owner,
+          repo: ctx.repo,
+          issue_number: ctx.entityNumber,
+          body: cleanBody,
+        }),
     });
   } catch (commentError) {
     ctx.log.error({ err: commentError }, "Failed to post ephemeral-spawn-failed comment");
@@ -350,11 +367,19 @@ async function dispatchDaemon(ctx: BotContext, decision: DispatchDecision): Prom
   if (!isValkeyHealthy()) {
     ctx.log.error("Valkey unavailable — rejecting request (FM-7)");
     try {
-      await ctx.octokit.rest.issues.createComment({
-        owner: ctx.owner,
-        repo: ctx.repo,
-        issue_number: ctx.entityNumber,
+      await safePostToGitHub({
         body: `**${config.triggerPhrase}** cannot process this request — the job queue service is temporarily unavailable. Please try again in a few minutes.`,
+        source: "system",
+        callsite: "webhook.router.valkey-unavailable",
+        log: ctx.log,
+        deliveryId: ctx.deliveryId,
+        post: (cleanBody) =>
+          ctx.octokit.rest.issues.createComment({
+            owner: ctx.owner,
+            repo: ctx.repo,
+            issue_number: ctx.entityNumber,
+            body: cleanBody,
+          }),
       });
     } catch (commentError) {
       ctx.log.error({ err: commentError }, "Failed to post Valkey unavailable comment");
