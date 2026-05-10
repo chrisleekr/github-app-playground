@@ -4,7 +4,7 @@
  *
  * Why: `src/app.ts` runs migrations on boot, but ops + CI need a way to
  * apply migrations without booting the whole webhook server. Importing
- * `requireDb` + `runMigrations` keeps the script tiny — the
+ * `requireDb` + `runMigrations` keeps the script tiny: the
  * connection-pool and DDL logic stays in `src/db/`.
  */
 

@@ -1,5 +1,5 @@
 /**
- * T046b: static guard for FR-009 — refuses to ship code that could
+ * T046b: static FR-009 guard. Refuses to ship code that could
  * push --force, reset --hard, delete branches, rewrite history, or
  * call any merge API from inside the ship workflow.
  *
@@ -20,7 +20,7 @@ import { join } from "node:path";
 // handlers via mocked tool-call recorders.
 //
 // US3 extension (specs/20260429-212559-ship-iteration-wiring T035):
-// the four daemon-side scoped executors live under `src/daemon/` —
+// the four daemon-side scoped executors live under `src/daemon/`,
 // outside the ship-workflow tree but governed by the same FR-009
 // prohibitions. Including them as explicit file roots keeps the scan
 // noise-free (other `src/daemon/` files embed agent prompts that
@@ -75,7 +75,7 @@ function scan(): { file: string; line: number; description: string; text: string
     for (const file of iter) {
       if (visited.has(file)) continue;
       visited.add(file);
-      // Skip self — this guard file documents the patterns it checks for.
+      // Skip self; this guard file documents the patterns it checks for.
       if (file.endsWith("check-no-destructive-actions.ts")) continue;
       const text = readFileSync(file, "utf8");
       const lines = text.split(/\r?\n/);

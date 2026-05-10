@@ -8,8 +8,8 @@
  * Detected forms in docs/**:
  *   - bare semver "1.3.13" inside a Bun context (preceding text contains
  *     the word `bun`, case-insensitive, anywhere in the same Markdown
- *     line — covers tables, prose, code fences) — to avoid false matches
- *     on unrelated semvers (e.g. Node 20.x, openssl pins).
+ *     line; covers tables, prose, code fences). The `bun` requirement
+ *     avoids false matches on unrelated semvers (e.g. Node 20.x, openssl pins).
  *   - `oven/bun:<ver>` references.
  *
  * Exit 0 on match, 1 on any mismatch with a per-file diff on stderr.
@@ -112,8 +112,8 @@ function checkDockerfile(path: string, canonical: string): Mismatch[] {
     const line = lines[i] ?? "";
     const baseMatch = /^FROM\s+oven\/bun:(\d+\.\d+\.\d+)\s+AS\s+base/.exec(line);
     if (baseMatch) foundBase = true;
-    // Scan every `oven/bun:<ver>` occurrence on the line — the anchored FROM
-    // check above only confirms the base stage exists; comments, ENV lines
+    // Scan every `oven/bun:<ver>` occurrence on the line; the anchored FROM
+    // check above only confirms the base stage exists. Comments, ENV lines
     // and RUN snippets can also embed `oven/bun:<ver>` and rot independently
     // (e.g. `# /root is mode 700 in oven/bun:<ver>` in Dockerfile.daemon).
     OVEN_RE.lastIndex = 0;

@@ -2,7 +2,7 @@ export {};
 
 const isProduction = process.env["NODE_ENV"] === "production";
 
-// Build 1: Main app entry point — outputs dist/app.js
+// Build 1: main app entry point. Outputs dist/app.js.
 const result = await Bun.build({
   entrypoints: ["./src/app.ts"],
   outdir: "./dist",
@@ -21,7 +21,7 @@ if (!result.success) {
   process.exit(1);
 }
 
-// Build 2: MCP stdio servers — outputs dist/mcp/servers/<name>.js
+// Build 2: MCP stdio servers. Outputs dist/mcp/servers/<name>.js.
 // sanitize.ts (and github-state's fetcher helpers) are inlined into each
 // bundle (splitting: false) since each server runs as an independent
 // child process with no shared runtime.
@@ -47,7 +47,7 @@ if (!mcpResult.success) {
   process.exit(1);
 }
 
-// Build 3: Daemon worker entry point — outputs dist/daemon/main.js
+// Build 3: daemon worker entry point. Outputs dist/daemon/main.js.
 // Invoked by the chart's daemon Deployment via `bun run dist/daemon/main.js`.
 // Self-contained bundle (splitting: false) since the daemon runs as its own process.
 const daemonResult = await Bun.build({

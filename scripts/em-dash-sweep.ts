@@ -131,6 +131,9 @@ function transformLine(line: string): string {
   // Rule 5: no-space `a—b` -> `a-b` (only when both sides are word chars)
   line = line.replace(/(\w)—(\w)/g, "$1-$2");
 
+  // Rule 6: end-of-line continuation ` —` (clause carries to next line) -> `,`
+  line = line.replace(/ —\s*$/, ",");
+
   return line;
 }
 

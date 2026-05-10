@@ -27,9 +27,9 @@ while true; do
   child=""
 
   if [ "${EXIT_CODE}" -eq 75 ]; then
-    echo "[run-daemon] Daemon exited with code 75 (update) — restarting immediately"
+    echo "[run-daemon] Daemon exited with code 75 (update), restarting immediately"
   else
-    echo "[run-daemon] Daemon exited with code ${EXIT_CODE} — restarting in 5 seconds"
+    echo "[run-daemon] Daemon exited with code ${EXIT_CODE}, restarting in 5 seconds"
     sleep 5
   fi
 done
