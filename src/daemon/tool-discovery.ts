@@ -242,7 +242,7 @@ function detectEphemeral(): boolean {
 const DEFAULT_MAX_CONCURRENT_JOBS = 3;
 
 // parseInt returns NaN for empty strings or non-numeric input, and
-// `??` only falls back when undefined — so a malformed env var would
+// `??` only falls back when undefined, so a malformed env var would
 // propagate NaN into the Zod schema (`int().positive()`) and fail
 // `daemon:register`. Guard explicitly on Number.isInteger and >0.
 function parseMaxConcurrentJobs(raw: string | undefined): number {
@@ -298,7 +298,7 @@ function loadStaticManifest(logger: ToolDiscoveryLogger): StaticDaemonCapabiliti
   }
 }
 
-// Full probe (slow path — used by manifest generator and dev fallback)
+// Full probe (slow path, used by manifest generator and dev fallback)
 
 /**
  * Probe the host for all static capability fields. Used by
@@ -385,7 +385,7 @@ export async function discoverCapabilities(cloneBaseDir: string): Promise<Daemon
     "Capability discovery complete",
   );
 
-  // Validate the merged shape — catches drift between the baked manifest and
+  // Validate the merged shape, catches drift between the baked manifest and
   // the schema after a daemon-types.ts change.
   return daemonCapabilitiesSchema.parse(capabilities);
 }

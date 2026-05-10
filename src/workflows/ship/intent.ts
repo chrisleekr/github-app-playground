@@ -1,7 +1,7 @@
 /**
  * Single source of truth for `ship_intents` lifecycle transitions
- * (T018). Every status transition — pause/resume, terminal transitions
- * (across handlers, abort path, deadline enforcement, iteration cap) —
+ * (T018). Every status transition: pause/resume, terminal transitions
+ * (across handlers, abort path, deadline enforcement, iteration cap),
  * MUST go through this module. No inline `UPDATE ship_intents` writes
  * elsewhere in the codebase. This keeps the state-machine contract in
  * one place and makes the full transition graph testable from a single
@@ -124,7 +124,7 @@ export async function getIntentById(
 }
 
 /**
- * Move an intent to a terminal state. Idempotent — returns null if the
+ * Move an intent to a terminal state. Idempotent: returns null if the
  * intent did not exist or was already terminal.
  */
 export async function transitionToTerminal(
@@ -178,7 +178,7 @@ export async function pauseIntent(
 
 /**
  * Resume a paused intent (FR-011). Guarded UPDATE; does NOT touch the
- * Valkey cancellation flag — that is the orchestrator's responsibility
+ * Valkey cancellation flag: that is the orchestrator's responsibility
  * per `contracts/bot-commands.md` §"bot:resume Behavior" step 5.
  */
 export async function resumeIntent(
@@ -210,7 +210,7 @@ export async function resumeIntent(
  *   2. DELETE the ship_continuations row
  *   3. ZREM the intent_id from the `ship:tickle` sorted set
  *
- * (2) and (3) are best-effort — failure does not roll back (1).
+ * (2) and (3) are best-effort: failure does not roll back (1).
  */
 export async function forceAbortIntent(
   id: string,

@@ -4,7 +4,7 @@
  * singletons and the bot App login at call time so per-event handlers do
  * not need to re-import them.
  *
- * Errors are swallowed to logger.warn — the reactor is a best-effort
+ * Errors are swallowed to logger.warn: the reactor is a best-effort
  * early-wake; durable state still advances on the next cron tickle.
  */
 
@@ -23,7 +23,7 @@ export function fireReactor(event: ReactorEvent): void {
     // my push" reports.
     logger.debug(
       { event_type: event.type, event: "ship.reactor.bridge_skipped_no_db" },
-      "ship reactor early-wake skipped — DATABASE_URL not configured",
+      "ship reactor early-wake skipped, DATABASE_URL not configured",
     );
     return;
   }

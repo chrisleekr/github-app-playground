@@ -4,7 +4,7 @@
  * marker so the comment id can be re-discovered after a cached id
  * 404s (e.g. comment was deleted by a maintainer mid-session).
  *
- * Marker format: `<!-- ship-intent:{intent_id} -->` — both endpoints
+ * Marker format: `<!-- ship-intent:{intent_id} -->`, both endpoints
  * (writer + scanner) use exactly this string so cross-version drift
  * cannot strand a session.
  */
@@ -92,7 +92,7 @@ export async function updateTrackingComment(input: UpdateTrackingCommentInput): 
 /**
  * Fall-back marker scan when a cached `tracking_comment_id` 404s.
  * Returns the first matching comment id, or `null` when no comment
- * carries the marker. Uses paginated REST listing — at most 300
+ * carries the marker. Uses paginated REST listing: at most 300
  * comments are scanned (3 × default 100 page size); intents whose
  * tracking comment lives further down the timeline are extremely rare.
  */
@@ -147,7 +147,7 @@ export interface TrackingCommentRender {
   readonly flake_annotation?: string;
   /** T050 (FR-006): the action the bot is queued to take next. */
   readonly next_queued_action?: string;
-  /** T050: timestamp of this render — defaults to now. */
+  /** T050: timestamp of this render, defaults to now. */
   readonly last_updated_at?: Date;
 }
 

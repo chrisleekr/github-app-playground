@@ -227,7 +227,7 @@ export async function setTrackingCommentId(
 /**
  * Compare-and-set variant of {@link setTrackingCommentId}. Only writes the
  * row when `tracking_comment_id IS NULL`, so two racing creators cannot both
- * stamp their own comment ids. Returns the winning comment id — our `commentId`
+ * stamp their own comment ids. Returns the winning comment id: our `commentId`
  * if we won, or the pre-existing value if another worker got there first.
  */
 export async function tryReserveTrackingCommentId(
@@ -323,7 +323,7 @@ export async function findLatestForTarget(
 
 /**
  * Return the most-recent `succeeded` row for (workflow, target). Used by the
- * prior-output check (FR-004) — a later `failed` row must not block a dispatch
+ * prior-output check (FR-004): a later `failed` row must not block a dispatch
  * that has a valid prior success earlier in history.
  */
 export async function findLatestSucceededForTarget(
@@ -346,7 +346,7 @@ export async function findLatestSucceededForTarget(
 }
 
 /**
- * In-flight rows owned by a specific (kind, id) — used by the disconnect
+ * In-flight rows owned by a specific (kind, id): used by the disconnect
  * cleanup path to find workflow_runs that need a user-facing failure
  * notification when their owning daemon dies abruptly.
  */

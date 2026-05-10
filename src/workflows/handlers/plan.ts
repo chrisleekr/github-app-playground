@@ -7,7 +7,7 @@ import type { BotContext } from "../../types";
 import type { WorkflowHandler } from "../registry";
 
 /**
- * `plan` handler (T021) — multi-turn Claude Agent SDK session over the cloned
+ * `plan` handler (T021): multi-turn Claude Agent SDK session over the cloned
  * repo + issue body. Emits markdown task decomposition into `state.plan`.
  *
  * Flow:
@@ -19,7 +19,7 @@ import type { WorkflowHandler } from "../registry";
  *   5. Cleanup workspace.
  *
  * Uses `executeAgent` directly (not `runPipeline`) so the handler owns the
- * prompt — `runPipeline` builds a prompt from `triggerBody` + fetched GH
+ * prompt: `runPipeline` builds a prompt from `triggerBody` + fetched GH
  * data, which is tuned for `@chrisleekr-bot` comment triggers, not planning.
  */
 export const handler: WorkflowHandler = async (ctx) => {
@@ -90,7 +90,7 @@ export const handler: WorkflowHandler = async (ctx) => {
     if (result.durationMs !== undefined)
       meta.push(`duration: ${String(Math.round(result.durationMs / 1000))}s`);
     const metaLine = meta.length > 0 ? `\n\n_${meta.join(" · ")}_` : "";
-    const humanMessage = `📋 **Plan ready** — task decomposition below.\n\n${planMarkdown.trim()}${metaLine}`;
+    const humanMessage = `📋 **Plan ready**, task decomposition below.\n\n${planMarkdown.trim()}${metaLine}`;
     await ctx.setState(state, humanMessage);
 
     log.info(
@@ -182,7 +182,7 @@ function buildPlanPrompt(input: {
     `    <how to confirm the change works>`,
     ``,
     `4. Keep each task small, specific, and independently verifiable.`,
-    `5. Do NOT make code changes yet — only write PLAN.md.`,
+    `5. Do NOT make code changes yet, only write PLAN.md.`,
     `6. When PLAN.md is written and saved, your job is done.`,
   ].join("\n");
 }
@@ -198,7 +198,7 @@ async function postStartingComment(
 ): Promise<void> {
   const author = input.author === null ? "" : ` (opened by @${input.author})`;
   const body = [
-    `📋 **Plan starting** — analyzing issue #${String(input.number)}${author}`,
+    `📋 **Plan starting**, analyzing issue #${String(input.number)}${author}`,
     ``,
     `> ${input.title}`,
     ``,
@@ -210,7 +210,7 @@ async function postStartingComment(
   } catch (err) {
     ctx.logger.warn(
       { err: err instanceof Error ? err.message : String(err) },
-      "plan starting-comment write failed — continuing without up-front comment",
+      "plan starting-comment write failed, continuing without up-front comment",
     );
   }
 }

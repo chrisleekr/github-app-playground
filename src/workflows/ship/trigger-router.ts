@@ -4,7 +4,7 @@
  * Returns `null` for non-actionable inputs.
  *
  * The `surface` field on the canonical record exists for observability
- * (FR-016) only — eligibility, authorisation, and routing MUST NOT
+ * (FR-016) only: eligibility, authorisation, and routing MUST NOT
  * read it.
  */
 
@@ -66,7 +66,7 @@ function withSurface(
   surface: TriggerSurface,
   payload: BasePayload,
 ): CanonicalCommand | null {
-  // Per-intent eligibility (FR-029..FR-035) — scoped verbs reject events
+  // Per-intent eligibility (FR-029..FR-035), scoped verbs reject events
   // outside their declared surface set. Ship-lifecycle verbs are accepted
   // on every PR-attached surface; the eligibility map encodes both.
   if (

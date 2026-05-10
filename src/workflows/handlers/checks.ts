@@ -7,7 +7,7 @@ import type { Octokit } from "octokit";
  * `status === "completed"` AND `conclusion` is one of `failure`, `cancelled`,
  * `timed_out`, or `action_required`. `skipped`, `neutral`, and `success` are
  * acceptable terminal states. In-flight (`queued`/`in_progress`) checks are
- * tracked separately as `pendingChecks` and block `allGreen` — the post-
+ * tracked separately as `pendingChecks` and block `allGreen`: the post-
  * pipeline gate must not finalize a run while CI is still running because
  * those pending checks could later fail.
  *
@@ -32,13 +32,13 @@ interface CheckRunLike {
 }
 
 // Whitelist of passing conclusions per the GitHub REST docs for check runs:
-// https://docs.github.com/en/rest/checks/runs — anything else terminal
+// https://docs.github.com/en/rest/checks/runs, anything else terminal
 // (failure, cancelled, timed_out, action_required, stale) counts as failing.
 // `stale` is set automatically by GitHub after 14 days of incompletion; treating
 // it as green would let stuck check suites silently pass the post-pipeline gate.
 const PASSING_CONCLUSIONS = new Set(["success", "neutral", "skipped"]);
 // All non-terminal status values per the REST docs. `requested` was added in
-// the Checks API and is set when a rerun is queued but not yet running — must
+// the Checks API and is set when a rerun is queued but not yet running, must
 // block `allGreen` so the gate doesn't fire before the rerun starts.
 const PENDING_STATUSES = new Set(["queued", "in_progress", "waiting", "pending", "requested"]);
 

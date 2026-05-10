@@ -10,7 +10,7 @@ import { parseTolerantJson } from "../utils/tolerant-json";
  * code. Mechanism / policy split: this module owns parse + validate;
  * each caller owns what failure means for its execution path.
  *
- * Pure module — no LLM client coupling, no I/O.
+ * Pure module: no LLM client coupling, no I/O.
  *
  * Pipeline:
  *   raw string  ->  strip code fence  ->  strict JSON.parse
@@ -39,14 +39,14 @@ import { parseTolerantJson } from "../utils/tolerant-json";
  * nudge is the cheap-when-it-works defense; tolerant parser is the
  * deterministic catch-all.
  */
-export const STRUCTURED_OUTPUT_RULES = `JSON encoding rules (CRITICAL — your output is parsed by JSON.parse):
+export const STRUCTURED_OUTPUT_RULES = `JSON encoding rules (CRITICAL, your output is parsed by JSON.parse):
 - Inside string values, escape newlines as \\n (backslash + n), tabs as \\t, backslashes as \\\\, quotes as \\".
-- Do NOT emit literal newlines or tabs inside string values — that produces invalid JSON.
+- Do NOT emit literal newlines or tabs inside string values: that produces invalid JSON.
 - Return EXACTLY one JSON object. No prose, no commentary, no code fences.`;
 
 /**
  * Discriminated result from `parseStructuredResponse`. Callers MUST
- * switch on `ok` (and, for failures, on `stage`) — the type system
+ * switch on `ok` (and, for failures, on `stage`): the type system
  * guarantees no field is silently undefined.
  */
 export type StructuredResult<T> =
@@ -86,7 +86,7 @@ export function withStructuredRules(systemPrompt: string): string {
  * Parse and validate an LLM string response as a typed structured object.
  *
  * Strips a single leading/trailing markdown code fence (``` or ```json)
- * before parsing — Anthropic Haiku-class models frequently wrap JSON in
+ * before parsing: Anthropic Haiku-class models frequently wrap JSON in
  * fences despite "no fences" instructions.
  *
  * Returns a discriminated result; never throws.

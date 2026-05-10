@@ -66,7 +66,7 @@ export function createTickleScheduler(deps: TickleSchedulerDeps): TickleSchedule
   /*
    * Reentrancy guard against overlapping `setInterval` invocations.
    * The check-then-set pair below is safe because JS is single-threaded
-   * and no `await` separates the read from the write — `setInterval`
+   * and no `await` separates the read from the write: `setInterval`
    * can only re-enter `tick` on a separate event-loop turn, by which
    * point `ticking` is already `true`. ESLint's `require-atomic-updates`
    * conservatively flags any cross-async read/write of a closure

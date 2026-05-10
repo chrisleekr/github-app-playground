@@ -10,7 +10,7 @@ import type { BotContext } from "../../types";
 import type { WorkflowHandler } from "../registry";
 
 /**
- * `triage` handler — code-aware validation of an issue against the actual
+ * `triage` handler: code-aware validation of an issue against the actual
  * repository state, with mandatory reproduction for bug-class issues.
  *
  * The handler:
@@ -20,21 +20,21 @@ import type { WorkflowHandler } from "../registry";
  *      Write) and instructs the agent to: classify the issue, search
  *      relevant source, ACTUALLY REPRODUCE the bug (if it claims one) by
  *      running the failing case, decide validity, and emit two artefacts
- *      at the repo root — `TRIAGE.md` (human-readable report, becomes the
+ *      at the repo root: `TRIAGE.md` (human-readable report, becomes the
  *      tracking comment body) and `TRIAGE_VERDICT.json` (machine-readable
  *      verdict).
  *   4. Parses `TRIAGE_VERDICT.json`. When `valid === false` the handler
- *      returns `failed` with the verdict summary as the reason — this
+ *      returns `failed` with the verdict summary as the reason: this
  *      halts a parent `ship` cascade at the triage step (see
  *      `workflows/orchestrator.ts onStepComplete`).
  *   5. The full `TRIAGE.md` report is the tracking comment body so the user
- *      sees evidence, reasoning, and reproduction details — not a one-liner.
+ *      sees evidence, reasoning, and reproduction details: not a one-liner.
  *
  * Reproduction: there is NO turn cap. A senior engineer's job is to
  * determine whether a reported bug is real; that requires running the code,
  * not just reading it. If reproduction is impossible (e.g., production-only,
  * needs external services we lack), the agent reports
- * `attempted: true, reproduced: null` with honest details — never lies.
+ * `attempted: true, reproduced: null` with honest details, never lies.
  * Non-bug issues (features, refactors, docs) skip reproduction with
  * `attempted: false`.
  *
@@ -55,7 +55,7 @@ const reproductionSchema = z
      * `attempted === true`: `true` = bug confirmed by running code,
      * `false` = code runs cleanly and the bug as described does not occur.
      * The agent uses `null` only when reproduction was attempted but
-     * couldn't reach a verdict (e.g., needs production data we lack) —
+     * couldn't reach a verdict (e.g., needs production data we lack),
      * in that case `details` MUST explain the obstacle honestly.
      */
     reproduced: z.boolean().nullable(),
@@ -264,7 +264,7 @@ function buildTriagePrompt(input: {
 }): string {
   return [
     `You are a senior engineer triaging a GitHub issue against the actual codebase.`,
-    `Your job is NOT to fix or plan — only to VALIDATE: is this issue accurate, reproducible, and worth pursuing as written?`,
+    `Your job is NOT to fix or plan, only to VALIDATE: is this issue accurate, reproducible, and worth pursuing as written?`,
     ``,
     `Repository: ${input.owner}/${input.repo}`,
     `Issue #${String(input.number)}: ${input.issueTitle}`,
@@ -275,21 +275,21 @@ function buildTriagePrompt(input: {
     ``,
     `Method:`,
     `1. **Classify the issue.** Read it carefully and decide which class it falls into:`,
-    `   - **bug** — claims that something currently broken / incorrect / failing.`,
-    `   - **feature** — asks for new capability that doesn't exist.`,
-    `   - **refactor** — asks to restructure existing code without behaviour change.`,
-    `   - **docs** — asks for documentation only.`,
-    `   - **question/unclear** — not actionable without more info.`,
+    `   - **bug**, claims that something currently broken / incorrect / failing.`,
+    `   - **feature**, asks for new capability that doesn't exist.`,
+    `   - **refactor**, asks to restructure existing code without behaviour change.`,
+    `   - **docs**, asks for documentation only.`,
+    `   - **question/unclear**, not actionable without more info.`,
     ``,
     `2. **Inspect the code.** Use Read / Grep / Glob to find relevant files. Read them in full where claims are specific. Note evidence with file:line citations.`,
     ``,
     `3. **Reproduce or prove structurally (BUG ISSUES ONLY).** Before reaching for \`reproduced=null\`, work through these in order:`,
     ``,
-    `   a. **Decide what the test must establish — and say so in TRIAGE.md:**`,
-    `      - *Repro the defect* — a test that fails today, deleted post-fix.`,
-    `      - *Lock the invariant the fix will rely on* — passes today, survives the fix as a regression guard. Often more valuable, and frequently available even when the defect itself is unreachable.`,
+    `   a. **Decide what the test must establish, and say so in TRIAGE.md:**`,
+    `      - *Repro the defect*: a test that fails today, deleted post-fix.`,
+    `      - *Lock the invariant the fix will rely on*, passes today, survives the fix as a regression guard. Often more valuable, and frequently available even when the defect itself is unreachable.`,
     ``,
-    `   b. **Code inspection is first-class evidence.** Structural defects (module-scoped state, missing constraint, wrong ordering, race window across an \`await\`, unguarded shared resource) are provable by \`file:line\` citation alone. Cite, name the structural property, and mark \`reproduced=true\` — do NOT write a runtime test that re-proves what the citation already shows.`,
+    `   b. **Code inspection is first-class evidence.** Structural defects (module-scoped state, missing constraint, wrong ordering, race window across an \`await\`, unguarded shared resource) are provable by \`file:line\` citation alone. Cite, name the structural property, and mark \`reproduced=true\`, do NOT write a runtime test that re-proves what the citation already shows.`,
     ``,
     `   c. **Walk the harness ladder before declaring infeasible.** Stop at the first rung that works, and name the rung in \`details\`:`,
     `      1. Pure unit test`,
@@ -298,12 +298,12 @@ function buildTriagePrompt(input: {
     `      4. Multi-process / multi-container via docker-compose`,
     `      "Cannot reproduce" requires naming the highest rung you tried AND explaining why the next rung wouldn't help.`,
     ``,
-    `   d. **If reproduction needs synthetic sleeps or barriers, you're testing the harness, not the code.** Drop the repro and write the invariant test the fix will need — e.g. "N concurrent callers → exactly 1 succeeds", "operation idempotent under retry". Tag in \`details\` as \`invariant test\`, not \`regression repro\`.`,
+    `   d. **If reproduction needs synthetic sleeps or barriers, you're testing the harness, not the code.** Drop the repro and write the invariant test the fix will need, e.g. "N concurrent callers → exactly 1 succeeds", "operation idempotent under retry". Tag in \`details\` as \`invariant test\`, not \`regression repro\`.`,
     ``,
     `   e. **Run the chosen test via Bash. Capture output. Decide:**`,
     `      \`reproduced=true\`  → output demonstrates the defect, OR a structural property is established by citation, OR the invariant test passes against a real dependency.`,
-    `      \`reproduced=false\` → output contradicts the claim. The issue is wrong (already-fixed, misread, env-only) — mark VALID=false.`,
-    `      \`reproduced=null\`  → ONLY after walking 3b, 3c, AND 3d and ruling each out. State which you tried and why each failed to either show the defect or pin down a fix-relevant invariant. "Race condition" alone is NOT sufficient — races almost always have an invariant test (3d).`,
+    `      \`reproduced=false\` → output contradicts the claim. The issue is wrong (already-fixed, misread, env-only), mark VALID=false.`,
+    `      \`reproduced=null\`  → ONLY after walking 3b, 3c, AND 3d and ruling each out. State which you tried and why each failed to either show the defect or pin down a fix-relevant invariant. "Race condition" alone is NOT sufficient, races almost always have an invariant test (3d).`,
     ``,
     `   f. There is NO turn cap. /tmp scratch is fine; do not commit anything.`,
     ``,
@@ -320,11 +320,11 @@ function buildTriagePrompt(input: {
     `    **<VALID | INVALID>** (confidence: <0.0-1.0>)`,
     `    <one-paragraph summary>`,
     `    ## What was inspected`,
-    `    - <file path> — <why you read it>`,
+    `    - <file path>, <why you read it>`,
     `    ...`,
     `    ## Reproduction`,
     `    <If bug class: the command(s) you ran, the output you saw, and your conclusion.`,
-    `     If non-bug class: "Not a bug claim — reproduction skipped." plus one sentence why.`,
+    `     If non-bug class: "Not a bug claim, reproduction skipped." plus one sentence why.`,
     `     Be specific. A senior reviewer should be able to re-run your steps verbatim.>`,
     `    ## Findings`,
     `    - <finding 1, with file:line citation>`,
@@ -350,14 +350,14 @@ function buildTriagePrompt(input: {
     `      "reproduction": {`,
     `        "attempted": true | false,`,
     `        "reproduced": true | false | null,`,
-    `        "details": "<concise but accurate and convincing — aim for ≤2000 chars, expand only when evidence demands it; commands run + output + conclusion, OR 'Not a bug claim' for non-bugs>"`,
+    `        "details": "<concise but accurate and convincing, aim for ≤2000 chars, expand only when evidence demands it; commands run + output + conclusion, OR 'Not a bug claim' for non-bugs>"`,
     `      }`,
     `    }`,
     ``,
     `Rules:`,
     `- Be ruthless about evidence. Prefer \`file:line\` citations; a claim with neither a citation nor a concrete cross-cutting observation (e.g. a negative grep result) is a guess.`,
     `- For bug issues, a verdict without an honest reproduction attempt is a failure of your job.`,
-    `- It is OK to report \`reproduced=null\` if the bug genuinely can't be reproduced in this environment — but you MUST explain WHY honestly. Never lie about reproduction status.`,
+    `- It is OK to report \`reproduced=null\` if the bug genuinely can't be reproduced in this environment, but you MUST explain WHY honestly. Never lie about reproduction status.`,
     `- Do NOT modify any source files in the repo (writing temporary scripts under /tmp is fine; running tests is fine; do not stage or commit anything).`,
     `- Do NOT make recommendations beyond "plan" or "stop". Do NOT write code that fixes the issue.`,
     `- The two output files (TRIAGE.md, TRIAGE_VERDICT.json) are the only artefacts you should leave at the repo root.`,
@@ -377,7 +377,7 @@ async function postStartingComment(
 ): Promise<void> {
   const author = input.author === null ? "" : ` (opened by @${input.author})`;
   const body = [
-    `🔍 **Triage starting** — analyzing issue #${String(input.number)}${author}`,
+    `🔍 **Triage starting**, analyzing issue #${String(input.number)}${author}`,
     ``,
     `> ${input.title}`,
     ``,
@@ -390,7 +390,7 @@ async function postStartingComment(
   } catch (err) {
     ctx.logger.warn(
       { err: err instanceof Error ? err.message : String(err) },
-      "triage starting-comment write failed — continuing without up-front comment",
+      "triage starting-comment write failed, continuing without up-front comment",
     );
   }
 }
@@ -401,8 +401,8 @@ function composeComment(
   result: { costUsd?: number | undefined; numTurns?: number | undefined; durationMs?: number },
 ): string {
   const verdictLine = verdict.valid
-    ? `✅ **Valid** — proceeding to next step (\`${verdict.recommendedNext}\`).`
-    : `🛑 **Invalid** — chain halted (\`${verdict.recommendedNext}\`).`;
+    ? `✅ **Valid**, proceeding to next step (\`${verdict.recommendedNext}\`).`
+    : `🛑 **Invalid**, chain halted (\`${verdict.recommendedNext}\`).`;
   const meta: string[] = [];
   if (result.costUsd !== undefined) meta.push(`cost: $${result.costUsd.toFixed(4)}`);
   if (result.numTurns !== undefined) meta.push(`turns: ${String(result.numTurns)}`);

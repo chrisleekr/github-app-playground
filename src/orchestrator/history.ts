@@ -60,7 +60,7 @@ export async function createExecution(params: CreateExecutionParams): Promise<st
 
   // Guard: triage denorm columns must only accompany an explicit reason.
   // Without this, callers could accidentally persist triage_* columns
-  // alongside the DB-default `static-default` reason — which would mislead
+  // alongside the DB-default `static-default` reason, which would mislead
   // FR-014 aggregates into attributing triage telemetry to non-triage rows.
   if (hasTriageFields && !hasDispatchReason) {
     throw new Error("createExecution: dispatchReason is required when triage fields are provided");
@@ -68,7 +68,7 @@ export async function createExecution(params: CreateExecutionParams): Promise<st
 
   // Post migration 004 both `dispatch_mode` and `dispatch_target` carry a
   // CHECK (= 'daemon'). Hardcoding the literal here makes the invariant
-  // unbreakable at the data-layer boundary — a stray caller passing any
+  // unbreakable at the data-layer boundary: a stray caller passing any
   // other `dispatchMode` value cannot fail the INSERT at runtime.
   const triggerCommentId = params.triggerCommentId ?? null;
   const triggerEventType = params.triggerEventType ?? null;
@@ -266,7 +266,7 @@ export async function recoverStaleExecutions(db: SQL): Promise<void> {
     // eslint-disable-next-line no-await-in-loop
     await db`
       UPDATE executions
-      SET status = 'failed', error_message = 'server restarted — execution state unknown', completed_at = now()
+      SET status = 'failed', error_message = 'server restarted, execution state unknown', completed_at = now()
       WHERE id = ${row.id} AND status IN ('offered', 'running')
     `;
 

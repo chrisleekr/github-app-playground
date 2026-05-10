@@ -4,7 +4,7 @@
  * Every emitter in `src/workflows/ship/*` consumes this Zod schema so
  * field names and types do not drift between modules. The `log-fields`
  * test round-trips a sample line through the schema and rejects unknown
- * or mistyped fields — drift = test failure.
+ * or mistyped fields: drift = test failure.
  *
  * Spend is reported in **integer USD cents** (not floats) to avoid
  * binary-fp drift in downstream aggregations. The bot pays in fractional

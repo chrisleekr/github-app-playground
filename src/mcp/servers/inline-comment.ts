@@ -35,7 +35,7 @@ if (
   process.exit(1);
 }
 
-// Create Octokit once at startup — GITHUB_TOKEN is constant for the server lifetime.
+// Create Octokit once at startup, GITHUB_TOKEN is constant for the server lifetime.
 const octokit = new Octokit({ auth: GITHUB_TOKEN });
 
 const server = new McpServer({

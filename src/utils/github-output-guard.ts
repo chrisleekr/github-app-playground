@@ -5,7 +5,7 @@
  * comments, reviews, replies, PR/issue bodies, and graphql mutations. The
  * helper:
  *
- *   1. Runs `redactSecrets()` (regex pass — silent strip, structured result).
+ *   1. Runs `redactSecrets()` (regex pass: silent strip, structured result).
  *   2. (Optional) Runs the LLM-based scanner when `LLM_OUTPUT_SCANNER_ENABLED`
  *      is true and the body originated from the agent. Scanner failures
  *      fail-open with a `warn` log so a Bedrock outage cannot break every
@@ -20,7 +20,7 @@
  * keeps the helper agnostic to the dozens of body-bearing octokit methods.
  *
  * Logging contract: log entries NEVER contain the matched bytes, surrounding
- * context, or a hash. Operators get `kinds`, `matchCount`, and the callsite —
+ * context, or a hash. Operators get `kinds`, `matchCount`, and the callsite,
  * enough to investigate without reproducing the leak in log storage.
  */
 
@@ -37,7 +37,7 @@ import { redactSecrets, type RedactSecretsResult } from "./sanitize";
  *   incorporated agent output, including chained workflow handlers). Subject
  *   to BOTH the regex pass AND the optional LLM scanner.
  * - `system`: hard-coded operator/workflow strings (router capacity messages,
- *   marker comments, lifecycle pings). Regex pass only — the LLM scan is
+ *   marker comments, lifecycle pings). Regex pass only: the LLM scan is
  *   skipped because these strings cannot legitimately contain secrets and
  *   running the scanner would burn latency / dollars on every webhook.
  */
@@ -112,7 +112,7 @@ export async function safePostToGitHub<R>(input: SafePostInput<R>): Promise<Safe
       });
       // Regex is the authoritative floor. If the scanner empties a body
       // that the regex pass already accepted as non-empty, treat it as a
-      // false positive and keep the regex body — protects
+      // false positive and keep the regex body, protects
       // finalizeTrackingComment and scoped-thread replies from a single
       // hallucinated match bricking user-visible output.
       const scannerOverMatched =
@@ -174,7 +174,7 @@ export async function safePostToGitHub<R>(input: SafePostInput<R>): Promise<Safe
         matchCount,
         bodyLengthBefore,
       },
-      "post skipped — body emptied by secret redaction",
+      "post skipped, body emptied by secret redaction",
     );
     return { posted: false, matchCount, kinds: [...kindSet], reason: "empty_after_redaction" };
   }

@@ -4,7 +4,7 @@
  * applies the documented state transitions per
  * `contracts/bot-commands.md`.
  *
- * Authorisation (FR-028) is uniform across surfaces — the canonical
+ * Authorisation (FR-028) is uniform across surfaces: the canonical
  * command's `principal_login` is checked against `ALLOWED_OWNERS` here,
  * after the trigger router has normalised the input.
  *
@@ -37,7 +37,7 @@ import { TICKLE_KEY } from "./webhook-reactor";
 /**
  * After setting the cancel flag, give in-flight workers up to this much
  * wall-clock to reach a safe checkpoint and bail. We don't need a
- * positive ack — `pauseIntent`/`forceAbortIntent` use guarded UPDATEs
+ * positive ack: `pauseIntent`/`forceAbortIntent` use guarded UPDATEs
  * (`WHERE status IN ('active', 'paused')`), so even racing the worker is
  * safe; the wait just makes the user-visible state quieter.
  */
@@ -92,12 +92,12 @@ export async function runLifecycleCommand(input: RunLifecycleInput): Promise<voi
   if (!isAuthorised(command.principal_login)) {
     log.info(
       { event: "ship.lifecycle.unauthorised", surface: command.surface },
-      "lifecycle command rejected — principal not in ALLOWED_OWNERS",
+      "lifecycle command rejected, principal not in ALLOWED_OWNERS",
     );
     await postReply(
       octokit,
       command,
-      `\`bot:${command.intent}\` declined — \`@${command.principal_login}\` is not in ALLOWED_OWNERS.`,
+      `\`bot:${command.intent}\` declined, \`@${command.principal_login}\` is not in ALLOWED_OWNERS.`,
       log,
     );
     return;
@@ -111,7 +111,7 @@ export async function runLifecycleCommand(input: RunLifecycleInput): Promise<voi
     await postReply(
       octokit,
       command,
-      `\`bot:${command.intent}\` is a no-op — no active \`bot:ship\` session for this PR.`,
+      `\`bot:${command.intent}\` is a no-op, no active \`bot:ship\` session for this PR.`,
       log,
     );
     return;
@@ -119,12 +119,7 @@ export async function runLifecycleCommand(input: RunLifecycleInput): Promise<voi
 
   if (command.intent === "stop") {
     if (intent.status === "paused") {
-      await postReply(
-        octokit,
-        command,
-        `\`bot:stop\` is a no-op — session is already paused.`,
-        log,
-      );
+      await postReply(octokit, command, `\`bot:stop\` is a no-op, session is already paused.`, log);
       return;
     }
     if (valkey !== null) await requestAbort(intent.id, valkey);
@@ -139,8 +134,8 @@ export async function runLifecycleCommand(input: RunLifecycleInput): Promise<voi
     // intent). Don't claim success in that case.
     const pauseReply =
       paused !== null
-        ? "`bot:ship` paused — comment `bot:resume` to continue."
-        : "`bot:stop` had no effect — session was no longer active.";
+        ? "`bot:ship` paused, comment `bot:resume` to continue."
+        : "`bot:stop` had no effect, session was no longer active.";
     await postReply(octokit, command, pauseReply, log);
     return;
   }
@@ -150,13 +145,13 @@ export async function runLifecycleCommand(input: RunLifecycleInput): Promise<voi
       await postReply(
         octokit,
         command,
-        `\`bot:resume\` is a no-op — session is already active.`,
+        `\`bot:resume\` is a no-op, session is already active.`,
         log,
       );
       return;
     }
     // Foreign-push detection (FR-010): resume MUST NOT proceed if a
-    // non-bot push happened while paused. This requires a probe — we
+    // non-bot push happened while paused. This requires a probe, we
     // check `target_head_sha` recorded on the intent vs. current PR
     // head via REST.
     try {
@@ -167,7 +162,7 @@ export async function runLifecycleCommand(input: RunLifecycleInput): Promise<voi
       });
       if (pr.head.sha !== intent.target_head_sha) {
         // `pr.head.user` is the head-repository owner (a Simple User
-        // identifying the fork or upstream owner) — NOT the commit
+        // identifying the fork or upstream owner), NOT the commit
         // author/pusher. To decide whether a foreign push happened we
         // must inspect the commit itself.
         const { data: commit } = await octokit.rest.repos.getCommit({
@@ -183,12 +178,12 @@ export async function runLifecycleCommand(input: RunLifecycleInput): Promise<voi
           await transitionToTerminal(intent.id, "human_took_over", "manual-push-detected", sql);
           log.info(
             { event: "ship.lifecycle.resume_aborted_foreign_push", intent_id: intent.id },
-            "resume aborted — foreign push detected",
+            "resume aborted, foreign push detected",
           );
           await postReply(
             octokit,
             command,
-            `\`bot:resume\` aborted — a non-bot push (\`${pr.head.sha.slice(0, 7)}\`) ` +
+            `\`bot:resume\` aborted: a non-bot push (\`${pr.head.sha.slice(0, 7)}\`) ` +
               `arrived while paused. Session terminated as \`human_took_over\`.`,
             log,
           );
@@ -197,16 +192,13 @@ export async function runLifecycleCommand(input: RunLifecycleInput): Promise<voi
       }
     } catch (err) {
       // Fail-closed: the foreign-push check is the resume safety gate. If
-      // we can't verify the head author, do not silently bypass — defer
+      // we can't verify the head author, do not silently bypass, defer
       // and let the user retry.
-      log.warn(
-        { err, intent_id: intent.id },
-        "resume foreign-push check failed — declining resume",
-      );
+      log.warn({ err, intent_id: intent.id }, "resume foreign-push check failed, declining resume");
       await postReply(
         octokit,
         command,
-        "`bot:resume` declined — unable to verify head push author right now. Please retry shortly.",
+        "`bot:resume` declined, unable to verify head push author right now. Please retry shortly.",
         log,
       );
       return;
@@ -220,17 +212,17 @@ export async function runLifecycleCommand(input: RunLifecycleInput): Promise<voi
       { event: "ship.lifecycle.resume", intent_id: intent.id, resumed: resumed !== null },
       "ship session resumed",
     );
-    // Same race window as `pauseIntent` — guarded UPDATE returns null if
+    // Same race window as `pauseIntent`, guarded UPDATE returns null if
     // the intent was no longer `paused` (e.g. terminated meanwhile).
     const resumeReply =
       resumed !== null
         ? "`bot:ship` resumed."
-        : "`bot:resume` had no effect — session was no longer paused.";
+        : "`bot:resume` had no effect, session was no longer paused.";
     await postReply(octokit, command, resumeReply, log);
     return;
   }
 
-  // abort — set flag, give workers a chance to bail at next checkpoint,
+  // abort, set flag, give workers a chance to bail at next checkpoint,
   // then force-transition. The guarded UPDATE inside `forceAbortIntent`
   // wins any race with a worker that didn't reach the checkpoint in
   // time; the worker will then see the cancel flag at its next poll

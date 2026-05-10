@@ -1,7 +1,7 @@
 /**
  * Typed `Bun.sql` helpers for the `comment_cache` and `target_cache`
  * tables introduced in migration `011_conversation_cache.sql`. The
- * conversation-store is a write-through projection of GitHub state —
+ * conversation-store is a write-through projection of GitHub state,
  * GitHub remains the source of truth.
  *
  * Write-through happens in the webhook handlers
@@ -83,7 +83,7 @@ export interface UpsertCommentInput {
 
 /**
  * Idempotent upsert. Used for both `created` and `edited` webhook
- * actions — the ON CONFLICT UPDATE preserves `created_at` and
+ * actions: the ON CONFLICT UPDATE preserves `created_at` and
  * `deleted_at`, and refreshes `updated_at` from GitHub's clock so
  * out-of-order edit deliveries resolve to the latest payload.
  */
@@ -195,7 +195,7 @@ export interface ConversationSnapshot {
  * Read the cached conversation for a target. Returns rows ordered by
  * `created_at ASC` (chronological). Soft-deleted rows are filtered.
  *
- * Cache miss is silent — the caller checks `target === null` /
+ * Cache miss is silent: the caller checks `target === null` /
  * `comments.length === 0` and decides whether to backfill from
  * Octokit (see `backfillFromGitHub` below).
  */
@@ -250,7 +250,7 @@ export interface BackfillInput {
  * Cold-start backfill: fetch the target body + all comments from
  * GitHub once and write through. Subsequent turns hit the cache.
  *
- * Best-effort — partial failures (e.g., review-comments listing for an
+ * Best-effort: partial failures (e.g., review-comments listing for an
  * issue, which is invalid) are swallowed at this level. The downstream
  * loadConversation simply returns whatever made it into the cache.
  */
@@ -300,7 +300,7 @@ export async function backfillFromGitHub(input: BackfillInput): Promise<void> {
     });
   }
 
-  // Issue / PR top-level comments — same REST endpoint for both.
+  // Issue / PR top-level comments, same REST endpoint for both.
   try {
     const comments = await input.octokit.paginate(input.octokit.rest.issues.listComments, {
       owner: input.owner,
@@ -329,11 +329,11 @@ export async function backfillFromGitHub(input: BackfillInput): Promise<void> {
     }
   } catch {
     // Issue/PR conversation listing should always succeed; swallow
-    // here so a permission glitch doesn't break the backfill — the
+    // here so a permission glitch doesn't break the backfill, the
     // chat-thread executor still gets the target body.
   }
 
-  // Review comments — PR only.
+  // Review comments, PR only.
   if (input.targetType === "pr") {
     try {
       const reviewComments = await input.octokit.paginate(

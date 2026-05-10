@@ -127,7 +127,7 @@ export class DaemonWsClient {
       this.ws.send(JSON.stringify(message));
       return true;
     }
-    logger.warn("Cannot send — WebSocket not connected");
+    logger.warn("Cannot send, WebSocket not connected");
     return false;
   }
 

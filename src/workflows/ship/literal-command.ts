@@ -4,7 +4,7 @@
  * dispatch share a single source of truth.
  *
  * Grammar (anchored, case-sensitive, evaluated per non-empty line of
- * the comment body — first match wins):
+ * the comment body: first match wins):
  *
  *   ^bot:(ship|stop|resume|abort-ship)(?:\s+--deadline\s+(\d+(?:\.\d+)?)(h|m|s))?\s*$
  *

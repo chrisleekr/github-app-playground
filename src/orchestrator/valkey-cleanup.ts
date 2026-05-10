@@ -20,7 +20,7 @@ function processingKeyToInstanceId(key: string): string | null {
 
 /**
  * Iterate every key matching `pattern` via cursor-based SCAN. Non-blocking on
- * the Valkey side — won't stall heartbeats or other concurrent traffic.
+ * the Valkey side: won't stall heartbeats or other concurrent traffic.
  */
 async function* scanKeys(pattern: string): AsyncGenerator<string> {
   const valkey = requireValkeyClient();
@@ -87,7 +87,7 @@ async function reapOrphanActiveDaemonsSet(): Promise<number> {
  * publish their `orchestrator:{id}:alive` heartbeat key, and drain them
  * back to the shared queue so a live instance picks the work up.
  *
- * Self-owned lists are skipped here — `recoverProcessingList(self)` is
+ * Self-owned lists are skipped here: `recoverProcessingList(self)` is
  * called separately during startup to handle same-instance restart.
  */
 export async function reapOrphanProcessingLists(selfInstanceId: string): Promise<number> {
@@ -98,7 +98,7 @@ export async function reapOrphanProcessingLists(selfInstanceId: string): Promise
     if (id === null || id === selfInstanceId) continue;
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- Valkey EXISTS returns number
     const alive: number = await valkey.send("EXISTS", [instanceAliveKey(id)]);
-    if (alive === 1) continue; // Owner is alive — leave it alone.
+    if (alive === 1) continue; // Owner is alive, leave it alone.
     const drained = await recoverProcessingList(id);
     recovered += drained;
     // The list is now empty; clean up the empty key for tidiness.
@@ -111,7 +111,7 @@ export async function reapOrphanProcessingLists(selfInstanceId: string): Promise
 
 /**
  * One-shot Valkey orphan sweep, run on every orchestrator startup. Idempotent
- * and safe to run concurrently across the fleet — every step uses
+ * and safe to run concurrently across the fleet: every step uses
  * single-command atomics or is read-then-conditionally-delete on independent
  * keys.
  */

@@ -20,7 +20,7 @@ import { executeWorkflowRun } from "./workflow-executor";
 // Active job tracking (FM-9)
 
 const activeJobs = new Map<string, ActiveJob>();
-/** Abort controllers keyed by offerId — used to prevent cancel/execute race sending duplicate job:result. */
+/** Abort controllers keyed by offerId, used to prevent cancel/execute race sending duplicate job:result. */
 const jobAbortControllers = new Map<string, AbortController>();
 
 export function getActiveJobs(): ActiveJob[] {
@@ -48,7 +48,7 @@ export function registerExitCleanup(): void {
         // Best effort on exit
       }
       // Credential helper (${workDir}.cred.sh) is written by checkoutRepo beside
-      // the workspace and contains the installation token — remove it too so a
+      // the workspace and contains the installation token, remove it too so a
       // SIGKILL / crash does not leak it for the app.ts stale-cred sweep window.
       try {
         rmSync(`${job.workDir}.cred.sh`, { force: true });
@@ -135,7 +135,7 @@ export function evaluateScopedOffer(
     return { accept: false, reason: WS_REJECT_REASONS.SCOPED_KIND_UNSUPPORTED };
   }
 
-  // Memory floor still applies — scoped-rebase clones a repo.
+  // Memory floor still applies, scoped-rebase clones a repo.
   if (capabilities.resources.memoryFreeMb < config.daemonMemoryFloorMb) {
     return {
       accept: false,
@@ -174,7 +174,7 @@ function validateJobContext(
     typeof context.repo !== "string" ||
     typeof context.entityNumber !== "number"
   ) {
-    logger.error({ offerId }, "Job payload has malformed context — missing critical fields");
+    logger.error({ offerId }, "Job payload has malformed context, missing critical fields");
     send({
       type: "job:result",
       ...createMessageEnvelope(offerId),
@@ -280,7 +280,7 @@ export async function executeJob(
   const abortController = new AbortController();
   jobAbortControllers.set(offerId, abortController);
 
-  // Track active job (FM-9). `agentPid` is intentionally left null — the
+  // Track active job (FM-9). `agentPid` is intentionally left null, the
   // Claude Agent SDK does not expose the subprocess PID, but the per-job
   // AbortController plumbed into runPipeline below already gives
   // handleJobCancel a clean way to terminate the agent (and its MCP servers)
@@ -333,7 +333,7 @@ export async function executeJob(
     };
 
     if (context.dryRun === true) {
-      childLog.info("Dry-run mode — skipping checkout and pipeline execution");
+      childLog.info("Dry-run mode, skipping checkout and pipeline execution");
       sendDryRunResult(
         offerId,
         context.deliveryId,
@@ -424,7 +424,7 @@ export async function executeJob(
  * `not implemented` error per kind so a daemon image without the executors
  * surfaces a clean halt rather than a silent drop.
  *
- * Routes via the Zod-validated `payload.scoped.jobKind` discriminator —
+ * Routes via the Zod-validated `payload.scoped.jobKind` discriminator,
  * matches the `scoped-job-offer` schema at the WS boundary, so a misrouted
  * payload is impossible by construction.
  */
@@ -569,7 +569,7 @@ async function runScopedJob(
         return;
       }
       default: {
-        // Exhaustiveness check — a future jobKind addition with an older
+        // Exhaustiveness check: a future jobKind addition with an older
         // daemon image lands here. Surface a structured failed completion
         // so the orchestrator can map it onto the user-facing reply path
         // rather than letting the offer silently time out.
@@ -631,7 +631,7 @@ async function runScopedJob(
 // Job cancellation (T031)
 
 /**
- * Handle a job:cancel message — kill agent subprocess, cleanup, report failure.
+ * Handle a job:cancel message, kill agent subprocess, cleanup, report failure.
  */
 export function handleJobCancel(cancel: JobCancelMessage, send: (msg: unknown) => void): void {
   const offerId = cancel.id;
@@ -677,7 +677,7 @@ export function handleJobCancel(cancel: JobCancelMessage, send: (msg: unknown) =
 
   activeJobs.delete(offerId);
 
-  // Report failure — only the cancel path sends job:result for cancelled jobs
+  // Report failure, only the cancel path sends job:result for cancelled jobs
   send({
     type: "job:result",
     ...createMessageEnvelope(offerId),

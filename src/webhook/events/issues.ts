@@ -21,7 +21,7 @@ const BOT_LABEL_PATTERN = /^bot:[a-z]+(?:-[a-z]+)*$/;
  *   → hand off to `dispatchByLabel` for the rest of the seven-step protocol.
  *
  * FR-015: events that fail precondition 2 produce no DB row, no queue job,
- * and no tracking comment — we log and return before touching the dispatcher.
+ * and no tracking comment: we log and return before touching the dispatcher.
  *
  * `unlabeled` is accepted so the webhook subscription stays symmetric with
  * `labeled`, but we deliberately do not run the dispatch protocol: label
@@ -33,7 +33,7 @@ export function handleIssues(octokit: Octokit, payload: IssuesEvent, deliveryId:
     if (removedLabel !== undefined && BOT_LABEL_PATTERN.test(removedLabel)) {
       logger.info(
         { deliveryId, removedLabel, owner: payload.repository.owner.login },
-        "issues.unlabeled received for bot:* label — no-op (label removal is not a trigger)",
+        "issues.unlabeled received for bot:* label, no-op (label removal is not a trigger)",
       );
     }
     return;
@@ -57,14 +57,14 @@ export function handleIssues(octokit: Octokit, payload: IssuesEvent, deliveryId:
 
   const auth = isOwnerAllowed(senderLogin, log);
   if (!auth.allowed) {
-    log.info({ reason: auth.reason }, "issues.labeled: sender not in ALLOWED_OWNERS — dropped");
+    log.info({ reason: auth.reason }, "issues.labeled: sender not in ALLOWED_OWNERS, dropped");
     return;
   }
 
   // Canonical routing wins; legacy `dispatchByLabel` runs only when
   // `routeTrigger` returns null. Without this precedence, an overlapping
   // label (e.g. `bot:triage`) fires both pipelines for one webhook.
-  // FR-029..FR-035 eligibility — labels declared PR-only (e.g.
+  // FR-029..FR-035 eligibility, labels declared PR-only (e.g.
   // `bot:ship`) are rejected by the trigger-router and fall through to
   // the legacy path, which then ignores them.
   const owner = payload.repository.owner.login;

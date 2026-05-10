@@ -5,7 +5,7 @@
  * place via the marker scan so the conversation does not accumulate
  * duplicates.
  *
- * Marker grammar: `<!-- bot:<verb>:<number> -->` — distinct from the
+ * Marker grammar: `<!-- bot:<verb>:<number> -->`, distinct from the
  * shepherding tracking-comment marker (`<!-- ship-intent:<id> -->`)
  * so cross-feature comment recycling is impossible.
  */
@@ -71,7 +71,7 @@ export interface UpsertMarkerCommentInput {
  * If a comment carrying the marker already exists, PATCH its body;
  * otherwise POST a new comment. The caller is responsible for embedding
  * the marker inside `body` (it MUST appear verbatim somewhere in the
- * rendered Markdown — typically the trailing line as an HTML comment).
+ * rendered Markdown: typically the trailing line as an HTML comment).
  * Returns the comment id of the upserted comment.
  *
  * Routed through `safePostToGitHub` so any secrets that surfaced into the

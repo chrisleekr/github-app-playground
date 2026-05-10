@@ -1,20 +1,20 @@
 /**
- * Merge-readiness verdict — pure transform from the GraphQL probe
+ * Merge-readiness verdict: pure transform from the GraphQL probe
  * response (per `contracts/probe-graphql-query.md` §"Response →
  * MergeReadiness mapping") to a discriminated `MergeReadiness` value.
  *
  * Priority order (when multiple non-readiness conditions are present
  * simultaneously, the highest-priority reason wins):
  *
- *   1. `human_took_over`        — non-bot author on current head SHA (FR-010)
- *   2. `behind_base`            — base ref drift / mergeable=CONFLICTING
- *   3. `failing_checks`         — required check with non-success conclusion
- *   4. `pending_checks`         — required check still queued / running (FR-022)
- *   5. `mergeable_pending`      — `mergeable=null` after R2 backoff exhausted (FR-021)
- *   6. `changes_requested`      — `reviewDecision === 'CHANGES_REQUESTED'`
- *   7. `open_threads`           — at least one unresolved, non-outdated thread
+ *   1. `human_took_over`       : non-bot author on current head SHA (FR-010)
+ *   2. `behind_base`           : base ref drift / mergeable=CONFLICTING
+ *   3. `failing_checks`        : required check with non-success conclusion
+ *   4. `pending_checks`        : required check still queued / running (FR-022)
+ *   5. `mergeable_pending`     : `mergeable=null` after R2 backoff exhausted (FR-021)
+ *   6. `changes_requested`     : `reviewDecision === 'CHANGES_REQUESTED'`
+ *   7. `open_threads`          : at least one unresolved, non-outdated thread
  *
- * The probe orders these by lifecycle priority — a foreign push voids
+ * The probe orders these by lifecycle priority: a foreign push voids
  * everything else; a base mismatch makes other signals stale; etc.
  *
  * No I/O lives in this module. Network calls are in `probe.ts`.
@@ -112,7 +112,7 @@ export interface ProbeResponseShape {
 export interface VerdictInput {
   readonly response: ProbeResponseShape;
   readonly botAppLogin: string;
-  /** Head SHAs the bot itself has pushed — non-bot author on a not-bot SHA → human_took_over. */
+  /** Head SHAs the bot itself has pushed, non-bot author on a not-bot SHA → human_took_over. */
   readonly botPushedShas: ReadonlySet<string>;
 }
 
@@ -131,7 +131,7 @@ export function computeVerdict(input: VerdictInput): MergeReadiness {
   const head_sha = pr.headRefOid;
   const headCommit = pr.commits.nodes[0]?.commit;
 
-  // Priority 1 — non-bot author on a SHA the bot did not push.
+  // Priority 1, non-bot author on a SHA the bot did not push.
   if (headCommit !== undefined) {
     const authorLogin = headCommit.author.user?.login ?? null;
     const isBot = authorLogin === input.botAppLogin;
@@ -147,7 +147,7 @@ export function computeVerdict(input: VerdictInput): MergeReadiness {
     }
   }
 
-  // Priority 2 — base drift / merge conflict.
+  // Priority 2, base drift / merge conflict.
   if (pr.mergeable === "CONFLICTING") {
     return {
       ready: false,
@@ -167,7 +167,7 @@ export function computeVerdict(input: VerdictInput): MergeReadiness {
     };
   }
 
-  // Priority 3 + 4 — check rollup.
+  // Priority 3 + 4, check rollup.
   const contexts = headCommit?.statusCheckRollup?.contexts.nodes ?? [];
   const failingRequired: string[] = [];
   const pendingRequired: string[] = [];
@@ -188,7 +188,7 @@ export function computeVerdict(input: VerdictInput): MergeReadiness {
       // GitHub GraphQL `StatusState` enum: EXPECTED | PENDING | FAILURE
       // | ERROR | SUCCESS. EXPECTED means the legacy status check has
       // been registered as required but no reporter has posted a result
-      // yet — treat it as outstanding so the verdict doesn't flip ready
+      // yet, treat it as outstanding so the verdict doesn't flip ready
       // before the check fires.
       const s = ctx.state;
       if (s === "FAILURE" || s === "ERROR") failingRequired.push(ctx.context ?? "<unknown>");
@@ -215,7 +215,7 @@ export function computeVerdict(input: VerdictInput): MergeReadiness {
     };
   }
 
-  // Priority 5 — mergeable still null after backoff (caller already exhausted R2 schedule).
+  // Priority 5, mergeable still null after backoff (caller already exhausted R2 schedule).
   if (pr.mergeable === null || pr.mergeable === "UNKNOWN") {
     return {
       ready: false,
@@ -226,7 +226,7 @@ export function computeVerdict(input: VerdictInput): MergeReadiness {
     };
   }
 
-  // Priority 6 — explicit changes-requested.
+  // Priority 6, explicit changes-requested.
   if (pr.reviewDecision === "CHANGES_REQUESTED") {
     return {
       ready: false,
@@ -237,7 +237,7 @@ export function computeVerdict(input: VerdictInput): MergeReadiness {
     };
   }
 
-  // Priority 7 — unresolved, non-outdated review threads.
+  // Priority 7, unresolved, non-outdated review threads.
   const openThreads = pr.reviewThreads.nodes.filter((t) => !t.isResolved && !t.isOutdated);
   if (openThreads.length > 0) {
     return {

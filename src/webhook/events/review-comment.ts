@@ -47,7 +47,7 @@ export function handleReviewComment(
   if (payload.action !== "created") return;
   if (payload.comment.user.type === "Bot") return;
 
-  // Authorize before dispatch — both the canonical (`dispatchCommentSurface`)
+  // Authorize before dispatch, both the canonical (`dispatchCommentSurface`)
   // and legacy (`dispatchByIntent`) paths share the same allowlist gate so
   // a dropped repo can't slip through canonical routing. Mirrors the
   // structure used in `issues.ts` and `pull-request.ts` label handlers.
@@ -63,7 +63,7 @@ export function handleReviewComment(
 
   const auth = isOwnerAllowed(ownerLogin, log);
   if (!auth.allowed) {
-    log.info({ reason: auth.reason }, "review_comment dropped — owner not allowlisted");
+    log.info({ reason: auth.reason }, "review_comment dropped, owner not allowlisted");
     return;
   }
 
@@ -80,7 +80,7 @@ export function handleReviewComment(
   // server) MUST resolve the parent thread node ID at execution time
   // via GraphQL (`pullRequestReviewThread` keyed on the comment).
   // Pre-fetching the node ID here would impose an extra GraphQL round
-  // trip on every review-comment webhook — including comments that
+  // trip on every review-comment webhook, including comments that
   // never trigger a scoped command.
   //
   // Canonical routing is awaited; the legacy `dispatchByIntent` path
@@ -125,14 +125,14 @@ export function handleReviewComment(
     }
 
     if (canonicalHandled || !containsTrigger(commentBody)) {
-      // See issue-comment.ts — piggyback poll runs BEFORE the early
+      // See issue-comment.ts, piggyback poll runs BEFORE the early
       // return so non-trigger comments still catch reactions made by
       // the original asker on a prior bot proposal.
       piggybackProposalPoll(octokit, installationId, owner, repo, log);
       return;
     }
 
-    log.info("Trigger detected in review_comment — routing via intent classifier");
+    log.info("Trigger detected in review_comment, routing via intent classifier");
 
     void addReaction({
       octokit,
@@ -160,7 +160,7 @@ export function handleReviewComment(
       log.error({ err }, "dispatchByIntent threw for review_comment");
     }
 
-    // Piggyback proposal-poll on the trigger path too — the early-
+    // Piggyback proposal-poll on the trigger path too: the early-
     // return branch above already handles the non-trigger case.
     piggybackProposalPoll(octokit, installationId, owner, repo, log);
   })();

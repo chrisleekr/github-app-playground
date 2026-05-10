@@ -7,7 +7,7 @@
  * §7. This module repairs that specific class of malformation without
  * altering structure or content semantics.
  *
- * Pure module — no I/O, no dependencies. Reusable outside the LLM path.
+ * Pure module: no I/O, no dependencies. Reusable outside the LLM path.
  */
 
 /**
@@ -75,7 +75,7 @@ export function escapeRawControlsInJsonStrings(input: string): string {
  *   2. On failure, repair raw control bytes inside string values and retry.
  *   3. If still unparseable, throws the second-attempt error.
  *
- * Does NOT strip markdown code fences — that's a separate concern handled
+ * Does NOT strip markdown code fences: that's a separate concern handled
  * by the caller (e.g., `parseStructuredResponse`).
  */
 export function parseTolerantJson(input: string): unknown {

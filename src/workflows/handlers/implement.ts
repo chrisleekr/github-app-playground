@@ -5,14 +5,14 @@ import type { WorkflowHandler } from "../registry";
 import { findLatestSucceededForTarget } from "../runs-store";
 
 /**
- * `implement` handler (T022) — reuses `src/core/pipeline.ts` end-to-end.
+ * `implement` handler (T022): reuses `src/core/pipeline.ts` end-to-end.
  *
  * Contract:
  *   - Requires a prior succeeded `plan` run for this issue (enforced by
  *     dispatcher via `requiresPrior: 'plan'`; re-checked here defensively).
  *   - Passes the plan markdown as the prompt trigger body so the agent
  *     executes the plan step-by-step.
- *   - NEVER pushes to the base branch — enforced by the agent prompt and
+ *   - NEVER pushes to the base branch: enforced by the agent prompt and
  *     pipeline guardrails (FR-016).
  *   - On success, locates the PR the agent opened and records its number,
  *     URL, and head branch in `state`.
@@ -25,7 +25,7 @@ export const handler: WorkflowHandler = async (ctx) => {
       return { status: "failed", reason: "implement requires issue target" };
     }
 
-    // Consults succeeded rows only — matches the dispatcher's
+    // Consults succeeded rows only, matches the dispatcher's
     // `requiresPrior: 'plan'` gate (which calls `findLatestSucceededForTarget`).
     // A later failed `plan` re-run must not shadow an earlier valid plan.
     const planRow = await findLatestSucceededForTarget("plan", {
@@ -70,7 +70,7 @@ export const handler: WorkflowHandler = async (ctx) => {
       `- Commit with conventional-commit messages.`,
       `- Open a pull request targeting ${defaultBranch} using the bot PR template:`,
       `  1. Read \`.github/PULL_REQUEST_TEMPLATE/bot-implement.md\` from the cloned repo.`,
-      `  2. Fill in every section based on your actual work — Summary, Changes,`,
+      `  2. Fill in every section based on your actual work, Summary, Changes,`,
       `     Files changed (path · one-line rationale), Commits (sha · subject),`,
       `     Tests run (command · result), Verification, and \`Closes #${String(target.number)}\`.`,
       `     Include a Mermaid diagram in the Diagram section whenever behaviour or flow changes`,
@@ -79,12 +79,12 @@ export const handler: WorkflowHandler = async (ctx) => {
       `     Mermaid must follow the GitHub-compat rules listed in the template comment.`,
       `  3. Write the filled template to a temp file (e.g. \`/tmp/pr-body.md\`) and pass it via`,
       `     \`gh pr create --body-file /tmp/pr-body.md\`. Do NOT let \`gh\` auto-pick the`,
-      `     human PR template — pass \`--body-file\` explicitly so the bot template wins.`,
+      `     human PR template, pass \`--body-file\` explicitly so the bot template wins.`,
       `- Before finishing, write the run summary to \`$BOT_ARTIFACT_DIR/IMPLEMENT.md\`.`,
-      `  IMPORTANT: \`$BOT_ARTIFACT_DIR\` is OUTSIDE the cloned repo — never \`git add\` or commit this file.`,
+      `  IMPORTANT: \`$BOT_ARTIFACT_DIR\` is OUTSIDE the cloned repo, never \`git add\` or commit this file.`,
       `  Required sections: ## Summary, ## Files changed (path · one-line rationale),`,
       `  ## Commits (sha · subject), ## Tests run (command · result), ## Verification.`,
-      `  This becomes the tracking comment body — be specific, cite files.`,
+      `  This becomes the tracking comment body, be specific, cite files.`,
       ``,
       `--- Plan ---`,
       planMarkdown,
@@ -117,7 +117,7 @@ export const handler: WorkflowHandler = async (ctx) => {
       return {
         status: "failed",
         reason: result.errorMessage ?? "implement pipeline execution failed",
-        humanMessage: "implement pipeline execution failed — see server logs for details.",
+        humanMessage: "implement pipeline execution failed, see server logs for details.",
       };
     }
 
@@ -156,8 +156,8 @@ export const handler: WorkflowHandler = async (ctx) => {
     const reportSection =
       report.length > 0
         ? `\n\n${report}`
-        : `\n\n_(no IMPLEMENT.md report — agent did not write one)_`;
-    const humanMessage = `🛠️ **Implement complete** — opened PR [#${String(opened.number)}](${opened.url}) on branch \`${opened.branch}\`.${reportSection}${metaLine}`;
+        : `\n\n_(no IMPLEMENT.md report, agent did not write one)_`;
+    const humanMessage = `🛠️ **Implement complete**, opened PR [#${String(opened.number)}](${opened.url}) on branch \`${opened.branch}\`.${reportSection}${metaLine}`;
     await ctx.setState(state, humanMessage);
 
     log.info(
@@ -171,7 +171,7 @@ export const handler: WorkflowHandler = async (ctx) => {
     return {
       status: "failed",
       reason: `implement failed: ${message}`,
-      humanMessage: "implement pipeline execution failed — see server logs for details.",
+      humanMessage: "implement pipeline execution failed, see server logs for details.",
     };
   }
 };
@@ -194,10 +194,10 @@ interface OpenedPr {
  *        A PAT authors PRs as a real user (`type === "User"`), so the bot-type
  *        filter would reject the PR the agent just opened. The expected login
  *        is resolved at runtime via `/user`. If `/user` fails, the handler
- *        fails closed (the outer `catch` reports `failed`) — falling back to
+ *        fails closed (the outer `catch` reports `failed`): falling back to
  *        the bot-type filter would unsafely match an unrelated bot PR
  *        (Dependabot/Renovate) opened in the same time window.
- *  - `created_at >= since - 5s` — the run's start. The 5s slop absorbs
+ *  - `created_at >= since - 5s`: the run's start. The 5s slop absorbs
  *    clock skew between the daemon's `Date.now()` and GitHub's server.
  *
  * `per_page` is bumped to 30 so a burst of unrelated PRs inside the time
@@ -240,7 +240,7 @@ async function findRecentOpenedPr(
  *
  * In PAT mode we fail closed: if `/user` errors, this throws and the outer
  * handler `try/catch` reports the run as `failed`. We deliberately do NOT
- * fall back to the bot-type filter — that filter is unsafe in PAT mode
+ * fall back to the bot-type filter: that filter is unsafe in PAT mode
  * because an unrelated bot PR opened during the same time window
  * (Dependabot, Renovate, …) would be incorrectly claimed as ours.
  */
@@ -264,7 +264,7 @@ async function postStartingComment(
 ): Promise<void> {
   const author = input.author === null ? "" : ` (opened by @${input.author})`;
   const body = [
-    `🛠️ **Implement starting** — executing plan for issue #${String(input.number)}${author}`,
+    `🛠️ **Implement starting**, executing plan for issue #${String(input.number)}${author}`,
     ``,
     `> ${input.title}`,
     ``,
@@ -277,7 +277,7 @@ async function postStartingComment(
   } catch (err) {
     ctx.logger.warn(
       { err: err instanceof Error ? err.message : String(err) },
-      "implement starting-comment write failed — continuing without up-front comment",
+      "implement starting-comment write failed, continuing without up-front comment",
     );
   }
 }

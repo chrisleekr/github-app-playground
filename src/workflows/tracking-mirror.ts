@@ -23,7 +23,7 @@ const LAST_HUMAN_MESSAGE_KEY = "_lastHumanMessage";
 /**
  * Hidden HTML-comment marker embedded in every tracking-comment body. Used
  * to recover a comment id when the DB row's `tracking_comment_id` is still
- * NULL but a comment was actually committed server-side — e.g. octokit's
+ * NULL but a comment was actually committed server-side: e.g. octokit's
  * built-in plugin-retry can duplicate a non-idempotent POST when the
  * upstream returns 5xx after writing, or a pod can crash between
  * `createComment` and the CAS reservation. Pairing the marker with a
@@ -54,7 +54,7 @@ export interface TrackingMirrorDeps {
  * human-readable message. Richer templating lands per-workflow if needed.
  */
 export function renderCommentBody(row: WorkflowRunRow, humanMessage: string): string {
-  const header = `**bot workflow \`${row.workflow_name}\`** — ${row.status}`;
+  const header = `**bot workflow \`${row.workflow_name}\`**, ${row.status}`;
   return `${runMarker(row.id)}\n${header}\n\n${humanMessage}`;
 }
 
@@ -62,7 +62,7 @@ export function renderCommentBody(row: WorkflowRunRow, humanMessage: string): st
  * Scan comments on the target issue/PR for our run marker. Scoped by
  * `since=row.created_at` to bound the page-1 result set, but paginates via
  * `octokit.paginate` because `since` filters by `updated_at` (not
- * `created_at`) — on a busy issue, comments updated since `row.created_at`
+ * `created_at`): on a busy issue, comments updated since `row.created_at`
  * can exceed 100 and push our marker comment to a later page. We must
  * walk every page until exhausted, otherwise we'd miss the marker and
  * post a duplicate. Returns oldest-first (this endpoint orders ascending
@@ -97,7 +97,7 @@ export interface SetStateParams {
  * post-merge row for callers that want to inspect the latest state.
  *
  * Ordering is DB-first so an API failure after the DB write re-tries cleanly
- * on the next setState call — the row is authoritative.
+ * on the next setState call: the row is authoritative.
  */
 export async function setState(
   deps: TrackingMirrorDeps,
@@ -141,7 +141,7 @@ export async function setState(
 
   // Cascade: when this run is a child of a composite (e.g., ship), refresh
   // the parent's tracking comment so the user sees this child's status
-  // reflected on the parent's comment in real time. Best-effort — a cascade
+  // reflected on the parent's comment in real time. Best-effort: a cascade
   // failure must never bubble up because the child's own write already
   // succeeded.
   if (resultRow.parent_run_id !== null) {
@@ -164,7 +164,7 @@ export async function setState(
  * First-touch path for a run that has no `tracking_comment_id` yet. Three
  * stages so we never leave duplicate comments behind:
  *
- *   1. Pre-scan via `findCommentsByMarker` — recovers from a prior crash or
+ *   1. Pre-scan via `findCommentsByMarker`: recovers from a prior crash or
  *      reschedule that committed a comment server-side without writing the
  *      CAS reservation. Adopting the orphan also avoids a wasted POST.
  *   2. POST `createComment`. Octokit v5 ships with `@octokit/plugin-retry`
@@ -173,7 +173,7 @@ export async function setState(
  *      catch the create error so reconciliation can still run.
  *   3. Post-create scan: re-list and adopt the OLDEST marker comment, delete
  *      any extras (octokit retries OR a concurrent racer). The losing comments
- *      are deleted best-effort — the CAS guarantees one canonical id wins.
+ *      are deleted best-effort: the CAS guarantees one canonical id wins.
  */
 async function createOrAdoptTrackingComment(
   deps: TrackingMirrorDeps,
@@ -246,7 +246,7 @@ async function createOrAdoptTrackingComment(
   // CAS must run BEFORE delete: otherwise a concurrent racer that already
   // reserved a different comment id (e.g. one of our `losers`) would see
   // its canonical comment silently deleted by us. After CAS, the canonical
-  // id is whatever the row holds — every other marker comment is a true
+  // id is whatever the row holds, every other marker comment is a true
   // duplicate and safe to delete.
   const reservation = await tryReserveTrackingCommentId(runId, candidate.id);
   const winningId = reservation.trackingCommentId;
@@ -261,7 +261,7 @@ async function createOrAdoptTrackingComment(
         createErr: createErr instanceof Error ? createErr.message : null,
         workflowName: row.workflow_name,
       },
-      "Reconciling duplicate tracking comments — adopting CAS winner, deleting extras",
+      "Reconciling duplicate tracking comments, adopting CAS winner, deleting extras",
     );
   }
 
@@ -329,7 +329,7 @@ async function tryAdoptExistingMarkerComment(
   const candidate = matches[0];
   if (candidate === undefined) return null;
 
-  // CAS first, delete after — see createOrAdoptTrackingComment for the
+  // CAS first, delete after, see createOrAdoptTrackingComment for the
   // race that justifies this ordering. The reservation determines the
   // canonical id; every non-canonical marker comment is then deleted.
   const reservation = await tryReserveTrackingCommentId(row.id, candidate.id);
@@ -343,7 +343,7 @@ async function tryAdoptExistingMarkerComment(
       loserCount: losers.length,
       workflowName: row.workflow_name,
     },
-    "Pre-scan found existing tracking comment(s) for run — adopting CAS winner",
+    "Pre-scan found existing tracking comment(s) for run, adopting CAS winner",
   );
 
   for (const loser of losers) {
@@ -385,7 +385,7 @@ async function tryAdoptExistingMarkerComment(
 /**
  * Re-render the parent's tracking comment with this run's narrative plus a
  * verbose block per child step. No-op when the parent never created its own
- * comment (no `tracking_comment_id`) — handlers that opted out cannot have
+ * comment (no `tracking_comment_id`): handlers that opted out cannot have
  * their comment refreshed.
  */
 async function refreshParentCompositeBody(
@@ -419,7 +419,7 @@ async function refreshParentCompositeBody(
 
 /**
  * Composite render for a parent (e.g., ship) and its child steps. Verbose by
- * design — each child gets its own block with status, narrative, and a deep
+ * design: each child gets its own block with status, narrative, and a deep
  * link to the child's own tracking comment so the user can drill in.
  */
 export function renderCompositeBody(
@@ -447,7 +447,7 @@ function renderChildBlock(child: WorkflowRunRow): string {
   const message = readLastHumanMessage(child);
   const messageBlock = message === null ? "" : `\n${truncateForComposite(message)}`;
 
-  return `### ${emoji} \`${child.workflow_name}\` — ${child.status}${link}${meta}${messageBlock}`;
+  return `### ${emoji} \`${child.workflow_name}\`, ${child.status}${link}${meta}${messageBlock}`;
 }
 
 function readLastHumanMessage(row: WorkflowRunRow): string | null {
@@ -481,7 +481,7 @@ function statusEmoji(status: WorkflowRunRow["status"]): string {
 
 /**
  * The composite body sits inside one GitHub comment alongside the parent's
- * own narrative — keep each child's excerpt short so the comment stays
+ * own narrative: keep each child's excerpt short so the comment stays
  * readable. Drill-in users follow the per-step link to read the full body.
  */
 function truncateForComposite(text: string): string {
@@ -492,11 +492,11 @@ function truncateForComposite(text: string): string {
 }
 
 /**
- * Dispatcher refusal helper — posts a one-off comment, no DB row needed.
+ * Dispatcher refusal helper: posts a one-off comment, no DB row needed.
  *
  * Best-effort: `createComment` failures are logged as warnings and swallowed,
  * mirroring the compensating-delete pattern above. The refusal comment is
- * purely cosmetic — the DB is already authoritative — so a transient GitHub
+ * purely cosmetic: the DB is already authoritative, so a transient GitHub
  * API blip must not bubble up into `dispatchByLabel` / `dispatchByIntent` and
  * surface as a webhook 500.
  */
@@ -525,7 +525,7 @@ export async function postRefusalComment(
   } catch (err) {
     deps.logger.warn(
       { target, workflowName, reason, err: err instanceof Error ? err.message : String(err) },
-      "Failed to post workflow refusal comment — refusal remains authoritative in the DB",
+      "Failed to post workflow refusal comment, refusal remains authoritative in the DB",
     );
   }
 }

@@ -43,9 +43,9 @@ export async function executeWorkflowRun(
   const installationToken = payload.payload.installationToken;
 
   if (workflowRun === undefined) {
-    // Defensive — `executeJob` already branches on this; if we get here the
+    // Defensive, `executeJob` already branches on this; if we get here the
     // caller routed an ordinary pipeline job to the wrong executor.
-    logger.error({ offerId }, "executeWorkflowRun called without workflowRun — misrouted payload");
+    logger.error({ offerId }, "executeWorkflowRun called without workflowRun, misrouted payload");
     return;
   }
 
@@ -113,7 +113,7 @@ export async function executeWorkflowRun(
       // Composite parent: merge state, emit tracking comment, but leave
       // `status = running`. The orchestrator cascade will flip this row's
       // status once the final descendant completes. No `onStepComplete`
-      // call here — this run has no terminal result to propagate yet.
+      // call here: this run has no terminal result to propagate yet.
       const handOffState =
         typeof result.state === "object" && result.state !== null
           ? (result.state as Record<string, unknown>)
@@ -200,11 +200,11 @@ export async function executeWorkflowRun(
         },
       });
     } else if (result.status === "incomplete") {
-      // Handler returned `incomplete` — the agent ran cleanly but a handler-
+      // Handler returned `incomplete`: the agent ran cleanly but a handler-
       // side gate (e.g. resolve's post-pipeline CI re-check) found surviving
       // failures. We persist a distinct DB status so operators can tell a
       // clean-run-but-blocked outcome from a true pipeline error, but the
-      // orchestrator cascade still needs a binary outcome — propagate it as
+      // orchestrator cascade still needs a binary outcome, propagate it as
       // a non-success completion with the original reason preserved.
       const incState =
         typeof result.state === "object" && result.state !== null
@@ -219,7 +219,7 @@ export async function executeWorkflowRun(
             patch: {},
             humanMessage:
               result.humanMessage ??
-              `${entry.name} incomplete — see tracking comment for outstanding items.`,
+              `${entry.name} incomplete, see tracking comment for outstanding items.`,
           },
         );
       } catch (mirrorErr) {
@@ -266,12 +266,12 @@ export async function executeWorkflowRun(
             runId: workflowRun.runId,
             patch: {},
             // Defense-in-depth: never default to `result.reason` for the
-            // public comment — handlers may put raw error messages in
+            // public comment, handlers may put raw error messages in
             // `reason` (intended for DB state.failedReason and operator
             // logs only). Handlers that want a richer comment must set
             // `humanMessage` explicitly.
             humanMessage:
-              result.humanMessage ?? `${entry.name} failed — see server logs for details.`,
+              result.humanMessage ?? `${entry.name} failed, see server logs for details.`,
           },
         );
       } catch (mirrorErr) {
@@ -303,7 +303,7 @@ export async function executeWorkflowRun(
     }
 
     // T030: propagate the terminal result up the composite chain. Wrapped
-    // so a cascade error never masks the original handler outcome — the
+    // so a cascade error never masks the original handler outcome, the
     // daemon has already ack'd the job above.
     try {
       await onStepComplete({ octokit, logger: log }, workflowRun.runId, completion);
@@ -326,7 +326,7 @@ export async function executeWorkflowRun(
           // installation token (`https://x-access-token:GHS_xxx@…`); other
           // throws may surface file paths or env values. Raw `reason` is
           // still persisted to DB state.failedReason via markFailed above.
-          humanMessage: `${workflowRun.workflowName} failed — see server logs for details.`,
+          humanMessage: `${workflowRun.workflowName} failed, see server logs for details.`,
         },
       );
     } catch (cleanupErr) {

@@ -4,7 +4,7 @@
  * issue. Idempotent across re-triggers via the marker
  * `<!-- bot:triage:<issue_number> -->`.
  *
- * **Suggest-only — v1 MUST NOT mutate.** This module deliberately does
+ * **Suggest-only: v1 MUST NOT mutate.** This module deliberately does
  * NOT import `addLabelsToLabelable`, `removeLabelsFromLabelable`,
  * `closeIssue`, `lockLockable`, `addAssigneesToAssignable`, or
  * `pinIssue`. The ESLint `no-restricted-syntax` rule on this file path
@@ -30,7 +30,7 @@ Return Markdown with these sections in order:
   ### Severity (Low / Medium / High / Critical)
   ### Duplicate candidates (issue numbers + reasoning, or "none")
   ### Rationale (1-2 sentences)
-This is **suggest-only**. You are NOT taking action — the maintainer decides.
+This is **suggest-only**. You are NOT taking action: the maintainer decides.
 Be conservative; prefer fewer, more accurate labels over a broad sweep.`;
 
 export interface RunTriageInput {
@@ -75,7 +75,7 @@ export async function runTriage(input: RunTriageInput): Promise<{ comment_id: nu
 
   const closedPrefix =
     issue.data.state === "closed"
-      ? `> _Issue is currently **closed** — triage proposal is read-only._\n\n`
+      ? `> _Issue is currently **closed**, triage proposal is read-only._\n\n`
       : "";
 
   const marker = buildScopedMarker({

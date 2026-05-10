@@ -4,7 +4,7 @@
  * Per the constitution amendment in PATCH v1.2.1 (Slice A of
  * triage-dispatch-modes), direct SDK use outside the Claude Agent SDK is
  * permitted strictly for single-turn classification / embedding /
- * summarisation calls. This module is the SINGLE entry point for those —
+ * summarisation calls. This module is the SINGLE entry point for those,
  * multi-turn agent work MUST go through `@anthropic-ai/claude-agent-sdk`.
  *
  * Design (per research.md R2):
@@ -35,7 +35,7 @@ export type AuthMode = "anthropic-apikey" | "anthropic-oauth" | "bedrock";
  * pool unless the FIRST system block is exactly this identifier string.
  * Without it, Sonnet/Opus return `429 rate_limit_error` with body
  * `{"message":"Error"}` (Haiku is in a separate pool that happens to pass
- * either way). The check is exact-match on the first block — string-form
+ * either way). The check is exact-match on the first block: string-form
  * with any caller text appended (even after `\n\n`) is rejected, but the
  * SDK's array-of-blocks form `[{type:"text",text:ID}, {type:"text",text:callerSystem}]`
  * is accepted. `buildRequest` uses the array form on the OAuth path so
@@ -67,7 +67,7 @@ export const MODEL_MAP: Readonly<Record<string, Readonly<Record<Provider, string
 
 /**
  * Resolve an alias to a provider-specific model ID. When the input doesn't
- * match any alias, return it verbatim — this lets operators pin exact model
+ * match any alias, return it verbatim: this lets operators pin exact model
  * IDs (e.g. a newer snapshot) via `TRIAGE_MODEL` without needing code changes.
  */
 export function resolveModelId(aliasOrId: string, provider: Provider): string {
@@ -76,7 +76,7 @@ export function resolveModelId(aliasOrId: string, provider: Provider): string {
   return entry[provider];
 }
 
-/** One message in the request — Anthropic-style schema. */
+/** One message in the request, Anthropic-style schema. */
 export interface LLMMessage {
   readonly role: "user" | "assistant";
   readonly content: string;
@@ -104,7 +104,7 @@ export type LLMContentBlock =
       readonly is_error?: boolean;
     };
 
-/** A message in a tool-use-aware turn — content may be a string or block array. */
+/** A message in a tool-use-aware turn, content may be a string or block array. */
 export interface LLMRichMessage {
   readonly role: "user" | "assistant";
   readonly content: string | readonly LLMContentBlock[];
@@ -113,7 +113,7 @@ export interface LLMRichMessage {
 /**
  * A tool advertised to the model. `input_schema` is JSON Schema (draft 2020-12
  * subset Anthropic accepts). The model decides when to call based on
- * `description` — keep it tight and unambiguous.
+ * `description`: keep it tight and unambiguous.
  */
 export interface LLMTool {
   readonly name: string;
@@ -187,7 +187,7 @@ export interface LLMRichCreateParams {
 
 /**
  * Minimal provider-agnostic interface. Both Anthropic and Bedrock SDKs
- * already expose compatible shapes — this wrapper normalises response
+ * already expose compatible shapes: this wrapper normalises response
  * parsing so the triage engine doesn't branch on provider.
  *
  * `createRich` is the tool-use-aware sibling of `create`: it preserves
@@ -211,7 +211,7 @@ export interface CreateLLMClientParams {
 /**
  * Branch on provider and return a configured LLMClient. Validation of
  * provider-specific required fields (API key / region) lives in config.ts
- * and runs at startup — this function trusts its input, but defensively
+ * and runs at startup: this function trusts its input, but defensively
  * throws if called with incompatible config so mis-wiring fails fast at
  * the first call rather than silently hitting the wrong endpoint.
  */
@@ -222,7 +222,7 @@ export function createLLMClient(params: CreateLLMClientParams): LLMClient {
     const apiKeyRaw = params.anthropicApiKey;
     const oauthRaw = params.claudeCodeOauthToken;
     // Trim before checking length so whitespace-only credentials are treated as
-    // absent — matches `nonEmptyOptionalString` in config.ts. Direct callers
+    // absent, matches `nonEmptyOptionalString` in config.ts. Direct callers
     // (tests, future code paths) that bypass the schema must not be able to
     // leak " " into `new Anthropic({ apiKey })` and produce a confusing 401.
     const apiKey = apiKeyRaw !== undefined && apiKeyRaw.trim().length > 0 ? apiKeyRaw : undefined;
@@ -237,7 +237,7 @@ export function createLLMClient(params: CreateLLMClientParams): LLMClient {
     // OAuth tokens (sk-ant-oat-...) authenticate via Authorization: Bearer
     // (SDK `authToken`), NOT x-api-key. Passing OAuth as `apiKey` produces a
     // 401 "invalid x-api-key" because the API distinguishes the two headers.
-    // Prefer the API key when both are provided — it's the lower-friction
+    // Prefer the API key when both are provided, it's the lower-friction
     // credential and matches the precedence in config.ts. (Restoring the
     // fix from 82f8332 that PR #104 silently regressed.)
     if (apiKey !== undefined) {
@@ -264,7 +264,7 @@ export function createLLMClient(params: CreateLLMClientParams): LLMClient {
 /**
  * Test-only factory: wraps a stubbed `AnthropicLikeSdk` in the LLMClient
  * contract so unit tests can exercise request-shaping and response-parsing
- * without touching the network. NEVER imported in production code —
+ * without touching the network. NEVER imported in production code,
  * production uses `createLLMClient`.
  */
 export function _createLLMClientForTests(
@@ -289,7 +289,7 @@ export interface AnthropicMessageResponse {
   readonly usage: { input_tokens: number; output_tokens: number };
 }
 
-/** The subset of an SDK client used by this adaptor — fully stubbable in tests. */
+/** The subset of an SDK client used by this adaptor, fully stubbable in tests. */
 export interface AnthropicLikeSdk {
   readonly messages: {
     create: (req: unknown) => Promise<unknown>;
@@ -299,7 +299,7 @@ export interface AnthropicLikeSdk {
 /**
  * Build the wire-shape `system` field. OAuth path requires the FIRST
  * top-level system block to be exactly the Claude Code identifier. The
- * string form `${ID}\n\n${callerSystem}` is rejected — the gate checks
+ * string form `${ID}\n\n${callerSystem}` is rejected: the gate checks
  * the first block as a whole, not a prefix. The array form keeps the
  * identifier as a standalone first block so the caller's task
  * instructions ride along untouched. Shared between `buildRequest` and
@@ -319,7 +319,7 @@ function buildSystemField(
   return CLAUDE_CODE_IDENTIFIER;
 }
 
-/** @internal — exported for tests only. */
+/** @internal, exported for tests only. */
 export function buildRequest(
   p: LLMCreateParams,
   authMode: AuthMode = "anthropic-apikey",
@@ -335,7 +335,7 @@ export function buildRequest(
   return base;
 }
 
-/** @internal — exported for tests only. */
+/** @internal, exported for tests only. */
 export function buildRichRequest(
   p: LLMRichCreateParams,
   authMode: AuthMode = "anthropic-apikey",
@@ -361,7 +361,7 @@ function toolChoiceWire(c: LLMToolChoice): unknown {
   return { type: "tool", name: c.name };
 }
 
-/** @internal — exported for tests only. */
+/** @internal, exported for tests only. */
 export function parseAnthropicResponse(raw: AnthropicMessageResponse): LLMResponse {
   const text = raw.content
     .filter((c) => c.type === "text" && typeof c.text === "string")
@@ -391,7 +391,7 @@ export interface AnthropicRichMessageResponse {
   readonly stop_reason?: string;
 }
 
-/** @internal — exported for tests only. */
+/** @internal, exported for tests only. */
 export function parseAnthropicRichResponse(raw: AnthropicRichMessageResponse): LLMRichResponse {
   const content: LLMContentBlock[] = [];
   const textParts: string[] = [];
@@ -411,7 +411,7 @@ export function parseAnthropicRichResponse(raw: AnthropicRichMessageResponse): L
         input: block.input ?? {},
       });
     }
-    // Other block types (e.g. thinking, citations) are dropped — we only
+    // Other block types (e.g. thinking, citations) are dropped: we only
     // round-trip the shapes the tool loop reasons about.
   }
   const stop = raw.stop_reason;
@@ -514,7 +514,7 @@ export const DEFAULT_MAX_TOOL_USES_PER_TURN = 4;
 export interface RunWithToolsParams {
   readonly model: string;
   readonly system?: string;
-  /** Initial conversation — usually one user message. Subsequent assistant + tool_result turns are appended internally. */
+  /** Initial conversation, usually one user message. Subsequent assistant + tool_result turns are appended internally. */
   readonly messages: readonly LLMMessage[];
   readonly maxTokens: number;
   readonly temperature?: number;
@@ -571,7 +571,7 @@ export interface RunWithToolsResult {
  *     whether to surface the partial answer or fall back.
  *
  * The final text still flows through the caller's
- * `parseStructuredResponse(...)` chokepoint — this function does not
+ * `parseStructuredResponse(...)` chokepoint: this function does not
  * encode any JSON-vs-prose policy.
  */
 export async function runWithTools(
@@ -629,7 +629,7 @@ export async function runWithTools(
     );
     if (allToolUses.length === 0) {
       // Defensive: stop_reason was tool_use but no tool_use block surfaced
-      // — bail rather than spin. Treat as end-of-conversation.
+      //, bail rather than spin. Treat as end-of-conversation.
       return {
         text: response.text,
         model: response.model,
@@ -644,7 +644,7 @@ export async function runWithTools(
 
     // Apply per-turn fan-out cap. Anthropic's API requires every tool_use
     // block to be paired with a tool_result, so dropped blocks still get
-    // an explicit is_error response — that gives the model feedback to
+    // an explicit is_error response: that gives the model feedback to
     // adjust strategy on the next turn instead of hitting the cap blindly.
     const dispatchable = allToolUses.slice(0, maxToolUsesPerTurn);
     const dropped = allToolUses.slice(maxToolUsesPerTurn);
@@ -727,8 +727,8 @@ export async function runWithTools(
 /**
  * Per-model rate sheet (USD per token). Anthropic public pricing as of
  * 2026-04. Bedrock charges the same underlying Anthropic rates (AWS adds a
- * region-dependent surcharge we don't model here — operators can read the
- * usage columns and multiply). The estimate is advisory — billing of record
+ * region-dependent surcharge we don't model here: operators can read the
+ * usage columns and multiply). The estimate is advisory: billing of record
  * is whatever the provider invoice says.
  *
  * Haiku 3.5 (2024-10): input $0.80 / output $4.00 per 1M tokens.

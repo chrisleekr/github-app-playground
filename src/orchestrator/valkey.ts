@@ -17,7 +17,7 @@ let valkeyShuttingDown = false;
 let connectStartedAt: number | null = null;
 // Resolvers waiting for the next onconnect to fire. Drained in onconnect.
 // Keeps connectValkey()'s readiness signal tied to the actual flag flip,
-// not to client.connect()'s promise — Bun does not document ordering between
+// not to client.connect()'s promise, Bun does not document ordering between
 // connect() resolving and onconnect firing.
 const pendingConnectResolvers: (() => void)[] = [];
 
@@ -75,8 +75,8 @@ function redactValkeyUrl(url: string): string {
 /**
  * Block until the Valkey client is connected (FM-7 startup race fix).
  *
- * Awaits the `onconnect` callback specifically — NOT `client.connect()`'s
- * promise — because Bun does not document that the callback fires before the
+ * Awaits the `onconnect` callback specifically: NOT `client.connect()`'s
+ * promise: because Bun does not document that the callback fires before the
  * promise resolves. Since `valkeyConnected` is only flipped inside `onconnect`,
  * tying our readiness signal to the callback guarantees `isValkeyHealthy()`
  * returns true the instant `connectValkey()` resolves.
@@ -163,7 +163,7 @@ export function closeValkey(): void {
   if (current !== null) {
     client = null;
     // Mark intentional so onclose can distinguish shutdown from real disconnect.
-    // Don't pre-clear valkeyConnected — let onclose do it so wasConnected
+    // Don't pre-clear valkeyConnected, let onclose do it so wasConnected
     // reflects the true pre-shutdown state in logs.
     valkeyShuttingDown = true;
     try {

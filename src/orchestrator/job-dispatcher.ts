@@ -161,7 +161,7 @@ export async function dispatchJob(job: QueuedJob): Promise<boolean> {
   if (daemonId === null) {
     logger.info(
       { kind: job.kind, deliveryId: job.deliveryId, fleetSize, requiredTools },
-      "dispatchJob: no daemon available — caller should enqueue or retry",
+      "dispatchJob: no daemon available, caller should enqueue or retry",
     );
     return false; // Caller handles FM-3 fallback
   }
@@ -319,7 +319,7 @@ function buildScopedJobOfferEnvelope(
 }
 
 /**
- * Handle offer timeout — daemon didn't respond within offerTimeoutMs.
+ * Handle offer timeout: daemon didn't respond within offerTimeoutMs.
  * Re-queue or fail the job.
  */
 async function handleOfferTimeout(offerId: string): Promise<void> {
@@ -340,7 +340,7 @@ async function handleOfferTimeout(offerId: string): Promise<void> {
   if (job === null) {
     await markExecutionFailed(
       offer.deliveryId,
-      "PendingOffer.scoped failed re-validation — refusing legacy fallback dispatch",
+      "PendingOffer.scoped failed re-validation, refusing legacy fallback dispatch",
     );
     return;
   }
@@ -354,7 +354,7 @@ async function handleOfferTimeout(offerId: string): Promise<void> {
 /**
  * Reconstruct a `QueuedJob` from the in-memory `PendingOffer` so the same
  * payload can be re-queued on reject/timeout. Scoped offers preserve the
- * original scoped queue payload verbatim — every per-kind field survives the
+ * original scoped queue payload verbatim: every per-kind field survives the
  * round-trip so re-dispatch keeps the same daemon contract.
  *
  * `offer.scoped` is typed `unknown` in shared/daemon-types so the shared
@@ -374,10 +374,10 @@ function reconstructJobFromOffer(offer: PendingOffer): QueuedJob | null {
           deliveryId: offer.deliveryId,
           issues: reparsed.success ? "shape-not-scoped" : reparsed.error.issues,
         },
-        "PendingOffer.scoped failed re-validation — failing job (do not fall back to legacy reconstruct)",
+        "PendingOffer.scoped failed re-validation, failing job (do not fall back to legacy reconstruct)",
       );
       // Fail closed: a corrupted scoped offer must NOT be reconstructed as a
-      // legacy or workflow-run job — that would dispatch the wrong job kind
+      // legacy or workflow-run job: that would dispatch the wrong job kind
       // against the same repo/PR. Caller marks the execution failed.
       return null;
     }
@@ -432,9 +432,9 @@ export interface JobAcceptParams {
   allowedTools: string[];
   envVars: Record<string, string>;
   memory: { id: string; category: string; content: string; pinned: boolean }[];
-  /** Present for workflow-run jobs — forwarded verbatim into `job:payload`. */
+  /** Present for workflow-run jobs, forwarded verbatim into `job:payload`. */
   workflowRun?: WorkflowRunRef;
-  /** Present for scoped jobs — forwarded verbatim into `job:payload` so the
+  /** Present for scoped jobs, forwarded verbatim into `job:payload` so the
    * daemon's `runScopedJob` router can dispatch on `scoped.jobKind`. */
   scoped?: ScopedJobContext;
 }
@@ -453,7 +453,7 @@ export function handleJobAccept({
   scoped,
 }: JobAcceptParams): void {
   // Note: the pending offer is already removed by handleAccept in connection-handler.ts
-  // before this function is called (C2 fix — prevents timeout/accept race).
+  // before this function is called (C2 fix, prevents timeout/accept race).
 
   const connections = getConnections();
   const ws = connections.get(daemonId);
@@ -512,7 +512,7 @@ export async function handleJobReject(offerId: string, reason: string): Promise<
   if (job === null) {
     await markExecutionFailed(
       offer.deliveryId,
-      "PendingOffer.scoped failed re-validation — refusing legacy fallback dispatch",
+      "PendingOffer.scoped failed re-validation, refusing legacy fallback dispatch",
     );
     return;
   }
@@ -531,7 +531,7 @@ export async function handleJobReject(offerId: string, reason: string): Promise<
  * `workflow_runs` row (set by the workflow dispatcher path). Either or both
  * may be present for a given job; UPDATEs are no-ops when the row is absent.
  *
- * Marking the `workflow_runs` row as `failed` is essential — the partial
+ * Marking the `workflow_runs` row as `failed` is essential: the partial
  * unique index `idx_workflow_runs_inflight` prevents future dispatches for
  * the same target until this row leaves the queued/running states.
  */
@@ -547,7 +547,7 @@ export async function markJobTerminallyFailed(job: QueuedJob, reason: string): P
           runId: job.workflowRun.runId,
           deliveryId: job.deliveryId,
         },
-        "Failed to mark workflow_runs row as failed — in-flight guard may block re-dispatch",
+        "Failed to mark workflow_runs row as failed, in-flight guard may block re-dispatch",
       );
     }
   }

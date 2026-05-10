@@ -24,7 +24,7 @@ export interface ResolveMcpServersOptions {
   /**
    * Opt-in for the resolve-review-thread MCP server (T029/T030). Set
    * `true` when the agent is running the `resolve` step and the PR has
-   * open review threads — keeps the tool out of contexts where it isn't
+   * open review threads: keeps the tool out of contexts where it isn't
    * relevant per Constitution VII single-responsibility.
    */
   enableResolveReviewThread?: boolean;
@@ -71,12 +71,12 @@ export function resolveMcpServers(
     servers["github_state"] = githubStateServerDef(sharedEnv);
   }
 
-  // Tier 3, R-011 — daemon capabilities MCP server
+  // Tier 3, R-011, daemon capabilities MCP server
   if (opts?.daemonCapabilities !== undefined) {
     servers["daemon_capabilities"] = daemonCapabilitiesServerDef(opts.daemonCapabilities);
   }
 
-  // Repo memory MCP server — persistent learnings across executions
+  // Repo memory MCP server, persistent learnings across executions
   if (opts?.workDir !== undefined) {
     servers["repo_memory"] = repoMemoryServerDef(opts.workDir, opts.repoMemory ?? []);
   }

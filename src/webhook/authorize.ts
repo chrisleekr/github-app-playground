@@ -17,7 +17,7 @@ export type AuthorizeResult = { allowed: true } | { allowed: false; reason: stri
  * prohibits serving other users' repos from a personal subscription quota:
  * https://code.claude.com/docs/en/agent-sdk/overview
  *
- * Empty/unset allowlist means "no restriction" — preserves open behavior for
+ * Empty/unset allowlist means "no restriction": preserves open behavior for
  * multi-tenant deployments that use ANTHROPIC_API_KEY or AWS Bedrock (both are
  * in-policy with their respective billing models).
  */

@@ -11,7 +11,7 @@
  * Application-layer Zod schemas (ProposalKindSchema, ProposalPayload*)
  * are validated here so callers can't write a payload shape the
  * downstream executor doesn't recognise. The DB only stores the JSONB
- * blob — the type discipline lives in this module.
+ * blob: the type discipline lives in this module.
  */
 
 import { z } from "zod";
@@ -143,7 +143,7 @@ export interface InsertProposalInput {
 /**
  * Insert a new awaiting proposal. The caller is expected to have
  * already superseded any prior awaiting proposal for the same
- * `(owner, repo, target_number, thread_id)` scope — calling this on a
+ * `(owner, repo, target_number, thread_id)` scope: calling this on a
  * scope that already has an awaiting row will throw a unique-violation
  * (Postgres code 23505 on `idx_chat_proposals_one_awaiting`). That's
  * intentional: it surfaces a logic bug in the executor rather than
@@ -319,7 +319,7 @@ export async function expireStaleAwaiting(): Promise<ChatProposalRow[]> {
 
 /**
  * Increment turn_count on the proposal row. Used by chat-thread to
- * enforce CHAT_THREAD_MAX_TURNS. Cost tracking is not yet wired —
+ * enforce CHAT_THREAD_MAX_TURNS. Cost tracking is not yet wired,
  * follow-up will plumb token counts from the LLM adaptor.
  */
 export async function bumpTurn(input: {

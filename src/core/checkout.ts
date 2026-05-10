@@ -70,7 +70,7 @@ export async function checkoutRepo(
 
     // PR events: --single-branch above narrowed remote.origin.fetch to the head ref
     // only, so origin/<baseBranch> is absent. The agent prompt and the auto-rebase
-    // directive both reference it for diffs / rebases — a missing ref burns recovery
+    // directive both reference it for diffs / rebases: a missing ref burns recovery
     // turns or silently falls back to `git diff HEAD`. Widen the refspec and pull
     // the base ref in. Best-effort: a missing base ref shouldn't break the request.
     if (ctx.isPR && baseBranch !== undefined && baseBranch !== "" && baseBranch !== branch) {
@@ -83,13 +83,13 @@ export async function checkoutRepo(
         // Both sides of the diff are bounded by CLONE_DEPTH. If head/base diverge by
         // more than that on long-lived branches, the merge base may not be reachable
         // locally and `git diff origin/<base>...HEAD` silently widens to the closest
-        // shallow-boundary commit — bump CLONE_DEPTH or `git fetch --unshallow` if
+        // shallow-boundary commit, bump CLONE_DEPTH or `git fetch --unshallow` if
         // an agent reports a noisy diff for a long-history base.
         await $`git -C ${workDir} fetch --depth=${config.cloneDepth} origin ${baseBranch}`;
       } catch (err) {
         log.warn(
           { baseBranch, headBranch: branch, err },
-          "Failed to fetch PR base branch — agent diff/rebase commands may fail",
+          "Failed to fetch PR base branch, agent diff/rebase commands may fail",
         );
       }
     }

@@ -82,7 +82,7 @@ export function stripHtmlComments(content: string): string {
  * Uses an inline `[REDACTED_GITHUB_TOKEN]` marker so the downstream LLM can
  * see that a credential-shaped string was scrubbed and treat the slot as data.
  * For OUTPUT-side stripping (bytes about to leave us bound for GitHub), use
- * `redactSecrets` below — that path silently deletes matches to deny an
+ * `redactSecrets` below: that path silently deletes matches to deny an
  * attacker any probing feedback.
  */
 export function redactGitHubTokens(content: string): string {
@@ -104,7 +104,7 @@ export function redactGitHubTokens(content: string): string {
  * footer, no count surfaced in the body) and returns a structured result so
  * the caller can log redaction events without ever logging the matched bytes.
  *
- * Apply to every body about to be posted to GitHub — see
+ * Apply to every body about to be posted to GitHub: see
  * `src/utils/github-output-guard.ts`.
  */
 export interface RedactSecretsResult {
@@ -122,7 +122,7 @@ interface SecretPattern {
 // Patterns are applied in fixed order. Most-specific first so a value that
 // would match multiple patterns is attributed to its true kind.
 const SECRET_PATTERNS: SecretPattern[] = [
-  // GitHub tokens — same five formats as the input-side redactor.
+  // GitHub tokens, same five formats as the input-side redactor.
   { kind: "GITHUB_TOKEN", re: /\bghp_[A-Za-z0-9]{36}\b/g },
   { kind: "GITHUB_TOKEN", re: /\bgho_[A-Za-z0-9]{36}\b/g },
   { kind: "GITHUB_TOKEN", re: /\bghs_[A-Za-z0-9]{36}\b/g },
@@ -141,7 +141,7 @@ const SECRET_PATTERNS: SecretPattern[] = [
     re: /-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z]+ )?PRIVATE KEY-----/g,
   },
   // Database / cache connection URLs with embedded credentials. Match only
-  // when both user and password components are present — bare URLs are fine.
+  // when both user and password components are present, bare URLs are fine.
   // The trailing class consumes host + port + path + query, but stops at
   // common markdown delimiters so a URL embedded in `(…)`, `[…]`, or quotes
   // does not swallow following prose.

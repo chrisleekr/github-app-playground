@@ -45,7 +45,7 @@ const durationMs = z.preprocess((v) => {
 
 /**
  * Comma-separated list of positive integers (ms). Empty input is
- * rejected — the list MUST contain at least one value because the
+ * rejected: the list MUST contain at least one value because the
  * shepherding loop iterates until exhaustion. Used by
  * `MERGEABLE_NULL_BACKOFF_MS_LIST`.
  */
@@ -102,7 +102,7 @@ const configSchema = z
   .object({
     // --- 1. GitHub App credentials (server mode) ---
 
-    // GitHub App credentials — required for server mode, optional for daemon-only mode.
+    // GitHub App credentials, required for server mode, optional for daemon-only mode.
     // Daemon mode (ORCHESTRATOR_URL set) does not need these; validated in superRefine.
     appId: z.string().optional(),
     privateKey: z.string().optional(),
@@ -111,18 +111,18 @@ const configSchema = z
     // --- 2. AI provider selection ---
 
     // AI provider selection: "anthropic" (default) or "bedrock".
-    // "bedrock" additionally requires `awsRegion` + `model` — enforced in validateProviderCredentials.
+    // "bedrock" additionally requires `awsRegion` + `model`, enforced in validateProviderCredentials.
     provider: z.enum(["anthropic", "bedrock"]).default("anthropic"),
 
-    // Model override — required when provider=bedrock (Bedrock uses different model ID format),
+    // Model override, required when provider=bedrock (Bedrock uses different model ID format),
     // optional input for anthropic. The schema-level .transform below defaults the
     // anthropic path to "claude-opus-4-7", so the inferred Config.model is `string`
-    // (not `string | undefined`) — consumers do not need to handle the undefined case.
+    // (not `string | undefined`), consumers do not need to handle the undefined case.
     model: z.string().min(1).optional(),
 
     // --- 3. Anthropic direct-API credentials ---
 
-    // Claude API credentials — when provider=anthropic, at least one of these is required
+    // Claude API credentials, when provider=anthropic, at least one of these is required
     // (both may be set; the Claude CLI's own auth precedence chain picks one at runtime:
     // ANTHROPIC_API_KEY at position 3 beats CLAUDE_CODE_OAUTH_TOKEN at position 5).
     // Either Console API key (pay-as-you-go) or Max/Pro subscription OAuth token
@@ -141,10 +141,10 @@ const configSchema = z
     // token for every GitHub API call and `git push`. When set,
     // `resolveGithubToken()` short-circuits the App-token mint and uses this
     // value instead. Affects API actions (PR comments, reviews, GraphQL) and
-    // push-side identity, but NOT commit author/committer metadata — that is
+    // push-side identity, but NOT commit author/committer metadata: that is
     // pinned to `chrisleekr-bot[bot]` in src/core/checkout.ts via `git config
     // user.name/user.email` and stays the same regardless of which token mints
-    // the request. Single-tenant only — must be paired with a single-owner
+    // the request. Single-tenant only, must be paired with a single-owner
     // ALLOWED_OWNERS, mirroring the CLAUDE_CODE_OAUTH_TOKEN constraint, because
     // a PAT carries a real human identity and per-user rate-limit bucket.
     // Set via GITHUB_PERSONAL_ACCESS_TOKEN env var.
@@ -157,21 +157,21 @@ const configSchema = z
     // Local dev: AWS SSO profile (after: le aws login -e dev).
     // Passed to the Claude Code subprocess env so the AWS SDK credential chain resolves it.
     awsProfile: z.string().optional(),
-    // Explicit key credentials — use in CI/CD or non-SSO environments. Prefer
+    // Explicit key credentials, use in CI/CD or non-SSO environments. Prefer
     // `awsProfile` locally and `awsBearerTokenBedrock` (OIDC) in GitHub Actions.
     awsAccessKeyId: z.string().optional(),
     awsSecretAccessKey: z.string().optional(),
     awsSessionToken: z.string().optional(),
-    // OIDC bearer token — set automatically by aws-actions/configure-aws-credentials
+    // OIDC bearer token, set automatically by aws-actions/configure-aws-credentials
     // in GitHub Actions. Do not hand-set in long-running environments.
     awsBearerTokenBedrock: z.string().optional(),
     // Overrides the Bedrock runtime endpoint. Leave unset unless fronting Bedrock
-    // with a VPC endpoint or proxy — otherwise the SDK picks the correct regional URL.
+    // with a VPC endpoint or proxy, otherwise the SDK picks the correct regional URL.
     anthropicBedrockBaseUrl: z.string().optional(),
 
     // --- 5. App runtime / behaviour ---
 
-    // Context7 MCP API key — optional. Unset works but is rate-limited; setting it
+    // Context7 MCP API key, optional. Unset works but is rate-limited; setting it
     // only lifts the rate limit. Does not change auth mode or tool availability.
     context7ApiKey: z.string().optional(),
 
@@ -189,7 +189,7 @@ const configSchema = z
     // matcher returns no hit.
     triggerPhrase: z.string().default("@chrisleekr-bot"),
 
-    // GitHub App bot author login as it appears in commit/push payloads —
+    // GitHub App bot author login as it appears in commit/push payloads,
     // distinct from `triggerPhrase` (which is the @-mention). Used by the ship
     // workflow's foreign-push detection: pushes whose head author equals
     // `botAppLogin` are treated as bot-authored and don't terminate active
@@ -216,13 +216,13 @@ const configSchema = z
     // Per-connection safety caps applied during PR/issue GraphQL fetches in
     // src/core/fetcher.ts. The fetcher walks every page via cursor-based
     // pagination (octokit graphql.paginate) and then trims the merged result
-    // to the most recent `cap` items — newest survives, oldest drops. When
+    // to the most recent `cap` items, newest survives, oldest drops. When
     // truncation fires the matching flag on `FetchedData.truncated` is set
     // and a structured `log.warn({ connection, fetched, cap })` is emitted.
     // Defaults are sized so a 99th-percentile PR/issue still fits without
     // truncation; raise only when the prompt budget can absorb the larger
     // context. NOTE: pagination is bounded by GitHub API limits, not by
-    // these caps — operators tuning for cost should prefer narrower entity
+    // these caps, operators tuning for cost should prefer narrower entity
     // selection over a smaller cap.
     maxFetchedComments: z.coerce.number().int().positive().default(500),
     maxFetchedReviews: z.coerce.number().int().positive().default(500),
@@ -231,7 +231,7 @@ const configSchema = z
 
     // Wall-clock timeout for a single Claude agent execution in milliseconds.
     // Guards against resource exhaustion from hung model responses or MCP servers.
-    // Default 60 minutes — implement / review steps on non-trivial issues
+    // Default 60 minutes, implement / review steps on non-trivial issues
     // routinely take 30-50 min of real work; capping shorter cuts the agent
     // off mid-task and loses progress. Hung-process risk is bounded by
     // container resource limits, not this number. Set AGENT_TIMEOUT_MS lower
@@ -251,7 +251,7 @@ const configSchema = z
     // Set via CLAUDE_CODE_PATH env var (e.g. /usr/lib/node_modules/@anthropic-ai/claude-code/cli.js).
     claudeCodePath: z.string().optional(),
 
-    // Owner allowlist — when set, the bot only processes events from repositories
+    // Owner allowlist, when set, the bot only processes events from repositories
     // owned by one of these GitHub accounts (case-insensitive). Empty/unset means
     // no restriction. REQUIRED for single-tenant deployments using
     // CLAUDE_CODE_OAUTH_TOKEN, because the Agent SDK Note prohibits serving other
@@ -297,7 +297,7 @@ const configSchema = z
     // primary or the previous token (still constant-time). Operators set this
     // to the old value during a rolling rotation, then drop it once every
     // daemon has restarted with the new primary. Daemon-side this value is
-    // ignored — daemons always send the primary `daemonAuthToken`.
+    // ignored, daemons always send the primary `daemonAuthToken`.
     //
     // Uses `nonEmptyOptionalString` so a whitespace-only env value (e.g. a
     // Secret key whose decrypted value is "" or "   ") is coerced to
@@ -321,7 +321,7 @@ const configSchema = z
         }
       }, "ORCHESTRATOR_URL must be a valid ws:// or wss:// URL"),
 
-    // Daemon ping cadence. Paired with heartbeatTimeoutMs — orchestrator evicts
+    // Daemon ping cadence. Paired with heartbeatTimeoutMs, orchestrator evicts
     // a daemon that misses heartbeats past the timeout. Keep `timeoutMs ≥ 2 ×
     // intervalMs` to tolerate one dropped packet.
     heartbeatIntervalMs: z.coerce.number().int().positive().default(30_000),
@@ -336,7 +336,7 @@ const configSchema = z
 
     // Post-SIGTERM window the daemon uses to finish in-flight work before
     // force-exit. The default (300_000ms) is intentionally shorter than
-    // agentTimeoutMs — operators who want to guarantee no mid-run kills on
+    // agentTimeoutMs, operators who want to guarantee no mid-run kills on
     // graceful shutdown should raise this to ≥ agentTimeoutMs.
     daemonDrainTimeoutMs: z.coerce.number().int().positive().default(300_000),
 
@@ -365,7 +365,7 @@ const configSchema = z
 
     // Advisory hint REPORTED to the orchestrator after an update signal. The
     // daemon itself always calls initiateGracefulShutdown() regardless of value
-    // (src/daemon/main.ts) — the orchestrator is the actual consumer.
+    // (src/daemon/main.ts): the orchestrator is the actual consumer.
     daemonUpdateStrategy: z.enum(["exit", "pull", "notify"]).default("exit"),
 
     // Delay before the daemon initiates shutdown after receiving an update signal.
@@ -379,7 +379,7 @@ const configSchema = z
 
     // --- 9. Ephemeral daemon (K8s-spawned scale-up) ---
 
-    // When true, this daemon process treats itself as ephemeral — it exits
+    // When true, this daemon process treats itself as ephemeral: it exits
     // cleanly after `ephemeralDaemonIdleTimeoutMs` of idleness. Set on
     // orchestrator-spawned Pods via `DAEMON_EPHEMERAL=true`; leave unset on
     // persistent daemons.
@@ -415,7 +415,7 @@ const configSchema = z
 
     // Container image the orchestrator launches for ephemeral daemons. Should
     // match the tag the persistent daemon Deployment is running. Optional at
-    // startup — only required when an ephemeral spawn is actually triggered;
+    // startup, only required when an ephemeral spawn is actually triggered;
     // the router reports `ephemeral-spawn-failed` if unset.
     daemonImage: z.string().optional(),
 
@@ -443,7 +443,7 @@ const configSchema = z
     triageEnabled: z.boolean().default(true),
 
     // Model ID for the single-turn triage call via src/ai/llm-client.ts. Affects
-    // triage latency/cost only — does NOT change the main agent's model.
+    // triage latency/cost only, does NOT change the main agent's model.
     triageModel: z.string().default("sonnet-4-6"),
 
     // Strict (1.0) on day 1 so only perfectly confident triage decisions are
@@ -460,7 +460,7 @@ const configSchema = z
     triageTimeoutMs: z.coerce.number().int().positive().default(5_000),
 
     // Kill-switch for triage's tool-call path (issue #117). When false, triage
-    // stays single-turn even on PR events with octokit available — the model
+    // stays single-turn even on PR events with octokit available: the model
     // classifies from text alone. Operator escape hatch when GitHub API quota
     // pressure or per-event latency tips the cost/benefit. The triage LLM
     // call itself still runs; only the github-state tool surface is suppressed.
@@ -493,13 +493,13 @@ const configSchema = z
     // they need to take an explicit action (👍 reaction, decline, or
     // re-ask in a fresh comment). The counter freezes when the
     // proposal exits `awaiting`, so unrelated future chat in the same
-    // thread is NOT capped here. This is intentional — the cap exists
+    // thread is NOT capped here. This is intentional: the cap exists
     // to bound run-away back-and-forth on a contentious propose-loop,
     // not to limit casual conversation.
     chatThreadMaxTurns: z.coerce.number().int().positive().default(8),
 
     // Kill-switch for chat-thread's tool-call path (issue #117). When false,
-    // chat-thread stays single-turn — the model answers from the cached
+    // chat-thread stays single-turn: the model answers from the cached
     // <conversation> snapshot only and cannot fetch fresh CI rollup,
     // check output, branch protection, diff, file list, or paginated
     // comments. Operator escape hatch for cost containment or when the
@@ -516,7 +516,7 @@ const configSchema = z
     // if Bedrock latency or cost is unacceptable for the deployment.
     llmOutputScannerEnabled: z.boolean().default(true),
 
-    // Model alias for the scanner call. Sonnet 4.6 by default — the
+    // Model alias for the scanner call. Sonnet 4.6 by default, the
     // higher-reasoning model materially reduces false-negatives on
     // obfuscated/encoded secrets vs. Haiku, at the cost of per-call latency.
     // Operators can downgrade to a Haiku alias if budget pressure dominates.
@@ -545,7 +545,7 @@ const configSchema = z
 
     // --- 13. Ship workflow (PR shepherding to merge-ready, feature 20260427-201332) ---
 
-    // Wall-clock ceiling for a single `bot:ship` session — the maximum the
+    // Wall-clock ceiling for a single `bot:ship` session: the maximum the
     // shepherding loop may run end-to-end (across continuations and waits)
     // before transitioning the intent to `deadline_exceeded`. Accepts either
     // a plain integer (milliseconds) or a duration string with `h`/`m`/`s`
@@ -557,10 +557,10 @@ const configSchema = z
     // Iteration-count cap (FR-012). The shepherding loop checks this at the
     // start of each iteration BEFORE the probe runs; on hit, the intent
     // transitions to `human_took_over` with `BlockerCategory='iteration-cap'`.
-    // Pairs with `MAX_WALL_CLOCK_PER_SHIP_RUN` — whichever fires first wins.
+    // Pairs with `MAX_WALL_CLOCK_PER_SHIP_RUN`, whichever fires first wins.
     maxShipIterations: z.coerce.number().int().positive().default(50),
 
-    // Cron tickle cadence — how often `src/workflows/ship/tickle-scheduler.ts`
+    // Cron tickle cadence, how often `src/workflows/ship/tickle-scheduler.ts`
     // scans Valkey `ship:tickle` for due continuations and re-enqueues them
     // as daemon jobs. Lower values reduce wake latency at the cost of
     // background CPU. Default 15s.
@@ -570,7 +570,7 @@ const configSchema = z
     // the GraphQL `mergeable` field returns null (GitHub still computing
     // mergeability), the probe re-polls with intervals from this list.
     // On schedule exhaustion the verdict is `mergeable_pending` and the
-    // session yields per FR-020 — it MUST NOT terminate. Default
+    // session yields per FR-020: it MUST NOT terminate. Default
     // `5000,10000,30000,60000,60000` (≈ 2m45s total).
     mergeableNullBackoffMsList: mergeableBackoffList,
 
@@ -578,7 +578,7 @@ const configSchema = z
     // (FR-023). When no non-bot review has been observed on the current
     // head SHA, the barrier defers `ready` until at least this much time
     // has elapsed since the most recent push. The system MUST NOT carry a
-    // reviewer-login list anywhere — this single-knob design is intentional
+    // reviewer-login list anywhere: this single-knob design is intentional
     // (research.md R3). Default 20 minutes.
     reviewBarrierSafetyMarginMs: z.coerce.number().int().positive().default(1_200_000),
 
@@ -750,12 +750,12 @@ export { configSchema };
 /**
  * ToS guard: CLAUDE_CODE_OAUTH_TOKEN is a personal Max/Pro subscription credential.
  * The Agent SDK Note prohibits serving other users' repos from that quota, so OAuth
- * mode requires an owner allowlist as a hard startup precondition — not just a
+ * mode requires an owner allowlist as a hard startup precondition: not just a
  * documentation warning. API-key deployments remain unrestricted (in-policy for
  * pay-as-you-go). See https://code.claude.com/docs/en/agent-sdk/overview
  *
  * Lives outside `.superRefine` so the schema stays lean and the policy rule is
- * expressed as one clear assertion — exported so tests can exercise it directly
+ * expressed as one clear assertion: exported so tests can exercise it directly
  * against a parsed `Config` without round-tripping env vars.
  */
 export function assertOauthRequiresAllowlist(cfg: Config): void {
@@ -773,7 +773,7 @@ export function assertOauthRequiresAllowlist(cfg: Config): void {
 
 /**
  * Single-tenant guard for GITHUB_PERSONAL_ACCESS_TOKEN. A PAT inherits the
- * full identity of one human and their rate-limit bucket — exposing it across
+ * full identity of one human and their rate-limit bucket: exposing it across
  * multiple owners' webhooks would impersonate that human on every install.
  * Hard-fail at startup so the misconfiguration cannot reach a webhook handler.
  */
@@ -806,7 +806,7 @@ export function parseBooleanEnv(name: string, raw: string | undefined): boolean 
  */
 function loadConfig(): Config {
   const cfg = configSchema.parse({
-    // Group 1 — GitHub App credentials
+    // Group 1, GitHub App credentials
     appId: process.env["GITHUB_APP_ID"],
     // Normalize literal "\n" escape sequences to real newlines. K8s Secrets
     // populated from SETUP.md's single-line `"---BEGIN---\n...\n---END---"`
@@ -816,16 +816,16 @@ function loadConfig(): Config {
     privateKey: process.env["GITHUB_APP_PRIVATE_KEY"]?.replace(/\\n/g, "\n"),
     webhookSecret: process.env["GITHUB_WEBHOOK_SECRET"],
 
-    // Group 2 — AI provider selection
+    // Group 2, AI provider selection
     provider: process.env["CLAUDE_PROVIDER"],
     model: process.env["CLAUDE_MODEL"],
 
-    // Group 3 — Anthropic direct-API credentials
+    // Group 3, Anthropic direct-API credentials
     anthropicApiKey: process.env["ANTHROPIC_API_KEY"],
     claudeCodeOauthToken: process.env["CLAUDE_CODE_OAUTH_TOKEN"],
     githubPersonalAccessToken: process.env["GITHUB_PERSONAL_ACCESS_TOKEN"],
 
-    // Group 4 — AWS Bedrock credentials
+    // Group 4, AWS Bedrock credentials
     awsRegion: process.env["AWS_REGION"],
     awsProfile: process.env["AWS_PROFILE"],
     awsAccessKeyId: process.env["AWS_ACCESS_KEY_ID"],
@@ -834,7 +834,7 @@ function loadConfig(): Config {
     awsBearerTokenBedrock: process.env["AWS_BEARER_TOKEN_BEDROCK"],
     anthropicBedrockBaseUrl: process.env["ANTHROPIC_BEDROCK_BASE_URL"],
 
-    // Group 5 — App runtime / behaviour
+    // Group 5, App runtime / behaviour
     context7ApiKey: process.env["CONTEXT7_API_KEY"],
     cloneBaseDir: process.env["CLONE_BASE_DIR"],
     cloneDepth: process.env["CLONE_DEPTH"],
@@ -853,14 +853,14 @@ function loadConfig(): Config {
     claudeCodePath: process.env["CLAUDE_CODE_PATH"],
     allowedOwners: process.env["ALLOWED_OWNERS"],
 
-    // Group 6 — Data layer
+    // Group 6, Data layer
     valkeyUrl: process.env["VALKEY_URL"],
     databaseUrl: process.env["DATABASE_URL"],
 
-    // Group 7 — Orchestrator
+    // Group 7, Orchestrator
     wsPort: process.env["WS_PORT"],
 
-    // Group 8 — Daemon / Orchestrator WebSocket
+    // Group 8, Daemon / Orchestrator WebSocket
     daemonAuthToken: process.env["DAEMON_AUTH_TOKEN"],
     daemonAuthTokenPrevious: process.env["DAEMON_AUTH_TOKEN_PREVIOUS"],
     orchestratorUrl: process.env["ORCHESTRATOR_URL"],
@@ -877,7 +877,7 @@ function loadConfig(): Config {
     daemonMemoryFloorMb: process.env["DAEMON_MEMORY_FLOOR_MB"],
     daemonDiskFloorMb: process.env["DAEMON_DISK_FLOOR_MB"],
 
-    // Group 9 — Ephemeral daemon (K8s-spawned scale-up)
+    // Group 9, Ephemeral daemon (K8s-spawned scale-up)
     daemonEphemeral: parseBooleanEnv("DAEMON_EPHEMERAL", process.env["DAEMON_EPHEMERAL"]),
     ephemeralDaemonIdleTimeoutMs: process.env["EPHEMERAL_DAEMON_IDLE_TIMEOUT_MS"],
     ephemeralDaemonSpawnCooldownMs: process.env["EPHEMERAL_DAEMON_SPAWN_COOLDOWN_MS"],
@@ -886,7 +886,7 @@ function loadConfig(): Config {
     daemonImage: process.env["DAEMON_IMAGE"],
     orchestratorPublicUrl: process.env["ORCHESTRATOR_PUBLIC_URL"],
 
-    // Group 10 — Triage — strict boolean parsing; rejects unrecognized values at startup.
+    // Group 10, Triage, strict boolean parsing; rejects unrecognized values at startup.
     triageEnabled: parseBooleanEnv("TRIAGE_ENABLED", process.env["TRIAGE_ENABLED"]),
     triageToolsEnabled: parseBooleanEnv(
       "TRIAGE_TOOLS_ENABLED",
@@ -898,7 +898,7 @@ function loadConfig(): Config {
     triageTimeoutMs: process.env["TRIAGE_TIMEOUT_MS"],
     intentConfidenceThreshold: process.env["INTENT_CONFIDENCE_THRESHOLD"],
 
-    // Group 10a — chat-thread executor
+    // Group 10a, chat-thread executor
     chatThreadExecuteThreshold: process.env["CHAT_THREAD_EXECUTE_THRESHOLD"],
     chatThreadProposalTtlHours: process.env["CHAT_THREAD_PROPOSAL_TTL_HOURS"],
     chatThreadMaxTurns: process.env["CHAT_THREAD_MAX_TURNS"],
@@ -907,7 +907,7 @@ function loadConfig(): Config {
       process.env["CHAT_THREAD_TOOLS_ENABLED"],
     ),
 
-    // Group 10b — LLM-based output scanner
+    // Group 10b, LLM-based output scanner
     llmOutputScannerEnabled: parseBooleanEnv(
       "LLM_OUTPUT_SCANNER_ENABLED",
       process.env["LLM_OUTPUT_SCANNER_ENABLED"],
@@ -915,13 +915,13 @@ function loadConfig(): Config {
     llmOutputScannerModel: process.env["LLM_OUTPUT_SCANNER_MODEL"],
     llmOutputScannerTimeoutMs: process.env["LLM_OUTPUT_SCANNER_TIMEOUT_MS"],
 
-    // Group 11 — Agent maxTurns
+    // Group 11, Agent maxTurns
     defaultMaxTurns: process.env["DEFAULT_MAXTURNS"],
 
-    // Group 12 — Composite ship review/resolve loop
+    // Group 12, Composite ship review/resolve loop
     reviewResolveMaxIterations: process.env["REVIEW_RESOLVE_MAX_ITERATIONS"],
 
-    // Group 13 — Ship workflow (PR shepherding to merge-ready)
+    // Group 13, Ship workflow (PR shepherding to merge-ready)
     maxWallClockPerShipRun: process.env["MAX_WALL_CLOCK_PER_SHIP_RUN"],
     maxShipIterations: process.env["MAX_SHIP_ITERATIONS"],
     cronTickleIntervalMs: process.env["CRON_TICKLE_INTERVAL_MS"],
@@ -936,7 +936,7 @@ function loadConfig(): Config {
 
   if ((cfg.githubPersonalAccessToken?.trim().length ?? 0) > 0) {
     console.warn(
-      "[config] GITHUB_PERSONAL_ACCESS_TOKEN is set — bypassing GitHub App installation token. " +
+      "[config] GITHUB_PERSONAL_ACCESS_TOKEN is set, bypassing GitHub App installation token. " +
         "All GitHub API and git operations will run as the PAT owner. " +
         "Single-tenant only (ALLOWED_OWNERS enforced).",
     );
@@ -953,22 +953,22 @@ function loadConfig(): Config {
     }
   }
 
-  // H7 (issue #102 — defense layer 1b): warn when orchestrator-only secrets
+  // H7 (issue #102, defense layer 1b): warn when orchestrator-only secrets
   // are present in a daemon process. The Helm chart should mount only
   // `daemon-secrets` on daemon Pods; `orchestrator-secrets` (App private
   // key, webhook secret, DB / Valkey URLs) belong on the orchestrator Pod
   // alone. A misconfigured deployment that mounts both bundles wouldn't
-  // crash — the daemon doesn't read these keys — but it weakens the
+  // crash, the daemon doesn't read these keys, but it weakens the
   // capability-minimization gate in `buildProviderEnv()` (the agent
   // subprocess can no longer leak them simply because they aren't there).
-  // Warn only — never refuse to start, since a downed daemon is worse than
+  // Warn only, never refuse to start, since a downed daemon is worse than
   // a degraded security posture.
   //
   // Detection heuristic: only daemons set `ORCHESTRATOR_URL` (they connect
   // TO the orchestrator) or `DAEMON_EPHEMERAL`. The orchestrator/webhook
   // server has neither set so the warn won't fire there. Local-dev setups
   // that share a single `.env` between both processes will fire spuriously
-  // — accepted noise; split the file to silence.
+  //, accepted noise; split the file to silence.
   //
   // `console.warn` (not pino) on purpose: config loads before the logger is
   // built, so this is the only available channel at this point.

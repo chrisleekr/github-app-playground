@@ -5,8 +5,8 @@
  * via the typed helpers in `src/db/queries/ship.ts`.
  *
  * Two-tier semantics from `signature.ts` (T038):
- *   tier 1 — known format; expect ≤2 attempts to fix
- *   tier 2 — opaque failure; expect ≤1 attempt before halting
+ *   tier 1: known format; expect ≤2 attempts to fix
+ *   tier 2: opaque failure; expect ≤1 attempt before halting
  *
  * Cap is `config.fixAttemptsPerSignatureCap` (default 3). Once the
  * cap fires for any signature within an intent, the ship handler

@@ -8,10 +8,10 @@
  * server refuses to resolve a thread belonging to a different PR.
  *
  * Environment variables (validated at startup, fail-fast):
- *   GITHUB_TOKEN   — installation token
- *   REPO_OWNER     — repo owner login
- *   REPO_NAME      — repo name
- *   PR_NUMBER      — pull request number this server is bound to
+ *   GITHUB_TOKEN  : installation token
+ *   REPO_OWNER    : repo owner login
+ *   REPO_NAME     : repo name
+ *   PR_NUMBER     : pull request number this server is bound to
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -175,7 +175,7 @@ server.tool(
       );
       const preflightPr = preflight.node?.pullRequest.number;
       const preflightRepo = preflight.node?.pullRequest.repository;
-      // Per-repo PR numbers — `(owner, repo, number)` identifies the
+      // Per-repo PR numbers, `(owner, repo, number)` identifies the
       // bound PR, not `number` alone. Reject any thread whose repository
       // identity drifts from the bound `(REPO_OWNER, REPO_NAME)` pair.
       const repoMismatch =

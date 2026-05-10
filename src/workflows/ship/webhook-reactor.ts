@@ -1,5 +1,5 @@
 /**
- * Webhook reactor (T022) — early-wakes intents whose state may have
+ * Webhook reactor (T022): early-wakes intents whose state may have
  * changed. Per `contracts/webhook-event-subscriptions.md` §"Reactor flow":
  * each event handler invokes `fanOut(event)` AFTER returning 200-OK.
  *
@@ -144,7 +144,7 @@ export async function fanOut(event: ReactorEvent, deps: ReactorDeps): Promise<vo
       try {
         await processIntentEvent(event, intent, { sql, valkey, botAppLogin: deps.botAppLogin });
       } catch (err) {
-        // Isolate per-intent failures — one error must not abort the rest
+        // Isolate per-intent failures, one error must not abort the rest
         // of the fan-out batch (could be many intents across many PRs).
         logger.error(
           {
@@ -154,7 +154,7 @@ export async function fanOut(event: ReactorEvent, deps: ReactorDeps): Promise<vo
             trigger: event.type,
             err: String(err),
           },
-          "ship reactor failed for intent — continuing with remaining intents",
+          "ship reactor failed for intent, continuing with remaining intents",
         );
       }
     }

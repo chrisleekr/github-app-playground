@@ -98,7 +98,7 @@ export async function runRebase(input: RunRebaseInput): Promise<RebaseOutcome> {
 
   if (result.status === "up-to-date") {
     const guarded = await safePostToGitHub({
-      body: `Already up to date with \`${pr.data.base.ref}\` — nothing to merge.`,
+      body: `Already up to date with \`${pr.data.base.ref}\`, nothing to merge.`,
       source: "system",
       callsite: "ship.scoped.rebase.up-to-date",
       log,

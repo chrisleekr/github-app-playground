@@ -7,7 +7,7 @@
  * constraints byte-for-byte.
  *
  * Higher-level lifecycle functions live in `src/workflows/ship/intent.ts`
- * (T018) — that module wraps these helpers with state-machine guards
+ * (T018): that module wraps these helpers with state-machine guards
  * (e.g. guarded `UPDATE ... WHERE status = '<expected>'` for pause/resume).
  */
 
@@ -21,7 +21,7 @@ import { requireDb } from "..";
  * to a `text[]` column with an inline `::text[]` cast on the placeholder.
  *
  * Bun.sql does not auto-encode JS arrays for `text[]` columns (it
- * encodes them as comma-joined text — see the project memory
+ * encodes them as comma-joined text: see the project memory
  * `feedback_bun_sql_array_binding.md`). Building the literal here keeps
  * the SQL site readable and the safe-binding boundary intact: the
  * literal still travels as a parameter, only the cast is in the SQL.
@@ -115,7 +115,7 @@ export interface InsertIntentInput {
 /**
  * Insert a new `ship_intents` row in `'active'` status. May reject with a
  * unique-constraint violation on `ship_intents_one_active_per_pr` when an
- * in-flight session already exists for the same `(owner, repo, pr_number)` —
+ * in-flight session already exists for the same `(owner, repo, pr_number)`,
  * callers (FR-007a) must surface the maintainer-facing "already in progress"
  * reply rather than retrying.
  */
@@ -224,7 +224,7 @@ export interface AppendIterationInput {
  *
  * For `kind === 'probe'`, callers pass `verdict_json` (full GraphQL
  * snapshot per FR-024 / R9) and `non_readiness_reason`. For other kinds
- * the verdict columns must be omitted — the
+ * the verdict columns must be omitted: the
  * `ship_iterations_verdict_only_on_probe_check` CHECK enforces this.
  */
 export async function appendIteration(
@@ -298,7 +298,7 @@ export async function upsertContinuation(
 /**
  * Return continuations whose `wake_at <= ${now}`. The query joins
  * `ship_intents` purely as a filter (so terminated intents whose
- * continuation rows linger never appear) — the SELECT projects only
+ * continuation rows linger never appear): the SELECT projects only
  * `c.*`, so callers needing the installation/owner/repo/pr_number tuple
  * must look it up separately via `getActiveIntent` / `findIntentsForPr`.
  */
@@ -318,7 +318,7 @@ export async function findDueContinuations(
 }
 
 /**
- * Delete the continuation row for an intent. Idempotent — returns the
+ * Delete the continuation row for an intent. Idempotent: returns the
  * number of rows deleted (0 or 1).
  */
 export async function deleteContinuation(
@@ -367,7 +367,7 @@ export async function incrementFixAttempt(
 
 /**
  * Read the current attempt counter for a (intent, signature). Returns
- * `null` when no attempt has been recorded yet — distinct from `0`.
+ * `null` when no attempt has been recorded yet: distinct from `0`.
  */
 export async function getFixAttempt(
   intent_id: string,

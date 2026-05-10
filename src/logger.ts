@@ -15,14 +15,14 @@ import { redactGitHubTokens } from "./utils/sanitize";
  * (secrets embedded in error messages and stacks).
  */
 export const REDACT_PATHS: readonly string[] = Object.freeze([
-  // Generic auth tokens — Octokit RequestError carries these on err.request.headers
+  // Generic auth tokens, Octokit RequestError carries these on err.request.headers
   "authorization",
   "*.authorization",
   "headers.authorization",
   "*.headers.authorization",
   "req.headers.authorization",
   "request.headers.authorization",
-  // Webhook signature header — octokit lowercases incoming header names
+  // Webhook signature header, octokit lowercases incoming header names
   'headers["x-hub-signature-256"]',
   '*.headers["x-hub-signature-256"]',
   'req.headers["x-hub-signature-256"]',
@@ -50,7 +50,7 @@ export const REDACT_PATHS: readonly string[] = Object.freeze([
  *
  * Pino's path-based `redact.paths` cannot match these when they sit
  * nested under `err.request.headers.*` or `err.response.data.*` (and
- * deeper) — the walker fills that gap. Keep this list in sync with the
+ * deeper): the walker fills that gap. Keep this list in sync with the
  * bare-name entries in `REDACT_PATHS` above.
  */
 const SENSITIVE_FIELD_NAMES_LC: ReadonlySet<string> = new Set([
@@ -80,7 +80,7 @@ function redactCredentialUrls(text: string): string {
   return text.replace(/\b([a-z][a-z0-9+\-.]*:\/\/)([^@/\s:]+):([^@/\s]+)@/gi, "$1***:***@");
 }
 
-/** Censor placeholder — matches pino's default so output is uniform. */
+/** Censor placeholder, matches pino's default so output is uniform. */
 const CENSOR = "[Redacted]";
 
 /** Compose all string-scrubbers applied to free-text fields. */
@@ -130,12 +130,12 @@ function scrubStructured(value: unknown): unknown {
  * compatible with downstream tooling) and then runs string-scrubbers
  * over the fields that empirically carry secrets:
  *
- * - `message` and `stack` — Octokit `RequestError` includes the URL
+ * - `message` and `stack`: Octokit `RequestError` includes the URL
  *   and sometimes the response body in its message; both can echo a
  *   `ghs_…` installation token or an App JWT verbatim.
- * - `request.headers` — `authorization` is covered by the redact path
+ * - `request.headers`: `authorization` is covered by the redact path
  *   list above, but other free-text headers may also carry secrets.
- * - `response.data` — when the upstream replies with a JSON-encoded
+ * - `response.data`: when the upstream replies with a JSON-encoded
  *   error body that includes a token.
  *
  * Operates on a copy so the original Error object is never mutated.
@@ -196,7 +196,7 @@ export function errSerializer(err: unknown): unknown {
  * JSON output in production, pino-pretty in development.
  *
  * Redaction is configured at this level so EVERY child logger and
- * EVERY emitted line passes through the same chokepoint — point
+ * EVERY emitted line passes through the same chokepoint: point
  * helpers like `redactGitHubTokens` (`src/utils/sanitize.ts`) and
  * `redactValkeyUrl` (`src/orchestrator/valkey.ts`) only cover their
  * own call sites. See `docs/operate/observability.md`.

@@ -9,7 +9,7 @@ import type { DispatchTarget } from "./dispatcher";
  * Builds the `context_json` shape the accept handler on
  * `src/orchestrator/connection-handler.ts` reads when a daemon claims a
  * workflow-dispatched job. Mirrors the fields `buildSyntheticBotContext`
- * (in handlers/plan.ts) fills and `serializeBotContext` emits — the only
+ * (in handlers/plan.ts) fills and `serializeBotContext` emits: the only
  * keys consumed downstream on the workflow branch are `owner`, `repo`,
  * `isPR`, `labels`, plus the four fields `validateJobContext` hard-requires
  * (`deliveryId`, `owner`, `repo`, `entityNumber`). All other fields are
@@ -17,7 +17,7 @@ import type { DispatchTarget } from "./dispatcher";
  *
  * `eventName` defaults to `"issue_comment"` for label-triggered runs (no
  * originating comment) and is set to the real event when the dispatcher
- * was called from a comment webhook — that drives which Octokit reactions
+ * was called from a comment webhook: that drives which Octokit reactions
  * endpoint is used downstream.
  */
 export function buildWorkflowContextJson(params: {
@@ -51,7 +51,7 @@ export function buildWorkflowContextJson(params: {
  * workflow-dispatched job. MUST be called before `enqueueJob` so the
  * daemon's accept handler can resolve context_json via the delivery_id.
  * On failure, the caller must release the slot + unwind the workflow_runs
- * row — see `dispatcher.ts` / `orchestrator.ts` for the compensation
+ * row: see `dispatcher.ts` / `orchestrator.ts` for the compensation
  * pattern.
  */
 export async function recordWorkflowExecution(params: {

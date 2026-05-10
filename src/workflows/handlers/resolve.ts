@@ -7,31 +7,31 @@ import { evaluateChecks } from "./checks";
 import { parseOutstandingSection } from "./resolve-report";
 
 /**
- * `resolve` handler — runs a resolution pass on an open pull request:
+ * `resolve` handler: runs a resolution pass on an open pull request:
  * fixes failing CI and replies to/fixes reviewer comments. Renamed from
  * `review` because the previous name implied proactive code review,
  * whereas the actual job is responding to existing reviewer feedback.
  *
  * Stop bounds (ported verbatim from the `pr-auto` skill, per FR-005(c)):
- *   - `FIX_ATTEMPTS_CAP = 3` — max CI-fix attempts the agent should make
+ *   - `FIX_ATTEMPTS_CAP = 3`: max CI-fix attempts the agent should make
  *     within a single resolve iteration. Currently surfaced only via prompt
  *     interpolation (the agent self-enforces it); cross-run enforcement
  *     would require persisting `fix_attempts` to `state` and is intentionally
  *     deferred until we see real overrun in production.
- *   - `POLL_WAIT_SECS_CAP = 900` — 15-minute reviewer-patience window after
+ *   - `POLL_WAIT_SECS_CAP = 900`: 15-minute reviewer-patience window after
  *     which the bot stops waiting for a slow reviewer. Advisory here (the
- *     handler itself is not a polling loop — each re-application of
+ *     handler itself is not a polling loop: each re-application of
  *     `bot:resolve` does one iteration; ship-composite orchestration handles
  *     multi-iteration waits).
  *
  * Comment-validity taxonomy (also from `pr-auto` review-comments skill):
- *   - **Valid**          — reviewer is right; fix required.
- *   - **Partially Valid**— reviewer is partially right; fix scoped portion.
- *   - **Invalid**        — reviewer is wrong; reply with evidence, no code change.
- *   - **Needs Clarification** — ambiguous; reply asking a specific question.
+ *   - **Valid**         : reviewer is right; fix required.
+ *   - **Partially Valid**: reviewer is partially right; fix scoped portion.
+ *   - **Invalid**       : reviewer is wrong; reply with evidence, no code change.
+ *   - **Needs Clarification**: ambiguous; reply asking a specific question.
  *
  * The classification itself is delegated to the multi-turn agent via the
- * prompt — the handler does not call the LLM directly. This keeps the
+ * prompt: the handler does not call the LLM directly. This keeps the
  * heuristic in one place (the prompt) and lets the agent use repo context.
  *
  * Non-negotiable: this handler MUST NEVER call `octokit.rest.pulls.merge`
@@ -62,7 +62,7 @@ export const handler: WorkflowHandler = async (ctx) => {
       };
     }
 
-    // Paginate — `checks.listForRef` defaults to per_page=30. On busy PRs
+    // Paginate, `checks.listForRef` defaults to per_page=30. On busy PRs
     // with large CI matrices, a non-paginated call silently under-reports
     // failing checks and the resolve prompt gets a stale picture. Helper
     // shared with the post-pipeline gate so both apply the same rule.
@@ -74,13 +74,13 @@ export const handler: WorkflowHandler = async (ctx) => {
     );
     const failingChecks = preCheckEvaluation.failingChecks;
 
-    // Count top-level review comments — GitHub's REST API does not expose
+    // Count top-level review comments, GitHub's REST API does not expose
     // thread-level resolution state (only the GraphQL `PullRequestReviewThread`
     // surface does), so this is a conservative upper bound. The agent prompt
     // surfaces it as "open comment threads (some may already be resolved)";
     // resolved threads are over-counted but never under-counted.
     //
-    // Paginate — `listReviewComments` defaults to per_page=30 like
+    // Paginate, `listReviewComments` defaults to per_page=30 like
     // `listForRef`. Without paginate, large PRs silently undercount.
     const reviewComments = await octokit.paginate(octokit.rest.pulls.listReviewComments, {
       owner: target.owner,
@@ -100,7 +100,7 @@ export const handler: WorkflowHandler = async (ctx) => {
         failing_checks: failingChecks,
         top_level_comments: topLevelComments.length,
       },
-      `🔎 **Resolve starting** — ${String(failingChecks.length)} failing checks, ${String(topLevelComments.length)} open comment threads. Refreshing branch and classifying feedback…`,
+      `🔎 **Resolve starting**, ${String(failingChecks.length)} failing checks, ${String(topLevelComments.length)} open comment threads. Refreshing branch and classifying feedback…`,
     );
     const seededRow = await findById(runId);
     const trackingCommentId = seededRow?.tracking_comment_id ?? undefined;
@@ -151,7 +151,7 @@ export const handler: WorkflowHandler = async (ctx) => {
       return {
         status: "failed",
         reason: result.errorMessage ?? "resolve pipeline execution failed",
-        humanMessage: "resolve pipeline execution failed — see server logs for details.",
+        humanMessage: "resolve pipeline execution failed, see server logs for details.",
       };
     }
 
@@ -159,7 +159,7 @@ export const handler: WorkflowHandler = async (ctx) => {
 
     // Post-pipeline CI re-check (issue #93): the agent's prompt-level guards
     // (`FIX_ATTEMPTS_CAP=3`, `## Outstanding`, "STOP. Do NOT mark the run
-    // successful") are agent-self-enforced — a hallucinating agent can still
+    // successful") are agent-self-enforced: a hallucinating agent can still
     // exit on red. Re-fetch the PR's HEAD SHA (the agent may have pushed
     // commits) and re-evaluate against the canonical all-green definition.
     const { data: postPr } = await octokit.rest.pulls.get({
@@ -219,23 +219,23 @@ export const handler: WorkflowHandler = async (ctx) => {
       if (outstandingBody !== null) {
         reasonParts.push("RESOLVE.md ## Outstanding section is non-empty");
       }
-      const reason = `resolve incomplete — ${reasonParts.join("; ")}`;
+      const reason = `resolve incomplete, ${reasonParts.join("; ")}`;
 
       const headline =
         postCheckEvaluation.failingChecks.length > 0
-          ? `🔎 **Resolve incomplete** — ${String(postCheckEvaluation.failingChecks.length)} failing checks remain after the agent finished.`
+          ? `🔎 **Resolve incomplete**, ${String(postCheckEvaluation.failingChecks.length)} failing checks remain after the agent finished.`
           : postCheckEvaluation.pendingChecks.length > 0
-            ? `🔎 **Resolve incomplete** — ${String(postCheckEvaluation.pendingChecks.length)} checks still in flight after the agent finished.`
-            : `🔎 **Resolve incomplete** — outstanding items remain after the agent finished.`;
+            ? `🔎 **Resolve incomplete**, ${String(postCheckEvaluation.pendingChecks.length)} checks still in flight after the agent finished.`
+            : `🔎 **Resolve incomplete**, outstanding items remain after the agent finished.`;
       const ciOutstandingLines: string[] = [];
       if (postCheckEvaluation.failingChecks.length > 0) {
         ciOutstandingLines.push(
-          `CI still red — failing checks: ${postCheckEvaluation.failingChecks.join(", ")}`,
+          `CI still red, failing checks: ${postCheckEvaluation.failingChecks.join(", ")}`,
         );
       }
       if (postCheckEvaluation.pendingChecks.length > 0) {
         ciOutstandingLines.push(
-          `CI still in flight — pending checks: ${postCheckEvaluation.pendingChecks.join(", ")}`,
+          `CI still in flight, pending checks: ${postCheckEvaluation.pendingChecks.join(", ")}`,
         );
       }
       const outstandingSection =
@@ -256,7 +256,7 @@ export const handler: WorkflowHandler = async (ctx) => {
           outstandingPresent: outstandingBody !== null,
           costUsd: result.costUsd,
         },
-        "resolve handler returning incomplete — post-pipeline gate caught surviving failures",
+        "resolve handler returning incomplete, post-pipeline gate caught surviving failures",
       );
       return { status: "incomplete", reason, state, humanMessage };
     }
@@ -264,12 +264,10 @@ export const handler: WorkflowHandler = async (ctx) => {
     const state = { ...baseState, ci_verified: true };
     const headline =
       failingChecks.length === 0 && topLevelComments.length === 0
-        ? `🔎 **Resolve passed** — no failing checks, no open review comments.`
-        : `🔎 **Resolve iteration complete** — CI is now green; started with ${String(failingChecks.length)} failing checks and ${String(topLevelComments.length)} open comment threads (some may already be resolved).`;
+        ? `🔎 **Resolve passed**, no failing checks, no open review comments.`
+        : `🔎 **Resolve iteration complete**, CI is now green; started with ${String(failingChecks.length)} failing checks and ${String(topLevelComments.length)} open comment threads (some may already be resolved).`;
     const reportSection =
-      report.length > 0
-        ? `\n\n${report}`
-        : `\n\n_(no RESOLVE.md report — agent did not write one)_`;
+      report.length > 0 ? `\n\n${report}` : `\n\n_(no RESOLVE.md report, agent did not write one)_`;
     const humanMessage = `${headline}${reportSection}${metaLine}`;
 
     await ctx.setState(state, humanMessage);
@@ -288,7 +286,7 @@ export const handler: WorkflowHandler = async (ctx) => {
     return {
       status: "failed",
       reason: `resolve failed: ${message}`,
-      humanMessage: "resolve pipeline execution failed — see server logs for details.",
+      humanMessage: "resolve pipeline execution failed, see server logs for details.",
     };
   }
 };
@@ -315,22 +313,22 @@ function buildResolvePrompt(input: {
     formatRefreshDirective(input.staleness),
     ``,
     `## Tools you MUST use`,
-    `- \`mcp__github_comment__update_claude_comment\` — refresh the tracking comment at every checkpoint marked **[update tracking comment]** so the user sees live progress.`,
-    `- \`Bash\` (\`gh\`, \`git\`) — \`gh\` and \`git\` are pre-authenticated as the GitHub App installation in this environment, so \`gh pr view\`, \`gh run view --log-failed\`, \`gh api .../pulls/comments/<id>/replies\`, \`git commit\`, \`git push\` all work without further setup.`,
-    `- \`Read\`, \`Edit\`, \`Grep\`, \`Glob\` — for code edits and exploration.`,
+    `- \`mcp__github_comment__update_claude_comment\`, refresh the tracking comment at every checkpoint marked **[update tracking comment]** so the user sees live progress.`,
+    `- \`Bash\` (\`gh\`, \`git\`), \`gh\` and \`git\` are pre-authenticated as the GitHub App installation in this environment, so \`gh pr view\`, \`gh run view --log-failed\`, \`gh api .../pulls/comments/<id>/replies\`, \`git commit\`, \`git push\` all work without further setup.`,
+    `- \`Read\`, \`Edit\`, \`Grep\`, \`Glob\`, for code edits and exploration.`,
     ``,
     `Do the following in order:`,
-    `0. **[update tracking comment]** Post: "🔎 Resolve — refreshing branch (if needed)."`,
+    `0. **[update tracking comment]** Post: "🔎 Resolve, refreshing branch (if needed)."`,
     `1. **Refresh the branch first if needed** (see "Branch state" above). A senior engineer rebases before triaging anything; resolving feedback against a stale branch is wasted work.`,
-    `2. **[update tracking comment]** Post: "🔎 Resolve — diagnosing N failing checks." (replace N; skip this step if N=0)`,
-    `3. If failing checks exist, fetch their logs (\`gh run view --log-failed\`) and classify the failure. If it's a test / lint / type / build failure with a clear root cause, attempt a fix — diagnose, edit, commit, push. The total fix attempts across this step and step 6 are capped at FIX_ATTEMPTS_CAP=3 per iteration (cross-run enforcement is a planned follow-up).`,
-    `4. **[update tracking comment]** Post: "🔎 Resolve — classifying K open comment threads." (replace K; skip if K=0)`,
-    `5. For each open comment thread, classify into one of: Valid | Partially Valid | Invalid | Needs Clarification. The count above is an upper bound — some threads may already be resolved, in which case skip them.`,
-    `   - **Valid / Partially Valid:** fix the code, commit, push, then reply via \`gh api repos/OWNER/REPO/pulls/${String(input.prNumber)}/comments/<comment_id>/replies -X POST -f body="..."\`. **After replying, ALSO mark the thread resolved** via the \`resolve-review-thread\` MCP tool (a public-API GraphQL mutation; do not skip this step — leaving threads unresolved blocks merge UX even though the fix is in).`,
+    `2. **[update tracking comment]** Post: "🔎 Resolve, diagnosing N failing checks." (replace N; skip this step if N=0)`,
+    `3. If failing checks exist, fetch their logs (\`gh run view --log-failed\`) and classify the failure. If it's a test / lint / type / build failure with a clear root cause, attempt a fix, diagnose, edit, commit, push. The total fix attempts across this step and step 6 are capped at FIX_ATTEMPTS_CAP=3 per iteration (cross-run enforcement is a planned follow-up).`,
+    `4. **[update tracking comment]** Post: "🔎 Resolve, classifying K open comment threads." (replace K; skip if K=0)`,
+    `5. For each open comment thread, classify into one of: Valid | Partially Valid | Invalid | Needs Clarification. The count above is an upper bound, some threads may already be resolved, in which case skip them.`,
+    `   - **Valid / Partially Valid:** fix the code, commit, push, then reply via \`gh api repos/OWNER/REPO/pulls/${String(input.prNumber)}/comments/<comment_id>/replies -X POST -f body="..."\`. **After replying, ALSO mark the thread resolved** via the \`resolve-review-thread\` MCP tool (a public-API GraphQL mutation; do not skip this step, leaving threads unresolved blocks merge UX even though the fix is in).`,
     `   - **Invalid:** reply with an evidence-backed explanation; no code change. Do NOT resolve the thread (the reviewer should close it themselves once they accept the rebuttal).`,
     `   - **Needs Clarification:** reply with a specific question to unblock. Do NOT resolve.`,
     ``,
-    `   ### Reply body format (MANDATORY — same shape for all four classes)`,
+    `   ### Reply body format (MANDATORY, same shape for all four classes)`,
     ``,
     `   Use this exact 3-block layout. The format is required so all bot replies look consistent across resolve, review, fix-thread, and explain-thread:`,
     ``,
@@ -339,12 +337,12 @@ function buildResolvePrompt(input: {
     ``,
     `   **<One-line title summarizing what you did or concluded.>**`,
     ``,
-    `   <1–3 sentences of reasoning: WHY the fix was applied, WHY the reviewer was right/wrong, or WHAT specifically you need clarified. Cite file:line where relevant. Do NOT include a diff — the commit link covers that.>`,
+    `   <1–3 sentences of reasoning: WHY the fix was applied, WHY the reviewer was right/wrong, or WHAT specifically you need clarified. Cite file:line where relevant. Do NOT include a diff: the commit link covers that.>`,
     `   \`\`\``,
     ``,
     `   STATUS_LINE per classification (copy verbatim, then optionally append commit metadata):`,
-    `   - Valid:               \`_✅ Addressed_ — commit \\\`<sha>\\\`\``,
-    `   - Partially Valid:     \`_⚠️ Partially addressed_ — commit \\\`<sha>\\\`\``,
+    `   - Valid:               \`_✅ Addressed_, commit \\\`<sha>\\\`\``,
+    `   - Partially Valid:     \`_⚠️ Partially addressed_, commit \\\`<sha>\\\`\``,
     `   - Invalid:             \`_❌ Not applicable_\``,
     `   - Needs Clarification: \`_❓ Need clarification_\``,
     ``,
@@ -353,17 +351,17 @@ function buildResolvePrompt(input: {
     `   - If any check fails: fetch logs (\`gh run view --log-failed\`), attempt one root-cause fix, commit, push, and re-poll. The per-iteration cap is FIX_ATTEMPTS_CAP=3 (across both step 3 and this step combined).`,
     `   - If after 3 fix attempts CI is still failing, STOP. Do NOT mark the run successful. Write the unresolved CI failure into RESOLVE.md "Outstanding" so the maintainer sees it.`,
     `   - "All-green" = no \`failure\` / \`cancelled\` / \`timed_out\` / \`action_required\` conclusions. \`skipped\`, \`neutral\`, and \`success\` are all acceptable terminal states.`,
-    `7. If all checks pass AND all comments resolved AND reviewDecision is APPROVED, post a one-line "resolve complete — ready to merge" comment via \`update_claude_comment\`.`,
+    `7. If all checks pass AND all comments resolved AND reviewDecision is APPROVED, post a one-line "resolve complete, ready to merge" comment via \`update_claude_comment\`.`,
     `8. NEVER call \`gh pr merge\` or \`octokit.pulls.merge\`. Merging is a human action (FR-017).`,
     `9. NEVER push to the base branch ${input.baseBranch}.`,
-    `10. **Before finishing**, write the resolve summary to \`$BOT_ARTIFACT_DIR/RESOLVE.md\` (path is OUTSIDE the cloned repo — never \`git add\` it).`,
+    `10. **Before finishing**, write the resolve summary to \`$BOT_ARTIFACT_DIR/RESOLVE.md\` (path is OUTSIDE the cloned repo, never \`git add\` it).`,
     `    Required sections:`,
-    `    ## Summary — one paragraph: what state the PR is in now and what's left.`,
-    `    ## CI status — list each failing check and what you did about it; include the FINAL post-fix CI state from step 6.`,
-    `    ## Review comments — for each comment: classification, action taken, commit/reply link, and whether the thread was resolved.`,
-    `    ## Commits pushed — sha · subject.`,
-    `    ## Outstanding — what still blocks merge (if anything), including any CI failures that survived the 3-attempt cap.`,
-    `    This becomes the final tracking comment body — be specific, cite files and links.`,
+    `    ## Summary, one paragraph: what state the PR is in now and what's left.`,
+    `    ## CI status, list each failing check and what you did about it; include the FINAL post-fix CI state from step 6.`,
+    `    ## Review comments, for each comment: classification, action taken, commit/reply link, and whether the thread was resolved.`,
+    `    ## Commits pushed, sha · subject.`,
+    `    ## Outstanding, what still blocks merge (if anything), including any CI failures that survived the 3-attempt cap.`,
+    `    This becomes the final tracking comment body, be specific, cite files and links.`,
     `11. **[update tracking comment]** Final: paste the full RESOLVE.md contents.`,
   ].join("\n");
 }

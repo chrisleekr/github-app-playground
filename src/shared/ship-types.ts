@@ -2,7 +2,7 @@ import { z } from "zod";
 
 /**
  * Terminal session states for a `ship_intents` row. A session in any of
- * these states is finished — `terminated_at` is set, no further reactor
+ * these states is finished: `terminated_at` is set, no further reactor
  * fan-out, no further iterations. The Postgres `ship_intents.status`
  * CHECK constraint is the union of these values plus the non-terminal
  * `'active'` and `'paused'` (FR-011 pause/resume cycle); see migration
@@ -33,7 +33,7 @@ export function isSessionTerminalState(value: unknown): value is SessionTerminal
 /**
  * Full status enum for `ship_intents.status`: the terminal states above
  * plus the two non-terminal in-flight states `'active'` (currently
- * iterating or waiting) and `'paused'` (FR-011 pause/resume cycle —
+ * iterating or waiting) and `'paused'` (FR-011 pause/resume cycle,
  * non-terminal, can transition back to `'active'`).
  */
 export const SESSION_STATUSES = ["active", "paused", ...SESSION_TERMINAL_STATES] as const;
@@ -76,7 +76,7 @@ export type TriggerSurface = (typeof TRIGGER_SURFACES)[number];
 export const TriggerSurfaceSchema = z.enum(TRIGGER_SURFACES);
 
 /**
- * The four ship-lifecycle verbs (FR-018, FR-027) — these write a
+ * The four ship-lifecycle verbs (FR-018, FR-027): these write a
  * `ship_intents` session row and drive the long-running shepherding
  * pipeline.
  */
@@ -84,7 +84,7 @@ export const SHIP_COMMAND_INTENTS = ["ship", "stop", "resume", "abort"] as const
 export type ShipCommandIntent = (typeof SHIP_COMMAND_INTENTS)[number];
 
 /**
- * The seven scoped verbs (FR-029..FR-035) — stateless one-shot actions
+ * The seven scoped verbs (FR-029..FR-035): stateless one-shot actions
  * that do NOT consume a `ship_intents` session row. Each runs to
  * completion in a single agent invocation and exits.
  */
@@ -135,10 +135,10 @@ export const INTENT_ELIGIBLE_SURFACES: Record<CommandIntent, readonly EventSurfa
   resume: ["pr-comment", "review-comment", "pr-label"],
   abort: ["pr-comment", "review-comment", "pr-label"],
   "fix-thread": ["review-comment"],
-  // chat-thread is the general conversational executor — eligible on
+  // chat-thread is the general conversational executor, eligible on
   // every comment surface so the bot can engage on review threads,
   // top-level PR comments, and issue comments alike. Issue and PR
-  // labels are intentionally excluded — labels are imperative, not
+  // labels are intentionally excluded, labels are imperative, not
   // conversational.
   "chat-thread": ["review-comment", "pr-comment", "issue-comment"],
   summarize: ["pr-comment", "review-comment", "pr-label"],
@@ -161,13 +161,13 @@ export interface CanonicalCommandPr {
 
 /**
  * The single canonical record produced by `trigger-router.routeTrigger(...)`
- * — every downstream handler reads commands in this shape regardless of
+ * every downstream handler reads commands in this shape regardless of
  * which surface (literal comment, natural-language, or GitHub label) the
  * maintainer used. The `surface` field exists for observability (FR-016)
  * only and MUST NOT influence eligibility, authorisation, or routing.
  *
  * For issue-targeted scoped commands (`investigate`, `triage`, `open-pr`),
- * `pr.number` carries the issue number — the `pr` field is the
+ * `pr.number` carries the issue number: the `pr` field is the
  * conversation-context target regardless of GitHub's PR-vs-Issue
  * distinction, mirroring the unified `issue_comment` event surface.
  *
@@ -176,7 +176,7 @@ export interface CanonicalCommandPr {
  *
  * `thread_id` is set only when the trigger originated from a
  * `pull_request_review_comment` event. **Identifier semantics**: it
- * carries the REST `payload.comment.id` (numeric, stringified) — the
+ * carries the REST `payload.comment.id` (numeric, stringified): the
  * originating review-comment id, NOT the GraphQL
  * `PullRequestReviewThread` node ID. Downstream handlers that need to
  * resolve the parent review-thread node ID (e.g., the `fix-thread`
@@ -204,7 +204,7 @@ export interface CanonicalCommand {
   /**
    * REST id of the triggering comment (always `payload.comment.id`).
    * Set on comment surfaces. NOTE: this differs from `thread_id` on
-   * review-comment replies — `thread_id` resolves to the top-level
+   * review-comment replies: `thread_id` resolves to the top-level
    * comment via `payload.comment.in_reply_to_id ?? payload.comment.id`
    * so the cache and chat_proposals row scope to the thread root, not
    * the individual reply. The two ids only coincide when the comment

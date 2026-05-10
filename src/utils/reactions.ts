@@ -6,10 +6,10 @@ import type { TriggerEventType } from "../shared/dispatch-types";
 /**
  * GitHub comment reaction lifecycle for bot-driven workflows.
  *
- *   eyes     — trigger detected, work queued
- *   rocket   — job dispatched to a daemon
- *   hooray   — workflow succeeded
- *   confused — workflow failed (handler error, daemon disconnect, OOM)
+ *   eyes    : trigger detected, work queued
+ *   rocket  : job dispatched to a daemon
+ *   hooray  : workflow succeeded
+ *   confused: workflow failed (handler error, daemon disconnect, OOM)
  *
  * Reactions are additive on GitHub: adding `confused` after `eyes` does not
  * remove `eyes`. The combined set is the audit trail of the run.

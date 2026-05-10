@@ -8,7 +8,7 @@
  * Non-actionable issues receive a refusal reply citing the classifier's
  * verdict; no branch is created and no PR is opened.
  *
- * **The created draft PR does NOT auto-trigger `bot:ship`** (FR-018) —
+ * **The created draft PR does NOT auto-trigger `bot:ship`** (FR-018),
  * the maintainer must invoke ship explicitly if they want shepherding
  * to start.
  *
@@ -35,7 +35,7 @@ function buildBackLinkMarker(pr_number: number): string {
 }
 
 /**
- * Match a marker WITHOUT a known PR number — used to detect any prior
+ * Match a marker WITHOUT a known PR number: used to detect any prior
  * back-link before creating a new PR. The verb prefix is stable; the
  * suffix is whatever PR number the bot last opened against the issue.
  */
@@ -118,7 +118,7 @@ async function findExistingBackLink(input: {
     for (const comment of page.data) {
       // Spoofing guard: a human commenter can post a back-link marker
       // verbatim to permanently block `bot:open-pr` re-triggers. Only
-      // markers authored by a Bot account count toward the dup check —
+      // markers authored by a Bot account count toward the dup check,
       // marker on a human comment is treated as conversation, not state.
       if (comment.user?.type !== "Bot") continue;
       const body = comment.body ?? "";
@@ -131,12 +131,12 @@ async function findExistingBackLink(input: {
 /**
  * Outcome of the policy-only phase (idempotency + classification +
  * non-actionable refusal). The caller decides what to do with an
- * `actionable` verdict — either create the PR inline (`runOpenPr`) or
+ * `actionable` verdict: either create the PR inline (`runOpenPr`) or
  * enqueue an asynchronous daemon job (dispatch-scoped's `open-pr` path).
  *
  * Crucially, this phase NEVER posts the `<!-- bot:open-pr:N -->`
  * back-link marker. Posting the marker is the responsibility of whoever
- * actually creates the PR — posting it pre-emptively (e.g. with a
+ * actually creates the PR: posting it pre-emptively (e.g. with a
  * synthetic `pr_number: 0`) would permanently block re-triggers because
  * `findExistingBackLink` matches by the verb prefix alone.
  */
@@ -181,7 +181,7 @@ export async function runOpenPrPolicy(
   });
   if (existingMarkerId !== null) {
     const guarded = await safePostToGitHub({
-      body: `I already opened a PR for this issue — see comment #${existingMarkerId}. Re-trigger refused to avoid duplicates.`,
+      body: `I already opened a PR for this issue, see comment #${existingMarkerId}. Re-trigger refused to avoid duplicates.`,
       source: "system",
       callsite: "ship.scoped.open-pr.duplicate",
       log,
@@ -225,13 +225,13 @@ export async function runOpenPrPolicy(
     });
   } catch (err) {
     const error_message = err instanceof Error ? err.message : String(err);
-    // Do NOT inline `error_message` in the public comment — LLM client
+    // Do NOT inline `error_message` in the public comment, LLM client
     // errors can carry the raw upstream response (request URLs with
     // bearer tokens, prompt fragments). The structured `error_message`
     // is still surfaced via the return value for operator dashboards
     // and the warn log line below carries the full `err`.
     const guarded = await safePostToGitHub({
-      body: `I couldn't classify this issue. No PR opened — see server logs for details.`,
+      body: `I couldn't classify this issue. No PR opened, see server logs for details.`,
       source: "system",
       callsite: "ship.scoped.open-pr.classifier-failed",
       log,
@@ -257,7 +257,7 @@ export async function runOpenPrPolicy(
     // verdict.kind/verdict.reason are LLM-classifier output; route through
     // the agent-source path so the LLM scanner runs on the body.
     const guarded = await safePostToGitHub({
-      body: `I'm not opening a PR for this — classifier kind is \`${verdict.kind}\`.\n\n> ${verdict.reason}`,
+      body: `I'm not opening a PR for this, classifier kind is \`${verdict.kind}\`.\n\n> ${verdict.reason}`,
       source: "agent",
       callsite: "ship.scoped.open-pr.non-actionable",
       log,
@@ -309,18 +309,18 @@ export async function runOpenPr(input: RunOpenPrInput): Promise<OpenPrOutcome> {
     });
   } catch (err) {
     // Without this guard, a thrown rejection from createBranchAndPr
-    // exits runOpenPr with no maintainer-visible outcome — the issue
+    // exits runOpenPr with no maintainer-visible outcome: the issue
     // looks like the trigger was ignored. Surface the failure with the
     // same shape as the classifier-failed path so downstream handlers
     // (logs, dashboards) treat them uniformly.
     const error_message = err instanceof Error ? err.message : String(err);
-    // Do NOT inline `error_message` in the public comment — octokit
+    // Do NOT inline `error_message` in the public comment, octokit
     // error stacks include the request URL with the installation
     // token (`https://x-access-token:GHS_xxx@…`). The structured
     // `error_message` still flows out via the return value for operator
     // surfaces; the full `err` is logged below.
     const guarded = await safePostToGitHub({
-      body: `I classified this issue as actionable but couldn't create the draft PR — see server logs for details.`,
+      body: `I classified this issue as actionable but couldn't create the draft PR, see server logs for details.`,
       source: "system",
       callsite: "ship.scoped.open-pr.branch-failed",
       log,
@@ -377,7 +377,7 @@ export async function runOpenPr(input: RunOpenPrInput): Promise<OpenPrOutcome> {
         branch_name: created.branch_name,
         pr_url: created.pr_url,
       },
-      "open_pr orphaned — draft PR opened but back-link comment failed",
+      "open_pr orphaned, draft PR opened but back-link comment failed",
     );
     return {
       kind: "orphaned",

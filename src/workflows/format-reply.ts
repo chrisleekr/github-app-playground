@@ -1,12 +1,12 @@
 /**
- * Bot reply formatter — emits the standard 3-block layout
+ * Bot reply formatter: emits the standard 3-block layout
  * shared by every bot reply surface (resolve, review, fix-thread,
  * explain-thread). Format: `<status>[meta]` line, blank, bold title,
  * blank, prose reasoning.
  *
  * NOTE: the LLM agent prompts in `buildResolvePrompt` /
  * `buildReviewPrompt` and `EXPLAIN_THREAD_SYSTEM_PROMPT` describe this
- * same shape inline — agents don't run TypeScript, so the format
+ * same shape inline: agents don't run TypeScript, so the format
  * description has to live verbatim in the prompt strings. Keep the
  * agent-facing examples in those prompts in sync with the output of
  * this helper.

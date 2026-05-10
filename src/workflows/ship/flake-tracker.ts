@@ -5,7 +5,7 @@
  * tracking comment.
  *
  * Non-required checks that flake go into the annotation but never gate
- * the verdict — the bot never blocks merge-readiness on a non-required
+ * the verdict: the bot never blocks merge-readiness on a non-required
  * status that flips green-then-red-then-green.
  */
 
@@ -76,7 +76,7 @@ export interface TriggerTargetedRerunInput {
 
 /**
  * REST `POST /repos/{owner}/{repo}/check-runs/{check_run_id}/rerequest`.
- * Best-effort — rerequest failures are logged but don't halt the
+ * Best-effort: rerequest failures are logged but don't halt the
  * session. The probe will re-evaluate on the next iteration regardless.
  */
 export async function triggerTargetedRerun(input: TriggerTargetedRerunInput): Promise<void> {
@@ -90,7 +90,7 @@ export async function triggerTargetedRerun(input: TriggerTargetedRerunInput): Pr
         check_run_id: check.check_run_id,
       });
     } catch (err) {
-      // Best-effort — log but do not halt. Caller's iteration loop
+      // Best-effort, log but do not halt. Caller's iteration loop
       // re-probes the check state regardless of rerun outcome.
       logger.warn(
         {
@@ -140,7 +140,7 @@ export function projectHistoryFromProbe(probeResponse: ProbeResponseShape): Chec
         conclusion: c.conclusion ?? null,
         is_required: c.isRequired,
         // databaseId is the numeric REST id used by the rerequest endpoint.
-        // StatusContext entries have no equivalent — they remain null.
+        // StatusContext entries have no equivalent, they remain null.
         check_run_id: c.databaseId ?? null,
       });
     } else {

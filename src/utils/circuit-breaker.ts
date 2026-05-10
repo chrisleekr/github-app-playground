@@ -34,7 +34,7 @@ export interface CircuitBreakerOptions {
    * deterministic without sleeping.
    */
   readonly now?: () => number;
-  /** Optional observer hook — fires on every state transition. */
+  /** Optional observer hook, fires on every state transition. */
   readonly onStateChange?: (
     from: CircuitBreakerState,
     to: CircuitBreakerState,
@@ -54,7 +54,7 @@ export interface CircuitBreakerExecuteResult<T> {
 }
 
 /**
- * Three-state breaker. Not thread-safe in the multi-process sense — the
+ * Three-state breaker. Not thread-safe in the multi-process sense: the
  * webhook server runs as a single Node-compatible Bun process, so shared
  * in-process state is sufficient. If the process is restarted the breaker
  * resets to `closed`; a fresh outage re-trips it within ≤5 calls.
@@ -82,7 +82,7 @@ export class CircuitBreaker {
     this.onStateChange = opts.onStateChange ?? ((): void => undefined);
   }
 
-  /** Current state — used by tests and telemetry. */
+  /** Current state, used by tests and telemetry. */
   getState(): CircuitBreakerState {
     return this.state;
   }
@@ -91,7 +91,7 @@ export class CircuitBreaker {
    * @internal Reset the breaker to its initial state. Exposed for tests so
    * modules that hold a long-lived breaker singleton can clear state between
    * cases without casting into private fields. Not intended for production
-   * callers — transitions produced this way bypass `onStateChange`.
+   * callers: transitions produced this way bypass `onStateChange`.
    */
   reset(): void {
     this.state = "closed";
@@ -102,7 +102,7 @@ export class CircuitBreaker {
   /**
    * Execute `fn` under the breaker. Returns an outcome discriminator so the
    * caller can distinguish "didn't run" (circuit-open) from "ran and errored"
-   * — the two collapse at the router layer but tests assert on them.
+   * the two collapse at the router layer but tests assert on them.
    */
   async execute<T>(fn: () => Promise<T>): Promise<CircuitBreakerExecuteResult<T>> {
     if (this.state === "open") {

@@ -177,7 +177,7 @@ export async function reapOnce(sql: SQL = requireDb()): Promise<ReapResult> {
         liveOrchestratorCount: orchIds.length,
         liveDaemonCount: daemonIds.length,
       },
-      "Liveness reaper pass — nothing to reap",
+      "Liveness reaper pass, nothing to reap",
     );
   }
 
@@ -185,7 +185,7 @@ export async function reapOnce(sql: SQL = requireDb()): Promise<ReapResult> {
 }
 
 /**
- * Start the periodic reaper. Idempotent — calling twice does nothing.
+ * Start the periodic reaper. Idempotent: calling twice does nothing.
  *
  * Cadence comes from `config.livenessReaperIntervalMs`. Min sane value is
  * the orchestrator heartbeat refresh interval (20s); below that, a
@@ -198,7 +198,7 @@ export function startLivenessReaper(): void {
     void reapOnce().catch((err: unknown) => {
       logger.error(
         { err: err instanceof Error ? err.message : String(err) },
-        "Liveness reaper pass threw — will retry on next tick",
+        "Liveness reaper pass threw, will retry on next tick",
       );
     });
   }, intervalMs);

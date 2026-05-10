@@ -7,7 +7,7 @@
  *   3. Triggering principal is not in `ALLOWED_OWNERS`
  *   4. Target branch matches `SHIP_FORBIDDEN_TARGET_BRANCHES`
  *
- * Pure verdict — never mutates DB or comments. Callers (handler / router)
+ * Pure verdict: never mutates DB or comments. Callers (handler / router)
  * surface the maintainer-facing message.
  */
 
@@ -106,7 +106,7 @@ export async function checkEligibility(input: EligibilityInput): Promise<Eligibi
     return {
       eligible: false,
       reason: "fork",
-      message: "Cannot shepherd a PR from a fork — push permission is unavailable.",
+      message: "Cannot shepherd a PR from a fork, push permission is unavailable.",
     };
   }
   if (forbidden.length > 0 && forbidden.includes(pr.baseRefName)) {

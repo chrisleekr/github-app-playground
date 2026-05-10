@@ -11,7 +11,7 @@
 /**
  * Merge-readiness probe query (FR-021, FR-022). Fetches PR metadata,
  * the head commit's `statusCheckRollup` (CI), the first 100 review
- * threads, and the latest 20 reviews — enough for `computeVerdict()` to
+ * threads, and the latest 20 reviews: enough for `computeVerdict()` to
  * decide mergeability without round-tripping the REST API.
  *
  * The first 100 review threads are paginated separately via

@@ -68,7 +68,7 @@ export async function executeScopedFixThread(
 
   const octokit = new Octokit({ auth: input.installationToken });
   // Octokit-level errors (deleted comment, closed PR, abuse rate limit) are
-  // contractually `halted`, not `failed` — the executor itself ran cleanly,
+  // contractually `halted`, not `failed`: the executor itself ran cleanly,
   // the user-visible state simply prevented the reply. Bubbling these as
   // `failed` would conflate "user deleted the comment" with "executor crashed."
   try {
@@ -125,7 +125,7 @@ export async function executeScopedFixThread(
     if (isTerminalSemanticError && !isRateLimited) {
       log.warn(
         { err: reason, status, event: SHIP_LOG_EVENTS.scoped.fixThread.daemonFailed },
-        "scoped-fix-thread thread reply failed — halting on semantic GitHub error",
+        "scoped-fix-thread thread reply failed, halting on semantic GitHub error",
       );
       return { status: "halted", reason: `thread reply failed: ${reason}` };
     }

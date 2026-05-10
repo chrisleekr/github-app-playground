@@ -31,7 +31,7 @@ export async function buildHeartbeatPong(
     } catch (err) {
       logger.warn(
         { err },
-        "Capability rescan failed during heartbeat — keeping last-known capabilities",
+        "Capability rescan failed during heartbeat, keeping last-known capabilities",
       );
     }
   }

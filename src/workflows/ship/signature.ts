@@ -2,17 +2,17 @@
  * Failure-signature derivation (T038, FR-013, research.md R4).
  *
  * Two-tier strategy:
- *   Tier 1 — extract a normalised error string from the check output.
+ *   Tier 1: extract a normalised error string from the check output.
  *            Strips line/column numbers, repo-prefixed paths, ANSI
  *            escapes. Same lint rule on different lines/files → same
  *            signature, so the fix-attempts ledger correctly counts
  *            "we already tried fixing this rule N times."
- *   Tier 2 — fallback when Tier 1 yields nothing extractable. Hashes
+ *   Tier 2: fallback when Tier 1 yields nothing extractable. Hashes
  *            (check_name, conclusion, last_50_lines_normalised) so we
  *            still distinguish OOM-killed Docker builds from a
  *            no-output failure.
  *
- * Pure function — no DB, no network. Consumed by `fix-attempts.ts`
+ * Pure function: no DB, no network. Consumed by `fix-attempts.ts`
  * (T039) for the cap check.
  */
 
@@ -39,7 +39,7 @@ const HEX_SHA = /\b[0-9a-f]{7,40}\b/g;
 const TRAILING_WS = /[ \t]+$/gm;
 
 /**
- * Tier-1 patterns — each entry exposes one stable capture group that
+ * Tier-1 patterns: each entry exposes one stable capture group that
  * encodes the lint/type class only (rule id, error code, error class).
  * Volatile message text (variable names, paths, source snippets) is
  * matched but not captured, so two failures of the same rule on

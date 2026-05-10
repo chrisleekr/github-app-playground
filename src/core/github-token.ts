@@ -11,7 +11,7 @@ import { config } from "../config";
  *   the existing multi-tenant flow is unchanged.
  *
  * Downstream consumers (git credential helper, executor env, MCP server env)
- * are token-agnostic — they accept whichever string this returns.
+ * are token-agnostic: they accept whichever string this returns.
  *
  * `pat` defaults to the singleton config so production callers stay one-arg;
  * tests inject explicit values to avoid mocking the config module.
@@ -21,7 +21,7 @@ export async function resolveGithubToken(
   pat?: string,
 ): Promise<string> {
   // `nonEmptyOptionalString` in src/config.ts strips empty strings, so the
-  // singleton field is `string | undefined` at runtime — narrow explicitly
+  // singleton field is `string | undefined` at runtime, narrow explicitly
   // because z.preprocess loses that in the inferred Config type.
   const fallback: string | undefined =
     typeof config.githubPersonalAccessToken === "string"

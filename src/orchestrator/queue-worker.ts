@@ -18,7 +18,7 @@ function sleep(ms: number, abortSignal: { aborted: boolean }): Promise<void> {
       return;
     }
     const timer = setTimeout(resolve, ms);
-    // Best-effort abort — caller sets aborted=true and we poll it on wake.
+    // Best-effort abort, caller sets aborted=true and we poll it on wake.
     // The setTimeout still fires; the outer loop checks `stopRequested`
     // immediately after resolve and exits.
     void timer;
@@ -65,14 +65,14 @@ async function iterate(instanceId: string, abortSignal: { aborted: boolean }): P
         err: err instanceof Error ? err.message : String(err),
         deliveryId: job.deliveryId,
       },
-      "dispatchJob threw — treating as miss and re-queuing",
+      "dispatchJob threw, treating as miss and re-queuing",
     );
   }
 
   if (dispatched) {
     logger.debug(
       { deliveryId: job.deliveryId, instanceId },
-      "Queue worker dispatched job — releasing lease",
+      "Queue worker dispatched job, releasing lease",
     );
     await releaseLeasedJob(instanceId, raw);
     return;
@@ -84,7 +84,7 @@ async function iterate(instanceId: string, abortSignal: { aborted: boolean }): P
   if (job.retryCount >= config.jobMaxRetries) {
     logger.warn(
       { deliveryId: job.deliveryId, retryCount: job.retryCount },
-      "Job exceeded max retries with no capable daemon in the fleet — failing terminally",
+      "Job exceeded max retries with no capable daemon in the fleet, failing terminally",
     );
     await markJobTerminallyFailed(job, "No capable daemon in the fleet after maximum retries");
     await releaseLeasedJob(instanceId, raw);
@@ -101,7 +101,7 @@ async function iterate(instanceId: string, abortSignal: { aborted: boolean }): P
 }
 
 /**
- * Start the per-orchestrator queue worker. Idempotent — calling twice does
+ * Start the per-orchestrator queue worker. Idempotent: calling twice does
  * nothing. The worker runs until `stopQueueWorker()` is awaited.
  */
 export function startQueueWorker(): void {
@@ -119,11 +119,11 @@ export function startQueueWorker(): void {
         await iterate(instanceId, abortSignal);
       } catch (err) {
         // Catastrophic errors (Valkey blip, DB outage) should NOT kill the
-        // worker — sleep briefly and keep going. dispatchJob failures are
+        // worker, sleep briefly and keep going. dispatchJob failures are
         // already caught inside `iterate` and treated as misses.
         logger.error(
           { err: err instanceof Error ? err.message : String(err), instanceId },
-          "Queue worker iteration failed — sleeping before retry",
+          "Queue worker iteration failed, sleeping before retry",
         );
         await sleep(EMPTY_POLL_MS * 5, abortSignal);
       }
@@ -137,7 +137,7 @@ export function startQueueWorker(): void {
  * Signal the worker to stop and wait for the in-flight iteration to finish.
  * Safe to call before `startQueueWorker` (no-op) and more than once.
  *
- * Leased jobs still in `queue:processing:{instanceId}` are NOT drained here —
+ * Leased jobs still in `queue:processing:{instanceId}` are NOT drained here,
  * they are recovered on next startup by `recoverProcessingList`, or by the
  * cross-instance reaper on any live orchestrator. Draining during shutdown
  * would race Valkey's closing connection.

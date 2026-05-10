@@ -31,7 +31,7 @@ import { setState } from "./tracking-mirror";
  *     "next" child.
  *   - Job enqueue for the newly-inserted next child happens AFTER COMMIT so
  *     the queue never observes a run id that doesn't exist in the DB.
- *   - On a child failure, no further children are inserted — the parent is
+ *   - On a child failure, no further children are inserted: the parent is
  *     flipped to `failed` with `failedAtStepIndex` and the cascade stops.
  */
 
@@ -107,14 +107,14 @@ export async function onStepComplete(
          WHERE id = ${parent.id}
       `;
       const humanMessage = isIncomplete
-        ? `ship halted at step ${String(childStepIndex)} (${parent.workflow_name} → ${child.workflow_name}) — ${child.workflow_name} returned incomplete; see PR tracking comment for outstanding items.`
-        : `ship halted at step ${String(childStepIndex)} (${parent.workflow_name} → ${child.workflow_name}) — see server logs for details.`;
+        ? `ship halted at step ${String(childStepIndex)} (${parent.workflow_name} → ${child.workflow_name}), ${child.workflow_name} returned incomplete; see PR tracking comment for outstanding items.`
+        : `ship halted at step ${String(childStepIndex)} (${parent.workflow_name} → ${child.workflow_name}), see server logs for details.`;
       postCommit = {
         enqueue: null,
         parentRunId: parent.id,
         parentTerminal: {
           status: "failed",
-          // Do NOT inline `result.reason` for the generic-failed branch —
+          // Do NOT inline `result.reason` for the generic-failed branch,
           // handlers persist raw error strings in `reason` for DB+log
           // forensics and that surface is public on GitHub. The
           // `incomplete:` prefix is a private executor-internal marker
@@ -131,7 +131,7 @@ export async function onStepComplete(
     stepRuns.push(childRunId);
 
     // ── Bespoke ship review/resolve loop ──────────────────────────────────
-    // Localised here intentionally — generalising the registry to express
+    // Localised here intentionally, generalising the registry to express
     // "loop back to step N when condition X holds" would add surface area
     // for one use case. If a second composite ever needs looping, extract.
     //
@@ -161,7 +161,7 @@ export async function onStepComplete(
 
     const cap = config.reviewResolveMaxIterations;
     // The early-exit floor is `min(2, cap)` so a `cap === 1` deployment
-    // — which means "never loop" — still terminates on its single review.
+    //, which means "never loop", still terminates on its single review.
     // For `cap >= 2` this stays at 2, preserving the "at least two
     // independent passes" guarantee the user originally asked for.
     const reviewClean =
@@ -183,11 +183,11 @@ export async function onStepComplete(
                state = state || ${successPatch}::jsonb
          WHERE id = ${parent.id}
       `;
-      let humanMessage = `ship complete — all ${String(steps.length)} steps succeeded.`;
+      let humanMessage = `ship complete, all ${String(steps.length)} steps succeeded.`;
       if (reviewClean) {
-        humanMessage = `ship complete — review found no issues after ${String(reviewIterations)} iterations.`;
+        humanMessage = `ship complete, review found no issues after ${String(reviewIterations)} iterations.`;
       } else if (isShipParent && reviewIterations >= cap && lastReviewFindings > 0) {
-        humanMessage = `ship complete — review-${String(reviewIterations)} flagged ${String(lastReviewFindings)} issue${
+        humanMessage = `ship complete, review-${String(reviewIterations)} flagged ${String(lastReviewFindings)} issue${
           lastReviewFindings === 1 ? "" : "s"
         }; resolve-${String(reviewIterations)} attempted fixes. Manual re-review recommended.`;
       }
@@ -336,7 +336,7 @@ export async function onStepComplete(
       const reason = `enqueue failed: ${err instanceof Error ? err.message : String(err)}`;
       logger.error(
         { err, nextRunId: job.runId, parentId: job.parentRunId },
-        "orchestrator post-commit enqueue failed — compensating by marking child and parent failed",
+        "orchestrator post-commit enqueue failed, compensating by marking child and parent failed",
       );
       await markFailed(job.runId, reason).catch((markErr: unknown) => {
         logger.error(
@@ -358,7 +358,7 @@ export async function onStepComplete(
         ...postCommit,
         parentTerminal: {
           status: "failed",
-          humanMessage: `ship halted at step ${String(job.parentStepIndex)} (${job.workflowName}): enqueue failed — see daemon logs for retry.`,
+          humanMessage: `ship halted at step ${String(job.parentStepIndex)} (${job.workflowName}): enqueue failed, see daemon logs for retry.`,
         },
       };
     }
@@ -376,7 +376,7 @@ export async function onStepComplete(
     });
 
     // Composite parents (e.g., ship) terminate here, not in the daemon
-    // executor — so this is the right point to react on the user's trigger
+    // executor, so this is the right point to react on the user's trigger
     // comment with the chain's final outcome.
     await reactOnParentTrigger(
       deps,
@@ -391,7 +391,7 @@ export async function onStepComplete(
  * if present and the intent is non-terminal, push it onto the `ship:tickle`
  * sorted set with score 0 so the scheduler picks it up on the next tick.
  *
- * Defensive: a Valkey blip MUST NOT propagate up — the worst outcome is a
+ * Defensive: a Valkey blip MUST NOT propagate up: the worst outcome is a
  * ship intent that waits for the next periodic tickle (config-driven, in
  * minutes), not a daemon-side throw that fails the parent cascade.
  *
@@ -433,7 +433,7 @@ function parseResetsClock(
   if (match === undefined) return null;
   // Reject ambiguous bare-hour formats like "resets 6 UTC" (no am/pm and
   // no minute). Treating them as 06:00 risks the next-day rollover at
-  // line 437 pushing the wake out by ~24h when now is past the hour —
+  // line 437 pushing the wake out by ~24h when now is past the hour,
   // strictly worse than the caller's +1h fallback for unparseable clocks.
   if (match[2] === undefined && match[3] === undefined) return null;
   const hourRaw = Number(match[1]);
@@ -464,13 +464,13 @@ export function detectTransientQuotaError(
   nowMs: number = Date.now(),
 ): { retryAtMs: number; resetPhrase: string } | null {
   if (reason === undefined || reason === "") return null;
-  // Two confirmed Anthropic usage-limit signals — we deliberately do NOT
+  // Two confirmed Anthropic usage-limit signals: we deliberately do NOT
   // match a bare "rate limit" / "usage limit" because that pattern also
   // appears in GitHub secondary-rate-limit responses and other upstream
   // throttling we should not auto-defer:
   //   1. The Anthropic-specific phrase "hit your limit" (subscription
   //      quota copy from the Claude Agent SDK).
-  //   2. A "resets ... UTC" clock — the Anthropic API includes the reset
+  //   2. A "resets ... UTC" clock: the Anthropic API includes the reset
   //      boundary inline; treat that as a sufficient confirmation.
   const hasAnthropicPhrase = /hit your limit/i.test(reason);
   const hasResetsClock = /\bresets\b/i.test(reason);
@@ -480,7 +480,7 @@ export function detectTransientQuotaError(
   if (parsed !== null) return parsed;
 
   // No parseable clock. The +1h fallback only fires for the Anthropic-
-  // specific phrase — a bare "resets" without it could be unrelated.
+  // specific phrase: a bare "resets" without it could be unrelated.
   if (!hasAnthropicPhrase) return null;
   return { retryAtMs: nowMs + QUOTA_FALLBACK_RETRY_DELAY_MS, resetPhrase: "fallback_1h" };
 }
@@ -511,27 +511,27 @@ async function maybeEarlyWakeShipIntent(childRunId: string, log: pino.Logger): P
         intent_id: intentId,
         child_run_id: childRunId,
       },
-      "ship-tickle early-wake skipped — intent lookup failed (non-fatal — periodic scan will catch up)",
+      "ship-tickle early-wake skipped, intent lookup failed (non-fatal, periodic scan will catch up)",
     );
     return;
   }
   if (intent === null) {
     log.warn(
       { event: "ship.tickle.skip_terminal", intent_id: intentId, reason: "intent_not_found" },
-      "ship-tickle early-wake skipped — intent not found",
+      "ship-tickle early-wake skipped, intent not found",
     );
     return;
   }
   if (isSessionTerminalState(intent.status)) {
     log.info(
       { event: "ship.tickle.skip_terminal", intent_id: intentId, status: intent.status },
-      "ship-tickle early-wake skipped — intent already terminal",
+      "ship-tickle early-wake skipped, intent already terminal",
     );
     return;
   }
 
   // Only succeeded children fire the cascade immediately. A failed child
-  // should not auto-spin the next iteration — the iteration cap would
+  // should not auto-spin the next iteration: the iteration cap would
   // eventually catch it, but until then the loop burns budget on a
   // permanently broken intent. Operators can re-arm a stalled intent
   // manually.
@@ -556,7 +556,7 @@ async function maybeEarlyWakeShipIntent(childRunId: string, log: pino.Logger): P
             retry_at_iso: new Date(transient.retryAtMs).toISOString(),
             reset_phrase: transient.resetPhrase,
           },
-          "ship-tickle deferred — child hit Anthropic usage limit, will retry after reset",
+          "ship-tickle deferred, child hit Anthropic usage limit, will retry after reset",
         );
       } catch (zaddErr) {
         log.warn(
@@ -565,7 +565,7 @@ async function maybeEarlyWakeShipIntent(childRunId: string, log: pino.Logger): P
             intent_id: intentId,
             child_run_id: childRunId,
           },
-          "ship-tickle deferred-ZADD failed (non-fatal — periodic scan will catch up)",
+          "ship-tickle deferred-ZADD failed (non-fatal, periodic scan will catch up)",
         );
       }
       return;
@@ -577,7 +577,7 @@ async function maybeEarlyWakeShipIntent(childRunId: string, log: pino.Logger): P
         child_run_id: childRunId,
         child_status: child.status,
       },
-      "ship-tickle early-wake skipped — child workflow run did not succeed",
+      "ship-tickle early-wake skipped, child workflow run did not succeed",
     );
     return;
   }
@@ -596,7 +596,7 @@ async function maybeEarlyWakeShipIntent(childRunId: string, log: pino.Logger): P
         intent_id: intentId,
         childRunId,
       },
-      "ship-tickle early-wake failed (non-fatal — periodic scan will catch up)",
+      "ship-tickle early-wake failed (non-fatal, periodic scan will catch up)",
     );
   }
 }
@@ -671,7 +671,7 @@ function extractFindings(
   }
   logger.warn(
     { childRunId, findings: raw },
-    "orchestrator: review child has no usable findings.total — refusing to short-circuit ship loop",
+    "orchestrator: review child has no usable findings.total, refusing to short-circuit ship loop",
   );
   return Number.MAX_SAFE_INTEGER;
 }

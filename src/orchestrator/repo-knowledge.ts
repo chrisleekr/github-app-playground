@@ -110,7 +110,7 @@ export async function saveRepoLearnings(
   const db = requireDb();
   let saved = 0;
 
-  // Process each learning sequentially — DB writes are inherently serial per-connection
+  // Process each learning sequentially, DB writes are inherently serial per-connection
   // and the volume is tiny (typically 1-5 learnings per execution).
   for (const learning of learnings) {
     try {
@@ -125,7 +125,7 @@ export async function saveRepoLearnings(
       if (result.length > 0) {
         saved++;
       } else {
-        // Duplicate — bump updated_at to keep it relevant in LRU
+        // Duplicate, bump updated_at to keep it relevant in LRU
         // eslint-disable-next-line no-await-in-loop
         await db`
           UPDATE repo_memory SET updated_at = now()
