@@ -100,6 +100,16 @@ stateDiagram-v2
 
 If the target branch matches `SHIP_FORBIDDEN_TARGET_BRANCHES` (e.g. `main,production`), the trigger is refused before any session is created.
 
+## Iteration-0 reroute
+
+Some merge-readiness probe verdicts cannot be recovered by ship at iteration 0 — no amount of further work would change them. When the first probe returns one of these, the workflow skips intent creation entirely (no `ship_intents` row, no session-tracker tracking comment) and reroutes the trigger:
+
+| Verdict reason    | Why ship can't proceed                        | What happens instead                                                                                                                                         |
+| ----------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `human_took_over` | head SHA was authored by a human, not the bot | Comment triggers (NL or literal) hand off to the conversational `chat-thread` executor for a tools-driven reply. Label triggers post a single prose refusal. |
+
+Other non-readiness reasons (`failing_checks`, `behind_base`, `pending_checks`, etc.) are recoverable by the iteration loop and stay on the normal path. The reroute set is defined as `SHIP_REROUTE_REASONS` in `src/workflows/ship/session-runner.ts`.
+
 ## Re-triggering
 
 Re-applying the `bot:ship` label or re-commenting `bot:ship` on the same PR while a session is **active** is a no-op. Re-applying after the session is **terminal** starts a fresh session — the prior `ship_intents` row is preserved for audit.

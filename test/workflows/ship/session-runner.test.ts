@@ -10,6 +10,7 @@ import { SQL } from "bun";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test";
 import type { Octokit } from "octokit";
 
+import { config } from "../../../src/config";
 import type { CanonicalCommand } from "../../../src/shared/ship-types";
 
 const TEST_DATABASE_URL =
@@ -35,6 +36,29 @@ void mock.module("../../../src/db", () => ({
   closeDb: () => Promise.resolve(),
 }));
 
+// Iteration-0 reroute (issue #119) hands `human_took_over` triggers to
+// chat-thread instead of creating intent state. Stub the helper so the
+// session-runner tests can verify the reroute call without spinning up
+// the chat-thread executor (which itself imports comment caches, the
+// LLM client, the github-state tool registry, etc.).
+const rerouteCalls: { intent: string; comment_body?: string; trigger_comment_id?: number }[] = [];
+void mock.module("../../../src/workflows/ship/scoped/dispatch-scoped", () => ({
+  runChatThreadFromCommand: (command: {
+    intent: string;
+    comment_body?: string;
+    trigger_comment_id?: number;
+  }) => {
+    rerouteCalls.push({
+      intent: command.intent,
+      ...(command.comment_body !== undefined ? { comment_body: command.comment_body } : {}),
+      ...(command.trigger_comment_id !== undefined
+        ? { trigger_comment_id: command.trigger_comment_id }
+        : {}),
+    });
+    return Promise.resolve();
+  },
+}));
+
 const { runShipFromCommand } = await import("../../../src/workflows/ship/session-runner");
 
 interface OctokitCalls {
@@ -49,6 +73,11 @@ interface BuildOctokitInput {
   readonly prIdResponse?: unknown;
   readonly markReadyResponse?: unknown;
   readonly throwOnGraphql?: string;
+  /**
+   * Pre-existing comments returned by the listComments paginator.
+   * Used to test the iteration-0 reroute marker-based dedup path.
+   */
+  readonly existingComments?: readonly { body: string }[];
 }
 
 function buildOctokit(input: BuildOctokitInput): { octokit: Octokit; calls: OctokitCalls } {
@@ -78,8 +107,31 @@ function buildOctokit(input: BuildOctokitInput): { octokit: Octokit; calls: Octo
     return Promise.reject(new Error(`unmocked graphql: ${query.slice(0, 50)}`));
   };
 
+  const existingComments = input.existingComments ?? [];
+  // Async iterator returning a single page with the configured comments.
+  // Mirrors octokit.paginate.iterator's `{ data: [...] }` page shape.
+  const paginateIterator = (): AsyncIterableIterator<{
+    data: readonly { body: string }[];
+  }> => {
+    let yielded = false;
+    return {
+      [Symbol.asyncIterator]() {
+        return this;
+      },
+      next() {
+        if (yielded) return Promise.resolve({ value: undefined, done: true } as const);
+        yielded = true;
+        return Promise.resolve({
+          value: { data: existingComments },
+          done: false,
+        } as const);
+      },
+    } as unknown as AsyncIterableIterator<{ data: readonly { body: string }[] }>;
+  };
+
   const octokit = {
     graphql,
+    paginate: { iterator: paginateIterator },
     rest: {
       issues: {
         createComment: (params: unknown) => {
@@ -90,6 +142,7 @@ function buildOctokit(input: BuildOctokitInput): { octokit: Octokit; calls: Octo
           calls.updateCommentCalls.push(params);
           return Promise.resolve({ data: {} });
         },
+        listComments: () => Promise.resolve({ data: existingComments }),
       },
     },
   } as unknown as Octokit;
@@ -136,14 +189,17 @@ function buildProbeResponse(opts: {
   readonly headSha?: string;
   readonly baseSha?: string;
   readonly mergeable?: "MERGEABLE" | "CONFLICTING";
+  readonly headAuthorLogin?: string;
 }): unknown {
   const headSha = opts.headSha ?? "sha-head";
   const baseSha = opts.baseSha ?? "sha-base";
   // Verdict priority 1 (foreign-push detection) inspects the head
-  // commit's author login. For "ready" cases we must attribute the head
-  // commit to the bot itself so the priority-1 check passes through to
-  // the merge-state ladder.
-  const headAuthorLogin = opts.ready ? "chrisleekr-bot[bot]" : "alice";
+  // commit's author login. Default to the bot so non-ready fixtures
+  // reach the merge-state ladder (verdict=behind_base) instead of
+  // tripping the iteration-0 reroute (issue #119) which short-circuits
+  // intent creation. Tests exercising the reroute pass a non-bot login
+  // explicitly.
+  const headAuthorLogin = opts.headAuthorLogin ?? config.botAppLogin;
   return {
     repository: {
       pullRequest: {
@@ -327,5 +383,105 @@ describe.skipIf(sql === null)("runShipFromCommand", () => {
     expect(rows[0]?.status).toBe("ready_awaiting_human_merge");
     const updated = calls.updateCommentCalls[0] as { body: string };
     expect(updated.body).toContain("markReadyForReview failed");
+  });
+
+  it("(#119) human_took_over with comment body: reroutes to chat-thread, no intent row, no tracking comment", async () => {
+    rerouteCalls.length = 0;
+    const { octokit, calls } = buildOctokit({
+      eligibilityResponse: eligibleResponse,
+      probeResponse: buildProbeResponse({
+        ready: false,
+        isDraft: false,
+        headAuthorLogin: "alice",
+      }),
+    });
+
+    const nlCommand: CanonicalCommand = {
+      ...baseCommand,
+      surface: "nl",
+      event_surface: "pr-comment",
+      comment_body: "@chrisleekr-bot can you make this PR merge ready?",
+      trigger_comment_id: 99001,
+    };
+
+    await runShipFromCommand({ command: nlCommand, octokit });
+
+    const rows: { count: bigint }[] =
+      await requireSql()`SELECT COUNT(*)::bigint AS count FROM ship_intents`;
+    expect(Number(rows[0]?.count ?? 0n)).toBe(0);
+    expect(calls.createCommentCalls.length).toBe(0);
+    expect(calls.updateCommentCalls.length).toBe(0);
+    expect(rerouteCalls.length).toBe(1);
+    expect(rerouteCalls[0]?.intent).toBe("ship");
+    expect(rerouteCalls[0]?.comment_body).toBe(nlCommand.comment_body);
+    expect(rerouteCalls[0]?.trigger_comment_id).toBe(99001);
+  });
+
+  it("(#119) human_took_over from label trigger: posts prose refusal, no intent row, no chat-thread reroute", async () => {
+    rerouteCalls.length = 0;
+    const { octokit, calls } = buildOctokit({
+      eligibilityResponse: eligibleResponse,
+      probeResponse: buildProbeResponse({
+        ready: false,
+        isDraft: false,
+        headAuthorLogin: "alice",
+      }),
+    });
+
+    // Label trigger — no comment_body, no trigger_comment_id.
+    const labelCommand: CanonicalCommand = {
+      ...baseCommand,
+      surface: "label",
+      event_surface: "pr-label",
+    };
+
+    await runShipFromCommand({ command: labelCommand, octokit });
+
+    const rows: { count: bigint }[] =
+      await requireSql()`SELECT COUNT(*)::bigint AS count FROM ship_intents`;
+    expect(Number(rows[0]?.count ?? 0n)).toBe(0);
+    expect(rerouteCalls.length).toBe(0);
+    expect(calls.createCommentCalls.length).toBe(1);
+    const refusal = calls.createCommentCalls[0] as { body: string };
+    expect(refusal.body).toContain("can't take over");
+    expect(refusal.body).toContain("alice");
+  });
+
+  it("(#119) human_took_over from label trigger: re-fire with prior refusal marker is a no-op", async () => {
+    rerouteCalls.length = 0;
+    const labelCommand: CanonicalCommand = {
+      ...baseCommand,
+      surface: "label",
+      event_surface: "pr-label",
+    };
+
+    // First fire — no existing comments; refusal posted with marker.
+    const first = buildOctokit({
+      eligibilityResponse: eligibleResponse,
+      probeResponse: buildProbeResponse({
+        ready: false,
+        isDraft: false,
+        headAuthorLogin: "alice",
+      }),
+    });
+    await runShipFromCommand({ command: labelCommand, octokit: first.octokit });
+    expect(first.calls.createCommentCalls.length).toBe(1);
+    const firstBody = (first.calls.createCommentCalls[0] as { body: string }).body;
+    expect(firstBody).toContain(`<!-- ship-reroute-refusal:acme/repo#401:human_took_over -->`);
+
+    // Second fire — surface the prior refusal as an existing comment so
+    // the dedup helper sees the marker and skips. No new write.
+    const second = buildOctokit({
+      eligibilityResponse: eligibleResponse,
+      probeResponse: buildProbeResponse({
+        ready: false,
+        isDraft: false,
+        headAuthorLogin: "alice",
+      }),
+      existingComments: [{ body: firstBody }],
+    });
+    await runShipFromCommand({ command: labelCommand, octokit: second.octokit });
+    expect(second.calls.createCommentCalls.length).toBe(0);
+    expect(rerouteCalls.length).toBe(0);
   });
 });
