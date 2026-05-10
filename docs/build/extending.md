@@ -146,7 +146,18 @@ servers["my_server"] = myServerDef(sharedEnv);
 
 `sharedEnv` already carries `GITHUB_TOKEN`, `REPO_OWNER`, `REPO_NAME`, and `GITHUB_EVENT_NAME`.
 
-The Dockerfile copies all of `src/mcp/` to the production image, so new server files are picked up automatically. No Dockerfile change is needed.
+The Dockerfile copies all of `src/mcp/` to the production image, so new server files are picked up automatically. No Dockerfile change is needed. **Bundling is not automatic**, however — add the new entrypoint to `scripts/build.ts` (Build 2's `entrypoints` array) so `dist/mcp/servers/<name>.js` exists in production.
+
+### Sharing a tool surface between MCP and single-turn callers
+
+The `runWithTools` loop in `src/ai/llm-client.ts` lets single-turn LLM callers (e.g. `chat-thread`, orchestrator `triage`) call tools without going through MCP. To share one tool implementation between Agent SDK callers (which dispatch through the MCP subprocess) and single-turn callers (which dispatch inline), put the tool body in `src/github/state-fetchers.ts`-style fetcher module:
+
+- Export the fetcher functions (pure async, return JSON-serialised strings).
+- Export a `LLMTool[]` descriptor array mirroring the MCP server's advertised tools.
+- Export a `dispatchXTool(deps, call)` switch that the single-turn caller passes as `onToolCall`.
+- The MCP server (e.g. `src/mcp/servers/github-state.ts`) becomes a thin stdio wrapper that calls the same fetchers.
+
+`src/github/state-fetchers.ts` (issue #117) is the reference implementation.
 
 ### Option B — HTTP server
 

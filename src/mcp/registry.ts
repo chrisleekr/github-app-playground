@@ -28,6 +28,14 @@ export interface ResolveMcpServersOptions {
    * relevant per Constitution VII single-responsibility.
    */
   enableResolveReviewThread?: boolean;
+  /**
+   * Opt-in for the read-only `github-state` MCP server (issue #117). Set
+   * `true` for executors that benefit from on-demand fetches of CI rollup,
+   * check-run output, branch protection, PR diff, or paginated comments.
+   * Keeps the tool surface out of contexts where the LLM has no reason to
+   * reach for fresh GitHub state.
+   */
+  enableGithubState?: boolean;
 }
 
 export function resolveMcpServers(
@@ -57,6 +65,10 @@ export function resolveMcpServers(
 
   if (config.context7ApiKey !== undefined && config.context7ApiKey !== "") {
     servers["context7"] = context7Server();
+  }
+
+  if (opts?.enableGithubState === true) {
+    servers["github_state"] = githubStateServerDef(sharedEnv);
   }
 
   // Tier 3, R-011 — daemon capabilities MCP server
@@ -131,6 +143,24 @@ function resolveReviewThreadServerDef(
       ...sharedEnv,
       PR_NUMBER: prNumber.toString(),
     },
+  };
+}
+
+/**
+ * Read-only github-state server definition (stdio transport, opt-in via
+ * `enableGithubState`). Hard-pinned to the current repo via env so the
+ * model cannot fan out to arbitrary repos.
+ */
+function githubStateServerDef(sharedEnv: Record<string, string>): McpServerDef {
+  const isDev = import.meta.url.includes("/src/");
+  const serverPath = isDev
+    ? new URL("./servers/github-state.ts", import.meta.url).pathname
+    : "dist/mcp/servers/github-state.js";
+  return {
+    type: "stdio",
+    command: "bun",
+    args: ["run", serverPath],
+    env: { ...sharedEnv },
   };
 }
 

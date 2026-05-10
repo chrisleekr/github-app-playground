@@ -151,6 +151,15 @@ export interface RunPipelineOverrides {
    * Off by default so other workflows don't see the tool.
    */
   enableResolveReviewThread?: boolean;
+  /**
+   * Opt-in for the read-only `github-state` MCP server (issue #117).
+   * Defaults to `true` because the tool surface is additive — the agent
+   * can fetch fresh CI rollup, check output, branch protection, PR
+   * diff, and paginated comments on demand instead of reasoning from
+   * the prompt-stuffed snapshot. Set `false` to suppress (e.g., for a
+   * narrowly scoped workflow that should not touch the API).
+   */
+  enableGithubState?: boolean;
 }
 
 /**
@@ -260,6 +269,12 @@ export async function runPipeline(
       mkdirSync(artifactsDir, { recursive: true });
       writeEnvFile(workDir, enrichedCtx.envVars, enrichedCtx.log);
 
+      // Default the github-state MCP server ON for PRs only — most of its
+      // tools require a pr_number, and on issue contexts the agent would
+      // burn API quota on "PR not found" errors. Issue-side workflows can
+      // explicitly opt in via overrides.enableGithubState=true if needed.
+      const githubStateEnabled = overrides.enableGithubState ?? enrichedCtx.isPR;
+
       const mcpServers = resolveMcpServers(
         enrichedCtx,
         resolvedTrackingCommentId,
@@ -270,15 +285,28 @@ export async function runPipeline(
           ...(overrides.enableResolveReviewThread === true
             ? { enableResolveReviewThread: true }
             : {}),
+          ...(githubStateEnabled ? { enableGithubState: true } : {}),
         },
       );
 
       const baseAllowedTools =
         overrides.allowedTools ?? resolveAllowedTools(enrichedCtx, enrichedCtx.daemonCapabilities);
-      const allowedTools =
+      const withResolveTool =
         overrides.enableResolveReviewThread === true && enrichedCtx.isPR
           ? [...baseAllowedTools, "mcp__resolve_review_thread__resolve_review_thread"]
           : baseAllowedTools;
+      const allowedTools = githubStateEnabled
+        ? [
+            ...withResolveTool,
+            "mcp__github_state__get_pr_state_check_rollup",
+            "mcp__github_state__get_check_run_output",
+            "mcp__github_state__get_workflow_run",
+            "mcp__github_state__get_branch_protection",
+            "mcp__github_state__get_pr_diff",
+            "mcp__github_state__get_pr_files",
+            "mcp__github_state__list_pr_comments",
+          ]
+        : withResolveTool;
 
       const result = await executeAgent({
         ctx: enrichedCtx,

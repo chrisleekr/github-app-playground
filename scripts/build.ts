@@ -21,14 +21,16 @@ if (!result.success) {
   process.exit(1);
 }
 
-// Build 2: MCP stdio servers — outputs dist/mcp/servers/comment.js and inline-comment.js
-// sanitize.ts is inlined into each bundle (splitting: false) since each
-// server runs as an independent child process with no shared runtime.
+// Build 2: MCP stdio servers — outputs dist/mcp/servers/<name>.js
+// sanitize.ts (and github-state's fetcher helpers) are inlined into each
+// bundle (splitting: false) since each server runs as an independent
+// child process with no shared runtime.
 const mcpResult = await Bun.build({
   entrypoints: [
     "./src/mcp/servers/comment.ts",
     "./src/mcp/servers/inline-comment.ts",
     "./src/mcp/servers/resolve-review-thread.ts",
+    "./src/mcp/servers/github-state.ts",
   ],
   outdir: "./dist/mcp/servers",
   target: "bun",

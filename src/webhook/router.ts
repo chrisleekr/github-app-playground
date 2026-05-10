@@ -155,6 +155,11 @@ export async function decideDispatch(ctx: BotContext): Promise<DispatchDecision>
       isPR: ctx.isPR,
       labels: ctx.labels,
       triggerBody: ctx.triggerBody,
+      // Issue #117: pass octokit + entityNumber so triage can sample fresh
+      // PR state via the github-state tools when text alone is ambiguous.
+      // Tools are only used on PR events; the triage executor checks isPR
+      // before activating the tool path.
+      ...(ctx.isPR ? { octokit: ctx.octokit, prNumber: ctx.entityNumber } : {}),
     },
     getTriageLLMClient(),
   );
