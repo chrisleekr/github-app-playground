@@ -31,6 +31,7 @@ import { config } from "../../config";
 import { requireDb } from "../../db";
 import { logger as rootLogger } from "../../logger";
 import type { CanonicalCommand } from "../../shared/ship-types";
+import { safePostToGitHub } from "../../utils/github-output-guard";
 import { checkpointCancelled } from "./abort";
 import { checkEligibility } from "./eligibility";
 import { createIntent, getIntentById, transitionToTerminal } from "./intent";
@@ -154,10 +155,21 @@ export async function runShipFromCommand(input: RunShipFromCommandInput): Promis
     }
     // Label trigger (no comment surface to converse on). Post a single
     // prose refusal that names the blocker, then exit without state.
+    // Marker-based dedup: re-applying the label triggers a fresh delivery,
+    // so the ingress dedup map doesn't catch repeats. Skip if a prior
+    // refusal with the same marker already exists on this PR.
+    const refusalMarker = `<!-- ship-reroute-refusal:${command.pr.owner}/${command.pr.repo}#${String(command.pr.number)}:${verdictReason} -->`;
+    if (await refusalAlreadyPosted(octokit, command, refusalMarker, log)) {
+      log.info(
+        { event: "ship.reroute_refusal_already_posted", verdict_reason: verdictReason },
+        "ship: prior reroute refusal already on PR — skipping duplicate",
+      );
+      return;
+    }
     await postRefusal(
       octokit,
       command,
-      `the ship workflow can't take over this PR — ${verdictDetail}. Comment \`${config.triggerPhrase}\` to discuss next steps.`,
+      `${refusalMarker}\nthe ship workflow can't take over this PR — ${verdictDetail}. Comment \`${config.triggerPhrase}\` to discuss next steps.`,
       log,
     );
     return;
@@ -376,14 +388,53 @@ async function postRefusal(
 ): Promise<void> {
   const body = `\`bot:ship\` declined — ${reason}`;
   try {
-    await octokit.rest.issues.createComment({
-      owner: command.pr.owner,
-      repo: command.pr.repo,
-      issue_number: command.pr.number,
+    await safePostToGitHub({
       body,
+      source: "system",
+      callsite: "ship.session-runner.postRefusal",
+      log,
+      post: (cleanBody) =>
+        octokit.rest.issues.createComment({
+          owner: command.pr.owner,
+          repo: command.pr.repo,
+          issue_number: command.pr.number,
+          body: cleanBody,
+        }),
     });
   } catch (err) {
     log.warn({ err }, "ship refusal reply failed (best-effort)");
+  }
+}
+
+/**
+ * Returns true when a prior reroute-refusal carrying the same marker is
+ * already present on the PR. Used to dedup label-trigger reroute refusals
+ * against repeat label applies (each apply is a fresh webhook delivery).
+ * Best-effort — on listComments failure we fall through and post (the
+ * dup-comment cost is small; missing the refusal would be worse).
+ */
+async function refusalAlreadyPosted(
+  octokit: Octokit,
+  command: CanonicalCommand,
+  marker: string,
+  log: Logger,
+): Promise<boolean> {
+  try {
+    const iterator = octokit.paginate.iterator(octokit.rest.issues.listComments, {
+      owner: command.pr.owner,
+      repo: command.pr.repo,
+      issue_number: command.pr.number,
+      per_page: 100,
+    });
+    for await (const page of iterator) {
+      for (const c of page.data) {
+        if (typeof c.body === "string" && c.body.includes(marker)) return true;
+      }
+    }
+    return false;
+  } catch (err) {
+    log.warn({ err }, "ship reroute refusal dedup check failed (best-effort)");
+    return false;
   }
 }
 
