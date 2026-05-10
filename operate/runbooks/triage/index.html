@@ -1585,14 +1585,14 @@
   
 
 
-<h1 id="runbook-triage">Runbook — triage<a class="headerlink" href="#runbook-triage" title="Permanent link">&para;</a></h1>
+<h1 id="runbook-triage">Runbook: triage<a class="headerlink" href="#runbook-triage" title="Permanent link">&para;</a></h1>
 <p>Triage is a binary <code>heavy</code> classifier. It runs on every event (subject to the kill-switch and circuit breaker) and answers one question: should this job prefer an ephemeral daemon? <code>heavy=true</code> is one of the two triggers that can spawn an ephemeral daemon Pod (the other is queue overflow).</p>
 <h2 id="what-a-call-returns">What a call returns<a class="headerlink" href="#what-a-call-returns" title="Permanent link">&para;</a></h2>
 <div class="language-json highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span><span class="w"> </span><span class="nt">&quot;heavy&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;confidence&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.92</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;rationale&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="w"> </span><span class="p">}</span>
 </span></code></pre></div>
-<p>There is no <code>complexity</code> field and no <code>maxTurns</code> mapping — <code>maxTurns</code> always comes from <code>config.defaultMaxTurns</code> regardless of the triage outcome.</p>
+<p>There is no <code>complexity</code> field and no <code>maxTurns</code> mapping, <code>maxTurns</code> always comes from <code>config.defaultMaxTurns</code> regardless of the triage outcome.</p>
 <h2 id="confidence-threshold">Confidence threshold<a class="headerlink" href="#confidence-threshold" title="Permanent link">&para;</a></h2>
-<p>At or above <code>TRIAGE_CONFIDENCE_THRESHOLD</code>, <code>heavy</code> is accepted as-is. Below it, the router treats the signal as <code>heavy=false</code> — the job routes to <code>persistent-daemon</code> and the log line carries <code>triage_fallback_reason=sub-threshold</code>. Day-one default is <code>1.0</code> so only perfectly confident results route an ephemeral spawn.</p>
+<p>At or above <code>TRIAGE_CONFIDENCE_THRESHOLD</code>, <code>heavy</code> is accepted as-is. Below it, the router treats the signal as <code>heavy=false</code>: the job routes to <code>persistent-daemon</code> and the log line carries <code>triage_fallback_reason=sub-threshold</code>. Day-one default is <code>1.0</code> so only perfectly confident results route an ephemeral spawn.</p>
 <h2 id="circuit-breaker">Circuit breaker<a class="headerlink" href="#circuit-breaker" title="Permanent link">&para;</a></h2>
 <p>Triage wraps the LLM call in a circuit breaker (<code>src/orchestrator/triage.ts</code>). Consecutive failures trip the breaker; while open, the function short-circuits to <code>heavy=false</code> and emits <code>triage_fallback_reason=circuit-open</code>. The breaker re-closes after a cooldown.</p>
 <h2 id="six-fallback-reasons">Six fallback reasons<a class="headerlink" href="#six-fallback-reasons" title="Permanent link">&para;</a></h2>
@@ -1607,7 +1607,7 @@
 <tbody>
 <tr>
 <td><code>disabled</code></td>
-<td><code>TRIAGE_ENABLED=false</code> — short-circuits without calling the LLM.</td>
+<td><code>TRIAGE_ENABLED=false</code>, short-circuits without calling the LLM.</td>
 </tr>
 <tr>
 <td><code>circuit-open</code></td>
@@ -1635,7 +1635,7 @@
 <p>Every event attempts triage. When <code>TRIAGE_ENABLED=false</code> or the breaker is open the call short-circuits <strong>before</strong> hitting Haiku, so those paths are free. When the call proceeds, one Haiku invocation is the dominant marginal cost on a busy install.</p>
 <p>Mitigations:</p>
 <ul>
-<li><code>TRIAGE_CONFIDENCE_THRESHOLD</code> defaults to <code>1.0</code> (strictest). Lower toward <code>0.8</code>–<code>0.9</code> to accept more heavy verdicts; raising above <code>1.0</code> is unsupported and gates out every response. The compute cost is unchanged either way — the knob only controls whether the result routes an ephemeral spawn.</li>
+<li><code>TRIAGE_CONFIDENCE_THRESHOLD</code> defaults to <code>1.0</code> (strictest). Lower toward <code>0.8</code>–<code>0.9</code> to accept more heavy verdicts; raising above <code>1.0</code> is unsupported and gates out every response. The compute cost is unchanged either way: the knob only controls whether the result routes an ephemeral spawn.</li>
 <li>Flip <code>TRIAGE_ENABLED=false</code> during a provider incident to suppress spend without redeploying.</li>
 <li>Keep <code>TRIAGE_MAX_TOKENS</code> low (the response schema is ~40 tokens).</li>
 </ul>

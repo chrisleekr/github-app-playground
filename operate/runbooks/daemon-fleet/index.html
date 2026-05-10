@@ -1663,8 +1663,8 @@
   
 
 
-<h1 id="runbook-daemon-fleet">Runbook — daemon fleet<a class="headerlink" href="#runbook-daemon-fleet" title="Permanent link">&para;</a></h1>
-<p>A daemon is a standalone worker process that connects to the orchestrator over WebSocket, accepts job offers, and runs each job through <code>src/core/pipeline.ts</code>. The webhook server never runs the pipeline in-process — every execution happens on a daemon.</p>
+<h1 id="runbook-daemon-fleet">Runbook: daemon fleet<a class="headerlink" href="#runbook-daemon-fleet" title="Permanent link">&para;</a></h1>
+<p>A daemon is a standalone worker process that connects to the orchestrator over WebSocket, accepts job offers, and runs each job through <code>src/core/pipeline.ts</code>. The webhook server never runs the pipeline in-process, every execution happens on a daemon.</p>
 <h2 id="persistent-vs-ephemeral">Persistent vs ephemeral<a class="headerlink" href="#persistent-vs-ephemeral" title="Permanent link">&para;</a></h2>
 <p>Always qualify which kind you mean. The union of both at any given moment is the <strong>daemon fleet</strong>.</p>
 <table>
@@ -1734,12 +1734,12 @@
 <tbody>
 <tr>
 <td><code>ORCHESTRATOR_URL</code></td>
-<td>—</td>
+<td><em>none</em></td>
 <td>Required. <code>wss://</code> in production; <code>ws://</code> emits a warning.</td>
 </tr>
 <tr>
 <td><code>DAEMON_AUTH_TOKEN</code></td>
-<td>—</td>
+<td><em>none</em></td>
 <td>Shared secret with the orchestrator.</td>
 </tr>
 <tr>
@@ -1817,13 +1817,13 @@
 </span></code></pre></div>
 <p>Match <code>terminationGracePeriodSeconds</code> to <code>DAEMON_DRAIN_TIMEOUT_MS</code> so <code>SIGTERM</code> has time to drain in-flight work before <code>SIGKILL</code>.</p>
 <h2 id="concurrency-and-scaling">Concurrency and scaling<a class="headerlink" href="#concurrency-and-scaling" title="Permanent link">&para;</a></h2>
-<p>A daemon process handles up to its advertised <code>maxConcurrentJobs</code> at a time. Scale <strong>horizontally</strong> by running multiple persistent daemon pods. The orchestrator adds ephemeral daemons for bursts (triage <code>heavy=true</code> or queue overflow) — see <a href="../../observability/#dispatch-reasons"><code>../observability.md</code></a>.</p>
+<p>A daemon process handles up to its advertised <code>maxConcurrentJobs</code> at a time. Scale <strong>horizontally</strong> by running multiple persistent daemon pods. The orchestrator adds ephemeral daemons for bursts (triage <code>heavy=true</code> or queue overflow), see <a href="../../observability/#dispatch-reasons"><code>../observability.md</code></a>.</p>
 <h3 id="scale-up-rule">Scale-up rule<a class="headerlink" href="#scale-up-rule" title="Permanent link">&para;</a></h3>
 <p>On every event the orchestrator evaluates:</p>
 <ol>
 <li><strong>Triage.</strong> A single-turn Haiku call returns <code>{heavy, confidence, rationale}</code>. <code>heavy=true</code> is one trigger.</li>
 <li><strong>Overflow.</strong> If <code>queue_length ≥ EPHEMERAL_DAEMON_SPAWN_QUEUE_THRESHOLD</code> <strong>and</strong> the persistent pool has zero free slots, that's the other trigger.</li>
-<li><strong>Cooldown.</strong> Spawns are rate-limited by <code>EPHEMERAL_DAEMON_SPAWN_COOLDOWN_MS</code>. During cooldown, heavy/overflow signals <strong>don't</strong> spawn — the job falls back to <code>persistent-daemon</code> and waits.</li>
+<li><strong>Cooldown.</strong> Spawns are rate-limited by <code>EPHEMERAL_DAEMON_SPAWN_COOLDOWN_MS</code>. During cooldown, heavy/overflow signals <strong>don't</strong> spawn: the job falls back to <code>persistent-daemon</code> and waits.</li>
 <li><strong>Spawn.</strong> When both a trigger fires and cooldown has elapsed, the orchestrator creates a bare Pod via the K8s API. A K8s API failure yields <code>dispatch_reason=ephemeral-spawn-failed</code> and the job is rejected with a tracking-comment infra error.</li>
 </ol>
 <h2 id="hard-constraints">Hard constraints<a class="headerlink" href="#hard-constraints" title="Permanent link">&para;</a></h2>
@@ -1834,7 +1834,7 @@
 </ul>
 <h2 id="rotating-daemon_auth_token">Rotating <code>DAEMON_AUTH_TOKEN</code><a class="headerlink" href="#rotating-daemon_auth_token" title="Permanent link">&para;</a></h2>
 <p><code>DAEMON_AUTH_TOKEN</code> is a long-lived shared secret. Treat it like any other production credential: rotate on a defined cadence (OWASP guidance is <strong>at least every 90 days</strong>) and immediately on suspected compromise. The orchestrator's bearer-token comparison is constant-time (<code>crypto.timingSafeEqual</code>) but the secret itself still needs hygiene.</p>
-<p>The <code>DAEMON_AUTH_TOKEN_PREVIOUS</code> slot exists so rotation does not require a synchronised fleet restart — the orchestrator accepts either token while you roll daemons one at a time.</p>
+<p>The <code>DAEMON_AUTH_TOKEN_PREVIOUS</code> slot exists so rotation does not require a synchronised fleet restart: the orchestrator accepts either token while you roll daemons one at a time.</p>
 <pre class="mermaid"><code>sequenceDiagram
     participant Op as Operator
     participant Orch as Orchestrator
@@ -1851,7 +1851,7 @@
 <ol>
 <li><strong>Generate</strong> a new secret: <code>openssl rand -hex 32</code>. Persist it in your secret store next to the existing value.</li>
 <li><strong>Stage the overlap.</strong> Update the orchestrator Deployment's <code>daemon-secrets</code> to set <code>DAEMON_AUTH_TOKEN=&lt;NEW&gt;</code> <strong>and</strong> <code>DAEMON_AUTH_TOKEN_PREVIOUS=&lt;OLD&gt;</code>. Roll the orchestrator. Existing daemon connections (still presenting the old token) keep authenticating, and any daemons that come up with the new token also pass.</li>
-<li><strong>Roll daemons.</strong> Update the daemon Deployment's <code>daemon-secrets</code> to set <code>DAEMON_AUTH_TOKEN=&lt;NEW&gt;</code> (no <code>_PREVIOUS</code> needed — daemons only ever send the primary). Roll daemons one by one (<code>kubectl rollout restart deployment/github-app-playground-daemon</code>). Watch <code>auth-failed</code> warn-logs in the orchestrator — they should stay flat.</li>
+<li><strong>Roll daemons.</strong> Update the daemon Deployment's <code>daemon-secrets</code> to set <code>DAEMON_AUTH_TOKEN=&lt;NEW&gt;</code> (no <code>_PREVIOUS</code> needed, daemons only ever send the primary). Roll daemons one by one (<code>kubectl rollout restart deployment/github-app-playground-daemon</code>). Watch <code>auth-failed</code> warn-logs in the orchestrator, they should stay flat.</li>
 <li><strong>Drop the previous slot.</strong> Once every connected daemon presents the new token, redeploy the orchestrator with <code>DAEMON_AUTH_TOKEN_PREVIOUS</code> removed (or empty). The old secret is now dead.</li>
 <li><strong>Verify.</strong> A <code>curl</code> with the old Bearer should now return <code>401</code>; a curl with the new Bearer should hit the upgrade-failed path (<code>500 WebSocket upgrade failed</code>).</li>
 </ol>

@@ -1543,7 +1543,7 @@
 </tr>
 <tr>
 <td>Requires prior</td>
-<td>—</td>
+<td><em>none</em></td>
 </tr>
 <tr>
 <td>Artifact</td>
@@ -1565,11 +1565,11 @@
 <li>A fresh shallow clone of the repository (<code>Read</code>, <code>Grep</code>, <code>Glob</code>, <code>Bash</code>, <code>Write</code> available to the agent).</li>
 </ul>
 <h2 id="method">Method<a class="headerlink" href="#method" title="Permanent link">&para;</a></h2>
-<p>The agent classifies the issue (bug, feature, refactor, docs, unclear). For bugs it walks the harness ladder — unit → mocked unit → integration with <code>bun run dev:deps</code> Postgres+Valkey → multi-process docker-compose — and names the highest rung tried. Three evidence paths are accepted:</p>
+<p>The agent classifies the issue (bug, feature, refactor, docs, unclear). For bugs it walks the harness ladder, unit → mocked unit → integration with <code>bun run dev:deps</code> Postgres+Valkey → multi-process docker-compose, and names the highest rung tried. Three evidence paths are accepted:</p>
 <ol>
-<li><strong>Code inspection</strong> — <code>file:line</code> citations for a structural defect (module-scoped state, missing constraint, race window across an <code>await</code>, unguarded shared resource).</li>
-<li><strong>Runtime test</strong> — a command that exercises the claim (<code>bun test</code>, <code>bun run typecheck</code>, a CLI invocation, a <code>/tmp</code> scratch script).</li>
-<li><strong>Invariant test</strong> — pins down the property the fix will rely on (e.g. "N concurrent callers → exactly 1 succeeds"). Preferred over synthetic race repros because it survives the fix as a regression guard.</li>
+<li><strong>Code inspection</strong>, <code>file:line</code> citations for a structural defect (module-scoped state, missing constraint, race window across an <code>await</code>, unguarded shared resource).</li>
+<li><strong>Runtime test</strong>: a command that exercises the claim (<code>bun test</code>, <code>bun run typecheck</code>, a CLI invocation, a <code>/tmp</code> scratch script).</li>
+<li><strong>Invariant test</strong>, pins down the property the fix will rely on (e.g. "N concurrent callers → exactly 1 succeeds"). Preferred over synthetic race repros because it survives the fix as a regression guard.</li>
 </ol>
 <p>"Race condition we can't trigger" alone is not a valid escape hatch.</p>
 <h2 id="outputs">Outputs<a class="headerlink" href="#outputs" title="Permanent link">&para;</a></h2>
@@ -1600,7 +1600,7 @@
 <tr>
 <td><code>state.recommendedNext</code></td>
 <td><code>'plan'</code> | <code>'stop'</code></td>
-<td>—</td>
+<td><em>none</em></td>
 </tr>
 <tr>
 <td><code>state.evidence</code></td>
@@ -1625,7 +1625,7 @@
 <li><code>valid = false</code> → handler returns <code>failed</code> and any composite cascade halts here.</li>
 <li>Missing markdown, malformed JSON, or an SDK error → <code>failed</code> with a specific reason.</li>
 </ul>
-<p>There is no turn cap on triage — the agent runs until the verdict is honestly defensible.</p>
+<p>There is no turn cap on triage: the agent runs until the verdict is honestly defensible.</p>
 
 
 

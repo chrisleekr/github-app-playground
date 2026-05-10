@@ -1686,13 +1686,13 @@
 <h1 id="observability">Observability<a class="headerlink" href="#observability" title="Permanent link">&para;</a></h1>
 <p>Structured JSON logs via <a href="https://getpino.io">pino</a> are the primary signal. Every dispatch decision and every pipeline step carries a <code>deliveryId</code> so you can reconstruct a request end-to-end from a single log query. When <code>DATABASE_URL</code> is configured, the same information is persisted to <code>executions</code> and <code>triage_results</code> for aggregate reporting.</p>
 <h2 id="log-redaction">Log redaction<a class="headerlink" href="#log-redaction" title="Permanent link">&para;</a></h2>
-<p>The exported <code>logger</code> in <code>src/logger.ts</code> is the canonical chokepoint for secret scrubbing — every child logger inherits its <code>redact.paths</code> list and its custom <code>err</code> serializer, so individual call sites do not need to remember to scrub. Two layers run on every emitted line:</p>
+<p>The exported <code>logger</code> in <code>src/logger.ts</code> is the canonical chokepoint for secret scrubbing, every child logger inherits its <code>redact.paths</code> list and its custom <code>err</code> serializer, so individual call sites do not need to remember to scrub. Two layers run on every emitted line:</p>
 <ol>
 <li>
-<p><strong>Path-based redaction</strong> — the exported <code>REDACT_PATHS</code> constant in <code>src/logger.ts</code> lists every field pino should replace with <code>[Redacted]</code> before the JSON is serialised. Paths covered: <code>authorization</code> and its <code>*.authorization</code> / <code>headers.authorization</code> / <code>*.headers.authorization</code> / <code>req.headers.authorization</code> / <code>request.headers.authorization</code> variants; the webhook signature header <code>x-hub-signature-256</code> (also wildcard-prefixed); <code>response.data.token</code>; and the named credential fields <code>token</code>, <code>installationToken</code>, <code>privateKey</code>, <code>webhookSecret</code>, <code>anthropicApiKey</code>, <code>claudeCodeOauthToken</code>, <code>daemonAuthToken</code>, <code>awsSecretAccessKey</code>, <code>awsSessionToken</code>, <code>awsBearerTokenBedrock</code>, <code>*.password</code>. The list is <code>Object.freeze</code>d so an accidental <code>push</code> from another module cannot silently weaken the policy.</p>
+<p><strong>Path-based redaction</strong>: the exported <code>REDACT_PATHS</code> constant in <code>src/logger.ts</code> lists every field pino should replace with <code>[Redacted]</code> before the JSON is serialised. Paths covered: <code>authorization</code> and its <code>*.authorization</code> / <code>headers.authorization</code> / <code>*.headers.authorization</code> / <code>req.headers.authorization</code> / <code>request.headers.authorization</code> variants; the webhook signature header <code>x-hub-signature-256</code> (also wildcard-prefixed); <code>response.data.token</code>; and the named credential fields <code>token</code>, <code>installationToken</code>, <code>privateKey</code>, <code>webhookSecret</code>, <code>anthropicApiKey</code>, <code>claudeCodeOauthToken</code>, <code>daemonAuthToken</code>, <code>awsSecretAccessKey</code>, <code>awsSessionToken</code>, <code>awsBearerTokenBedrock</code>, <code>*.password</code>. The list is <code>Object.freeze</code>d so an accidental <code>push</code> from another module cannot silently weaken the policy.</p>
 </li>
 <li>
-<p><strong><code>errSerializer</code> scrubbing</strong> — the exported <code>errSerializer</code> in <code>src/logger.ts</code> defers to pino's <code>stdSerializers.err</code> and then runs the result's <code>message</code>, <code>stack</code>, <code>request.headers</code>, and <code>response.data</code> through <code>redactGitHubTokens</code> (<code>src/utils/sanitize.ts</code>) plus an inline credential-URL scrubber that mirrors <code>redactValkeyUrl</code> (<code>src/orchestrator/valkey.ts</code>). The walker recurses through nested objects/arrays and replaces any key matching the sensitive-field-name set wholesale, so <code>err.response.data.meta.token</code> and <code>err.request.headers.forwarded.authorization</code> are caught at any depth — this is necessary because pino's path-based rules cannot match four-or-more segments deep on <code>err.*</code>. It also catches <code>ghs_…</code> installation tokens and App JWTs echoed inside <code>err.message</code> / <code>err.stack</code>.</p>
+<p><strong><code>errSerializer</code> scrubbing</strong>: the exported <code>errSerializer</code> in <code>src/logger.ts</code> defers to pino's <code>stdSerializers.err</code> and then runs the result's <code>message</code>, <code>stack</code>, <code>request.headers</code>, and <code>response.data</code> through <code>redactGitHubTokens</code> (<code>src/utils/sanitize.ts</code>) plus an inline credential-URL scrubber that mirrors <code>redactValkeyUrl</code> (<code>src/orchestrator/valkey.ts</code>). The walker recurses through nested objects/arrays and replaces any key matching the sensitive-field-name set wholesale, so <code>err.response.data.meta.token</code> and <code>err.request.headers.forwarded.authorization</code> are caught at any depth: this is necessary because pino's path-based rules cannot match four-or-more segments deep on <code>err.*</code>. It also catches <code>ghs_…</code> installation tokens and App JWTs echoed inside <code>err.message</code> / <code>err.stack</code>.</p>
 </li>
 </ol>
 <p>The serializer operates on a copy, so the original Error instance is never mutated.</p>
@@ -1708,7 +1708,7 @@
 <tbody>
 <tr>
 <td><code>deliveryId</code></td>
-<td><code>X-GitHub-Delivery</code> header — stable across every log line for a single webhook.</td>
+<td><code>X-GitHub-Delivery</code> header, stable across every log line for a single webhook.</td>
 </tr>
 <tr>
 <td><code>event</code></td>
@@ -1720,7 +1720,7 @@
 </tr>
 <tr>
 <td><code>dispatch_target</code></td>
-<td>Always <code>daemon</code> (singleton — kept as a field for DB/log stability).</td>
+<td>Always <code>daemon</code> (singleton, kept as a field for DB/log stability).</td>
 </tr>
 <tr>
 <td><code>dispatch_reason</code></td>
@@ -1732,7 +1732,7 @@
 </tr>
 <tr>
 <td><code>triage_fallback_reason</code></td>
-<td>Only present on triage fallbacks — see <a href="../runbooks/triage/"><code>runbooks/triage.md</code></a>.</td>
+<td>Only present on triage fallbacks, see <a href="../runbooks/triage/"><code>runbooks/triage.md</code></a>.</td>
 </tr>
 <tr>
 <td><code>confidence</code>, <code>heavy</code>, <code>rationale</code></td>
@@ -1752,11 +1752,11 @@
 </tr>
 <tr>
 <td><code>branch</code>, <code>depth</code></td>
-<td>Initial clone target — emitted by <code>checkout.ts</code> on the <code>Cloning repository</code> line.</td>
+<td>Initial clone target, emitted by <code>checkout.ts</code> on the <code>Cloning repository</code> line.</td>
 </tr>
 <tr>
 <td><code>baseBranch</code>, <code>headBranch</code></td>
-<td>PR base + head ref — emitted on <code>Fetching PR base branch</code> (info) and the matching warn on fetch fail.</td>
+<td>PR base + head ref, emitted on <code>Fetching PR base branch</code> (info) and the matching warn on fetch fail.</td>
 </tr>
 </tbody>
 </table>
@@ -1824,12 +1824,12 @@
 <tr>
 <td><code>spent_usd_cents</code></td>
 <td>non-negative integer</td>
-<td>Always — cumulative session spend in cents (integer to avoid binary-fp drift in aggregations).</td>
+<td>Always, cumulative session spend in cents (integer to avoid binary-fp drift in aggregations).</td>
 </tr>
 <tr>
 <td><code>wall_clock_ms</code></td>
 <td>non-negative integer</td>
-<td>Always — cumulative session wall-clock.</td>
+<td>Always, cumulative session wall-clock.</td>
 </tr>
 <tr>
 <td><code>delta_usd_cents</code></td>
@@ -1946,7 +1946,7 @@
 <tbody>
 <tr>
 <td><code>eventsPerTarget(days)</code></td>
-<td>Count of executions grouped by <code>dispatch_target</code>. Post-collapse this is always a single <code>daemon</code> row — query <code>dispatch_reason</code> directly for the per-reason split.</td>
+<td>Count of executions grouped by <code>dispatch_target</code>. Post-collapse this is always a single <code>daemon</code> row, query <code>dispatch_reason</code> directly for the per-reason split.</td>
 </tr>
 <tr>
 <td><code>triageRate(days)</code></td>
@@ -1972,7 +1972,7 @@
 <li><strong>Ship terminal-blocker rate.</strong> A spike in <code>ship.intent.transition</code> events with <code>to_status:human_took_over</code> and <code>terminal_blocker_category:flake-cap</code> points at PR-flake regressions, not bot misbehaviour.</li>
 </ul>
 <h2 id="data-fetching-safety-caps">Data fetching safety caps<a class="headerlink" href="#data-fetching-safety-caps" title="Permanent link">&para;</a></h2>
-<p><code>src/core/fetcher.ts</code> walks every <code>pageInfo { hasNextPage endCursor }</code> connection it receives via <code>octokit.graphql.paginate(...)</code>, so PRs/issues with hundreds of comments, reviews, inline review comments, or changed files are no longer silently truncated to the first 100. The four <code>MAX_FETCHED_*</code> env vars (see <a href="../configuration/"><code>configuration.md</code></a>) bound the <strong>merged result</strong> that reaches the agent prompt — they do not bound how much data is fetched and held in memory during pagination. The fetcher walks every page first, then trims the array to the most recent <code>cap</code> items; fetch-time memory is bounded by GitHub API limits (max items per connection), not these caps. Operators tuning for cost/latency should narrow entity selection (e.g. close noisy issues) rather than rely on the cap to cut request volume.</p>
+<p><code>src/core/fetcher.ts</code> walks every <code>pageInfo { hasNextPage endCursor }</code> connection it receives via <code>octokit.graphql.paginate(...)</code>, so PRs/issues with hundreds of comments, reviews, inline review comments, or changed files are no longer silently truncated to the first 100. The four <code>MAX_FETCHED_*</code> env vars (see <a href="../configuration/"><code>configuration.md</code></a>) bound the <strong>merged result</strong> that reaches the agent prompt, they do not bound how much data is fetched and held in memory during pagination. The fetcher walks every page first, then trims the array to the most recent <code>cap</code> items; fetch-time memory is bounded by GitHub API limits (max items per connection), not these caps. Operators tuning for cost/latency should narrow entity selection (e.g. close noisy issues) rather than rely on the cap to cut request volume.</p>
 <p>When a cap fires the fetcher emits a single structured warn line per affected connection and flags the connection on the returned <code>FetchedData</code> so downstream code can surface it:</p>
 <div class="language-json highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span>
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">&quot;level&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;warn&quot;</span><span class="p">,</span>
@@ -1996,11 +1996,11 @@
 <tbody>
 <tr>
 <td><code>/healthz</code></td>
-<td>Liveness — returns 200 once the HTTP server is bound.</td>
+<td>Liveness, returns 200 once the HTTP server is bound.</td>
 </tr>
 <tr>
 <td><code>/readyz</code></td>
-<td>Readiness — 200 once config is validated and the data layer is reachable; flips to 503 on <code>SIGTERM</code>.</td>
+<td>Readiness, 200 once config is validated and the data layer is reachable; flips to 503 on <code>SIGTERM</code>.</td>
 </tr>
 </tbody>
 </table>
@@ -2008,7 +2008,7 @@
 <blockquote>
 <p>Note: As SBOM file size is over 16MB, temporary disable SBOM attestations.</p>
 </blockquote>
-<p><code>docker-build.yml</code> publishes two attestation flavours per release tag — same image, different storage and verification surface. Operators investigating a CVE alert or auditing what shipped to production reach for these instead of re-running Trivy from scratch.</p>
+<p><code>docker-build.yml</code> publishes two attestation flavours per release tag, same image, different storage and verification surface. Operators investigating a CVE alert or auditing what shipped to production reach for these instead of re-running Trivy from scratch.</p>
 <table>
 <thead>
 <tr>
@@ -2020,14 +2020,14 @@
 </thead>
 <tbody>
 <tr>
-<td>Registry — OCI subject descriptor on the per-arch leaf manifest</td>
+<td>Registry, OCI subject descriptor on the per-arch leaf manifest</td>
 <td>SLSA v1 provenance + SPDX 2.3 SBOM (per arch)</td>
 <td>Each per-arch image manifest (the BuildKit defaults).</td>
 <td><code>docker buildx imagetools inspect &lt;ref&gt; --format '{{ json .Provenance }}'</code> / <code>{{ json .SBOM }}</code></td>
 </tr>
 <tr>
-<td>Registry — Sigstore bundle attached to the merged manifest-list digest</td>
-<td>SLSA v1 provenance + CycloneDX 1.5 SBOM (<strong>amd64 packages only</strong> — Syft scans the runner's native arch; arm64 audits must use the per-arch SPDX SBOM above)</td>
+<td>Registry, Sigstore bundle attached to the merged manifest-list digest</td>
+<td>SLSA v1 provenance + CycloneDX 1.5 SBOM (<strong>amd64 packages only</strong>, Syft scans the runner's native arch; arm64 audits must use the per-arch SPDX SBOM above)</td>
 <td>The published tag (orchestrator + daemon variants).</td>
 <td><code>gh attestation verify oci://&lt;ref&gt; --repo chrisleekr/github-app-playground --predicate-type &lt;slsa\|cyclonedx&gt;</code></td>
 </tr>
@@ -2040,7 +2040,7 @@
 </tbody>
 </table>
 <p>Docker Hub renders a "Build attestations" badge on the tag page once the Sigstore-signed flavour is detected. The full source/predicate of every signature is replayable via the <a href="https://search.sigstore.dev/">Sigstore transparency log (Rekor)</a> using the digest from <code>gh attestation verify</code>.</p>
-<p>The <code>scan</code> job in <code>.github/workflows/docker-build.yml</code> calls <code>gh attestation verify</code> for both predicate types before running Trivy — a regression-gate against silent attestation drops in any future refactor of the build / merge jobs. Consumer-side verification commands live in <a href="../deployment/#verifying-image-attestations"><code>deployment.md</code></a>.</p>
+<p>The <code>scan</code> job in <code>.github/workflows/docker-build.yml</code> calls <code>gh attestation verify</code> for both predicate types before running Trivy: a regression-gate against silent attestation drops in any future refactor of the build / merge jobs. Consumer-side verification commands live in <a href="../deployment/#verifying-image-attestations"><code>deployment.md</code></a>.</p>
 
 
 

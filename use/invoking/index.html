@@ -1562,7 +1562,7 @@
 
 
 <h1 id="invoking-the-bot">Invoking the bot<a class="headerlink" href="#invoking-the-bot" title="Permanent link">&para;</a></h1>
-<p>The bot reacts to three kinds of input: mentions in a comment, labels applied to an issue or PR, and (for <code>bot:ship</code> only) natural-language asks that include the trigger phrase. All three converge on the same workflow registry — only the <strong>surface</strong> differs in logs.</p>
+<p>The bot reacts to three kinds of input: mentions in a comment, labels applied to an issue or PR, and (for <code>bot:ship</code> only) natural-language asks that include the trigger phrase. All three converge on the same workflow registry, only the <strong>surface</strong> differs in logs.</p>
 <h2 id="the-three-surfaces">The three surfaces<a class="headerlink" href="#the-three-surfaces" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1627,8 +1627,8 @@
 <h2 id="idempotency">Idempotency<a class="headerlink" href="#idempotency" title="Permanent link">&para;</a></h2>
 <p>A duplicate webhook delivery never spawns a duplicate job. The router checks two layers:</p>
 <ol>
-<li><strong>Fast in-memory</strong> — a <code>Map</code> keyed by the <code>X-GitHub-Delivery</code> header, swept every 60 minutes (<code>src/webhook/router.ts</code>). Lost on restart.</li>
-<li><strong>Durable</strong> — <code>isAlreadyProcessed</code> looks for the hidden delivery marker that the bot embeds in its tracking comment. Survives pod restarts, OOM kills, and crash loops; works without <code>DATABASE_URL</code>.</li>
+<li><strong>Fast in-memory</strong>: a <code>Map</code> keyed by the <code>X-GitHub-Delivery</code> header, swept every 60 minutes (<code>src/webhook/router.ts</code>). Lost on restart.</li>
+<li><strong>Durable</strong>, <code>isAlreadyProcessed</code> looks for the hidden delivery marker that the bot embeds in its tracking comment. Survives pod restarts, OOM kills, and crash loops; works without <code>DATABASE_URL</code>.</li>
 </ol>
 <p>If both miss, the request proceeds to the allowlist + concurrency guard.</p>
 <h2 id="what-you-see-while-it-runs">What you see while it runs<a class="headerlink" href="#what-you-see-while-it-runs" title="Permanent link">&para;</a></h2>
@@ -1659,7 +1659,7 @@
 </tr>
 </tbody>
 </table>
-<p>Reactions are additive — the combined set is the audit trail. Label-driven runs skip reactions because there is no comment to react on.</p>
+<p>Reactions are additive: the combined set is the audit trail. Label-driven runs skip reactions because there is no comment to react on.</p>
 <p>The bot also writes a single <strong>tracking comment</strong> per run. For workflows that take minutes (triage, plan, implement, review, resolve, ship), the comment opens with a "Working…" body and is rewritten in place at major checkpoints and at the terminal state. You only need to watch one comment.</p>
 <h2 id="what-gets-refused">What gets refused<a class="headerlink" href="#what-gets-refused" title="Permanent link">&para;</a></h2>
 <table>

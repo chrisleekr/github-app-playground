@@ -1587,7 +1587,7 @@
 </tr>
 <tr>
 <td>Requires prior</td>
-<td>—</td>
+<td><em>none</em></td>
 </tr>
 <tr>
 <td>Artifact</td>
@@ -1626,19 +1626,19 @@
 <td>Blocker</td>
 <td><code>_⚠️ Potential issue_ \| _🔴 Blocker_</code></td>
 <td><code>[blocker]</code></td>
-<td>Must fix before merge — correctness or security.</td>
+<td>Must fix before merge, correctness or security.</td>
 </tr>
 <tr>
 <td>Major</td>
 <td><code>_⚠️ Potential issue_ \| _🟠 Major_</code></td>
 <td><code>[major]</code></td>
-<td>Should fix before merge — likely bug, missing test.</td>
+<td>Should fix before merge, likely bug, missing test.</td>
 </tr>
 <tr>
 <td>Minor</td>
 <td><code>_💭 Suggestion_      \| _🟡 Minor_</code></td>
 <td><code>[minor]</code></td>
-<td>Nice to fix — readability.</td>
+<td>Nice to fix, readability.</td>
 </tr>
 <tr>
 <td>Nit</td>
@@ -1692,7 +1692,7 @@
 <tr>
 <td><code>state.costUsd</code>, <code>state.turns</code></td>
 <td>metrics</td>
-<td>—</td>
+<td><em>none</em></td>
 </tr>
 </tbody>
 </table>
@@ -1701,8 +1701,8 @@
 <h2 id="failure-handling">Failure handling<a class="headerlink" href="#failure-handling" title="Permanent link">&para;</a></h2>
 <p>Every failure path (<code>runPipeline</code> failure, the outer handler catch, or any sync/async throw before the pipeline runs) returns <code>status: "failed"</code> with two distinct outputs:</p>
 <ul>
-<li><strong>Public tracking comment</strong> — a safe constant: <code>"review pipeline execution failed — see server logs for details."</code> Never carries the raw error string, since octokit error stacks include the request URL with the installation token (<code>https://x-access-token:GHS_xxx@…</code>).</li>
-<li><strong>Operator surfaces (DB + logs)</strong> — <code>state.failedReason</code> on the <code>workflow_runs</code> row, <code>pino</code> log line on the daemon, and <code>ExecutionResult.errorMessage</code> returned to the caller. These carry the full SDK message so an operator can diagnose without tailing daemon stderr.</li>
+<li><strong>Public tracking comment</strong>: a safe constant: <code>"review pipeline execution failed, see server logs for details."</code> Never carries the raw error string, since octokit error stacks include the request URL with the installation token (<code>https://x-access-token:GHS_xxx@…</code>).</li>
+<li><strong>Operator surfaces (DB + logs)</strong>: <code>state.failedReason</code> on the <code>workflow_runs</code> row, <code>pino</code> log line on the daemon, and <code>ExecutionResult.errorMessage</code> returned to the caller. These carry the full SDK message so an operator can diagnose without tailing daemon stderr.</li>
 </ul>
 
 

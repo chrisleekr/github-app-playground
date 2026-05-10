@@ -1737,7 +1737,7 @@ Organization: <strong>Org settings → Developer settings → GitHub Apps → Ne
 </tr>
 <tr>
 <td>Description</td>
-<td><code>AI-powered code review bot — responds to @chrisleekr-bot mentions on PRs and issues.</code></td>
+<td><code>AI-powered code review bot, responds to @chrisleekr-bot mentions on PRs and issues.</code></td>
 <td>Optional.</td>
 </tr>
 </tbody>
@@ -1761,7 +1761,7 @@ Organization: <strong>Org settings → Developer settings → GitHub Apps → Ne
 </tr>
 <tr>
 <td>SSL verification</td>
-<td>Enabled (default — keep it).</td>
+<td>Enabled (default, keep it).</td>
 </tr>
 <tr>
 <td>Webhook secret</td>
@@ -1820,7 +1820,7 @@ Organization: <strong>Org settings → Developer settings → GitHub Apps → Ne
 </tr>
 </tbody>
 </table>
-<p>Leave all organisation and account permissions at <strong>No access</strong>. Principle of least privilege — see <a href="https://docs.github.com/en/apps/creating-github-apps/setting-up-a-github-app/choosing-permissions-for-a-github-app">Choosing permissions for a GitHub App</a>.</p>
+<p>Leave all organisation and account permissions at <strong>No access</strong>. Principle of least privilege, see <a href="https://docs.github.com/en/apps/creating-github-apps/setting-up-a-github-app/choosing-permissions-for-a-github-app">Choosing permissions for a GitHub App</a>.</p>
 <h3 id="16-subscribe-to-events">1.6 Subscribe to events<a class="headerlink" href="#16-subscribe-to-events" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -1873,7 +1873,7 @@ Organization: <strong>Org settings → Developer settings → GitHub Apps → Ne
 </tr>
 </tbody>
 </table>
-<p>The shepherding reactor uses <code>synchronize</code>, <code>closed</code>, <code>edited</code>, <code>deleted</code>, <code>check_run</code>, and <code>check_suite</code> to early-wake active sessions on <code>Valkey ZADD ship:tickle</code>. Every subscribed event you do not handle still hits your webhook URL — keep this list tight.</p>
+<p>The shepherding reactor uses <code>synchronize</code>, <code>closed</code>, <code>edited</code>, <code>deleted</code>, <code>check_run</code>, and <code>check_suite</code> to early-wake active sessions on <code>Valkey ZADD ship:tickle</code>. Every subscribed event you do not handle still hits your webhook URL, keep this list tight.</p>
 <blockquote>
 <p>GitHub does not emit a <code>pull_request_review_thread.created</code> action. The only valid actions for that event are <code>resolved</code> and <code>unresolved</code>.</p>
 </blockquote>
@@ -1901,7 +1901,7 @@ Organization: <strong>Org settings → Developer settings → GitHub Apps → Ne
 <p>On the App's General settings:</p>
 <ol>
 <li>Scroll to <strong>Private keys</strong>.</li>
-<li>Click <strong>Generate a private key</strong> — GitHub immediately downloads <code>chrisleekr-bot.YYYY-MM-DD.private-key.pem</code>.</li>
+<li>Click <strong>Generate a private key</strong>, GitHub immediately downloads <code>chrisleekr-bot.YYYY-MM-DD.private-key.pem</code>.</li>
 <li>Move it to a password manager or secrets vault. <strong>Never commit it.</strong></li>
 </ol>
 <p>The full PEM (including <code>-----BEGIN…</code> / <code>-----END…</code> lines) is the value of <code>GITHUB_APP_PRIVATE_KEY</code>. Single-line <code>.env</code> form:</p>
@@ -1936,7 +1936,7 @@ Organization: <strong>Org settings → Developer settings → GitHub Apps → Ne
 <p>After installation, the bot only responds to mentions in repositories where the App is installed.</p>
 <h2 id="5-verify">5. Verify<a class="headerlink" href="#5-verify" title="Permanent link">&para;</a></h2>
 <ol>
-<li><strong>Settings → Developer settings → GitHub Apps → your app → Advanced</strong> — redeliver a recent webhook.</li>
+<li><strong>Settings → Developer settings → GitHub Apps → your app → Advanced</strong>, redeliver a recent webhook.</li>
 <li>Open an issue in an installed repository and post <code>@chrisleekr-bot triage this</code> (or <code>@chrisleekr-bot-dev</code> locally).</li>
 <li>The bot posts a tracking comment within seconds.</li>
 </ol>

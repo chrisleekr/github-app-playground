@@ -1292,7 +1292,7 @@
   <a href="#step-1-write-the-handler" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Step 1 — write the handler
+        Step 1: write the handler
       
     </span>
   </a>
@@ -1303,7 +1303,7 @@
   <a href="#step-2-register" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Step 2 — register
+        Step 2: register
       
     </span>
   </a>
@@ -1314,7 +1314,7 @@
   <a href="#step-3-make-it-discoverable-from-comments" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Step 3 — make it discoverable from comments
+        Step 3: make it discoverable from comments
       
     </span>
   </a>
@@ -1325,7 +1325,7 @@
   <a href="#step-4-document-and-test" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Step 4 — document and test
+        Step 4: document and test
       
     </span>
   </a>
@@ -1375,7 +1375,7 @@
   <a href="#option-a-stdio-server" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Option A — stdio server
+        Option A: stdio server
       
     </span>
   </a>
@@ -1397,7 +1397,7 @@
   <a href="#option-b-http-server" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Option B — HTTP server
+        Option B: HTTP server
       
     </span>
   </a>
@@ -1561,7 +1561,7 @@
   <a href="#step-1-write-the-handler" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Step 1 — write the handler
+        Step 1: write the handler
       
     </span>
   </a>
@@ -1572,7 +1572,7 @@
   <a href="#step-2-register" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Step 2 — register
+        Step 2: register
       
     </span>
   </a>
@@ -1583,7 +1583,7 @@
   <a href="#step-3-make-it-discoverable-from-comments" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Step 3 — make it discoverable from comments
+        Step 3: make it discoverable from comments
       
     </span>
   </a>
@@ -1594,7 +1594,7 @@
   <a href="#step-4-document-and-test" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Step 4 — document and test
+        Step 4: document and test
       
     </span>
   </a>
@@ -1644,7 +1644,7 @@
   <a href="#option-a-stdio-server" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Option A — stdio server
+        Option A: stdio server
       
     </span>
   </a>
@@ -1666,7 +1666,7 @@
   <a href="#option-b-http-server" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Option B — HTTP server
+        Option B: HTTP server
       
     </span>
   </a>
@@ -1718,7 +1718,7 @@
 <p>Two extension points in this codebase: workflow handlers and MCP servers. Both follow a consistent registry pattern.</p>
 <h2 id="adding-a-workflow">Adding a workflow<a class="headerlink" href="#adding-a-workflow" title="Permanent link">&para;</a></h2>
 <p>A workflow is a verb the bot performs on a target (issue or PR). Six are registered today; adding a seventh is appending one entry to <code>src/workflows/registry.ts</code> plus a handler file.</p>
-<h3 id="step-1-write-the-handler">Step 1 — write the handler<a class="headerlink" href="#step-1-write-the-handler" title="Permanent link">&para;</a></h3>
+<h3 id="step-1-write-the-handler">Step 1: write the handler<a class="headerlink" href="#step-1-write-the-handler" title="Permanent link">&para;</a></h3>
 <p><code>src/workflows/handlers/&lt;name&gt;.ts</code> exports a <code>WorkflowHandler</code> (<code>src/workflows/registry.ts</code>):</p>
 <div class="language-typescript highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">export</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">WorkflowHandler</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nx">ctx</span><span class="o">:</span><span class="w"> </span><span class="kt">WorkflowRunContext</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nb">Promise</span><span class="o">&lt;</span><span class="nx">HandlerResult</span><span class="o">&gt;</span><span class="p">;</span>
 </span></code></pre></div>
@@ -1785,7 +1785,7 @@
 </span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="o">|</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">status</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;handed-off&quot;</span><span class="p">;</span><span class="w"> </span><span class="nx">state?</span><span class="o">:</span><span class="w"> </span><span class="kt">unknown</span><span class="p">;</span><span class="w"> </span><span class="nx">humanMessage?</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">;</span><span class="w"> </span><span class="nx">childRunId</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="p">}</span>
 </span></code></pre></div>
 <p>Capture exactly one Markdown artifact (<code>&lt;NAME&gt;.md</code>) so the tracking comment is self-documenting; the executor finalises the comment with <code>state.report</code> if present.</p>
-<h3 id="step-2-register">Step 2 — register<a class="headerlink" href="#step-2-register" title="Permanent link">&para;</a></h3>
+<h3 id="step-2-register">Step 2: register<a class="headerlink" href="#step-2-register" title="Permanent link">&para;</a></h3>
 <p>Append one <code>RegistryEntry</code> to <code>rawRegistry</code> in <code>src/workflows/registry.ts</code>:</p>
 <div class="language-typescript highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span>
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nx">name</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;my-verb&quot;</span><span class="p">,</span>
@@ -1796,7 +1796,7 @@
 </span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">  </span><span class="nx">handler</span><span class="o">:</span><span class="w"> </span><span class="kt">myVerbHandler</span><span class="p">,</span>
 </span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="p">}</span>
 </span></code></pre></div>
-<p>The Zod schema validates at module load — a mistyped entry fails the process at boot.</p>
+<p>The Zod schema validates at module load: a mistyped entry fails the process at boot.</p>
 <table>
 <thead>
 <tr>
@@ -1838,12 +1838,12 @@
 </tr>
 </tbody>
 </table>
-<h3 id="step-3-make-it-discoverable-from-comments">Step 3 — make it discoverable from comments<a class="headerlink" href="#step-3-make-it-discoverable-from-comments" title="Permanent link">&para;</a></h3>
+<h3 id="step-3-make-it-discoverable-from-comments">Step 3: make it discoverable from comments<a class="headerlink" href="#step-3-make-it-discoverable-from-comments" title="Permanent link">&para;</a></h3>
 <p>If the workflow should be reachable via mentions, extend the system prompt in <code>src/workflows/intent-classifier.ts</code> with at least three fixture comments and add it to <code>test/workflows/fixtures/intent-comments.json</code>. The enum the classifier returns is driven by the registry; the prompt narrative just needs to mention the new verb so the classifier picks it.</p>
-<h3 id="step-4-document-and-test">Step 4 — document and test<a class="headerlink" href="#step-4-document-and-test" title="Permanent link">&para;</a></h3>
+<h3 id="step-4-document-and-test">Step 4: document and test<a class="headerlink" href="#step-4-document-and-test" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Add <code>docs/use/workflows/&lt;name&gt;.md</code> matching the template used by the six built-ins.</li>
-<li>Add <code>test/workflows/handlers/&lt;name&gt;.test.ts</code> covering the happy path and one failure mode. Integration via <code>test/workflows/dispatcher.test.ts</code> is automatic — if the registry entry is valid, dispatch works.</li>
+<li>Add <code>test/workflows/handlers/&lt;name&gt;.test.ts</code> covering the happy path and one failure mode. Integration via <code>test/workflows/dispatcher.test.ts</code> is automatic: if the registry entry is valid, dispatch works.</li>
 <li>The <code>check:docs-sync</code> script in CI fails any PR that touches <code>src/workflows/**</code> without updating the workflow docs tree.</li>
 </ul>
 <h2 id="adding-an-mcp-server">Adding an MCP server<a class="headerlink" href="#adding-an-mcp-server" title="Permanent link">&para;</a></h2>
@@ -1871,7 +1871,7 @@
 <tr>
 <td><code>resolve_review_thread</code></td>
 <td>stdio</td>
-<td>Resolves a single PR review thread — bound to one <code>(owner, repo, pullNumber)</code> per server instance. Wired by <code>resolve.ts</code>.</td>
+<td>Resolves a single PR review thread, bound to one <code>(owner, repo, pullNumber)</code> per server instance. Wired by <code>resolve.ts</code>.</td>
 </tr>
 <tr>
 <td><code>daemon_capabilities</code></td>
@@ -1912,7 +1912,7 @@
 </tr>
 </tbody>
 </table>
-<h3 id="option-a-stdio-server">Option A — stdio server<a class="headerlink" href="#option-a-stdio-server" title="Permanent link">&para;</a></h3>
+<h3 id="option-a-stdio-server">Option A: stdio server<a class="headerlink" href="#option-a-stdio-server" title="Permanent link">&para;</a></h3>
 <p><code>src/mcp/servers/&lt;name&gt;.ts</code>:</p>
 <div class="language-typescript highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">McpServer</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;@modelcontextprotocol/sdk/server/mcp.js&quot;</span><span class="p">;</span>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">StdioServerTransport</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s2">&quot;@modelcontextprotocol/sdk/server/stdio.js&quot;</span><span class="p">;</span>
@@ -1951,7 +1951,7 @@
 <div class="language-typescript highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nx">servers</span><span class="p">[</span><span class="s2">&quot;my_server&quot;</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">myServerDef</span><span class="p">(</span><span class="nx">sharedEnv</span><span class="p">);</span>
 </span></code></pre></div>
 <p><code>sharedEnv</code> already carries <code>GITHUB_TOKEN</code>, <code>REPO_OWNER</code>, <code>REPO_NAME</code>, and <code>GITHUB_EVENT_NAME</code>.</p>
-<p>The Dockerfile copies all of <code>src/mcp/</code> to the production image, so new server files are picked up automatically. No Dockerfile change is needed. <strong>Bundling is not automatic</strong>, however — add the new entrypoint to <code>scripts/build.ts</code> (Build 2's <code>entrypoints</code> array) so <code>dist/mcp/servers/&lt;name&gt;.js</code> exists in production.</p>
+<p>The Dockerfile copies all of <code>src/mcp/</code> to the production image, so new server files are picked up automatically. No Dockerfile change is needed. <strong>Bundling is not automatic</strong>, however, add the new entrypoint to <code>scripts/build.ts</code> (Build 2's <code>entrypoints</code> array) so <code>dist/mcp/servers/&lt;name&gt;.js</code> exists in production.</p>
 <h3 id="sharing-a-tool-surface-between-mcp-and-single-turn-callers">Sharing a tool surface between MCP and single-turn callers<a class="headerlink" href="#sharing-a-tool-surface-between-mcp-and-single-turn-callers" title="Permanent link">&para;</a></h3>
 <p>The <code>runWithTools</code> loop in <code>src/ai/llm-client.ts</code> lets single-turn LLM callers (e.g. <code>chat-thread</code>, orchestrator <code>triage</code>) call tools without going through MCP. To share one tool implementation between Agent SDK callers (which dispatch through the MCP subprocess) and single-turn callers (which dispatch inline), put the tool body in <code>src/github/state-fetchers.ts</code>-style fetcher module:</p>
 <ul>
@@ -1961,7 +1961,7 @@
 <li>The MCP server (e.g. <code>src/mcp/servers/github-state.ts</code>) becomes a thin stdio wrapper that calls the same fetchers.</li>
 </ul>
 <p><code>src/github/state-fetchers.ts</code> (issue #117) is the reference implementation.</p>
-<h3 id="option-b-http-server">Option B — HTTP server<a class="headerlink" href="#option-b-http-server" title="Permanent link">&para;</a></h3>
+<h3 id="option-b-http-server">Option B: HTTP server<a class="headerlink" href="#option-b-http-server" title="Permanent link">&para;</a></h3>
 <div class="language-typescript highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">myRemoteServer</span><span class="p">()</span><span class="o">:</span><span class="w"> </span><span class="nx">McpServerDef</span><span class="w"> </span><span class="p">{</span>
 </span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">{</span>
 </span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="kr">type</span><span class="o">:</span><span class="w"> </span><span class="s2">&quot;http&quot;</span><span class="p">,</span>
@@ -1980,10 +1980,10 @@
 <p>If your extension reacts to a GitHub event the bot does not yet handle (e.g. <code>push</code>, <code>pull_request_target</code>), the work splits in two:</p>
 <ol>
 <li><strong>Subscribe</strong> to the event in the GitHub App settings (Permissions &amp; events).</li>
-<li><strong>Add a webhook handler</strong> in <code>src/webhook/events/&lt;event&gt;.ts</code> that parses the payload and dispatches via <code>dispatchByLabel</code> (label path) or <code>dispatchByIntent</code> (comment path). Webhook handlers must return within 10 s — fire <code>processRequest</code> with fire-and-forget semantics.</li>
+<li><strong>Add a webhook handler</strong> in <code>src/webhook/events/&lt;event&gt;.ts</code> that parses the payload and dispatches via <code>dispatchByLabel</code> (label path) or <code>dispatchByIntent</code> (comment path). Webhook handlers must return within 10 s, fire <code>processRequest</code> with fire-and-forget semantics.</li>
 <li><strong>Register the event handler</strong> in <code>src/app.ts</code> alongside the existing <code>app.webhooks.on(...)</code> calls.</li>
 </ol>
-<p>Webhook handlers do <strong>not</strong> run business logic — they parse the event, build a <code>BotContext</code>, and dispatch. All bot work happens in workflow handlers, called from the daemon.</p>
+<p>Webhook handlers do <strong>not</strong> run business logic, they parse the event, build a <code>BotContext</code>, and dispatch. All bot work happens in workflow handlers, called from the daemon.</p>
 
 
 

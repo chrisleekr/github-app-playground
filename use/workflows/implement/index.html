@@ -1632,15 +1632,15 @@
 <tr>
 <td><code>state.costUsd</code>, <code>state.turns</code></td>
 <td>metrics</td>
-<td>—</td>
+<td><em>none</em></td>
 </tr>
 </tbody>
 </table>
 <h2 id="pr-detection">PR detection<a class="headerlink" href="#pr-detection" title="Permanent link">&para;</a></h2>
 <p><code>findRecentOpenedPr</code> filter is auth-mode aware (<code>src/workflows/handlers/implement.ts</code>):</p>
 <ul>
-<li><strong>App installation token (default)</strong> — matches <code>pr.user?.type === 'Bot'</code> plus <code>created_at &gt;= since - 5s</code>. Deliberately not keyed on a slug because dev installs publish as <code>chrisleekr-bot-dev[bot]</code> and prod as <code>chrisleekr-bot[bot]</code>.</li>
-<li><strong><code>GITHUB_PERSONAL_ACCESS_TOKEN</code> mode</strong> — a PAT authors PRs as the human owner (<code>type === 'User'</code>), so the bot-type filter would skip them. The handler resolves the active token's login via <code>octokit.rest.users.getAuthenticated()</code> and matches <code>pr.user?.login === &lt;PAT owner&gt;</code>. If <code>/user</code> fails the handler fails closed (the outer <code>try/catch</code> reports the run as <code>failed</code>); falling back to the bot-type filter would be unsafe in PAT mode because an unrelated bot PR opened in the same window (Dependabot, Renovate) would be claimed as ours.</li>
+<li><strong>App installation token (default)</strong>: matches <code>pr.user?.type === 'Bot'</code> plus <code>created_at &gt;= since - 5s</code>. Deliberately not keyed on a slug because dev installs publish as <code>chrisleekr-bot-dev[bot]</code> and prod as <code>chrisleekr-bot[bot]</code>.</li>
+<li><strong><code>GITHUB_PERSONAL_ACCESS_TOKEN</code> mode</strong>: a PAT authors PRs as the human owner (<code>type === 'User'</code>), so the bot-type filter would skip them. The handler resolves the active token's login via <code>octokit.rest.users.getAuthenticated()</code> and matches <code>pr.user?.login === &lt;PAT owner&gt;</code>. If <code>/user</code> fails the handler fails closed (the outer <code>try/catch</code> reports the run as <code>failed</code>); falling back to the bot-type filter would be unsafe in PAT mode because an unrelated bot PR opened in the same window (Dependabot, Renovate) would be claimed as ours.</li>
 </ul>
 <h2 id="pr-body">PR body<a class="headerlink" href="#pr-body" title="Permanent link">&para;</a></h2>
 <p>The agent reads <code>.github/PULL_REQUEST_TEMPLATE/bot-implement.md</code> and fills every section based on actual work, then passes it via <code>gh pr create --body-file …</code>. This keeps bot PRs structurally consistent and prevents <code>gh</code> from auto-falling back to the human PR template.</p>
@@ -1650,12 +1650,12 @@
 <li>Pipeline succeeds but <code>findRecentOpenedPr</code> returns null → handler fails with <code>"implement completed but no PR was found"</code>.</li>
 <li>Pipeline fails → handler reports the underlying error.</li>
 </ul>
-<p>The handler does <strong>not</strong> poll CI or reviewer state — that is <code>resolve</code>'s job, after <code>review</code> has run.</p>
+<p>The handler does <strong>not</strong> poll CI or reviewer state: that is <code>resolve</code>'s job, after <code>review</code> has run.</p>
 <h2 id="failure-handling">Failure handling<a class="headerlink" href="#failure-handling" title="Permanent link">&para;</a></h2>
 <p>The handler treats public and operator surfaces separately so the public tracking comment never carries the raw underlying error. Both the <code>runPipeline</code> failure path and the outer handler <code>catch</code> set the same safe <code>humanMessage</code>:</p>
 <ul>
-<li><strong>Public tracking comment</strong> — a safe constant: <code>"implement pipeline execution failed — see server logs for details."</code> Octokit error stacks embed the installation token in the request URL, so the bot must never inline <code>err.message</code> into a comment body.</li>
-<li><strong>Operator surfaces (DB + logs)</strong> — the SDK error is propagated as <code>ExecutionResult.errorMessage</code> and persisted as <code>state.failedReason</code> on the <code>workflow_runs</code> row. <code>pino</code> logs the full <code>err</code> object on the daemon. The orchestrator's quota-detection helper reads <code>state.failedReason</code> to decide whether to auto-defer the next ship iteration; see <a href="../ship/"><code>ship.md</code></a>.</li>
+<li><strong>Public tracking comment</strong>: a safe constant: <code>"implement pipeline execution failed, see server logs for details."</code> Octokit error stacks embed the installation token in the request URL, so the bot must never inline <code>err.message</code> into a comment body.</li>
+<li><strong>Operator surfaces (DB + logs)</strong>: the SDK error is propagated as <code>ExecutionResult.errorMessage</code> and persisted as <code>state.failedReason</code> on the <code>workflow_runs</code> row. <code>pino</code> logs the full <code>err</code> object on the daemon. The orchestrator's quota-detection helper reads <code>state.failedReason</code> to decide whether to auto-defer the next ship iteration; see <a href="../ship/"><code>ship.md</code></a>.</li>
 </ul>
 
 

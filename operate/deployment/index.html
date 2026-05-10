@@ -1952,7 +1952,7 @@
 
 
 <h1 id="deployment">Deployment<a class="headerlink" href="#deployment" title="Permanent link">&para;</a></h1>
-<p>The repository ships <strong>two container images</strong> — an orchestrator and a daemon — built from separate Dockerfiles that share a byte-identical base.</p>
+<p>The repository ships <strong>two container images</strong>, an orchestrator and a daemon, built from separate Dockerfiles that share a byte-identical base.</p>
 <h2 id="image-topology">Image topology<a class="headerlink" href="#image-topology" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -2036,7 +2036,7 @@
 <tr>
 <td><code>daemon-tools</code></td>
 <td><code>base</code></td>
-<td>Installs the full toolchain — kubectl, helm, terraform, kustomize, k9s, stern, argocd, flux, tflint, yq, aws-cli, gcloud, docker CLI, go, rust, poetry, gh, azure-cli — and bakes <code>daemon-capabilities.static.json</code> for fast startup.</td>
+<td>Installs the full toolchain, kubectl, helm, terraform, kustomize, k9s, stern, argocd, flux, tflint, yq, aws-cli, gcloud, docker CLI, go, rust, poetry, gh, azure-cli, and bakes <code>daemon-capabilities.static.json</code> for fast startup.</td>
 </tr>
 <tr>
 <td><code>production</code></td>
@@ -2051,7 +2051,7 @@
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>bun<span class="w"> </span>run<span class="w"> </span>docker:build:daemon<span class="w">         </span><span class="c1"># → chrisleekr/github-app-playground:local-daemon</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>bun<span class="w"> </span>run<span class="w"> </span>docker:build<span class="w">                </span><span class="c1"># both</span>
 </span></code></pre></div>
-<p>There is no default <code>Dockerfile</code> — always pass <code>-f</code>.</p>
+<p>There is no default <code>Dockerfile</code>, always pass <code>-f</code>.</p>
 <h3 id="build-arguments">Build arguments<a class="headerlink" href="#build-arguments" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -2111,7 +2111,7 @@
 <blockquote>
 <p>Note: As SBOM file size is over 16MB, temporary disable SBOM attestations.</p>
 </blockquote>
-<p>Every published tag — both <code>-orchestrator</code> and <code>-daemon</code> variants and the bare <code>&lt;version&gt;</code> / <code>latest</code> aliases — ships with two Sigstore-signed attestations bound to the manifest-list digest:</p>
+<p>Every published tag, both <code>-orchestrator</code> and <code>-daemon</code> variants and the bare <code>&lt;version&gt;</code> / <code>latest</code> aliases, ships with two Sigstore-signed attestations bound to the manifest-list digest:</p>
 <table>
 <thead>
 <tr>
@@ -2134,25 +2134,25 @@
 </tbody>
 </table>
 <p>Verify before pulling into production. <code>gh attestation verify</code> checks the attestation against GitHub's transparency log and the Sigstore trust root:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Provenance — fails if missing or signed by anything other than this repo&#39;s workflow</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Provenance: fails if missing or signed by anything other than this repo&#39;s workflow</span>
 </span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>gh<span class="w"> </span>attestation<span class="w"> </span>verify<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span>oci://chrisleekr/github-app-playground:1.3.0-orchestrator<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span>--repo<span class="w"> </span>chrisleekr/github-app-playground<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span>--predicate-type<span class="w"> </span>https://slsa.dev/provenance/v1
 </span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
-</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># SBOM — same shape, different predicate</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># SBOM: same shape, different predicate</span>
 </span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>gh<span class="w"> </span>attestation<span class="w"> </span>verify<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">  </span>oci://chrisleekr/github-app-playground:1.3.0-orchestrator<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="w">  </span>--repo<span class="w"> </span>chrisleekr/github-app-playground<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="w">  </span>--predicate-type<span class="w"> </span>https://cyclonedx.org/bom
 </span></code></pre></div>
 <p>The same commands apply to the <code>-daemon</code> tags. The <code>scan</code> job in <code>docker-build.yml</code> runs both calls before Trivy on every release, so any future regression that drops an attestation fails the workflow at the verify step.</p>
-<p>You can also pull the BuildKit-emitted SPDX SBOM and SLSA provenance attached to each per-arch leaf manifest directly via the registry — useful for offline supply-chain audits and the only source for arm64 package coverage (the Sigstore CycloneDX flavour above is amd64-only):</p>
+<p>You can also pull the BuildKit-emitted SPDX SBOM and SLSA provenance attached to each per-arch leaf manifest directly via the registry, useful for offline supply-chain audits and the only source for arm64 package coverage (the Sigstore CycloneDX flavour above is amd64-only):</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Provenance JSON (per platform)</span>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>docker<span class="w"> </span>buildx<span class="w"> </span>imagetools<span class="w"> </span>inspect<span class="w"> </span>chrisleekr/github-app-playground:1.3.0-orchestrator<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span>--format<span class="w"> </span><span class="s1">&#39;{{ json .Provenance }}&#39;</span>
 </span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="c1"># SBOM JSON (per platform — SPDX 2.3, distinct from the CycloneDX one above)</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="c1"># SBOM JSON (per platform: SPDX 2.3, distinct from the CycloneDX one above)</span>
 </span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>docker<span class="w"> </span>buildx<span class="w"> </span>imagetools<span class="w"> </span>inspect<span class="w"> </span>chrisleekr/github-app-playground:1.3.0-orchestrator<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">  </span>--format<span class="w"> </span><span class="s1">&#39;{{ json .SBOM }}&#39;</span>
 </span></code></pre></div>
@@ -2166,8 +2166,8 @@
 </span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">  </span>chrisleekr/github-app-playground:local-orchestrator
 </span></code></pre></div>
 <ul>
-<li><code>3000</code> — HTTP: webhook listener, <code>/healthz</code>, <code>/readyz</code>.</li>
-<li><code>3002</code> — WebSocket: daemon registry (<code>WS_PORT</code>). Expose only on networks the daemons connect from.</li>
+<li><code>3000</code>: HTTP: webhook listener, <code>/healthz</code>, <code>/readyz</code>.</li>
+<li><code>3002</code>: WebSocket: daemon registry (<code>WS_PORT</code>). Expose only on networks the daemons connect from.</li>
 </ul>
 <p>Shortcut: <code>bun run docker:run:orchestrator</code> (mounts <code>~/.aws</code> read-only for local Bedrock testing).</p>
 <h3 id="daemon">Daemon<a class="headerlink" href="#daemon" title="Permanent link">&para;</a></h3>
@@ -2178,7 +2178,7 @@
 </span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">  </span>-v<span class="w"> </span><span class="nv">$HOME</span>/.aws:/home/bun/.aws:ro<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">  </span>chrisleekr/github-app-playground:local-daemon
 </span></code></pre></div>
-<p>The daemon does <strong>not</strong> expose any HTTP port and does <strong>not</strong> need GitHub App credentials — the orchestrator mints installation tokens and hands them off per job.</p>
+<p>The daemon does <strong>not</strong> expose any HTTP port and does <strong>not</strong> need GitHub App credentials: the orchestrator mints installation tokens and hands them off per job.</p>
 <p>Shortcut: <code>bun run docker:run:daemon</code> (connects back to <code>ws://host.docker.internal:3002</code>).</p>
 <h2 id="health-and-readiness-probes">Health and readiness probes<a class="headerlink" href="#health-and-readiness-probes" title="Permanent link">&para;</a></h2>
 <p>Endpoints exist on the <strong>orchestrator image only</strong>. Daemon liveness is tracked via the WebSocket heartbeat in the orchestrator's daemon registry.</p>
@@ -2197,15 +2197,15 @@
 <td><code>/healthz</code></td>
 <td>GET</td>
 <td><code>200 ok</code></td>
-<td>—</td>
-<td>Liveness — process is alive (no external deps).</td>
+<td><em>none</em></td>
+<td>Liveness, process is alive (no external deps).</td>
 </tr>
 <tr>
 <td><code>/readyz</code></td>
 <td>GET</td>
 <td><code>200 ready</code></td>
 <td><code>503 not ready</code></td>
-<td>Readiness — config validated and data layer reachable. Returns <code>503 not ready</code> during startup, when a dependency is down, or after <code>SIGTERM</code>.</td>
+<td>Readiness, config validated and data layer reachable. Returns <code>503 not ready</code> during startup, when a dependency is down, or after <code>SIGTERM</code>.</td>
 </tr>
 </tbody>
 </table>
@@ -2224,12 +2224,12 @@
 </span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="w">  </span><span class="nt">initialDelaySeconds</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span>
 </span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="w">  </span><span class="nt">periodSeconds</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span>
 </span></code></pre></div>
-<p>For the daemon, replace HTTP probes with an <code>exec</code> probe that checks the WebSocket connection — see <a href="../runbooks/daemon-fleet/"><code>runbooks/daemon-fleet.md</code></a>.</p>
+<p>For the daemon, replace HTTP probes with an <code>exec</code> probe that checks the WebSocket connection, see <a href="../runbooks/daemon-fleet/"><code>runbooks/daemon-fleet.md</code></a>.</p>
 <h2 id="graceful-shutdown">Graceful shutdown<a class="headerlink" href="#graceful-shutdown" title="Permanent link">&para;</a></h2>
 <p>The orchestrator handles <code>SIGTERM</code> and <code>SIGINT</code>:</p>
 <ol>
 <li>Flips <code>/readyz</code> to <code>503</code> so the load balancer stops routing.</li>
-<li>Calls <code>server.close()</code> — waits for in-flight HTTP requests.</li>
+<li>Calls <code>server.close()</code>, waits for in-flight HTTP requests.</li>
 <li>MCP stdio child processes exit via their own <code>finally</code> blocks.</li>
 <li>Force-exits after 290 seconds if shutdown hasn't completed (<code>src/app.ts</code>).</li>
 </ol>
@@ -2237,7 +2237,7 @@
 <p>The daemon has its own drain contract driven by <code>DAEMON_DRAIN_TIMEOUT_MS</code>: it finishes the current job, refuses new offers, then disconnects. Match <code>terminationGracePeriodSeconds</code> to <code>DAEMON_DRAIN_TIMEOUT_MS</code> on the daemon Pod.</p>
 <h2 id="resource-recommendations">Resource recommendations<a class="headerlink" href="#resource-recommendations" title="Permanent link">&para;</a></h2>
 <h3 id="orchestrator_1">Orchestrator<a class="headerlink" href="#orchestrator_1" title="Permanent link">&para;</a></h3>
-<p>I/O-bound — never runs the pipeline itself. 1 GB is typically enough.</p>
+<p>I/O-bound, never runs the pipeline itself. 1 GB is typically enough.</p>
 <table>
 <thead>
 <tr>
@@ -2335,7 +2335,7 @@
 <h3 id="daemon-secrets-secret"><code>daemon-secrets</code> Secret<a class="headerlink" href="#daemon-secrets-secret" title="Permanent link">&para;</a></h3>
 <p>Spawned ephemeral Pods get their config via <code>envFrom: secretRef: daemon-secrets</code>. Create this Secret once in <code>EPHEMERAL_DAEMON_NAMESPACE</code> with at minimum:</p>
 <ul>
-<li><code>DAEMON_AUTH_TOKEN</code> — daemon ⇄ orchestrator handshake. <strong>Only source.</strong> The spawner does not inline this into the Pod spec, so it cannot leak via <code>kubectl get pod -o yaml</code> or the Pod audit log.</li>
+<li><code>DAEMON_AUTH_TOKEN</code>: daemon ⇄ orchestrator handshake. <strong>Only source.</strong> The spawner does not inline this into the Pod spec, so it cannot leak via <code>kubectl get pod -o yaml</code> or the Pod audit log.</li>
 <li><code>ANTHROPIC_API_KEY</code> or <code>CLAUDE_CODE_OAUTH_TOKEN</code> (and <code>ALLOWED_OWNERS</code>) or Bedrock <code>AWS_*</code> vars.</li>
 <li><code>VALKEY_URL</code>, <code>DATABASE_URL</code>.</li>
 </ul>
@@ -2343,7 +2343,7 @@
 <h3 id="ephemeral-pod-security-posture">Ephemeral Pod security posture<a class="headerlink" href="#ephemeral-pod-security-posture" title="Permanent link">&para;</a></h3>
 <p>The spawner hardens every ephemeral Pod (see <code>src/k8s/ephemeral-daemon-spawner.ts</code>):</p>
 <ul>
-<li><code>automountServiceAccountToken: false</code> — the daemon never calls the K8s API itself.</li>
+<li><code>automountServiceAccountToken: false</code>: the daemon never calls the K8s API itself.</li>
 <li>Pod <code>securityContext</code>: <code>runAsNonRoot: true</code>, <code>runAsUser: 1000</code>, <code>runAsGroup: 1000</code>, <code>seccompProfile: RuntimeDefault</code>.</li>
 <li>Container: <code>allowPrivilegeEscalation: false</code>, <code>capabilities.drop: [ALL]</code>.</li>
 <li><code>restartPolicy: Never</code> and <code>activeDeadlineSeconds: 3600</code> cap the Pod hard.</li>
@@ -2372,7 +2372,7 @@
 </tr>
 <tr>
 <td><code>AGENT_TIMEOUT_MS</code></td>
-<td>Stay below 3600 s — the GitHub installation-token TTL</td>
+<td>Stay below 3600 s, the GitHub installation-token TTL</td>
 </tr>
 <tr>
 <td><code>CLONE_BASE_DIR</code></td>

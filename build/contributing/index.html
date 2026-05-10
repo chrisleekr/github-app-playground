@@ -1615,7 +1615,7 @@
 <tbody>
 <tr>
 <td><code>main</code></td>
-<td>Always green. Push triggers <code>ci.yml</code> only — production releases are manual.</td>
+<td>Always green. Push triggers <code>ci.yml</code> only, production releases are manual.</td>
 </tr>
 <tr>
 <td>Feature branches</td>
@@ -1631,8 +1631,8 @@
 <h2 id="pre-commit-gate">Pre-commit gate<a class="headerlink" href="#pre-commit-gate" title="Permanent link">&para;</a></h2>
 <p><code>.husky/pre-commit</code> runs:</p>
 <ol>
-<li><code>gitleaks protect --staged</code> — secret scan (hard exit if <code>gitleaks</code> is missing; install with your package manager).</li>
-<li><code>bunx lint-staged</code> — Prettier and ESLint on staged files.</li>
+<li><code>gitleaks protect --staged</code>, secret scan (hard exit if <code>gitleaks</code> is missing; install with your package manager).</li>
+<li><code>bunx lint-staged</code>, Prettier and ESLint on staged files.</li>
 </ol>
 <p><code>.husky/commit-msg</code> runs <code>commitlint</code> on the message itself.</p>
 <h2 id="what-to-run-before-opening-a-pr">What to run before opening a PR<a class="headerlink" href="#what-to-run-before-opening-a-pr" title="Permanent link">&para;</a></h2>
@@ -1649,7 +1649,7 @@
 <h2 id="prs-that-change-configuration">PRs that change configuration<a class="headerlink" href="#prs-that-change-configuration" title="Permanent link">&para;</a></h2>
 <p>If you add or rename an environment variable in <code>src/config.ts</code>, update <a href="../../operate/configuration/"><code>../operate/configuration.md</code></a> in the same PR. The full doc-sync mapping is in <a href="../conventions/#documentation-discipline"><code>conventions.md</code></a>.</p>
 <h2 id="where-to-file-issues">Where to file issues<a class="headerlink" href="#where-to-file-issues" title="Permanent link">&para;</a></h2>
-<p>Use the GitHub issue tracker on the repo. The bot also responds to mentions on issues — <code>@chrisleekr-bot triage this</code> is a perfectly valid first move (see <a href="../../use/workflows/triage/"><code>../use/workflows/triage.md</code></a>).</p>
+<p>Use the GitHub issue tracker on the repo. The bot also responds to mentions on issues, <code>@chrisleekr-bot triage this</code> is a perfectly valid first move (see <a href="../../use/workflows/triage/"><code>../use/workflows/triage.md</code></a>).</p>
 <h2 id="running-the-docs-site-locally">Running the docs site locally<a class="headerlink" href="#running-the-docs-site-locally" title="Permanent link">&para;</a></h2>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>bun<span class="w"> </span>run<span class="w"> </span>docs:install<span class="w">   </span><span class="c1"># one-time, installs MkDocs Material</span>
 </span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>bun<span class="w"> </span>run<span class="w"> </span>docs:serve<span class="w">     </span><span class="c1"># http://localhost:8000 with live reload</span>

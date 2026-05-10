@@ -1732,19 +1732,19 @@
 <h2 id="key-concepts">Key concepts<a class="headerlink" href="#key-concepts" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Async processing.</strong> The webhook handler responds within ten seconds, so the router fires <code>processRequest</code> with fire-and-forget semantics after the 200 OK is queued. Every box downstream of <code>ACK</code> runs after the HTTP response is on the wire.</li>
-<li><strong>Two-layer idempotency.</strong> The fast path is an in-memory <code>Map</code> keyed by <code>X-GitHub-Delivery</code>. The durable path (<code>isAlreadyProcessed</code> in <code>src/core/tracking-comment.ts</code>) scans GitHub issue/PR comments for the hidden delivery marker the bot embeds in the tracking comment, so duplicate deliveries are detected across pod restarts, OOM kills, and crash loops — this works <strong>without</strong> <code>DATABASE_URL</code>. <code>DATABASE_URL</code> is required only to persist execution / dispatch history across restarts.</li>
-<li><strong>One request, one clone.</strong> Each delivery clones the repo into a unique temp directory under <code>CLONE_BASE_DIR</code> <strong>on the daemon host</strong>. Claude operates on local files via <code>cwd</code>. On PR events the checkout supplementally fetches <code>origin/&lt;baseBranch&gt;</code> (when it differs from the head ref) so the agent's <code>git diff origin/&lt;baseBranch&gt;...HEAD</code> and <code>git rebase origin/&lt;baseBranch&gt;</code> directives resolve first try. A sibling <code>${workDir}-artifacts</code> directory is created outside the checkout and exposed to the agent as <code>BOT_ARTIFACT_DIR</code> — workflow summary files (IMPLEMENT.md / REVIEW.md / RESOLVE.md) are written there so they can never be picked up by a <code>git add</code> inside the clone. Both directories are removed in the pipeline's <code>finally</code> block regardless of outcome.</li>
-<li><strong>GitHub credential resolution.</strong> <code>src/core/github-token.ts:resolveGithubToken()</code> is the single source of the GitHub credential the daemon uses. Default is an App installation token minted just-in-time from the cached <code>App</code> singleton in <code>src/orchestrator/connection-handler.ts</code>. When <code>GITHUB_PERSONAL_ACCESS_TOKEN</code> is set, the helper short-circuits and returns the PAT instead — API/git authentication runs as the PAT owner. Commit author/committer metadata is <strong>not</strong> affected; <code>src/core/checkout.ts</code> hard-pins git <code>user.name</code>/<code>user.email</code> to <code>chrisleekr-bot[bot]</code> so commit objects still carry the bot identity. The git credential helper, executor <code>GH_TOKEN</code>/<code>GITHUB_TOKEN</code> env vars, and MCP server env all consume the resolved string without caring about its source.</li>
-<li><strong>The webhook server never runs the pipeline.</strong> Only daemons execute <code>runPipeline</code>. The webhook server is the orchestrator — it enqueues jobs and optionally spawns ephemeral daemons.</li>
+<li><strong>Two-layer idempotency.</strong> The fast path is an in-memory <code>Map</code> keyed by <code>X-GitHub-Delivery</code>. The durable path (<code>isAlreadyProcessed</code> in <code>src/core/tracking-comment.ts</code>) scans GitHub issue/PR comments for the hidden delivery marker the bot embeds in the tracking comment, so duplicate deliveries are detected across pod restarts, OOM kills, and crash loops: this works <strong>without</strong> <code>DATABASE_URL</code>. <code>DATABASE_URL</code> is required only to persist execution / dispatch history across restarts.</li>
+<li><strong>One request, one clone.</strong> Each delivery clones the repo into a unique temp directory under <code>CLONE_BASE_DIR</code> <strong>on the daemon host</strong>. Claude operates on local files via <code>cwd</code>. On PR events the checkout supplementally fetches <code>origin/&lt;baseBranch&gt;</code> (when it differs from the head ref) so the agent's <code>git diff origin/&lt;baseBranch&gt;...HEAD</code> and <code>git rebase origin/&lt;baseBranch&gt;</code> directives resolve first try. A sibling <code>${workDir}-artifacts</code> directory is created outside the checkout and exposed to the agent as <code>BOT_ARTIFACT_DIR</code>: workflow summary files (IMPLEMENT.md / REVIEW.md / RESOLVE.md) are written there so they can never be picked up by a <code>git add</code> inside the clone. Both directories are removed in the pipeline's <code>finally</code> block regardless of outcome.</li>
+<li><strong>GitHub credential resolution.</strong> <code>src/core/github-token.ts:resolveGithubToken()</code> is the single source of the GitHub credential the daemon uses. Default is an App installation token minted just-in-time from the cached <code>App</code> singleton in <code>src/orchestrator/connection-handler.ts</code>. When <code>GITHUB_PERSONAL_ACCESS_TOKEN</code> is set, the helper short-circuits and returns the PAT instead, API/git authentication runs as the PAT owner. Commit author/committer metadata is <strong>not</strong> affected; <code>src/core/checkout.ts</code> hard-pins git <code>user.name</code>/<code>user.email</code> to <code>chrisleekr-bot[bot]</code> so commit objects still carry the bot identity. The git credential helper, executor <code>GH_TOKEN</code>/<code>GITHUB_TOKEN</code> env vars, and MCP server env all consume the resolved string without caring about its source.</li>
+<li><strong>The webhook server never runs the pipeline.</strong> Only daemons execute <code>runPipeline</code>. The webhook server is the orchestrator: it enqueues jobs and optionally spawns ephemeral daemons.</li>
 <li><strong>Every orchestrator runs a queue worker.</strong> <code>src/orchestrator/queue-worker.ts</code> polls <code>queue:jobs</code> via <code>LMOVE</code> into a per-instance processing list (<code>queue:processing:{instanceId}</code>), offers the job to a locally-connected daemon, and atomically re-queues it to the head when no local daemon can take it. Multi-orchestrator HA: <code>LMOVE</code> grants exactly-once claim across instances; the offer/accept round-trip stays in-process. Crash recovery is handled by each orchestrator draining its own processing list at startup, plus a cross-instance reaper (<code>src/orchestrator/valkey-cleanup.ts</code>) draining processing lists owned by instances whose <code>orchestrator:{id}:alive</code> liveness key has expired.</li>
 <li><strong>MCP servers.</strong> Tracking-comment updates, inline PR reviews, scoped review-thread resolves, daemon-capability reports, repo-memory, and (optionally) Context7 library docs are exposed as MCP servers the agent can call. Git changes are made via the Bash tool against the cloned repo, not through a dedicated MCP server.</li>
 </ul>
 <h2 id="dispatch-flow">Dispatch flow<a class="headerlink" href="#dispatch-flow" title="Permanent link">&para;</a></h2>
-<p>Dispatch collapsed to a single target — <code>daemon</code> — in migration <code>004_collapse_dispatch_to_daemon.sql</code>. Every job is claimed by some daemon in the fleet over WebSocket. The router decides only the <strong>reason</strong> the job lands there and whether to spawn an ephemeral daemon.</p>
+<p>Dispatch collapsed to a single target, <code>daemon</code>, in migration <code>004_collapse_dispatch_to_daemon.sql</code>. Every job is claimed by some daemon in the fleet over WebSocket. The router decides only the <strong>reason</strong> the job lands there and whether to spawn an ephemeral daemon.</p>
 <h3 id="single-target-four-reasons">Single target, four reasons<a class="headerlink" href="#single-target-four-reasons" title="Permanent link">&para;</a></h3>
 <p>Canonical source: <code>src/shared/dispatch-types.ts</code>.</p>
 <ul>
-<li><code>DispatchTarget</code> = <code>"daemon"</code> (singleton — kept as a field for DB/log stability).</li>
+<li><code>DispatchTarget</code> = <code>"daemon"</code> (singleton: kept as a field for DB/log stability).</li>
 <li><code>DispatchReason</code> is one of:</li>
 </ul>
 <table>
@@ -1774,11 +1774,11 @@
 </tbody>
 </table>
 <h3 id="scale-up-model">Scale-up model<a class="headerlink" href="#scale-up-model" title="Permanent link">&para;</a></h3>
-<p>The fleet is two-tiered — see <a href="../../operate/runbooks/daemon-fleet/"><code>../operate/runbooks/daemon-fleet.md</code></a> for the operational view. The decision rule:</p>
+<p>The fleet is two-tiered, see <a href="../../operate/runbooks/daemon-fleet/"><code>../operate/runbooks/daemon-fleet.md</code></a> for the operational view. The decision rule:</p>
 <ol>
 <li><strong>Triage.</strong> Single-turn Haiku call returns <code>{heavy, confidence, rationale}</code>. <code>heavy=true</code> is one trigger.</li>
 <li><strong>Overflow.</strong> <code>queue_length ≥ EPHEMERAL_DAEMON_SPAWN_QUEUE_THRESHOLD</code> <strong>and</strong> persistent free slots = 0 is the other trigger.</li>
-<li><strong>Cooldown.</strong> Spawns are rate-limited by <code>EPHEMERAL_DAEMON_SPAWN_COOLDOWN_MS</code>. During cooldown, heavy/overflow signals do <strong>not</strong> spawn — the job falls back to <code>persistent-daemon</code> and waits.</li>
+<li><strong>Cooldown.</strong> Spawns are rate-limited by <code>EPHEMERAL_DAEMON_SPAWN_COOLDOWN_MS</code>. During cooldown, heavy/overflow signals do <strong>not</strong> spawn: the job falls back to <code>persistent-daemon</code> and waits.</li>
 <li><strong>Spawn.</strong> When both a trigger fires and cooldown has elapsed, the orchestrator calls the K8s API to create a bare Pod with <code>DAEMON_EPHEMERAL=true</code>. Only a true K8s API failure yields <code>ephemeral-spawn-failed</code>.</li>
 </ol>
 <p>The newly-spawned ephemeral daemon connects via WebSocket, registers with <code>isEphemeral: true</code>, claims the job, runs it, then drains and exits after <code>EPHEMERAL_DAEMON_IDLE_TIMEOUT_MS</code>.</p>
@@ -1875,7 +1875,7 @@
 </tbody>
 </table>
 <h2 id="pr-shepherding-bridge">PR shepherding bridge<a class="headerlink" href="#pr-shepherding-bridge" title="Permanent link">&para;</a></h2>
-<p>The <code>bot:ship</code> lifecycle does <strong>not</strong> own a separate daemon-execution path. It bridges onto the existing <code>workflow_runs</code> pipeline so a single executor surface clones, runs the Agent SDK, and pushes — no parallel implementation to drift between.</p>
+<p>The <code>bot:ship</code> lifecycle does <strong>not</strong> own a separate daemon-execution path. It bridges onto the existing <code>workflow_runs</code> pipeline so a single executor surface clones, runs the Agent SDK, and pushes, no parallel implementation to drift between.</p>
 <pre class="mermaid"><code>flowchart LR
     Trigger["bot:ship trigger&lt;br/&gt;literal / NL / label"]:::input
     SR["session-runner.ts"]:::core
@@ -1966,11 +1966,11 @@
 </table>
 <h2 id="further-reading">Further reading<a class="headerlink" href="#further-reading" title="Permanent link">&para;</a></h2>
 <ul>
-<li><a href="../../use/workflows/">Workflows</a> — registry-driven <code>bot:*</code> commands. Source of truth: <code>src/workflows/registry.ts</code>.</li>
-<li><a href="../../use/workflows/ship/"><code>bot:ship</code> lifecycle</a> — verdict ladder, status state machine.</li>
-<li><a href="../../operate/runbooks/daemon-fleet/">Daemon fleet runbook</a> — persistent vs ephemeral, scaling, K8s.</li>
-<li><a href="../../operate/configuration/">Configuration</a> — every environment variable.</li>
-<li><a href="../extending/">Extending</a> — add a workflow or MCP server.</li>
+<li><a href="../../use/workflows/">Workflows</a>: registry-driven <code>bot:*</code> commands. Source of truth: <code>src/workflows/registry.ts</code>.</li>
+<li><a href="../../use/workflows/ship/"><code>bot:ship</code> lifecycle</a>, verdict ladder, status state machine.</li>
+<li><a href="../../operate/runbooks/daemon-fleet/">Daemon fleet runbook</a>: persistent vs ephemeral, scaling, K8s.</li>
+<li><a href="../../operate/configuration/">Configuration</a>: every environment variable.</li>
+<li><a href="../extending/">Extending</a>: add a workflow or MCP server.</li>
 </ul>
 
 

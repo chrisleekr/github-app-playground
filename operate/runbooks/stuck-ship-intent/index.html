@@ -1685,7 +1685,7 @@
   
 
 
-<h1 id="runbook-stuck-botship-session">Runbook — stuck <code>bot:ship</code> session<a class="headerlink" href="#runbook-stuck-botship-session" title="Permanent link">&para;</a></h1>
+<h1 id="runbook-stuck-botship-session">Runbook: stuck <code>bot:ship</code> session<a class="headerlink" href="#runbook-stuck-botship-session" title="Permanent link">&para;</a></h1>
 <p>A shepherding session that doesn't terminate cleanly leaves a row in <code>ship_intents</code> with status other than <code>ready_awaiting_human_merge</code> or <code>merged_externally</code>. This page is a guide to figuring out which class of stuck and what to do.</p>
 <h2 id="database-tables">Database tables<a class="headerlink" href="#database-tables" title="Permanent link">&para;</a></h2>
 <p>Two tables carry the bulk of operator-relevant state:</p>
@@ -1729,17 +1729,17 @@
 <tr>
 <td><code>active</code></td>
 <td>Session is in flight (or about to be tickled).</td>
-<td>—</td>
+<td><em>none</em></td>
 </tr>
 <tr>
 <td><code>paused</code></td>
 <td><code>bot:stop</code> issued. Deadline keeps counting.</td>
-<td>Yes — <code>bot:resume</code>.</td>
+<td>Yes, <code>bot:resume</code>.</td>
 </tr>
 <tr>
 <td><code>ready_awaiting_human_merge</code></td>
 <td>Probe verdict was <code>ready</code>; tracking comment finalised.</td>
-<td>Terminal — human merge expected.</td>
+<td>Terminal, human merge expected.</td>
 </tr>
 <tr>
 <td><code>merged_externally</code></td>
@@ -1754,7 +1754,7 @@
 <tr>
 <td><code>human_took_over</code></td>
 <td>Foreign push detected, iteration cap, or flake cap.</td>
-<td>Terminal — see <code>terminal_blocker_category</code>.</td>
+<td>Terminal, see <code>terminal_blocker_category</code>.</td>
 </tr>
 <tr>
 <td><code>deadline_exceeded</code></td>
@@ -1764,7 +1764,7 @@
 <tr>
 <td><code>aborted_by_user</code></td>
 <td><code>bot:abort-ship</code> issued.</td>
-<td>Terminal — no further mutations.</td>
+<td>Terminal, no further mutations.</td>
 </tr>
 </tbody>
 </table>
@@ -1868,14 +1868,14 @@
 </span></code></pre></div>
 <h2 id="triage-decision-tree">Triage decision tree<a class="headerlink" href="#triage-decision-tree" title="Permanent link">&para;</a></h2>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>Is status terminal?
-</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>├── Yes — read terminal_blocker_category. Use the table above.
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>└── No  — status is active or paused.
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    ├── status=paused — stopped by user, awaiting resume or abort.
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    └── status=active — read ship_continuations for this intent.
-</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>        ├── wake_at in the past — tickle scheduler should pick it up next cycle.
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>├── Yes, read terminal_blocker_category. Use the table above.
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>└── No , status is active or paused.
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    ├── status=paused, stopped by user, awaiting resume or abort.
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    └── status=active, read ship_continuations for this intent.
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>        ├── wake_at in the past, tickle scheduler should pick it up next cycle.
 </span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>        │     If multiple cycles pass with no progress, check tickle-scheduler logs
 </span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>        │     (event:&quot;ship.tickle.due&quot;) and ship.iteration.* events.
-</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>        └── wake_at in the future — session is waiting on a check_run / review_comment / synchronize event
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>        └── wake_at in the future, session is waiting on a check_run / review_comment / synchronize event
 </span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>              to fire the reactor. Verify the GitHub App is subscribed to those events.
 </span></code></pre></div>
 <h2 id="when-to-abort-vs-let-it-run">When to abort vs let it run<a class="headerlink" href="#when-to-abort-vs-let-it-run" title="Permanent link">&para;</a></h2>

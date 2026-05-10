@@ -1338,6 +1338,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#em-dashes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Em dashes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#pre-commit-hooks" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1534,6 +1545,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#em-dashes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Em dashes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#pre-commit-hooks" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1625,12 +1647,12 @@
 
 
 <h1 id="code-conventions">Code conventions<a class="headerlink" href="#code-conventions" title="Permanent link">&para;</a></h1>
-<p>The repo enforces conventions through tooling, not docs — every rule below is checked by <code>bun run check</code>. This page is a tour of what's wired so you know what to expect.</p>
+<p>The repo enforces conventions through tooling, not docs, every rule below is checked by <code>bun run check</code>. This page is a tour of what's wired so you know what to expect.</p>
 <h2 id="runtime-and-language">Runtime and language<a class="headerlink" href="#runtime-and-language" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Runtime.</strong> Bun for the application; Node.js 20 for the Claude Code CLI subprocess. Both are installed in the Docker <code>base</code> stage.</li>
 <li><strong>Bun version.</strong> Pinned in <code>.tool-versions</code> (<code>bun 1.3.13</code>). All workflows use <code>oven-sh/setup-bun@v2</code> with <code>bun-version-file: .tool-versions</code>.</li>
-<li><strong>TypeScript.</strong> Strict mode plus the strictest flags: <code>exactOptionalPropertyTypes</code>, <code>noUncheckedIndexedAccess</code>, <code>useUnknownInCatchVariables</code>, <code>noUnusedLocals</code>, <code>noUnusedParameters</code>, <code>noImplicitReturns</code>, <code>noFallthroughCasesInSwitch</code>, <code>noImplicitOverride</code>, <code>noPropertyAccessFromIndexSignature</code>. Module resolution is <code>bundler</code> — imports do not need <code>.js</code> extensions.</li>
+<li><strong>TypeScript.</strong> Strict mode plus the strictest flags: <code>exactOptionalPropertyTypes</code>, <code>noUncheckedIndexedAccess</code>, <code>useUnknownInCatchVariables</code>, <code>noUnusedLocals</code>, <code>noUnusedParameters</code>, <code>noImplicitReturns</code>, <code>noFallthroughCasesInSwitch</code>, <code>noImplicitOverride</code>, <code>noPropertyAccessFromIndexSignature</code>. Module resolution is <code>bundler</code>, imports do not need <code>.js</code> extensions.</li>
 </ul>
 <h2 id="eslint">ESLint<a class="headerlink" href="#eslint" title="Permanent link">&para;</a></h2>
 <p><code>eslint.config.mjs</code> is the flat config:</p>
@@ -1641,10 +1663,10 @@
 <li><code>@typescript-eslint/strict-boolean-expressions: error</code></li>
 <li><code>@typescript-eslint/no-explicit-any: warn</code></li>
 <li><code>@typescript-eslint/no-unused-vars</code> (underscore-prefix exempted)</li>
-<li><code>simple-import-sort/imports</code>, <code>simple-import-sort/exports</code> — auto-fixable</li>
+<li><code>simple-import-sort/imports</code>, <code>simple-import-sort/exports</code>: auto-fixable</li>
 <li><code>complexity: warn</code> (15), <code>max-lines-per-function: warn</code> (120), <code>max-nested-callbacks: error</code> (3)</li>
 <li>Security rules from <code>eslint-plugin-security:recommended</code></li>
-<li><strong>Special restriction.</strong> <code>src/workflows/ship/scoped/triage.ts</code> carries a <code>no-restricted-syntax</code> rule forbidding GitHub mutations — ship-side triage is suggest-only.</li>
+<li><strong>Special restriction.</strong> <code>src/workflows/ship/scoped/triage.ts</code> carries a <code>no-restricted-syntax</code> rule forbidding GitHub mutations: ship-side triage is suggest-only.</li>
 </ul>
 <h2 id="prettier">Prettier<a class="headerlink" href="#prettier" title="Permanent link">&para;</a></h2>
 <p><code>.prettierrc</code>:</p>
@@ -1690,11 +1712,13 @@
 </tr>
 </tbody>
 </table>
+<h2 id="em-dashes">Em dashes<a class="headerlink" href="#em-dashes" title="Permanent link">&para;</a></h2>
+<p>The repo-wide style rule (per <code>~/.claude/CLAUDE.md</code>) forbids em dashes (U+2014). Use commas, colons, semicolons, or parentheses instead. Enforced in CI via <code>scripts/em-dash-sweep.ts --check</code> (also wired into the umbrella <code>bun run check</code>). The check skips <code>specs/</code>, <code>src/db/migrations/</code>, <code>CHANGELOG.md</code>, <code>test/**/fixtures/</code>, build outputs, and spec-kit-managed assets (<code>.specify/</code>, <code>.claude/skills/speckit*</code>, <code>.github/agents/speckit*</code>); those are sync'd from upstream and editing them in-repo gets clobbered. To remediate an offending line locally, run <code>bun run scripts/em-dash-sweep.ts &lt;path&gt;</code> to apply the heuristic rewrite, then hand-review the result. See issue #116 for the original sweep.</p>
 <h2 id="pre-commit-hooks">Pre-commit hooks<a class="headerlink" href="#pre-commit-hooks" title="Permanent link">&para;</a></h2>
 <p><code>.husky/pre-commit</code>:</p>
 <ol>
-<li><code>gitleaks protect --staged</code> — secret scan. Hard exit 1 if <code>gitleaks</code> is missing.</li>
-<li><code>bunx lint-staged</code> — Prettier and ESLint on staged files.</li>
+<li><code>gitleaks protect --staged</code>, secret scan. Hard exit 1 if <code>gitleaks</code> is missing.</li>
+<li><code>bunx lint-staged</code>, Prettier and ESLint on staged files.</li>
 </ol>
 <p><code>.husky/commit-msg</code> runs <code>commitlint</code> against <code>@commitlint/config-conventional</code>. Allowed types: <code>feat</code>, <code>fix</code>, <code>docs</code>, <code>style</code>, <code>refactor</code>, <code>test</code>, <code>chore</code>, <code>perf</code>, <code>build</code>, <code>ci</code>, <code>revert</code>, <code>localize</code>, <code>bump</code>.</p>
 <h2 id="logging">Logging<a class="headerlink" href="#logging" title="Permanent link">&para;</a></h2>
@@ -1705,7 +1729,7 @@
 <h2 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h2>
 <ul>
 <li>All process-level configuration is validated via <code>zod</code> at startup in <code>src/config.ts</code>. The process exits with a clear error if any required variable is missing or malformed.</li>
-<li>Environment variable group is the canonical doc surface — see <a href="../../operate/configuration/"><code>../operate/configuration.md</code></a>.</li>
+<li>Environment variable group is the canonical doc surface: see <a href="../../operate/configuration/"><code>../operate/configuration.md</code></a>.</li>
 </ul>
 <h2 id="scripts">Scripts<a class="headerlink" href="#scripts" title="Permanent link">&para;</a></h2>
 <p>The full list lives in <a href="../../operate/setup/#common-dev-commands"><code>../operate/setup.md</code></a>. For PRs, what matters is <code>bun run check</code>:</p>

@@ -1695,7 +1695,7 @@
   
 
 
-<h1 id="botship-pr-shepherding-to-merge-ready"><code>bot:ship</code> — PR shepherding to merge-ready<a class="headerlink" href="#botship-pr-shepherding-to-merge-ready" title="Permanent link">&para;</a></h1>
+<h1 id="botship-pr-shepherding-to-merge-ready"><code>bot:ship</code>: PR shepherding to merge-ready<a class="headerlink" href="#botship-pr-shepherding-to-merge-ready" title="Permanent link">&para;</a></h1>
 <p>The shepherding lifecycle takes an open pull request from "needs work" to "ready for human merge". The bot drives the probe → fix → reply → wait loop until the merge-readiness probe says the PR is clean. <strong>The bot never merges</strong>; the final action is always a human's.</p>
 <p>The lifecycle lives in <code>src/workflows/ship/</code> (entry point <code>runShipFromCommand</code> in <code>session-runner.ts</code>). Each session is a row in <code>ship_intents</code>, with iteration history in <code>ship_iterations</code> and wake state in <code>ship_continuations</code>.</p>
 <h2 id="how-to-invoke">How to invoke<a class="headerlink" href="#how-to-invoke" title="Permanent link">&para;</a></h2>
@@ -1742,12 +1742,12 @@
 <tr>
 <td><code>bot:stop</code></td>
 <td>Sets <code>ship_intents.status = 'paused'</code>. Deadline keeps counting down.</td>
-<td>Yes — <code>bot:resume</code>.</td>
+<td>Yes, <code>bot:resume</code>.</td>
 </tr>
 <tr>
 <td><code>bot:resume</code></td>
 <td>Verifies no foreign push since the pause, clears the cancel flag, re-enqueues the continuation.</td>
-<td>—</td>
+<td><em>none</em></td>
 </tr>
 <tr>
 <td><code>bot:abort-ship</code></td>
@@ -1785,7 +1785,7 @@
     classDef wait fill:#5c3d00,stroke:#3d2900,color:#ffffff
     classDef done fill:#2a6f2a,stroke:#1a4d1a,color:#ffffff
     classDef halt fill:#852020,stroke:#5a1414,color:#ffffff</code></pre>
-<p>The verdict ladder is ordered: <code>human_took_over</code> &gt; <code>behind_base</code> &gt; <code>failing_checks</code> &gt; <code>pending_checks</code> &gt; <code>mergeable_pending</code> &gt; <code>changes_requested</code> &gt; <code>open_threads</code> &gt; <code>ready</code>. The first matching rung wins — fixing failing checks always precedes replying to threads, and a manual push always wins outright.</p>
+<p>The verdict ladder is ordered: <code>human_took_over</code> &gt; <code>behind_base</code> &gt; <code>failing_checks</code> &gt; <code>pending_checks</code> &gt; <code>mergeable_pending</code> &gt; <code>changes_requested</code> &gt; <code>open_threads</code> &gt; <code>ready</code>. The first matching rung wins, fixing failing checks always precedes replying to threads, and a manual push always wins outright.</p>
 <p><code>mergeable=null</code> is treated specially: the probe backs off through <code>MERGEABLE_NULL_BACKOFF_MS_LIST</code> (default <code>500,1500,4500</code>); exhausting the list yields a <code>mergeable_pending</code> verdict and the session yields rather than spinning.</p>
 <h2 id="status-values">Status values<a class="headerlink" href="#status-values" title="Permanent link">&para;</a></h2>
 <pre class="mermaid"><code>stateDiagram-v2
@@ -1829,7 +1829,7 @@
 </tr>
 <tr>
 <td>Mark a draft PR ready-for-review on terminal <code>ready</code></td>
-<td>Cancel a foreign push — manual push wins; the session terminates</td>
+<td>Cancel a foreign push, manual push wins; the session terminates</td>
 </tr>
 <tr>
 <td>Self-remove the <code>bot:ship</code> label after acting</td>
@@ -1839,7 +1839,7 @@
 </table>
 <p>If the target branch matches <code>SHIP_FORBIDDEN_TARGET_BRANCHES</code> (e.g. <code>main,production</code>), the trigger is refused before any session is created.</p>
 <h2 id="iteration-0-reroute">Iteration-0 reroute<a class="headerlink" href="#iteration-0-reroute" title="Permanent link">&para;</a></h2>
-<p>Some merge-readiness probe verdicts cannot be recovered by ship at iteration 0 — no amount of further work would change them. When the first probe returns one of these, the workflow skips intent creation entirely (no <code>ship_intents</code> row, no session-tracker tracking comment) and reroutes the trigger:</p>
+<p>Some merge-readiness probe verdicts cannot be recovered by ship at iteration 0, no amount of further work would change them. When the first probe returns one of these, the workflow skips intent creation entirely (no <code>ship_intents</code> row, no session-tracker tracking comment) and reroutes the trigger:</p>
 <table>
 <thead>
 <tr>
@@ -1858,7 +1858,7 @@
 </table>
 <p>Other non-readiness reasons (<code>failing_checks</code>, <code>behind_base</code>, <code>pending_checks</code>, etc.) are recoverable by the iteration loop and stay on the normal path. The reroute set is defined as <code>SHIP_REROUTE_REASONS</code> in <code>src/workflows/ship/session-runner.ts</code>.</p>
 <h2 id="re-triggering">Re-triggering<a class="headerlink" href="#re-triggering" title="Permanent link">&para;</a></h2>
-<p>Re-applying the <code>bot:ship</code> label or re-commenting <code>bot:ship</code> on the same PR while a session is <strong>active</strong> is a no-op. Re-applying after the session is <strong>terminal</strong> starts a fresh session — the prior <code>ship_intents</code> row is preserved for audit.</p>
+<p>Re-applying the <code>bot:ship</code> label or re-commenting <code>bot:ship</code> on the same PR while a session is <strong>active</strong> is a no-op. Re-applying after the session is <strong>terminal</strong> starts a fresh session: the prior <code>ship_intents</code> row is preserved for audit.</p>
 <h2 id="tuning-knobs">Tuning knobs<a class="headerlink" href="#tuning-knobs" title="Permanent link">&para;</a></h2>
 <p>Configured at the process level via <a href="../../../operate/configuration/#ship"><code>operate/configuration.md</code></a>. The two you most often touch:</p>
 <table>
@@ -1885,14 +1885,14 @@
 <h2 id="when-a-human-should-step-in">When a human should step in<a class="headerlink" href="#when-a-human-should-step-in" title="Permanent link">&para;</a></h2>
 <p>The tracking comment puts the answer at the top: any terminal status other than <code>ready_awaiting_human_merge</code> and <code>merged_externally</code> means human attention is needed. <code>terminal_blocker_category</code> names which class:</p>
 <ul>
-<li><code>flake-cap</code> — the same failure signature was retried <code>FIX_ATTEMPTS_PER_SIGNATURE_CAP</code> times (default 3); investigate the flake.</li>
-<li><code>iteration-cap</code> — the session ran <code>MAX_SHIP_ITERATIONS</code> rounds without resolving; re-scope the work.</li>
-<li><code>manual-push-detected</code> — someone pushed to the PR; the bot stepped back. Re-trigger <code>bot:ship</code> if you want the bot to take it from here.</li>
-<li><code>merge-conflict-needs-human</code> — the rebase produced conflicts the bot would not resolve confidently.</li>
+<li><code>flake-cap</code>: the same failure signature was retried <code>FIX_ATTEMPTS_PER_SIGNATURE_CAP</code> times (default 3); investigate the flake.</li>
+<li><code>iteration-cap</code>: the session ran <code>MAX_SHIP_ITERATIONS</code> rounds without resolving; re-scope the work.</li>
+<li><code>manual-push-detected</code>: someone pushed to the PR; the bot stepped back. Re-trigger <code>bot:ship</code> if you want the bot to take it from here.</li>
+<li><code>merge-conflict-needs-human</code>: the rebase produced conflicts the bot would not resolve confidently.</li>
 </ul>
 <p>For Day-2 SQL and the other terminal categories, see <a href="../../../operate/runbooks/stuck-ship-intent/"><code>operate/runbooks/stuck-ship-intent.md</code></a>.</p>
 <h2 id="output-secret-redaction">Output secret-redaction<a class="headerlink" href="#output-secret-redaction" title="Permanent link">&para;</a></h2>
-<p>Every comment the ship workflow posts to GitHub — tracking-comment create / update, scoped-command marker upserts (<code>bot:investigate</code>, <code>bot:triage</code>, <code>bot:summarize</code>, <code>bot:open-pr</code>, <code>bot:rebase</code>), lifecycle replies (<code>bot:stop</code> / <code>bot:resume</code> / <code>bot:abort-ship</code>), and the orchestrator's tracking-mirror cascade — flows through <code>safePostToGitHub</code> (<code>src/utils/github-output-guard.ts</code>). The wrapper runs the regex secret-redactor (and, for <code>source: "agent"</code> bodies, the Bedrock LLM scanner) before the body reaches GitHub, so a successful prompt-injection that convinces the agent to echo a token still cannot leak it through the comment surface. See <code>test/security/SCENARIOS.md</code> for the threat model.</p>
+<p>Every comment the ship workflow posts to GitHub, tracking-comment create / update, scoped-command marker upserts (<code>bot:investigate</code>, <code>bot:triage</code>, <code>bot:summarize</code>, <code>bot:open-pr</code>, <code>bot:rebase</code>), lifecycle replies (<code>bot:stop</code> / <code>bot:resume</code> / <code>bot:abort-ship</code>), and the orchestrator's tracking-mirror cascade, flows through <code>safePostToGitHub</code> (<code>src/utils/github-output-guard.ts</code>). The wrapper runs the regex secret-redactor (and, for <code>source: "agent"</code> bodies, the Bedrock LLM scanner) before the body reaches GitHub, so a successful prompt-injection that convinces the agent to echo a token still cannot leak it through the comment surface. See <code>test/security/SCENARIOS.md</code> for the threat model.</p>
 <h2 id="auto-defer-on-anthropic-usage-limit">Auto-defer on Anthropic usage-limit<a class="headerlink" href="#auto-defer-on-anthropic-usage-limit" title="Permanent link">&para;</a></h2>
 <p>A child workflow run that fails because the Claude Agent SDK reported <code>"You've hit your limit · resets &lt;time&gt; UTC"</code> (subscription-token quota or per-tier rate limit) is treated as a <strong>transient</strong> failure rather than a permanent one. The orchestrator's <code>maybeEarlyWakeShipIntent</code> cascade:</p>
 <ol>
@@ -1900,7 +1900,7 @@
 <li><code>detectTransientQuotaError</code> matches the usage-limit signature and parses the <code>resets …</code> clock (handles <code>6pm (UTC)</code>, <code>18:30 UTC</code>, etc.; falls back to a <code>+1h</code> deferral when the clock is unparseable).</li>
 <li><code>ZADD ship:tickle &lt;retryAtMs&gt; &lt;intent_id&gt;</code> so the periodic tickle scanner re-fires the iteration once the quota window resets, instead of leaving the intent stalled until an operator re-arms it.</li>
 </ol>
-<p>Non-quota failures still take the original <code>ship.tickle.skip_failed_child</code> path — the iteration cap remains the safety net for permanently broken intents.</p>
+<p>Non-quota failures still take the original <code>ship.tickle.skip_failed_child</code> path: the iteration cap remains the safety net for permanently broken intents.</p>
 
 
 

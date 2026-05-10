@@ -825,7 +825,7 @@
   <a href="#static-guard-destructive-actions" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Static guard — destructive actions
+        Static guard: destructive actions
       
     </span>
   </a>
@@ -1485,7 +1485,7 @@
   <a href="#static-guard-destructive-actions" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Static guard — destructive actions
+        Static guard: destructive actions
       
     </span>
   </a>
@@ -1585,7 +1585,7 @@
 
 <h1 id="what-the-bot-will-and-wont-do">What the bot will and won't do<a class="headerlink" href="#what-the-bot-will-and-wont-do" title="Permanent link">&para;</a></h1>
 <p>This page enumerates the boundary the bot enforces on itself. The boundary is defended in two places: handler code and a static guard at <code>scripts/check-no-destructive-actions.ts</code> that runs in <code>bun run check</code>.</p>
-<h2 id="static-guard-destructive-actions">Static guard — destructive actions<a class="headerlink" href="#static-guard-destructive-actions" title="Permanent link">&para;</a></h2>
+<h2 id="static-guard-destructive-actions">Static guard: destructive actions<a class="headerlink" href="#static-guard-destructive-actions" title="Permanent link">&para;</a></h2>
 <p><code>scripts/check-no-destructive-actions.ts</code> scans <code>src/workflows/ship/</code> (recursive) and the four scoped daemon executors for the following patterns. The CI gate fails the build on any match outside of comments.</p>
 <table>
 <thead>
@@ -1617,7 +1617,7 @@
 </tr>
 </tbody>
 </table>
-<p><code>src/workflows/handlers/resolve.ts</code> documents a non-negotiable requirement that <code>octokit.rest.pulls.merge</code> must never be called (header comment + a step in the agent's instruction set). It is a documented constraint, not a runtime guard — the static guard above is what fails the build if anyone tries.</p>
+<p><code>src/workflows/handlers/resolve.ts</code> documents a non-negotiable requirement that <code>octokit.rest.pulls.merge</code> must never be called (header comment + a step in the agent's instruction set). It is a documented constraint, not a runtime guard: the static guard above is what fails the build if anyone tries.</p>
 <h2 id="pause-resume-abort-ship-sessions">Pause / resume / abort (ship sessions)<a class="headerlink" href="#pause-resume-abort-ship-sessions" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -1653,9 +1653,9 @@
 <li>Bundles findings into a single wall-of-text review POST.</li>
 </ul>
 <h2 id="idempotency">Idempotency<a class="headerlink" href="#idempotency" title="Permanent link">&para;</a></h2>
-<p>A duplicate webhook delivery — same <code>X-GitHub-Delivery</code> header or same tracking-comment marker — is dropped before any work runs. The fast in-memory <code>Map</code> is lost on restart; the durable check (looking for the bot's hidden delivery marker in existing tracking comments) survives crash loops.</p>
+<p>A duplicate webhook delivery, same <code>X-GitHub-Delivery</code> header or same tracking-comment marker, is dropped before any work runs. The fast in-memory <code>Map</code> is lost on restart; the durable check (looking for the bot's hidden delivery marker in existing tracking comments) survives crash loops.</p>
 <h2 id="fork-prs">Fork PRs<a class="headerlink" href="#fork-prs" title="Permanent link">&para;</a></h2>
-<p>The bot's installation token cannot push to a fork branch. PR-side workflows (<code>review</code>, <code>resolve</code>, <code>ship</code>) detect this, post a top-level comment asking the contributor to rebase, and proceed against the stale head — flagging affected findings in the final report.</p>
+<p>The bot's installation token cannot push to a fork branch. PR-side workflows (<code>review</code>, <code>resolve</code>, <code>ship</code>) detect this, post a top-level comment asking the contributor to rebase, and proceed against the stale head, flagging affected findings in the final report.</p>
 
 
 

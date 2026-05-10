@@ -1583,12 +1583,12 @@
 <tr>
 <td><code>state.costUsd</code>, <code>state.turns</code>, <code>state.durationMs</code></td>
 <td>metrics</td>
-<td>—</td>
+<td><em>none</em></td>
 </tr>
 </tbody>
 </table>
 <h2 id="stop-conditions">Stop conditions<a class="headerlink" href="#stop-conditions" title="Permanent link">&para;</a></h2>
-<p>The agent writes <code>PLAN.md</code>; the pipeline reports success or failure. No turn cap — the agent runs to completion.</p>
+<p>The agent writes <code>PLAN.md</code>; the pipeline reports success or failure. No turn cap: the agent runs to completion.</p>
 <h2 id="re-trigger-semantics">Re-trigger semantics<a class="headerlink" href="#re-trigger-semantics" title="Permanent link">&para;</a></h2>
 <p><code>plan</code> is <strong>fresh</strong> when a successful <code>plan</code> row exists for the issue created <strong>after</strong> the most recent successful <code>triage</code>. Re-applying the label when <code>plan</code> is stale enqueues a fresh run; an in-flight stale run is not interrupted, so wait for it to terminate before re-applying.</p>
 

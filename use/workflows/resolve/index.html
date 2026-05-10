@@ -1633,7 +1633,7 @@
 </tr>
 <tr>
 <td>Requires prior</td>
-<td>—</td>
+<td><em>none</em></td>
 </tr>
 <tr>
 <td>Artifact</td>
@@ -1666,7 +1666,7 @@
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="gs">**&lt;One-line title summarizing what was done or concluded.&gt;**</span>
 </span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>&lt;1–3 sentences of reasoning: why the fix was applied, why the reviewer was right/wrong, or what specifically needs clarifying. Cite file:line where relevant. No diff — the commit link covers that.&gt;
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>&lt;1–3 sentences of reasoning: why the fix was applied, why the reviewer was right/wrong, or what specifically needs clarifying. Cite file:line where relevant. No diff: the commit link covers that.&gt;
 </span></code></pre></div>
 <table>
 <thead>
@@ -1679,12 +1679,12 @@
 <tbody>
 <tr>
 <td>Valid</td>
-<td><code>_✅ Addressed_ — commit \</code><sha>``</td>
+<td><code>_✅ Addressed_, commit \</code><sha>``</td>
 <td>Yes</td>
 </tr>
 <tr>
 <td>Partially Valid</td>
-<td><code>_⚠️ Partially addressed_ — commit \</code><sha>``</td>
+<td><code>_⚠️ Partially addressed_, commit \</code><sha>``</td>
 <td>Yes</td>
 </tr>
 <tr>
@@ -1732,7 +1732,7 @@
 <tr>
 <td><code>state.post_pipeline</code></td>
 <td>object</td>
-<td>Post-agent re-check snapshot — <code>{ head_sha, failing_checks[], all_green, outstanding_present }</code>. Source of truth for the <code>succeeded</code> vs. <code>incomplete</code> gate.</td>
+<td>Post-agent re-check snapshot, <code>{ head_sha, failing_checks[], all_green, outstanding_present }</code>. Source of truth for the <code>succeeded</code> vs. <code>incomplete</code> gate.</td>
 </tr>
 <tr>
 <td><code>state.ci_verified</code></td>
@@ -1742,7 +1742,7 @@
 <tr>
 <td><code>state.costUsd</code>, <code>state.turns</code></td>
 <td>metrics</td>
-<td>—</td>
+<td><em>none</em></td>
 </tr>
 </tbody>
 </table>
@@ -1751,7 +1751,7 @@
 <ol>
 <li>Re-fetches the PR's head SHA (the agent may have pushed commits).</li>
 <li>Paginates <code>checks.listForRef</code> against that SHA.</li>
-<li>Applies the canonical "all-green" definition — failing iff <code>status === "completed"</code> AND <code>conclusion ∈ {failure, cancelled, timed_out, action_required}</code>. <code>skipped</code>, <code>neutral</code>, and <code>success</code> are acceptable.</li>
+<li>Applies the canonical "all-green" definition, failing iff <code>status === "completed"</code> AND <code>conclusion ∈ {failure, cancelled, timed_out, action_required}</code>. <code>skipped</code>, <code>neutral</code>, and <code>success</code> are acceptable.</li>
 <li>Parses the <code>## Outstanding</code> section out of <code>RESOLVE.md</code>.</li>
 <li>Returns <code>succeeded</code> only when <strong>both</strong> signals are clean (CI all-green AND <code>## Outstanding</code> empty/absent). Otherwise returns the new <code>incomplete</code> terminal status with <code>humanMessage</code> carrying the outstanding content.</li>
 </ol>
@@ -1762,19 +1762,19 @@
 <li>The DB <code>workflow_runs.status</code> column accepts <code>incomplete</code> (migration <code>009_workflow_runs_incomplete.sql</code>).</li>
 <li><code>runs-store.markIncomplete(runId, reason, state)</code> mirrors <code>markFailed</code>, persisting <code>state.incompleteReason</code>.</li>
 <li>The daemon executor (<code>src/daemon/workflow-executor.ts</code>) reacts <code>confused</code> on the trigger comment, mirrors the handler's <code>humanMessage</code>, sends <code>job:result</code> with <code>success: false</code> and an <code>incomplete:</code>-prefixed <code>errorMessage</code>.</li>
-<li>The orchestrator cascade keeps its binary <code>succeeded | failed</code> contract: the executor maps <code>incomplete</code> → <code>failed</code> for cascade purposes, but the parent's tracking-comment headline reads "ship halted at step N (... → resolve) — resolve returned incomplete; see PR tracking comment for outstanding items." instead of the generic failure message.</li>
+<li>The orchestrator cascade keeps its binary <code>succeeded | failed</code> contract: the executor maps <code>incomplete</code> → <code>failed</code> for cascade purposes, but the parent's tracking-comment headline reads "ship halted at step N (... → resolve), resolve returned incomplete; see PR tracking comment for outstanding items." instead of the generic failure message.</li>
 </ul>
 <h2 id="stop-conditions">Stop conditions<a class="headerlink" href="#stop-conditions" title="Permanent link">&para;</a></h2>
 <ul>
-<li><code>FIX_ATTEMPTS_CAP = 3</code> — maximum consecutive CI-fix attempts per run.</li>
-<li><code>POLL_WAIT_SECS_CAP = 900</code> (15 min) — reviewer-patience window before the run terminates.</li>
-<li>The handler <strong>never</strong> calls <code>octokit.rest.pulls.merge</code> — merging is a human action.</li>
+<li><code>FIX_ATTEMPTS_CAP = 3</code>: maximum consecutive CI-fix attempts per run.</li>
+<li><code>POLL_WAIT_SECS_CAP = 900</code> (15 min): reviewer-patience window before the run terminates.</li>
+<li>The handler <strong>never</strong> calls <code>octokit.rest.pulls.merge</code>: merging is a human action.</li>
 </ul>
 <h2 id="failure-handling">Failure handling<a class="headerlink" href="#failure-handling" title="Permanent link">&para;</a></h2>
 <p>Public-comment and operator surfaces are separated so a raw SDK or octokit error never reaches the public PR thread. Both the <code>runPipeline</code> failure path and the outer handler <code>catch</code> apply the same separation:</p>
 <ul>
-<li><strong>Public tracking comment</strong> — a safe constant: <code>"resolve pipeline execution failed — see server logs for details."</code> The actual error string remains internal because octokit error stacks include <code>https://x-access-token:GHS_xxx@…</code> in the request URL.</li>
-<li><strong>Operator surfaces</strong> — <code>state.failedReason</code> on the <code>workflow_runs</code> row, <code>pino</code> log lines on the daemon, and <code>ExecutionResult.errorMessage</code> returned to the orchestrator. The orchestrator's transient-quota detector reads <code>state.failedReason</code> and auto-defers the ship loop's next iteration when the SDK reports <code>"You've hit your limit · resets … UTC"</code>.</li>
+<li><strong>Public tracking comment</strong>: a safe constant: <code>"resolve pipeline execution failed, see server logs for details."</code> The actual error string remains internal because octokit error stacks include <code>https://x-access-token:GHS_xxx@…</code> in the request URL.</li>
+<li><strong>Operator surfaces</strong>: <code>state.failedReason</code> on the <code>workflow_runs</code> row, <code>pino</code> log lines on the daemon, and <code>ExecutionResult.errorMessage</code> returned to the orchestrator. The orchestrator's transient-quota detector reads <code>state.failedReason</code> and auto-defers the ship loop's next iteration when the SDK reports <code>"You've hit your limit · resets … UTC"</code>.</li>
 </ul>
 
 

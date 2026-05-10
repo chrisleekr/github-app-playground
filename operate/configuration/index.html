@@ -1092,7 +1092,7 @@
   <a href="#mode-matrix-whats-required-when" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Mode matrix — what's required when
+        Mode matrix: what's required when
       
     </span>
   </a>
@@ -1661,7 +1661,7 @@
   <a href="#mode-matrix-whats-required-when" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Mode matrix — what's required when
+        Mode matrix: what's required when
       
     </span>
   </a>
@@ -1738,8 +1738,8 @@
 
 
 <h1 id="configuration-reference">Configuration reference<a class="headerlink" href="#configuration-reference" title="Permanent link">&para;</a></h1>
-<p>Every environment variable the app reads at startup, grouped by concern. The authoritative source is <code>src/config.ts</code> — values are validated via Zod at boot and the process exits if a required variable is missing or malformed.</p>
-<p><strong>Default</strong> is the fallback when the variable is unset (blank means "no default — must be set when required"). <strong>Required when</strong> is the runtime condition under which the variable is mandatory.</p>
+<p>Every environment variable the app reads at startup, grouped by concern. The authoritative source is <code>src/config.ts</code>, values are validated via Zod at boot and the process exits if a required variable is missing or malformed.</p>
+<p><strong>Default</strong> is the fallback when the variable is unset (blank means "no default, must be set when required"). <strong>Required when</strong> is the runtime condition under which the variable is mandatory.</p>
 <h2 id="github-app-credentials">GitHub App credentials<a class="headerlink" href="#github-app-credentials" title="Permanent link">&para;</a></h2>
 <p>Server mode only. If <code>ORCHESTRATOR_URL</code> is set, the process runs in daemon mode and these are not required.</p>
 <table>
@@ -1754,27 +1754,27 @@
 <tbody>
 <tr>
 <td><code>GITHUB_APP_ID</code></td>
-<td>—</td>
+<td><em>none</em></td>
 <td>Server mode</td>
 <td>Numeric App ID from the App settings page.</td>
 </tr>
 <tr>
 <td><code>GITHUB_APP_PRIVATE_KEY</code></td>
-<td>—</td>
+<td><em>none</em></td>
 <td>Server mode</td>
 <td>Full PEM. Literal <code>\n</code> sequences are normalised to real newlines.</td>
 </tr>
 <tr>
 <td><code>GITHUB_WEBHOOK_SECRET</code></td>
-<td>—</td>
+<td><em>none</em></td>
 <td>Server mode</td>
 <td>HMAC-SHA256 secret configured in the App settings.</td>
 </tr>
 <tr>
 <td><code>GITHUB_PERSONAL_ACCESS_TOKEN</code></td>
-<td>—</td>
+<td><em>none</em></td>
 <td>Optional</td>
-<td>Override App installation token with a PAT — bot acts as the PAT owner. <strong>Requires single-owner <code>ALLOWED_OWNERS</code>.</strong></td>
+<td>Override App installation token with a PAT, bot acts as the PAT owner. <strong>Requires single-owner <code>ALLOWED_OWNERS</code>.</strong></td>
 </tr>
 </tbody>
 </table>
@@ -1792,72 +1792,72 @@
 <tr>
 <td><code>CLAUDE_PROVIDER</code></td>
 <td><code>anthropic</code></td>
-<td>—</td>
+<td><em>none</em></td>
 <td><code>anthropic</code> or <code>bedrock</code>.</td>
 </tr>
 <tr>
 <td><code>CLAUDE_MODEL</code></td>
-<td><code>claude-opus-4-7</code> (anthropic); — (bedrock)</td>
+<td><code>claude-opus-4-7</code> (anthropic); <em>none</em> (bedrock)</td>
 <td>Bedrock</td>
 <td>Bedrock requires an explicit Bedrock model ID.</td>
 </tr>
 <tr>
 <td><code>ANTHROPIC_API_KEY</code></td>
-<td>—</td>
+<td><em>none</em></td>
 <td>Anthropic, unless <code>CLAUDE_CODE_OAUTH_TOKEN</code> is set</td>
 <td>Console pay-as-you-go. Safe for multi-tenant deploys.</td>
 </tr>
 <tr>
 <td><code>CLAUDE_CODE_OAUTH_TOKEN</code></td>
-<td>—</td>
+<td><em>none</em></td>
 <td>Anthropic, unless <code>ANTHROPIC_API_KEY</code> is set</td>
 <td>Max/Pro subscription token (<code>sk-ant-oat…</code>). Requires <code>ALLOWED_OWNERS</code>.</td>
 </tr>
 <tr>
 <td><code>AWS_REGION</code></td>
-<td>—</td>
+<td><em>none</em></td>
 <td>Bedrock</td>
 <td>Resolved by the AWS SDK credential chain.</td>
 </tr>
 <tr>
 <td><code>AWS_PROFILE</code></td>
-<td>—</td>
+<td><em>none</em></td>
 <td>Optional (bedrock)</td>
 <td>Local SSO profile for dev.</td>
 </tr>
 <tr>
 <td><code>AWS_ACCESS_KEY_ID</code></td>
-<td>—</td>
+<td><em>none</em></td>
 <td>Optional (bedrock)</td>
 <td>Long-lived credential pair. Prefer profile or OIDC.</td>
 </tr>
 <tr>
 <td><code>AWS_SECRET_ACCESS_KEY</code></td>
-<td>—</td>
+<td><em>none</em></td>
 <td>Optional (bedrock)</td>
 <td>Paired with <code>AWS_ACCESS_KEY_ID</code>.</td>
 </tr>
 <tr>
 <td><code>AWS_SESSION_TOKEN</code></td>
-<td>—</td>
+<td><em>none</em></td>
 <td>Optional (bedrock)</td>
 <td>Temporary credentials.</td>
 </tr>
 <tr>
 <td><code>AWS_BEARER_TOKEN_BEDROCK</code></td>
-<td>—</td>
+<td><em>none</em></td>
 <td>Optional (bedrock, CI)</td>
 <td>Set automatically by <code>aws-actions/configure-aws-credentials</code> OIDC.</td>
 </tr>
 <tr>
 <td><code>ANTHROPIC_BEDROCK_BASE_URL</code></td>
-<td>—</td>
+<td><em>none</em></td>
 <td>Optional (bedrock)</td>
 <td>Override Bedrock runtime endpoint (VPC endpoint / proxy).</td>
 </tr>
 <tr>
 <td><code>ALLOWED_OWNERS</code></td>
-<td>—</td>
+<td><em>none</em></td>
 <td>OAuth or PAT path</td>
 <td>Comma-separated allowlist. Required (single owner) when using <code>CLAUDE_CODE_OAUTH_TOKEN</code> or <code>GITHUB_PERSONAL_ACCESS_TOKEN</code>.</td>
 </tr>
@@ -1973,7 +1973,7 @@
 <tbody>
 <tr>
 <td><code>DATABASE_URL</code></td>
-<td>—</td>
+<td><em>none</em></td>
 <td>Postgres connection. Backs <code>executions</code>, <code>triage_results</code>, <code>workflow_runs</code>, <code>ship_intents</code>, <code>ship_iterations</code>, <code>ship_continuations</code>, <code>ship_fix_attempts</code>, <code>repo_memory</code>, <code>daemons</code>.</td>
 </tr>
 </tbody>
@@ -1991,7 +1991,7 @@
 <tbody>
 <tr>
 <td><code>VALKEY_URL</code></td>
-<td>—</td>
+<td><em>none</em></td>
 <td>Backs the daemon job queue, in-flight set, the ephemeral-spawn cooldown, the <code>ship:tickle</code> sorted set, and ship cancel flags.</td>
 </tr>
 </tbody>
@@ -2013,22 +2013,22 @@
 </tr>
 <tr>
 <td><code>ORCHESTRATOR_URL</code></td>
-<td>—</td>
+<td><em>none</em></td>
 <td>Presence flips the process to daemon mode. Use <code>wss://</code> in production; <code>ws://</code> emits a warning.</td>
 </tr>
 <tr>
 <td><code>ORCHESTRATOR_PUBLIC_URL</code></td>
-<td>—</td>
+<td><em>none</em></td>
 <td>Public WebSocket URL the spawner injects into ephemeral Pods.</td>
 </tr>
 <tr>
 <td><code>DAEMON_AUTH_TOKEN</code></td>
-<td>—</td>
+<td><em>none</em></td>
 <td>Shared secret for the daemon ⇄ orchestrator handshake. Required on both sides. Compared in constant time.</td>
 </tr>
 <tr>
 <td><code>DAEMON_AUTH_TOKEN_PREVIOUS</code></td>
-<td>—</td>
+<td><em>none</em></td>
 <td>Optional rotation overlap. Orchestrator accepts either the primary or this previous token; daemons always send the primary. See <a href="../runbooks/daemon-fleet/#rotating-daemon_auth_token"><code>runbooks/daemon-fleet.md</code></a>.</td>
 </tr>
 <tr>
@@ -2231,7 +2231,7 @@
 </tr>
 </tbody>
 </table>
-<h2 id="mode-matrix-whats-required-when">Mode matrix — what's required when<a class="headerlink" href="#mode-matrix-whats-required-when" title="Permanent link">&para;</a></h2>
+<h2 id="mode-matrix-whats-required-when">Mode matrix: what's required when<a class="headerlink" href="#mode-matrix-whats-required-when" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
@@ -2278,13 +2278,13 @@
 <tr>
 <td><code>LLM_OUTPUT_SCANNER_TIMEOUT_MS</code></td>
 <td><code>3000</code></td>
-<td>Per-call wall-clock cap. On timeout, the helper FAILS OPEN — posts the body that survived the regex pass and emits a <code>warn</code> log.</td>
+<td>Per-call wall-clock cap. On timeout, the helper FAILS OPEN, posts the body that survived the regex pass and emits a <code>warn</code> log.</td>
 </tr>
 </tbody>
 </table>
-<p>System messages (router capacity, marker comments, lifecycle pings) skip the LLM pass — they cannot legitimately contain secrets and the scan is wasted spend.</p>
+<p>System messages (router capacity, marker comments, lifecycle pings) skip the LLM pass, they cannot legitimately contain secrets and the scan is wasted spend.</p>
 <h2 id="subprocess-env-allowlist-defense-layer-1a-issue-102">Subprocess env allowlist (defense layer 1a, issue #102)<a class="headerlink" href="#subprocess-env-allowlist-defense-layer-1a-issue-102" title="Permanent link">&para;</a></h2>
-<p>The Claude Agent SDK CLI subprocess receives an explicit env allowlist — NOT the full <code>process.env</code>. This eliminates the prompt-injection exfiltration path where a successful injection on the agent could <code>cat /proc/self/environ</code> and leak <code>GITHUB_APP_PRIVATE_KEY</code>, <code>DATABASE_URL</code>, <code>DAEMON_AUTH_TOKEN</code>, etc.</p>
+<p>The Claude Agent SDK CLI subprocess receives an explicit env allowlist, NOT the full <code>process.env</code>. This eliminates the prompt-injection exfiltration path where a successful injection on the agent could <code>cat /proc/self/environ</code> and leak <code>GITHUB_APP_PRIVATE_KEY</code>, <code>DATABASE_URL</code>, <code>DAEMON_AUTH_TOKEN</code>, etc.</p>
 <p>The allowlist (in <code>src/core/executor.ts buildProviderEnv()</code>):</p>
 <ul>
 <li><strong>Allowed exact keys</strong>: <code>HOME</code>, <code>PATH</code>, <code>USER</code>, <code>LANG</code>, <code>LC_ALL</code>, <code>TZ</code>, <code>TMPDIR</code>, <code>NODE_OPTIONS</code>, <code>NODE_PATH</code>, <code>NODE_NO_WARNINGS</code>, <code>NODE_EXTRA_CA_CERTS</code>, <code>SSL_CERT_FILE</code>, <code>SSL_CERT_DIR</code>, <code>HTTP_PROXY</code>/<code>HTTPS_PROXY</code>/<code>NO_PROXY</code> (uppercase + lowercase), <code>NO_COLOR</code>, <code>FORCE_COLOR</code>, <code>TERM</code>, <code>COLORTERM</code>, <code>CI</code>, <code>GH_TOKEN</code>, <code>GITHUB_TOKEN</code>.</li>
@@ -2292,7 +2292,7 @@
 <li><strong>Denied exact keys</strong> (override allow): <code>GITHUB_APP_ID</code>, <code>GITHUB_APP_PRIVATE_KEY</code>, <code>GITHUB_WEBHOOK_SECRET</code>, <code>GITHUB_PERSONAL_ACCESS_TOKEN</code>, <code>DAEMON_AUTH_TOKEN</code>, <code>DAEMON_AUTH_TOKEN_PREVIOUS</code>, <code>DATABASE_URL</code>, <code>VALKEY_URL</code>, <code>REDIS_URL</code>, <code>CONTEXT7_API_KEY</code>.</li>
 <li><strong>Denied prefixes</strong>: <code>GITHUB_APP_*</code>, <code>GITHUB_WEBHOOK_*</code>.</li>
 </ul>
-<p>If you add a new env var the agent CLI needs, extend the allowlist in <code>buildProviderEnv()</code>. Anything outside the allowlist is silently dropped — verify by running <code>bun test test/core/build-provider-env.test.ts</code> after the change.</p>
+<p>If you add a new env var the agent CLI needs, extend the allowlist in <code>buildProviderEnv()</code>. Anything outside the allowlist is silently dropped, verify by running <code>bun test test/core/build-provider-env.test.ts</code> after the change.</p>
 <h2 id="k8s-secret-split-defense-layer-1b-issue-102">K8s Secret split (defense layer 1b, issue #102)<a class="headerlink" href="#k8s-secret-split-defense-layer-1b-issue-102" title="Permanent link">&para;</a></h2>
 <p>The Helm chart MUST split secrets into two K8s Secret objects so the daemon Pod's filesystem/environment never carries orchestrator-only credentials, even if the env allowlist above develops a future bug:</p>
 <table>
@@ -2316,10 +2316,10 @@
 </tr>
 </tbody>
 </table>
-<p>The orchestrator mints short-lived GitHub installation tokens and forwards them via the WebSocket — daemons never see the App private key or webhook secret.</p>
-<p>A startup warning fires if a daemon process detects orchestrator-only env vars at boot — it does NOT crash (a downed daemon is worse than a degraded posture), but the warning surfaces the misconfiguration in operator logs.</p>
+<p>The orchestrator mints short-lived GitHub installation tokens and forwards them via the WebSocket, daemons never see the App private key or webhook secret.</p>
+<p>A startup warning fires if a daemon process detects orchestrator-only env vars at boot: it does NOT crash (a downed daemon is worse than a degraded posture), but the warning surfaces the misconfiguration in operator logs.</p>
 <h2 id="output-secret-stripping-behavior-defense-layer-2">Output secret-stripping behavior (defense layer 2)<a class="headerlink" href="#output-secret-stripping-behavior-defense-layer-2" title="Permanent link">&para;</a></h2>
-<p>Every body posted to GitHub is scanned by <code>redactSecrets()</code> — see <code>src/utils/sanitize.ts</code> for the patterns. Detections are SILENTLY STRIPPED (no marker, no footer, no count surfaced in the body) so attackers get no probing feedback. Operator-side info is logged via Pino <code>warn</code> with <code>event: "secret_redacted"</code> carrying <code>kinds</code>, <code>matchCount</code>, <code>callsite</code>, <code>deliveryId</code> — but never the matched bytes.</p>
+<p>Every body posted to GitHub is scanned by <code>redactSecrets()</code>, see <code>src/utils/sanitize.ts</code> for the patterns. Detections are SILENTLY STRIPPED (no marker, no footer, no count surfaced in the body) so attackers get no probing feedback. Operator-side info is logged via Pino <code>warn</code> with <code>event: "secret_redacted"</code> carrying <code>kinds</code>, <code>matchCount</code>, <code>callsite</code>, <code>deliveryId</code>, but never the matched bytes.</p>
 <p>If redaction empties the body entirely, the GitHub call is skipped and <code>event: "secret_redaction_emptied_body"</code> is logged at <code>error</code>.</p>
 
 
