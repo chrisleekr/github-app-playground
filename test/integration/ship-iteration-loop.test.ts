@@ -1,5 +1,5 @@
 /**
- * T011 + T015 — full round-trip for the ship-iteration handler against
+ * T011 + T015: full round-trip for the ship-iteration handler against
  * real Postgres + real Valkey. Asserts:
  *
  *   - `runIteration` inserts a `workflow_runs` row whose `state.shipIntentId`
@@ -31,7 +31,7 @@ try {
 }
 
 function requireSql(): SQL {
-  if (sql === null) throw new Error("Database not available — test should have been skipped");
+  if (sql === null) throw new Error("Database not available, test should have been skipped");
   return sql;
 }
 

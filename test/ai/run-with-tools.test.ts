@@ -198,7 +198,7 @@ describe("runWithTools", () => {
   });
 
   it("fail-open: cap exceeded returns last assistant text with capExceeded=true", async () => {
-    // Always emit tool_use — simulates a confused model in a loop.
+    // Always emit tool_use, simulates a confused model in a loop.
     const looping: FakeTurn = {
       content: [
         { type: "text", text: "calling tool" },

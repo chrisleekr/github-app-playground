@@ -26,7 +26,7 @@ try {
 }
 
 function requireSql(): SQL {
-  if (sql === null) throw new Error("Database not available — test should have been skipped");
+  if (sql === null) throw new Error("Database not available, test should have been skipped");
   return sql;
 }
 
@@ -305,7 +305,7 @@ describe.skipIf(sql === null)("runShipFromCommand", () => {
     });
     await runShipFromCommand({ command: baseCommand, octokit: first.octokit });
 
-    // Second run: same PR — must reject.
+    // Second run: same PR, must reject.
     const second = buildOctokit({
       eligibilityResponse: eligibleResponse,
       probeResponse: buildProbeResponse({ ready: false, isDraft: false }),
@@ -367,7 +367,7 @@ describe.skipIf(sql === null)("runShipFromCommand", () => {
     expect(markReady).toBeUndefined();
   });
 
-  it("(e) markReadyForReview failure does NOT block transition — terminal still set, error surfaced in tracking comment", async () => {
+  it("(e) markReadyForReview failure does NOT block transition: terminal still set, error surfaced in tracking comment", async () => {
     const { octokit, calls } = buildOctokit({
       eligibilityResponse: eligibleResponse,
       probeResponse: buildProbeResponse({ ready: true, isDraft: true }),
@@ -428,7 +428,7 @@ describe.skipIf(sql === null)("runShipFromCommand", () => {
       }),
     });
 
-    // Label trigger — no comment_body, no trigger_comment_id.
+    // Label trigger, no comment_body, no trigger_comment_id.
     const labelCommand: CanonicalCommand = {
       ...baseCommand,
       surface: "label",
@@ -455,7 +455,7 @@ describe.skipIf(sql === null)("runShipFromCommand", () => {
       event_surface: "pr-label",
     };
 
-    // First fire — no existing comments; refusal posted with marker.
+    // First fire, no existing comments; refusal posted with marker.
     const first = buildOctokit({
       eligibilityResponse: eligibleResponse,
       probeResponse: buildProbeResponse({
@@ -469,7 +469,7 @@ describe.skipIf(sql === null)("runShipFromCommand", () => {
     const firstBody = (first.calls.createCommentCalls[0] as { body: string }).body;
     expect(firstBody).toContain(`<!-- ship-reroute-refusal:acme/repo#401:human_took_over -->`);
 
-    // Second fire — surface the prior refusal as an existing comment so
+    // Second fire, surface the prior refusal as an existing comment so
     // the dedup helper sees the marker and skips. No new write.
     const second = buildOctokit({
       eligibilityResponse: eligibleResponse,

@@ -1,6 +1,6 @@
 /**
  * Tests for `src/workflows/ship/signature.ts` (T032).
- * Pure function — no DB, no network.
+ * Pure function: no DB, no network.
  */
 
 import { describe, expect, it } from "bun:test";

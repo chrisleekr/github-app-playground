@@ -2,7 +2,7 @@
  * Surface tests for the daemon-side `scoped-rebase` executor (T024).
  * Deeply mocking Bun's `$` shell is tricky so the executor's actual
  * git pipeline is exercised in the policy-layer rebase test (which
- * injects a runMerge stub). This file checks the wire surface — the
+ * injects a runMerge stub). This file checks the wire surface: the
  * executor forwards the closed-PR path through to the policy layer
  * without invoking any git commands.
  */

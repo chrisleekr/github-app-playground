@@ -32,7 +32,7 @@ try {
 }
 
 function requireSql(): SQL {
-  if (sql === null) throw new Error("Database not available — test should have been skipped");
+  if (sql === null) throw new Error("Database not available, test should have been skipped");
   return sql;
 }
 
@@ -152,7 +152,7 @@ describe.skipIf(sql === null)("orchestrator.onStepComplete", () => {
     const shipTarget = { ...target, number: issueNumber };
 
     // Seed: parent ship + first child (triage@0). The executor flips the
-    // parent to `running` before invoking the ship handler — replicate
+    // parent to `running` before invoking the ship handler, replicate
     // that here so status expectations match production behaviour.
     const parent = await insertQueued(
       {
@@ -415,7 +415,7 @@ describe.skipIf(sql === null)("orchestrator.onStepComplete", () => {
     await markRunning(parent.id, "test-daemon", requireSql());
 
     // Seed an implement child as if the prior cascade reached it. Implement
-    // forgets to write pr_number to its state — simulates a regressed
+    // forgets to write pr_number to its state, simulates a regressed
     // handler. Orchestrator must NOT silently inherit issue → review.
     const implementChild = await insertQueued(
       {
@@ -503,7 +503,7 @@ describe.skipIf(sql === null)("orchestrator.onStepComplete", () => {
     });
 
     // review_iterations is now 2 (== cap), so the next resolve must run
-    // (cascade as normal) — and after THAT, the cap-reached branch fires.
+    // (cascade as normal), and after THAT, the cap-reached branch fires.
     const resolve2Call = mockEnqueueJob.mock.calls.at(-1)?.[0] as
       | { workflowRun: { workflowName: string; runId: string } }
       | undefined;
@@ -771,7 +771,7 @@ describe("orchestrator helpers (pure)", () => {
 
   // Regression guard for the tightened signature: a bare "rate limit"
   // or "usage limit" phrase without "hit your limit" AND without a
-  // "resets ... UTC" clock must NOT auto-defer — it could be a GitHub
+  // "resets ... UTC" clock must NOT auto-defer, it could be a GitHub
   // secondary rate limit or unrelated upstream throttling. Auto-deferring
   // those would burn the iteration cap re-firing on a non-recoverable
   // failure.
@@ -797,7 +797,7 @@ describe("orchestrator helpers (pure)", () => {
 
   it("detectTransientQuotaError rolls reset to next day when boundary already passed", async () => {
     const { detectTransientQuotaError } = await import("../../src/workflows/orchestrator");
-    // 2026-05-02T20:00:00Z is past 18:00 UTC — next reset is tomorrow.
+    // 2026-05-02T20:00:00Z is past 18:00 UTC, next reset is tomorrow.
     const nowMs = Date.UTC(2026, 4, 2, 20, 0, 0);
     const result = detectTransientQuotaError("You've hit your limit · resets 6pm UTC", nowMs);
     expect(result).not.toBeNull();

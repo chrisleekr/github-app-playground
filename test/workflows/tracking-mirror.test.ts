@@ -98,7 +98,7 @@ function makeOctokit(opts: {
   return { octokit, calls };
 }
 
-describe("tracking-mirror.setState — first-touch create/adopt path", () => {
+describe("tracking-mirror.setState: first-touch create/adopt path", () => {
   beforeEach(() => {
     mergeStateMock.mockClear();
     findByIdMock.mockClear();
@@ -155,7 +155,7 @@ describe("tracking-mirror.setState — first-touch create/adopt path", () => {
       { runId: RUN_ID, patch: {}, humanMessage: "starting" },
     );
 
-    // No new POST — orphan adopted.
+    // No new POST, orphan adopted.
     expect(calls.createComment).not.toHaveBeenCalled();
     expect(calls.updateComment).toHaveBeenCalledTimes(1); // refresh body on adopted comment
     expect(tryReserveMock).toHaveBeenCalledWith(RUN_ID, 7777);
@@ -292,12 +292,12 @@ describe("tracking-mirror.setState — first-touch create/adopt path", () => {
     // Regression-lock: GitHub's per-issue listComments endpoint silently
     // ignores `direction` and `sort` (only `since` / `per_page` / `page`
     // are honoured). A future contributor adding either would create a
-    // false-confidence ordering assumption — fail the test instead.
+    // false-confidence ordering assumption, fail the test instead.
     expect(args).not.toHaveProperty("direction");
     expect(args).not.toHaveProperty("sort");
   });
 
-  it("lost-CAS: another racer reserved a different comment id — adopts the canonical, deletes our orphan", async () => {
+  it("lost-CAS: another racer reserved a different comment id, adopts the canonical, deletes our orphan", async () => {
     // Concurrent first-touch race: post-create scan finds two markers
     // (1010, 1011). Our code picks 1010 as candidate, but the CAS reveals
     // a concurrent racer already reserved 1011. The fix's invariant: never

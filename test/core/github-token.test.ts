@@ -1,7 +1,7 @@
 import { describe, expect, it, mock } from "bun:test";
 import type { Octokit } from "octokit";
 
-// Pin the config singleton — `resolveGithubToken` reads
+// Pin the config singleton, `resolveGithubToken` reads
 // `config.githubPersonalAccessToken` from this module as the fallback when
 // the caller passes `pat=undefined`. A developer who exports
 // GITHUB_PERSONAL_ACCESS_TOKEN locally to smoke-test would otherwise see

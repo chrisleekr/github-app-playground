@@ -50,7 +50,7 @@ describe("buildProviderEnv", () => {
     expect(env["BOT_ARTIFACT_DIR"]).toBe("/tmp/work-xyz-artifacts");
   });
 
-  // Negative-path guards for BOT_ARTIFACT_DIR — a future refactor that
+  // Negative-path guards for BOT_ARTIFACT_DIR, a future refactor that
   // accidentally sets the var with an empty/undefined value would point the
   // agent at `$BOT_ARTIFACT_DIR/...` and dump artifacts at filesystem root.
   it("does not set BOT_ARTIFACT_DIR when artifactsDir is undefined", () => {
@@ -84,7 +84,7 @@ describe("buildProviderEnv", () => {
     }
   });
 
-  // --- Defense layer 1a (issue #102) — env allowlist regression guards ---
+  // --- Defense layer 1a (issue #102), env allowlist regression guards ---
   //
   // These cases pin down the security property: even when banned daemon
   // secrets are set on `process.env`, they MUST NOT appear in the env

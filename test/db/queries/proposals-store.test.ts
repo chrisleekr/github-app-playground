@@ -5,7 +5,7 @@
  * (#115) where `${JSON.stringify(payload)}::jsonb` stored payloads as a
  * JSON string of the JSON object (jsonb_typeof = 'string') rather than
  * as the object itself (jsonb_typeof = 'object'). Surfaced in E2E test
- * 4 — approve-pending caught it via Zod validation on
+ * 4: approve-pending caught it via Zod validation on
  * `CreateIssuePayloadSchema.parse(proposal.payload)`.
  *
  * Skips when DATABASE_URL is unreachable.
@@ -46,7 +46,7 @@ afterAll(async () => {
   await db`DELETE FROM chat_proposals WHERE owner = 'test-proposals-owner'`;
 });
 
-describe("insertProposal — payload roundtrip", () => {
+describe("insertProposal: payload roundtrip", () => {
   it("stores payload as a jsonb OBJECT, not a stringified jsonb string (regression: #115)", async () => {
     if (skipIfNoDb()) return;
     const payload = {

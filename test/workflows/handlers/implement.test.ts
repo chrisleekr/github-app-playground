@@ -1,5 +1,5 @@
 /**
- * Unit tests for the `implement` handler — focused on the post-pipeline
+ * Unit tests for the `implement` handler: focused on the post-pipeline
  * "did the agent open a PR?" verifier.
  *
  * Background: in `GITHUB_PERSONAL_ACCESS_TOKEN` mode the bot authors PRs as
@@ -121,7 +121,7 @@ function buildCtx(
   } as unknown as WorkflowRunContext & { setStateMock: ReturnType<typeof mock> };
 }
 
-describe("implement handler — findRecentOpenedPr", () => {
+describe("implement handler: findRecentOpenedPr", () => {
   beforeEach(() => {
     pipelineResult = {
       success: true,

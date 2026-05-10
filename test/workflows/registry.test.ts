@@ -1,6 +1,6 @@
 /**
  * Unit tests for the workflow registry shape. Exercises the Zod schema's
- * four cross-entry invariants — uniqueness on name + label, valid step
+ * four cross-entry invariants: uniqueness on name + label, valid step
  * references, and the composite-vs-requiresPrior XOR rule.
  *
  * The real `registry.ts` module parses its constant at import time; those
@@ -82,7 +82,7 @@ describe("RegistrySchema invariants", () => {
 
   it("rejects a step that names a workflow missing from the registry", () => {
     // `plan` is a valid WorkflowName per the enum, but absent from this
-    // minimal registry — the cross-entry refine() is what must catch the gap
+    // minimal registry, the cross-entry refine() is what must catch the gap
     // (enum membership alone is not enough).
     const bad = [
       makeEntry({ name: "triage", label: "bot:triage" }),
@@ -113,9 +113,9 @@ describe("RegistrySchema invariants", () => {
   it("rejects a non-function handler", () => {
     const bad = [
       // Handler field is typed as WorkflowHandler but validated via z.custom's
-      // function-type guard — pass a non-function to exercise the runtime path.
+      // function-type guard, pass a non-function to exercise the runtime path.
       makeEntry({
-        // @ts-expect-error — string is not a function
+        // @ts-expect-error, string is not a function
         handler: "not-a-function",
       }),
     ];

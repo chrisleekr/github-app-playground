@@ -1,10 +1,10 @@
 /**
- * Unit tests for dispatchByLabel — registry-driven label → workflow lookup
+ * Unit tests for dispatchByLabel: registry-driven label → workflow lookup
  * and the seven-step protocol from `specs/20260421-181205-bot-workflows/
  * contracts/webhook-dispatch.md` §Label trigger.
  *
  * Downstream surfaces (runs-store, job-queue, label-mutex, tracking-mirror)
- * are mocked — the dispatcher is a pure orchestrator over the registry.
+ * are mocked: the dispatcher is a pure orchestrator over the registry.
  */
 
 import { beforeEach, describe, expect, it, mock } from "bun:test";
@@ -52,7 +52,7 @@ void mock.module("../../src/workflows/runs-store", () => ({
   findLatestSucceededForTarget: mockFindLatestSucceededForTarget,
   markFailed: mockMarkFailed,
   // findById is imported by review/resolve handlers (transitively reachable
-  // when registry resolves them). Provide a stub so module loading succeeds —
+  // when registry resolves them). Provide a stub so module loading succeeds,
   // tests in this file don't exercise that code path.
   findById: mock(async () => Promise.resolve(null)),
 }));

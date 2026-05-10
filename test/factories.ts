@@ -8,7 +8,7 @@
  *
  * Module-level mocks (`mock.module(...)`) MUST stay in individual test files
  * because Bun persists them across the process. These factories produce data
- * structures only — no module-mock side effects.
+ * structures only: no module-mock side effects.
  */
 
 import { paginateGraphQL } from "@octokit/plugin-paginate-graphql";
@@ -136,7 +136,7 @@ export function makeOctokit(opts: MakeOctokitOptions = {}): Octokit {
   }) as unknown as Octokit["graphql"];
 
   // graphql.paginate exists at runtime via @octokit/plugin-paginate-graphql.
-  // For tests, a paginated call is indistinguishable from a single-page call —
+  // For tests, a paginated call is indistinguishable from a single-page call,
   // the plugin merges pages before resolving, so the test fixture just hands
   // back the already-merged result. Routing by query substring lets the same
   // octokit double answer the top-level PR query AND the nested

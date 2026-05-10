@@ -1,5 +1,5 @@
 /**
- * T012 — continuation persist/resume tests covering the restart-safety
+ * T012: continuation persist/resume tests covering the restart-safety
  * property: write a continuation, simulate process restart, resume
  * against the same intent_id, assert no duplicates and resumed state
  * matches.
@@ -26,7 +26,7 @@ try {
 }
 
 function requireConn(): SQL {
-  if (sql === null) throw new Error("Database not available — test should have been skipped");
+  if (sql === null) throw new Error("Database not available, test should have been skipped");
   return sql;
 }
 
@@ -96,7 +96,7 @@ describe.skipIf(sql === null)("continuation persist/resume", () => {
     }
   });
 
-  it("persistContinuation overwrites an existing row in place — restart safe (no duplicates)", async () => {
+  it("persistContinuation overwrites an existing row in place: restart safe (no duplicates)", async () => {
     const { insertIntent } = await import("../../../src/db/queries/ship");
     const { persistContinuation, resumeContinuation } =
       await import("../../../src/workflows/ship/continuation");
@@ -124,7 +124,7 @@ describe.skipIf(sql === null)("continuation persist/resume", () => {
       requireConn(),
     );
 
-    // Exactly one row exists — the second write replaced the first.
+    // Exactly one row exists, the second write replaced the first.
     const rows = await requireConn()`
       SELECT COUNT(*)::int AS n FROM ship_continuations WHERE intent_id = ${intent.id}
     `;

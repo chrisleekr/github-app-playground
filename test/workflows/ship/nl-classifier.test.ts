@@ -1,10 +1,10 @@
 /**
- * T014c — NL intent-classifier tests covering FR-025 + FR-025a.
+ * T014c: NL intent-classifier tests covering FR-025 + FR-025a.
  *
  * The mention-prefix gate is THE cost-control gate: a comment that does
  * not start with the configured `triggerPhrase` MUST NOT invoke the
  * Bedrock SDK at all. These tests assert zero LLM calls on every
- * non-mentioning input — adding tokens to a maintainer's bill for an
+ * non-mentioning input: adding tokens to a maintainer's bill for an
  * irrelevant comment is the failure mode this gate prevents.
  */
 
@@ -12,7 +12,7 @@ import { describe, expect, it, mock } from "bun:test";
 
 import { classifyComment, toCommandIntent } from "../../../src/workflows/ship/nl-classifier";
 
-describe("classifyComment — FR-025a mention-prefix gate", () => {
+describe("classifyComment: FR-025a mention-prefix gate", () => {
   it("returns null and does NOT invoke the LLM when the comment lacks the trigger phrase", async () => {
     const callLlm = mock(() => Promise.reject(new Error("must not be called")));
     const result = await classifyComment({
@@ -80,7 +80,7 @@ describe("classifyComment — FR-025a mention-prefix gate", () => {
   });
 });
 
-describe("classifyComment — JSON shape + Zod validation", () => {
+describe("classifyComment: JSON shape + Zod validation", () => {
   it("returns the parsed result for representative ship phrasing", async () => {
     const callLlm = mock(() =>
       Promise.resolve(JSON.stringify({ intent: "ship", deadline_ms: 7_200_000 })),
@@ -115,7 +115,7 @@ describe("classifyComment — JSON shape + Zod validation", () => {
     expect(result).toEqual({ intent: "none" });
   });
 
-  it("treats LLM failure as intent='none' (resilient — does not throw)", async () => {
+  it("treats LLM failure as intent='none' (resilient, does not throw)", async () => {
     const callLlm = mock(() => Promise.reject(new Error("bedrock 503")));
     const result = await classifyComment({
       commentBody: "@bot ship",
@@ -129,7 +129,7 @@ describe("classifyComment — JSON shape + Zod validation", () => {
   // responses in a markdown code fence even when told "Return ONLY a single
   // JSON object". Before the fix, this caused every NL trigger to
   // silently classify as `none` and fall through to the legacy intent
-  // classifier, which routes ship to issues only — making
+  // classifier, which routes ship to issues only, making
   // `@chrisleekr-bot-dev ship` on PRs silently no-op.
   it("unwraps a fenced ```json … ``` LLM response", async () => {
     const callLlm = mock(() => Promise.resolve('```json\n{ "intent": "ship" }\n```'));
@@ -156,7 +156,7 @@ describe("classifyComment — JSON shape + Zod validation", () => {
 // covered by `test/ai/structured-output.test.ts` (fence-stripping cases).
 // The classifier no longer exposes its own implementation.
 
-describe("classifyComment — FR-029..FR-035 event-surface eligibility", () => {
+describe("classifyComment: FR-029..FR-035 event-surface eligibility", () => {
   it("rewrites an ineligible intent to 'none' when eventSurface is provided", async () => {
     // bot:investigate is eligible on issue-comment / issue-label only.
     // On pr-comment, the post-classification gate rewrites it to 'none'.

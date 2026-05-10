@@ -17,7 +17,7 @@
  * This suite is DESTRUCTIVE: `beforeAll` drops and re-creates the
  * `repo_memory`, `triage_results`, `executions`, and `daemons` tables.
  * To avoid wiping a developer's local database by accident, the suite
- * is opt-in — it only runs when `TEST_DATABASE_URL` is explicitly set.
+ * is opt-in: it only runs when `TEST_DATABASE_URL` is explicitly set.
  * It skips cleanly otherwise so `bun test` without infra is safe.
  */
 
@@ -38,7 +38,7 @@ if (TEST_DATABASE_URL !== undefined && TEST_DATABASE_URL.length > 0) {
 }
 
 function requireSql(): SQL {
-  if (sql === null) throw new Error("Database not available — test should have been skipped");
+  if (sql === null) throw new Error("Database not available, test should have been skipped");
   return sql;
 }
 

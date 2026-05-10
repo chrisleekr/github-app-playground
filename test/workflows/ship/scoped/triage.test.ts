@@ -1,5 +1,5 @@
 /**
- * Tests for `bot:triage` (T078 / FR-034). Suggest-only — runtime
+ * Tests for `bot:triage` (T078 / FR-034). Suggest-only, runtime
  * assertions confirm zero invocations of the forbidden mutation
  * methods. ≥90% coverage on `src/workflows/ship/scoped/triage.ts`.
  */
@@ -22,7 +22,7 @@ function buildOctokit(opts: { issue: FakeIssue; existingMarkerCommentId?: number
   );
   const createComment = mock(() => Promise.resolve({ data: { id: 7001 } }));
 
-  // Forbidden mutations — registered so we can assert zero calls.
+  // Forbidden mutations, registered so we can assert zero calls.
   const addLabels = mock(() => Promise.resolve());
   const removeLabel = mock(() => Promise.resolve());
   const closeIssue = mock(() => Promise.resolve());
@@ -64,7 +64,7 @@ function buildOctokit(opts: { issue: FakeIssue; existingMarkerCommentId?: number
           removeLabel,
           lock: lockIssue,
           addAssignees,
-          // closeIssue / pinIssue are GraphQL-only — we still register a
+          // closeIssue / pinIssue are GraphQL-only, we still register a
           // marker on rest in case a future implementation tries it.
           update: closeIssue,
         },

@@ -4,7 +4,7 @@ import type { Octokit } from "octokit";
 
 import { parseIssueCommentEvent, parseReviewCommentEvent } from "../../src/core/context";
 
-// Minimal mock Octokit — context parsing doesn't call any API methods
+// Minimal mock Octokit, context parsing doesn't call any API methods
 const mockOctokit = {} as Octokit;
 
 // Minimal payload factories matching the fields context.ts actually reads

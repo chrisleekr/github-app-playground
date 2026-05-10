@@ -16,7 +16,7 @@ function makeClock(): { now: () => number; advance: (ms: number) => void } {
   };
 }
 
-describe("CircuitBreaker — state transitions (closed → open → half-open → closed)", () => {
+describe("CircuitBreaker: state transitions (closed → open → half-open → closed)", () => {
   it("stays closed while calls succeed", async () => {
     const b = new CircuitBreaker();
     for (let i = 0; i < 10; i += 1) {
@@ -86,7 +86,7 @@ describe("CircuitBreaker — state transitions (closed → open → half-open �
   });
 });
 
-describe("CircuitBreaker — latency trip", () => {
+describe("CircuitBreaker: latency trip", () => {
   it("trips on a single slow call exceeding latencyTripMs", async () => {
     let t = 0;
     const clock = {
@@ -111,7 +111,7 @@ describe("CircuitBreaker — latency trip", () => {
   });
 });
 
-describe("CircuitBreaker — observer hook", () => {
+describe("CircuitBreaker: observer hook", () => {
   it("fires onStateChange exactly at each transition", async () => {
     const events: string[] = [];
     const clock = makeClock();
@@ -128,7 +128,7 @@ describe("CircuitBreaker — observer hook", () => {
   });
 });
 
-describe("CircuitBreaker — failure counter reset on success", () => {
+describe("CircuitBreaker: failure counter reset on success", () => {
   it("resets consecutive-failure count after any success", async () => {
     const b = new CircuitBreaker({ maxConsecutiveFailures: 3 });
     await b.execute(() => Promise.reject(new Error("a")));
@@ -144,7 +144,7 @@ describe("CircuitBreaker — failure counter reset on success", () => {
   });
 });
 
-describe("CircuitBreaker — reset()", () => {
+describe("CircuitBreaker: reset()", () => {
   it("returns a tripped breaker to closed", async () => {
     // Replaces brittle private-field casts previously used for test
     // cleanup (Copilot PR #20 feedback).

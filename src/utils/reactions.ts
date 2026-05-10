@@ -67,7 +67,7 @@ export async function addReaction(params: AddReactionParams): Promise<void> {
         eventType,
         content,
       },
-      "Failed to add reaction — continuing without it",
+      "Failed to add reaction, continuing without it",
     );
   }
 }

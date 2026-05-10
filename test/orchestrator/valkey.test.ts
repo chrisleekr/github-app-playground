@@ -1,9 +1,9 @@
 /**
- * Tests for src/orchestrator/valkey.ts — Valkey client singleton management.
+ * Tests for src/orchestrator/valkey.ts: Valkey client singleton management.
  *
  * Approach: We import the real valkey module after mocking its dependencies
  * (config, logger). The real module creates a Bun RedisClient against a fake URL
- * (no real server needed — RedisClient can be constructed without a connection).
+ * (no real server needed: RedisClient can be constructed without a connection).
  *
  * When running in a multi-file test process, mock.module() from other test files
  * may override the valkey module. To handle this gracefully, each test file that
@@ -355,7 +355,7 @@ describe("connectValkey", () => {
     const client = valkey.getValkeyClient();
     if (client === null) throw new Error("expected client");
     // Stub Bun.RedisClient.connect so we don't depend on a real Valkey.
-    // Critical: fire onconnect — connectValkey awaits the callback, not the promise.
+    // Critical: fire onconnect, connectValkey awaits the callback, not the promise.
     client.connect = (): Promise<void> => {
       client.onconnect?.();
       return Promise.resolve();
@@ -400,7 +400,7 @@ describe("connectValkey", () => {
 
     await valkey.connectValkey(1000);
 
-    // Should not log "Awaiting Valkey connection" — fast-path returns early.
+    // Should not log "Awaiting Valkey connection", fast-path returns early.
     const awaitingLogs = mockLoggerInfo.mock.calls.filter(
       (call) => call[1] === "Awaiting Valkey connection",
     );

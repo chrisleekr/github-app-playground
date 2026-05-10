@@ -1,5 +1,5 @@
 /**
- * Tests for src/orchestrator/daemon-registry.ts — Daemon registration with Valkey + Postgres.
+ * Tests for src/orchestrator/daemon-registry.ts: Daemon registration with Valkey + Postgres.
  *
  * Mocks valkey (requireValkeyClient) and db (getDb) modules.
  * Tests cover register, deregister, TTL refresh, active daemon listing,
@@ -46,7 +46,7 @@ void mock.module("../../src/orchestrator/valkey", () => ({
   closeValkey: (): void => {},
 }));
 
-// Mock DB — SQL tagged template function
+// Mock DB, SQL tagged template function
 // The tagged template is called as db`SQL string` which calls the function
 // with template parts and interpolated values.
 let mockDbResult: unknown[] = [];
@@ -158,7 +158,7 @@ describe("registerDaemon", () => {
       "90",
       JSON.stringify(msg.payload.capabilities),
     ]);
-    // SET daemon:{id}:active_jobs 0 EX 90 — shares TTL with the liveness key
+    // SET daemon:{id}:active_jobs 0 EX 90, shares TTL with the liveness key
     // so an orchestrator crash can't leak the counter independently.
     expect(mockSend).toHaveBeenCalledWith("SET", ["daemon:daemon-1:active_jobs", "0", "EX", "90"]);
     // SADD active_daemons daemon-1
@@ -213,7 +213,7 @@ describe("registerDaemon", () => {
     await registerDaemon(msg);
 
     // The db call receives the SQL template + interpolated values.
-    // We verify it was called — the actual SQL is in the template strings.
+    // We verify it was called, the actual SQL is in the template strings.
     expect(mockDbFn).toHaveBeenCalled();
     const call = mockDbFn.mock.calls[0];
     if (call === undefined) {
@@ -395,7 +395,7 @@ describe("decrementDaemonActiveJobs", () => {
 
     expect(mockLoggerWarn).toHaveBeenCalledWith(
       { daemonId: "d-underflow" },
-      "Skipped DECR — active_jobs already at zero or below",
+      "Skipped DECR, active_jobs already at zero or below",
     );
   });
 

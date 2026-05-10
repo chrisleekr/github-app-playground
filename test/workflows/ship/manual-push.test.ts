@@ -1,9 +1,9 @@
 /**
  * T036b: manual-push detection. Foreign-push detection lives in two places:
- *   1. webhook-reactor.fanOut on `pull_request.synchronize` — terminates
+ *   1. webhook-reactor.fanOut on `pull_request.synchronize`: terminates
  *      with `human_took_over` + `manual-push-detected` when the head SHA
  *      changed and the pusher is not the bot.
- *   2. lifecycle-commands.runLifecycleCommand("resume") — same check on
+ *   2. lifecycle-commands.runLifecycleCommand("resume"): same check on
  *      resume.
  *
  * Both are exercised by other test files; this file pins the contract

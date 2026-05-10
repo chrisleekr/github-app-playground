@@ -20,7 +20,7 @@ describe("withStructuredRules", () => {
     expect(result).toContain(STRUCTURED_OUTPUT_RULES);
   });
 
-  it("is idempotent — does not double-append on repeated calls", () => {
+  it("is idempotent: does not double-append on repeated calls", () => {
     const once = withStructuredRules("You are a classifier.");
     const twice = withStructuredRules(once);
     expect(twice).toBe(once);

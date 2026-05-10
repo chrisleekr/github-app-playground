@@ -6,7 +6,7 @@
  * Skips the entire suite when Postgres is not available.
  *
  * Dynamic imports prevent coverage instrumentation of src/db/migrate.ts
- * when the suite is skipped — avoids failing the 90% per-file threshold.
+ * when the suite is skipped: avoids failing the 90% per-file threshold.
  */
 
 import { SQL } from "bun";
@@ -15,7 +15,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 const TEST_DATABASE_URL =
   process.env["TEST_DATABASE_URL"] ?? "postgres://bot:bot@localhost:5432/github_app_test";
 
-// Attempt to connect — skip all tests if Postgres is unreachable.
+// Attempt to connect, skip all tests if Postgres is unreachable.
 let sql: SQL | null = null;
 try {
   const conn = new SQL(TEST_DATABASE_URL);
@@ -26,7 +26,7 @@ try {
 }
 
 function requireDb(): SQL {
-  if (sql === null) throw new Error("Database not available — test should have been skipped");
+  if (sql === null) throw new Error("Database not available, test should have been skipped");
   return sql;
 }
 
@@ -90,7 +90,7 @@ describe.skipIf(sql === null)("runMigrations", () => {
     expect(versions[10]?.version).toBe("011_conversation_cache");
   });
 
-  it("is idempotent — second run is a no-op", async () => {
+  it("is idempotent: second run is a no-op", async () => {
     const { runMigrations } = await import("../../src/db/migrate");
     await runMigrations(requireDb());
 

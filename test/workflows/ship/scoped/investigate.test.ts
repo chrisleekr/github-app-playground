@@ -30,7 +30,7 @@ function buildOctokit(opts: {
   );
   const createComment = mock(() => Promise.resolve({ data: { id: 8001 } }));
 
-  // Investigate uses `octokit.paginate(method, opts)` — a function call,
+  // Investigate uses `octokit.paginate(method, opts)`, a function call,
   // not the iterator factory. Returns a flat array of every page's data.
   const paginate = mock(() => Promise.resolve(opts.comments));
 
@@ -66,7 +66,7 @@ function buildOctokit(opts: {
     },
   }));
 
-  // Bun's mock helpers are not callable themselves — the function we
+  // Bun's mock helpers are not callable themselves, the function we
   // need is `paginate`, with `.iterator` attached as a property. Wrap
   // it as a single object whose call signature uses `paginate` directly.
   const paginateFn = Object.assign(paginate, { iterator: paginateIterator });
@@ -160,7 +160,7 @@ describe("runInvestigate", () => {
       issue: { title: "low signal", body: null },
       comments: [],
     });
-    const callLlm = mock(() => Promise.resolve("**Insufficient context** — ..."));
+    const callLlm = mock(() => Promise.resolve("**Insufficient context**, ..."));
     const result = await runInvestigate({
       octokit: fake.octokit,
       owner: "o",

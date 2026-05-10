@@ -1,5 +1,5 @@
 /**
- * Tests for src/orchestrator/instance-liveness.ts — orchestrator liveness
+ * Tests for src/orchestrator/instance-liveness.ts: orchestrator liveness
  * heartbeat used by the cross-instance processing-list reaper.
  *
  * Note: the module owns a process-level `setInterval`. We only exercise the
@@ -49,7 +49,7 @@ describe("instance-liveness", () => {
 
     const callsBeforeSecondStart = mockSend.mock.calls.length;
     await startInstanceHeartbeat();
-    // Second start is a no-op — no additional SETs.
+    // Second start is a no-op, no additional SETs.
     expect(mockSend.mock.calls.length).toBe(callsBeforeSecondStart);
 
     await stopInstanceHeartbeat();

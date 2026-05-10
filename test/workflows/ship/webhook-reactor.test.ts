@@ -1,10 +1,10 @@
 /**
- * T013 — webhook-reactor tests covering the 11 scenarios from
+ * T013: webhook-reactor tests covering the 11 scenarios from
  * `contracts/webhook-event-subscriptions.md` §"Tests".
  *
  * DB-backed integration test (skips when Postgres is unreachable).
  * Valkey is mocked via a Pick<RedisClient, "send"> stub so the reactor
- * can be exercised without a live Redis-compatible server — the
+ * can be exercised without a live Redis-compatible server: the
  * contract under test is "what does the reactor do given this event,
  * not what does Valkey do given this command".
  */
@@ -25,7 +25,7 @@ try {
 }
 
 function requireConn(): SQL {
-  if (sql === null) throw new Error("Database not available — test should have been skipped");
+  if (sql === null) throw new Error("Database not available, test should have been skipped");
   return sql;
 }
 
@@ -85,7 +85,7 @@ describe.skipIf(sql === null)("webhook-reactor fanOut", () => {
     await requireConn().close();
   });
 
-  it("synchronize from the bot itself does NOT terminate — updates target_head_sha and early-wakes", async () => {
+  it("synchronize from the bot itself does NOT terminate: updates target_head_sha and early-wakes", async () => {
     const { insertIntent } = await import("../../../src/db/queries/ship");
     const { fanOut, TICKLE_KEY } = await import("../../../src/workflows/ship/webhook-reactor");
     const intent = await insertIntent(baseInsert(), requireConn());
@@ -296,7 +296,7 @@ describe.skipIf(sql === null)("webhook-reactor fanOut", () => {
     expect(valkey.send).toHaveBeenCalledWith("ZADD", [TICKLE_KEY, "0", b.id]);
   });
 
-  it("duplicate delivery (same event twice) is idempotent — no extra terminal transitions", async () => {
+  it("duplicate delivery (same event twice) is idempotent: no extra terminal transitions", async () => {
     const { insertIntent } = await import("../../../src/db/queries/ship");
     const { fanOut } = await import("../../../src/workflows/ship/webhook-reactor");
     const intent = await insertIntent(baseInsert(), requireConn());
@@ -323,7 +323,7 @@ describe.skipIf(sql === null)("webhook-reactor fanOut", () => {
     await requireConn()`UPDATE ship_intents SET status = 'aborted_by_user', terminated_at = now(), terminal_blocker_category = 'stopped-by-user' WHERE id = ${intent.id}`;
     const valkey = buildValkeyStub();
     // The reactor's findIntentsForPr filters to status IN ('active','paused')
-    // so terminal intents are silently skipped — fanOut returns without error.
+    // so terminal intents are silently skipped, fanOut returns without error.
     await fanOut(
       {
         type: "pull_request_review.submitted",

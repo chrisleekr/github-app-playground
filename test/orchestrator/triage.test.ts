@@ -53,7 +53,7 @@ beforeEach(() => {
   _resetTriageBreakerForTests();
 });
 
-describe("triageRequest — happy path", () => {
+describe("triageRequest: happy path", () => {
   it("returns { outcome: 'result' } on a well-formed JSON response above threshold", async () => {
     const client = makeStubClient(() =>
       Promise.resolve(
@@ -93,7 +93,7 @@ describe("triageRequest — happy path", () => {
     const client = makeStubClient(() =>
       Promise.resolve(
         responseText(
-          'Sure — here is the classification:\n```json\n{"heavy":false,"confidence":1,"rationale":"tiny"}\n```',
+          'Sure, here is the classification:\n```json\n{"heavy":false,"confidence":1,"rationale":"tiny"}\n```',
         ),
       ),
     );
@@ -102,7 +102,7 @@ describe("triageRequest — happy path", () => {
   });
 });
 
-describe("triageRequest — fallback paths", () => {
+describe("triageRequest: fallback paths", () => {
   it("reason='parse-error' when the body is not JSON at all", async () => {
     const client = makeStubClient(() => Promise.resolve(responseText("I think heavy.")));
     const r = await triageRequest(makeInput(), client);
@@ -229,7 +229,7 @@ describe("extractJsonObject", () => {
   });
 
   it("extracts the first top-level object when prose precedes it", () => {
-    expect(extractJsonObject('Here you go: {"a":1} — done')).toBe('{"a":1}');
+    expect(extractJsonObject('Here you go: {"a":1}, done')).toBe('{"a":1}');
   });
 
   it("returns null when no braces are present", () => {

@@ -1,5 +1,5 @@
 /**
- * T014 — MCP `resolve-review-thread` server tests covering the
+ * T014: MCP `resolve-review-thread` server tests covering the
  * contract from `contracts/mcp-resolve-thread-server.md` §"Tests".
  *
  * The server is a stdio process: it reads `REPO_OWNER` / `REPO_NAME` /
@@ -10,7 +10,7 @@
  * as a pure function (out of scope for this PR).
  *
  * This test layer asserts the *static contract*: invariants that
- * survive any future refactor — token never logged in plaintext,
+ * survive any future refactor: token never logged in plaintext,
  * GraphQL queries match the documented shape, env validation occurs at
  * the documented points, error-mapping table is exhaustive. The
  * runtime functional tests are explicitly tracked as a follow-up PR
@@ -27,10 +27,10 @@ const SOURCE_PATH = join(process.cwd(), "src/mcp/servers/resolve-review-thread.t
 
 const SOURCE = readFileSync(SOURCE_PATH, "utf8");
 
-describe("MCP resolve-review-thread — static contract", () => {
+describe("MCP resolve-review-thread: static contract", () => {
   it("declares exactly one tool and that tool is `resolve_review_thread`", () => {
     // The server registers its tool via `server.tool(name, ...)` (the
-    // current MCP SDK affordance — `registerTool` is deprecated and
+    // current MCP SDK affordance, `registerTool` is deprecated and
     // tracked separately for migration). Asserting the literal name
     // string is the simplest cross-version check; functional name
     // routing is exercised by the MCP runtime.
@@ -48,17 +48,17 @@ describe("MCP resolve-review-thread — static contract", () => {
     expect(SOURCE).toContain('=== ""');
   });
 
-  it("never logs the GITHUB_TOKEN value — only its presence boolean", () => {
+  it("never logs the GITHUB_TOKEN value: only its presence boolean", () => {
     // Find the env-validation log call and assert its payload references
     // `hasGithubToken`, not `GITHUB_TOKEN` directly.
     const block = /log\.error\(\s*\{[^}]*hasGithubToken[^}]*\}/.exec(SOURCE);
     expect(block).not.toBeNull();
     // The literal `GITHUB_TOKEN` must NOT appear inside any log.X(...)
-    // call shape — covers `token: GITHUB_TOKEN`, `auth: GITHUB_TOKEN`,
+    // call shape, covers `token: GITHUB_TOKEN`, `auth: GITHUB_TOKEN`,
     // template interpolations `${GITHUB_TOKEN}`, and `process.env.GITHUB_TOKEN`
     // references. The presence-check log line legitimately uses
     // `GITHUB_TOKEN` inside the `hasGithubToken: GITHUB_TOKEN !== undefined`
-    // boolean expression — those lines are whitelisted by the
+    // boolean expression, those lines are whitelisted by the
     // `hasGithubToken` marker, leaving every other log call subject
     // to the no-leak rule.
     const logLines = SOURCE.match(/log\.(info|warn|error|debug)\([^;]*;/g) ?? [];
@@ -68,7 +68,7 @@ describe("MCP resolve-review-thread — static contract", () => {
     }
   });
 
-  it("PR_NUMBER must parse to a positive integer — rejects 0, negatives, and non-numeric", () => {
+  it("PR_NUMBER must parse to a positive integer: rejects 0, negatives, and non-numeric", () => {
     expect(SOURCE).toContain("Number.isInteger(BOUND_PR_NUMBER)");
     expect(SOURCE).toContain("BOUND_PR_NUMBER <= 0");
   });
@@ -83,7 +83,7 @@ describe("MCP resolve-review-thread — static contract", () => {
     expect(SOURCE).toContain("retryWithBackoff");
   });
 
-  it("writes pino logs to stderr (not stdout — would corrupt JSON-RPC transport)", () => {
+  it("writes pino logs to stderr (not stdout: would corrupt JSON-RPC transport)", () => {
     expect(SOURCE).toMatch(/pino\([^)]*,\s*process\.stderr\s*\)/);
   });
 

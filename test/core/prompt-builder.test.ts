@@ -2,7 +2,7 @@
  * Tests for src/core/prompt-builder.ts.
  *
  * Covers buildPrompt() and resolveAllowedTools() with various PR/issue contexts.
- * No module mocks — these are pure functions that read from the config singleton
+ * No module mocks: these are pure functions that read from the config singleton
  * (populated by test/preload.ts).
  */
 
@@ -63,7 +63,7 @@ describe("buildPrompt", () => {
     expect(result).toContain("<is_pr>true</is_pr>");
     expect(result).toContain("<pr_number>11</pr_number>");
     // Spotlight tags carry a per-call random suffix (`_<8hex>`) so attacker
-    // content cannot forge a closing tag — match the prefix only.
+    // content cannot forge a closing tag, match the prefix only.
     expect(result).toMatch(/<untrusted_review_comments_[0-9a-f]{8}>/);
     expect(result).toMatch(/<untrusted_changed_files_[0-9a-f]{8}>/);
     expect(result).toContain("PR Title: Add feature X");
@@ -154,7 +154,7 @@ describe("buildPrompt", () => {
     // but does NOT block Unicode bidi-override / zero-width chars, so a
     // forked PR with a crafted base branch could otherwise reach the agent
     // prompt verbatim. The CLAUDE.md "Input sanitization chokepoint"
-    // invariant requires sanitizeContent at every interpolation site —
+    // invariant requires sanitizeContent at every interpolation site,
     // this test pins that down.
     const ctx = makeBotContext({ isPR: true });
     const data = makePrData({ baseBranch: "main\u202E\u200B" });
@@ -169,7 +169,7 @@ describe("buildPrompt", () => {
   it("strips bidi/zero-width disguise chars from a malicious filename so a counterfeit </untrusted_changed_files> tag breakout cannot hide inside the spotlit block", () => {
     // A crafted filename combining bidi RTL override + zero-width space + a
     // counterfeit closing tag. The disguise chars are the load-bearing part
-    // of a Trojan-Source-style breakout — they let the rendered text look
+    // of a Trojan-Source-style breakout, they let the rendered text look
     // benign while the byte stream injects a fake tag. sanitizeContent
     // strips the disguise chars; the literal closing-tag substring is a
     // separate concern (a plain-ASCII filename containing the tag survives
@@ -366,9 +366,9 @@ describe("resolveAllowedTools", () => {
   });
 });
 
-// ─── buildPrompt — repo_memory section ───────────────────────────────────────
+// ─── buildPrompt, repo_memory section ───────────────────────────────────────
 
-describe("buildPrompt — repo_memory", () => {
+describe("buildPrompt: repo_memory", () => {
   it("includes repo_memory section when repoMemory is non-empty", () => {
     const ctx = makeBotContext({
       repoMemory: [
@@ -402,9 +402,9 @@ describe("buildPrompt — repo_memory", () => {
   });
 });
 
-// ─── buildPrompt — trackingCommentId conditional ─────────────────────────────
+// ─── buildPrompt, trackingCommentId conditional ─────────────────────────────
 
-describe("buildPrompt — trackingCommentId", () => {
+describe("buildPrompt: trackingCommentId", () => {
   it("omits claude_comment_id and comment_tool_info when trackingCommentId is undefined", () => {
     const ctx = makeBotContext();
     const result = buildPrompt(ctx, makeIssueData(), undefined);

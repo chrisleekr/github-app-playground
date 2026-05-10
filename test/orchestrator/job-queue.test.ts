@@ -1,5 +1,5 @@
 /**
- * Tests for src/orchestrator/job-queue.ts — Job queue operations using Valkey.
+ * Tests for src/orchestrator/job-queue.ts: Job queue operations using Valkey.
  *
  * Mocks the valkey module (requireValkeyClient) and config to avoid real connections.
  * Tests cover enqueue, tryDequeue (non-blocking), dequeue (blocking), and requeue paths.
@@ -157,7 +157,7 @@ describe("job-queue", () => {
 
       expect(result).toBeNull();
       expect(mockLoggerError).toHaveBeenCalledWith(
-        "Failed to parse dequeued job — dropping poison pill",
+        "Failed to parse dequeued job, dropping poison pill",
       );
     });
   });
@@ -189,7 +189,7 @@ describe("job-queue", () => {
 
       expect(result).toBeNull();
       expect(mockLoggerError).toHaveBeenCalledWith(
-        "Failed to parse dequeued job — dropping poison pill",
+        "Failed to parse dequeued job, dropping poison pill",
       );
     });
   });

@@ -32,7 +32,7 @@ describe("resolveModelId", () => {
   });
 });
 
-describe("createLLMClient — validation guards", () => {
+describe("createLLMClient: validation guards", () => {
   it("throws when provider=anthropic and no credentials supplied", () => {
     expect(() => createLLMClient({ provider: "anthropic" })).toThrow(
       /anthropicApiKey=missing, claudeCodeOauthToken=missing/,
@@ -47,7 +47,7 @@ describe("createLLMClient — validation guards", () => {
 
   it("falls through to oauth when anthropicApiKey is empty string and oauth is set", () => {
     // Reproduces the production trap: ANTHROPIC_API_KEY="" must not shadow a
-    // real CLAUDE_CODE_OAUTH_TOKEN. Defense in depth — config.ts also coerces
+    // real CLAUDE_CODE_OAUTH_TOKEN. Defense in depth, config.ts also coerces
     // empty strings to undefined, but llm-client.ts must not depend on that.
     const c = createLLMClient({
       provider: "anthropic",
@@ -99,7 +99,7 @@ describe("createLLMClient — validation guards", () => {
   });
 });
 
-describe("buildRequest — shaping the SDK payload", () => {
+describe("buildRequest: shaping the SDK payload", () => {
   it("omits `system` when not supplied", () => {
     const req = buildRequest({
       model: "haiku",
@@ -194,7 +194,7 @@ describe("buildRequest — shaping the SDK payload", () => {
   });
 });
 
-describe("parseAnthropicResponse — concatenates text blocks, strips non-text", () => {
+describe("parseAnthropicResponse: concatenates text blocks, strips non-text", () => {
   it("joins multiple text blocks", () => {
     const raw: AnthropicMessageResponse = {
       content: [
@@ -229,7 +229,7 @@ describe("parseAnthropicResponse — concatenates text blocks, strips non-text",
   });
 });
 
-describe("_createLLMClientForTests — end-to-end with a stubbed SDK", () => {
+describe("_createLLMClientForTests: end-to-end with a stubbed SDK", () => {
   function makeStub(response: AnthropicMessageResponse): AnthropicLikeSdk & {
     calls: { req: unknown }[];
   } {

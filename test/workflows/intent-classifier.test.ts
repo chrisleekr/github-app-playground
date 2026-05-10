@@ -2,7 +2,7 @@
  * Unit tests for the intent-classifier (T034, T035).
  *
  * Scope:
- *   - T034 — feed the ≥20-comment fixture set through a stubbed LLM and
+ *   - T034: feed the ≥20-comment fixture set through a stubbed LLM and
  *     assert ≥90% end-to-end accuracy. The stub returns what a well-
  *     calibrated model *would* return for each fixture, so the test
  *     exercises the classifier's parsing + validation + fallback pipeline
@@ -10,7 +10,7 @@
  *     (malformed JSON, off-enum workflow) verify the ≥90% threshold holds
  *     even with some degradation.
  *
- *   - T035 — threshold & fallback semantics:
+ *   - T035: threshold & fallback semantics:
  *       * `confidence < 0.75` → handled upstream in dispatcher (see
  *         `config.intentConfidenceThreshold`); classify itself still
  *         returns `clarify` for empty bodies and falls back to `clarify`
@@ -96,7 +96,7 @@ describe("intent-classifier fixture accuracy (T034)", () => {
   it("classifier reaches the expected workflow for ≥90% of fixtures when the LLM behaves", async () => {
     // Stub the LLM to return perfect JSON for every fixture keyed by body.
     // This measures the classifier's plumbing (sanitisation, JSON extraction,
-    // Zod validation) — model quality is validated separately via the
+    // Zod validation), model quality is validated separately via the
     // manual smoke-test (T049).
     const bodyToExpected = new Map(
       fixtureSet.map((f) => [f.comment_body, fixtureToJson(f)] as const),
@@ -126,7 +126,7 @@ describe("intent-classifier fixture accuracy (T034)", () => {
   });
 
   it("classifier still meets ≥90% accuracy when ≤10% of LLM responses are malformed", async () => {
-    // Pick the first two fixtures to receive degraded responses — total
+    // Pick the first two fixtures to receive degraded responses, total
     // degradation stays under the 90% accuracy threshold's slack.
     const degradedBodies = new Set(fixtureSet.slice(0, 2).map((f) => f.comment_body));
 
@@ -134,7 +134,7 @@ describe("intent-classifier fixture accuracy (T034)", () => {
       for (const f of fixtureSet) {
         if (!userPrompt.includes(f.comment_body.slice(0, 40))) continue;
         if (degradedBodies.has(f.comment_body)) {
-          // Malformed JSON and off-enum workflow — both trigger the clarify
+          // Malformed JSON and off-enum workflow, both trigger the clarify
           // fallback per intent-classifier's parseResponse path.
           return "not json at all {{";
         }
@@ -160,7 +160,7 @@ describe("intent-classifier fixture accuracy (T034)", () => {
 });
 
 describe("intent-classifier threshold & fallback behaviour (T035)", () => {
-  it("empty comment body returns clarify with confidence 0 — no LLM call", async () => {
+  it("empty comment body returns clarify with confidence 0: no LLM call", async () => {
     const { client, createMock } = buildStubClient(() => "irrelevant");
     const { classify } = await import("../../src/workflows/intent-classifier");
     const result = await classify("   \n  \t  ", { client });
@@ -169,7 +169,7 @@ describe("intent-classifier threshold & fallback behaviour (T035)", () => {
     expect(createMock).not.toHaveBeenCalled();
   });
 
-  it("low-confidence responses round-trip unchanged — threshold enforcement belongs upstream in dispatchByIntent", async () => {
+  it("low-confidence responses round-trip unchanged: threshold enforcement belongs upstream in dispatchByIntent", async () => {
     const { client } = buildStubClient(() =>
       JSON.stringify({ workflow: "plan", confidence: 0.4, rationale: "unsure" }),
     );
@@ -225,7 +225,7 @@ describe("intent-classifier threshold & fallback behaviour (T035)", () => {
     expect(result.rationale).toContain("classifier fallback");
   });
 
-  it("default client factory is exercised when deps.client is omitted — getClient + _resetCachedClient coverage hook", async () => {
+  it("default client factory is exercised when deps.client is omitted: getClient + _resetCachedClient coverage hook", async () => {
     // Covers the production-path branches in intent-classifier.ts that the
     // stubbed tests skip: `getClient()` (real SDK instantiation via
     // `createLLMClient`) and the `_resetCachedClient` internal test hook.

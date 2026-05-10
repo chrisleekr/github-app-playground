@@ -32,7 +32,7 @@ void mock.module("../../../src/workflows/dispatcher", () => ({
   dispatchByLabel: mockDispatchByLabel,
 }));
 
-// Keep `isOwnerAllowed` real — the handler depends on its behaviour via
+// Keep `isOwnerAllowed` real, the handler depends on its behaviour via
 // `config.allowedOwners`. Override the config module so ALLOWED_OWNERS is
 // a controlled, single-entry list.
 void mock.module("../../../src/config", () => ({
@@ -105,7 +105,7 @@ describe("handleIssues", () => {
     expect(mockDispatchByLabel).not.toHaveBeenCalled();
   });
 
-  it("ignores unlabeled action — label removal is not a trigger", () => {
+  it("ignores unlabeled action: label removal is not a trigger", () => {
     handleIssues(
       fakeOctokit,
       issueLabeledPayload({ labelName: "bot:triage", action: "unlabeled" }),
@@ -115,7 +115,7 @@ describe("handleIssues", () => {
     expect(mockDispatchByLabel).not.toHaveBeenCalled();
   });
 
-  it("T014: duplicate label events delegate to dispatcher — second invocation is refused by idempotency guard", async () => {
+  it("T014: duplicate label events delegate to dispatcher, second invocation is refused by idempotency guard", async () => {
     // First call: normal dispatch
     handleIssues(fakeOctokit, issueLabeledPayload({ labelName: "bot:triage" }), "delivery-dup-1");
 
@@ -135,7 +135,7 @@ describe("handleIssues", () => {
     await Promise.resolve();
 
     expect(mockDispatchByLabel).toHaveBeenCalledTimes(2);
-    // Second call's resolved outcome is the "in-flight" refusal — the handler
+    // Second call's resolved outcome is the "in-flight" refusal, the handler
     // does not surface this to GitHub directly (dispatcher posts the refusal
     // comment). We assert the shape by inspecting the mock's return value.
     const secondCallResult = await (

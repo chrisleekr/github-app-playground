@@ -1,6 +1,6 @@
 /**
  * Unit tests for the reactions helper. Covers the two endpoint dispatches
- * (issue comment vs PR review comment) and the swallowed-error contract —
+ * (issue comment vs PR review comment) and the swallowed-error contract,
  * a failing reactions API call must never bubble up because reactions are
  * a cosmetic UX layer on top of the workflow.
  */
@@ -108,7 +108,7 @@ describe("addReaction", () => {
       }) as never,
     } as unknown as pino.Logger;
 
-    // Should NOT throw — the assertion is the absence of a thrown error and
+    // Should NOT throw, the assertion is the absence of a thrown error and
     // the presence of the warn-level log entry.
     await addReaction({
       octokit,
@@ -121,6 +121,6 @@ describe("addReaction", () => {
     });
 
     expect(warned).not.toBeNull();
-    expect(warned?.msg).toBe("Failed to add reaction — continuing without it");
+    expect(warned?.msg).toBe("Failed to add reaction, continuing without it");
   });
 });

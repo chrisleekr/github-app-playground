@@ -230,7 +230,7 @@ describe.skipIf(sql === null)("cancellation-token discipline (T056)", () => {
     const { octokit, calls } = buildOctokit();
 
     // Pre-arm the cancel flag for the intent the run is about to create.
-    // The session-runner creates the intent then checks the flag — we
+    // The session-runner creates the intent then checks the flag, we
     // simulate the abort racing the run by setting the flag for the
     // PR's slot. We don't know the intent id ahead of time, so instead
     // we set a global "all PRs cancelled" by listening on the createIntent
@@ -242,7 +242,7 @@ describe.skipIf(sql === null)("cancellation-token discipline (T056)", () => {
     // a wildcard sentinel.
 
     // Set cancel flag for any future intent id by intercepting the first
-    // createComment call (which happens BEFORE markReady) — at that point
+    // createComment call (which happens BEFORE markReady), at that point
     // the intent id exists in the DB, we can read it and set the flag,
     // then the next checkpoint (before markReady) will hit it.
     const originalCreate = octokit.rest.issues.createComment.bind(octokit.rest.issues);
@@ -260,7 +260,7 @@ describe.skipIf(sql === null)("cancellation-token discipline (T056)", () => {
     const markReady = calls.graphqlCalls.find((c) => c.query.includes("mutation MarkReady"));
     expect(markReady).toBeUndefined();
 
-    // Intent stays active (NOT terminal) — the bail is a no-side-effect return.
+    // Intent stays active (NOT terminal), the bail is a no-side-effect return.
     const rows: { status: string }[] = await requireSql()`
       SELECT status FROM ship_intents WHERE owner='acme' AND repo='repo' AND pr_number=501
     `;

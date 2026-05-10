@@ -1,7 +1,7 @@
 /**
  * Contract test for the post-collapse binary triage-response schema.
  * After the dispatch collapse triage returns `{ heavy, confidence, rationale }`
- * — no mode, no complexity. The router maps `heavy` onto the ephemeral-daemon
+ * no mode, no complexity. The router maps `heavy` onto the ephemeral-daemon
  * scaler signal.
  */
 
@@ -9,12 +9,12 @@ import { describe, expect, it } from "bun:test";
 
 import { TriageResponseSchema } from "../../src/orchestrator/triage";
 
-describe("TriageResponse schema — valid inputs", () => {
+describe("TriageResponse schema: valid inputs", () => {
   it("accepts a canonical heavy=true response", () => {
     const r = TriageResponseSchema.safeParse({
       heavy: true,
       confidence: 0.85,
-      rationale: "Touches migrations + multi-service deployment — high blast radius.",
+      rationale: "Touches migrations + multi-service deployment, high blast radius.",
     });
     expect(r.success).toBe(true);
   });
@@ -45,7 +45,7 @@ describe("TriageResponse schema — valid inputs", () => {
   });
 });
 
-describe("TriageResponse schema — invalid inputs", () => {
+describe("TriageResponse schema: invalid inputs", () => {
   it("rejects non-boolean heavy", () => {
     expect(
       TriageResponseSchema.safeParse({ heavy: "true", confidence: 0.5, rationale: "x" }).success,
@@ -56,7 +56,7 @@ describe("TriageResponse schema — invalid inputs", () => {
   });
 
   it("rejects legacy pre-collapse shape (mode/complexity)", () => {
-    // Schema is `.strict()` — missing required `heavy` *or* extra
+    // Schema is `.strict()`, missing required `heavy` *or* extra
     // legacy keys is enough to fail. Cover both so future contributors
     // know the unknown-key rejection is intentional.
     const missingHeavy = TriageResponseSchema.safeParse({
