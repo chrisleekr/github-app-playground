@@ -652,6 +652,34 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#conversational-chat-thread-sub-threshold-fallback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Conversational chat-thread (sub-threshold fallback)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Conversational chat-thread (sub-threshold fallback)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tool-surface-pr-conversations-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tool surface (PR conversations only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1472,6 +1500,34 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#conversational-chat-thread-sub-threshold-fallback" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Conversational chat-thread (sub-threshold fallback)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Conversational chat-thread (sub-threshold fallback)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tool-surface-pr-conversations-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tool surface (PR conversations only)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1573,6 +1629,56 @@
 <li><code>workflow</code> in registry → same dispatch as the label path.</li>
 </ul>
 <p>The classifier prompt distinguishes <code>review</code> (proactive — find bugs, post inline findings) from <code>resolve</code> (reactive — fix CI, answer feedback). Tune the threshold per environment with <code>INTENT_CONFIDENCE_THRESHOLD</code>.</p>
+<h2 id="conversational-chat-thread-sub-threshold-fallback">Conversational <code>chat-thread</code> (sub-threshold fallback)<a class="headerlink" href="#conversational-chat-thread-sub-threshold-fallback" title="Permanent link">&para;</a></h2>
+<p>When the intent classifier verdict is below <code>INTENT_CONFIDENCE_THRESHOLD</code> AND the conversational backend (<code>DATABASE_URL</code>) is configured, the dispatcher routes the comment to <code>src/workflows/ship/scoped/chat-thread.ts</code> instead of refusing — a freeform exchange entry point for review threads, PR replies, and issue comments. Output modes the executor can return are validated by Zod (<code>answer</code>, <code>decline</code>, <code>execute-workflow</code>, <code>propose-workflow</code>, <code>propose-action</code>, <code>approve-pending</code>, <code>decline-pending</code>, <code>replace-proposal</code>).</p>
+<h3 id="tool-surface-pr-conversations-only">Tool surface (PR conversations only)<a class="headerlink" href="#tool-surface-pr-conversations-only" title="Permanent link">&para;</a></h3>
+<p>On PR events, <code>chat-thread</code> and the orchestrator-side <code>triage</code> engine drive Anthropic's tool-use loop via <code>src/ai/llm-client.ts runWithTools</code>. Both share the <code>github-state</code> tool set defined in <code>src/github/state-fetchers.ts</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>get_pr_state_check_rollup</code></td>
+<td>Head-commit CI rollup + per-check rows + <code>is_required</code></td>
+</tr>
+<tr>
+<td><code>get_check_run_output</code></td>
+<td>Single check run summary + truncated text + <code>html_url</code></td>
+</tr>
+<tr>
+<td><code>get_workflow_run</code></td>
+<td>Workflow run conclusion, <code>logs_url</code>, <code>html_url</code></td>
+</tr>
+<tr>
+<td><code>get_branch_protection</code></td>
+<td>Required checks list, reviewers, <code>protected: false</code> on 404</td>
+</tr>
+<tr>
+<td><code>get_pr_diff</code></td>
+<td>Unified diff (capped ~50 KB)</td>
+</tr>
+<tr>
+<td><code>get_pr_files</code></td>
+<td>File list with status + per-file additions/deletions</td>
+</tr>
+<tr>
+<td><code>list_pr_comments</code></td>
+<td>Paginated issue comments on the PR (30/page)</td>
+</tr>
+</tbody>
+</table>
+<p>The same surface is exposed to Agent SDK callers via <code>src/mcp/servers/github-state.ts</code> (registered when <code>enableGithubState</code> is <code>true</code> in the <code>runPipeline</code> overrides).</p>
+<p><strong>Caps and operator switches:</strong></p>
+<ul>
+<li><code>runWithTools</code> enforces a per-turn iteration cap (default 8 for <code>chat-thread</code>, <strong>2</strong> for <code>triage</code>) and a per-turn fan-out cap (<code>DEFAULT_MAX_TOOL_USES_PER_TURN</code> = 4). Excess <code>tool_use</code> blocks get <code>is_error: true</code> <code>tool_result</code> feedback so the model adjusts on the next turn rather than triggering silent truncation.</li>
+<li><code>CHAT_THREAD_TOOLS_ENABLED</code> (default <code>true</code>) — when <code>false</code>, <code>chat-thread</code> stays single-turn and answers only from the cached snapshot.</li>
+<li><code>TRIAGE_TOOLS_ENABLED</code> (default <code>true</code>) — when <code>false</code>, <code>triage</code> classifies from text alone even on PR events. Hot-path latency escape hatch.</li>
+</ul>
+<p>The deterministic merge-readiness path (<code>src/workflows/ship/probe.ts</code>, <code>src/workflows/ship/verdict.ts</code>) is intentionally NOT tool-driven — its GraphQL probe (<code>PROBE_QUERY</code>, now centralised in <code>src/github/queries.ts</code>) is correctness-invariant for the merge gate.</p>
 
 
 

@@ -1383,6 +1383,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#sharing-a-tool-surface-between-mcp-and-single-turn-callers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sharing a tool surface between MCP and single-turn callers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#option-b-http-server" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1634,6 +1645,17 @@
     <span class="md-ellipsis">
       
         Option A — stdio server
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sharing-a-tool-surface-between-mcp-and-single-turn-callers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sharing a tool surface between MCP and single-turn callers
       
     </span>
   </a>
@@ -1929,7 +1951,16 @@
 <div class="language-typescript highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nx">servers</span><span class="p">[</span><span class="s2">&quot;my_server&quot;</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">myServerDef</span><span class="p">(</span><span class="nx">sharedEnv</span><span class="p">);</span>
 </span></code></pre></div>
 <p><code>sharedEnv</code> already carries <code>GITHUB_TOKEN</code>, <code>REPO_OWNER</code>, <code>REPO_NAME</code>, and <code>GITHUB_EVENT_NAME</code>.</p>
-<p>The Dockerfile copies all of <code>src/mcp/</code> to the production image, so new server files are picked up automatically. No Dockerfile change is needed.</p>
+<p>The Dockerfile copies all of <code>src/mcp/</code> to the production image, so new server files are picked up automatically. No Dockerfile change is needed. <strong>Bundling is not automatic</strong>, however — add the new entrypoint to <code>scripts/build.ts</code> (Build 2's <code>entrypoints</code> array) so <code>dist/mcp/servers/&lt;name&gt;.js</code> exists in production.</p>
+<h3 id="sharing-a-tool-surface-between-mcp-and-single-turn-callers">Sharing a tool surface between MCP and single-turn callers<a class="headerlink" href="#sharing-a-tool-surface-between-mcp-and-single-turn-callers" title="Permanent link">&para;</a></h3>
+<p>The <code>runWithTools</code> loop in <code>src/ai/llm-client.ts</code> lets single-turn LLM callers (e.g. <code>chat-thread</code>, orchestrator <code>triage</code>) call tools without going through MCP. To share one tool implementation between Agent SDK callers (which dispatch through the MCP subprocess) and single-turn callers (which dispatch inline), put the tool body in <code>src/github/state-fetchers.ts</code>-style fetcher module:</p>
+<ul>
+<li>Export the fetcher functions (pure async, return JSON-serialised strings).</li>
+<li>Export a <code>LLMTool[]</code> descriptor array mirroring the MCP server's advertised tools.</li>
+<li>Export a <code>dispatchXTool(deps, call)</code> switch that the single-turn caller passes as <code>onToolCall</code>.</li>
+<li>The MCP server (e.g. <code>src/mcp/servers/github-state.ts</code>) becomes a thin stdio wrapper that calls the same fetchers.</li>
+</ul>
+<p><code>src/github/state-fetchers.ts</code> (issue #117) is the reference implementation.</p>
 <h3 id="option-b-http-server">Option B — HTTP server<a class="headerlink" href="#option-b-http-server" title="Permanent link">&para;</a></h3>
 <div class="language-typescript highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">myRemoteServer</span><span class="p">()</span><span class="o">:</span><span class="w"> </span><span class="nx">McpServerDef</span><span class="w"> </span><span class="p">{</span>
 </span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">{</span>
