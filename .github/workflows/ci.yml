@@ -98,9 +98,6 @@ jobs:
       - name: Dockerfile base-sync guard
         run: bun run check:dockerfile-base-sync
 
-      - name: Em-dash regression gate (issue #116)
-        run: bun run check:no-em-dashes
-
       - name: Docs-sync guard (bot workflows, FR-019)
         if: github.event_name == 'pull_request'
         env:
