@@ -1,6 +1,7 @@
 import type { PullRequestEvent } from "@octokit/webhooks-types";
 import type { Octokit } from "octokit";
 
+import { upsertTarget } from "../../db/queries/conversation-store";
 import { logger } from "../../logger";
 import { dispatchByLabel } from "../../workflows/dispatcher";
 import { dispatchCanonicalCommand } from "../../workflows/ship/command-dispatch";
@@ -14,15 +15,28 @@ import { isOwnerAllowed } from "../authorize";
 const BOT_LABEL_PATTERN = /^bot:[a-z][a-z-]*(?:\/deadline=\d+(?:\.\d+)?[hms])?$/;
 
 /**
- * Handler for `pull_request.*` events. Currently covers four actions:
+ * Handler for `pull_request.*` events.
  *
- *   - `opened`: placeholder (trigger detection lands when ready)
- *   - `labeled`: legacy workflow dispatch + ship reactor label dispatch (T028d)
- *   - `synchronize`: ship reactor early-wake / foreign-push detection (T023)
- *   - `closed`: ship reactor terminal transition (merged_externally / pr_closed) (T023)
+ * Two responsibilities:
  *
- * Registered in `src/app.ts` via explicit per-action listeners
- * (`pull_request.opened`, `.labeled`, `.synchronize`, `.closed`); each
+ *   1. Cache write-through (every action). The `target_cache` row for this
+ *      PR is upserted from `payload.pull_request` before any dispatch gate,
+ *      so the chat-thread executor sees the freshest title/body/state/
+ *      is_draft/base_ref/head_ref on the very turn the edit triggered.
+ *      Mirrors the `writeCommentCacheThrough` pattern in `issue-comment.ts`.
+ *      PR deletion is not a real GitHub action (PRs close, never delete),
+ *      so there is no hard-delete branch. See issues #129 and #130.
+ *
+ *   2. Action-specific dispatch:
+ *      - `opened`: placeholder (trigger detection lands when ready)
+ *      - `edited` / `reopened` / `converted_to_draft` / `ready_for_review`:
+ *        cache-only, no dispatch
+ *      - `labeled`: legacy workflow dispatch + ship reactor label dispatch
+ *      - `synchronize`: ship reactor early-wake / foreign-push detection
+ *      - `closed`: ship reactor terminal transition (merged_externally /
+ *        pr_closed)
+ *
+ * Registered in `src/app.ts` via explicit per-action listeners; each
  * delegates here for action-specific dispatch.
  */
 export function handlePullRequest(
@@ -30,6 +44,15 @@ export function handlePullRequest(
   payload: PullRequestEvent,
   deliveryId: string,
 ): void {
+  // Cache write-through runs BEFORE any dispatch gate / early-return so
+  // every subscribed action keeps target_cache fresh. The fire-and-forget
+  // shape matches `writeCommentCacheThrough` in issue-comment.ts; the
+  // .catch downgrades inline-mode (no DATABASE_URL) to a no-op inside the
+  // writer.
+  void writePrTargetCacheThrough(payload).catch((err: unknown) => {
+    logger.warn({ err, deliveryId }, "pull_request: cache write-through failed");
+  });
+
   if (payload.action === "labeled") {
     handlePullRequestLabeled(octokit, payload, deliveryId);
     return;
@@ -186,4 +209,48 @@ function handlePullRequestLabeled(
       log.error({ err }, "dispatchByLabel threw for pull_request.labeled");
     }
   })();
+}
+
+/**
+ * Cache write-through for the chat-thread executor. Mirrors
+ * `writeCommentCacheThrough` in issue-comment.ts but targets
+ * `target_cache` (PR body) rather than `comment_cache`. Runs on every
+ * subscribed action so the cache stays a faithful projection of GitHub
+ * state. Inline-mode deployments (no DB) silently skip via the
+ * DATABASE_URL guard, matching the existing pattern.
+ *
+ * State semantics: a merged PR reports `state: "closed"` and `merged:
+ * true` in the payload; downstream readers expect `"merged"` in
+ * target_cache (see `backfillFromGitHub` for the same translation), so
+ * we collapse the two flags here.
+ */
+export async function writePrTargetCacheThrough(payload: PullRequestEvent): Promise<void> {
+  const owner = payload.repository.owner.login;
+  const repo = payload.repository.name;
+  const pr = payload.pull_request;
+  const targetNumber = pr.number;
+
+  try {
+    await upsertTarget({
+      owner,
+      repo,
+      targetType: "pr",
+      targetNumber,
+      title: pr.title,
+      body: pr.body ?? "",
+      state: pr.merged === true ? "merged" : pr.state,
+      // `user` is optional-chained because partial test fixtures and rare
+      // ghost-user payloads can lack it, matching `backfillFromGitHub`.
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- schema marks user non-nullable but partial fixtures omit it
+      authorLogin: pr.user?.login ?? "",
+      isDraft: pr.draft,
+      baseRef: pr.base.ref,
+      headRef: pr.head.ref,
+      createdAt: new Date(pr.created_at),
+      updatedAt: new Date(pr.updated_at),
+    });
+  } catch (err) {
+    if (err instanceof Error && /DATABASE_URL/i.test(err.message)) return;
+    throw err;
+  }
 }

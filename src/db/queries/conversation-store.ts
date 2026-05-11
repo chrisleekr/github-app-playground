@@ -159,15 +159,61 @@ export async function upsertTarget(input: UpsertTargetInput): Promise<void> {
       ${input.createdAt}, ${input.updatedAt}, now()
     )
     ON CONFLICT (owner, repo, target_type, target_number) DO UPDATE SET
-      title = EXCLUDED.title,
-      body = EXCLUDED.body,
-      state = EXCLUDED.state,
-      is_draft = EXCLUDED.is_draft,
-      base_ref = EXCLUDED.base_ref,
-      head_ref = EXCLUDED.head_ref,
+      -- Webhook delivery is at-least-once and unordered. Gate every
+      -- mutable field on a monotonic clock check so a delayed retry of
+      -- an older payload cannot clobber a newer body that already
+      -- landed. The updated_at column itself uses GREATEST so the
+      -- wallclock never goes backwards.
+      title = CASE WHEN EXCLUDED.updated_at >= target_cache.updated_at
+        THEN EXCLUDED.title ELSE target_cache.title END,
+      body = CASE WHEN EXCLUDED.updated_at >= target_cache.updated_at
+        THEN EXCLUDED.body ELSE target_cache.body END,
+      state = CASE WHEN EXCLUDED.updated_at >= target_cache.updated_at
+        THEN EXCLUDED.state ELSE target_cache.state END,
+      is_draft = CASE WHEN EXCLUDED.updated_at >= target_cache.updated_at
+        THEN EXCLUDED.is_draft ELSE target_cache.is_draft END,
+      base_ref = CASE WHEN EXCLUDED.updated_at >= target_cache.updated_at
+        THEN EXCLUDED.base_ref ELSE target_cache.base_ref END,
+      head_ref = CASE WHEN EXCLUDED.updated_at >= target_cache.updated_at
+        THEN EXCLUDED.head_ref ELSE target_cache.head_ref END,
       updated_at = GREATEST(target_cache.updated_at, EXCLUDED.updated_at),
       fetched_at = now()
   `;
+}
+
+/**
+ * Hard-delete on `issues.deleted` webhook action. `target_cache` has no
+ * `deleted_at` column, the schema treats GitHub as the source of truth
+ * and a deleted issue is gone there too, so cache retention adds no
+ * value. We also hard-delete any `comment_cache` rows scoped to the
+ * same target so a future GitHub-side reuse of the number does not
+ * surface orphan comments.
+ *
+ * PR deletion is not a real GitHub action (PRs close, never delete),
+ * so this helper is currently only wired into the issues handler.
+ */
+export async function deleteTarget(input: {
+  readonly owner: string;
+  readonly repo: string;
+  readonly targetType: "issue" | "pr";
+  readonly targetNumber: number;
+}): Promise<void> {
+  const db = requireDb();
+  // Single transaction so `loadConversation` cannot observe the
+  // intermediate state where the target row is gone but comment_cache
+  // rows still point at the deleted number.
+  await db.begin(async (tx) => {
+    await tx`
+      DELETE FROM comment_cache
+      WHERE owner = ${input.owner} AND repo = ${input.repo}
+        AND target_type = ${input.targetType} AND target_number = ${input.targetNumber}
+    `;
+    await tx`
+      DELETE FROM target_cache
+      WHERE owner = ${input.owner} AND repo = ${input.repo}
+        AND target_type = ${input.targetType} AND target_number = ${input.targetNumber}
+    `;
+  });
 }
 
 // ─── Conversation read path ───────────────────────────────────────────────────
