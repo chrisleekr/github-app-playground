@@ -89,12 +89,22 @@ app.webhooks.on(
   },
 );
 
+// Cache write-through (issue #130): every action that mutates a field
+// stored in `target_cache` is subscribed so the chat-thread cache stays
+// fresh without waiting for a cold-miss backfill. Dispatch paths inside
+// `handlePullRequest` remain gated to their original action set (only
+// `labeled` / `synchronize` / `closed` trigger workflows; the rest are
+// cache-only).
 app.webhooks.on(
   [
     "pull_request.opened",
+    "pull_request.edited",
     "pull_request.labeled",
     "pull_request.synchronize",
     "pull_request.closed",
+    "pull_request.reopened",
+    "pull_request.converted_to_draft",
+    "pull_request.ready_for_review",
   ],
   ({ octokit, payload, id }) => {
     handlePullRequest(octokit, payload as unknown as PullRequestEvent, id);
@@ -109,9 +119,25 @@ app.webhooks.on("check_suite.completed", ({ octokit, payload, id }) => {
   handleCheckSuite(octokit, payload as unknown as CheckSuiteEvent, id);
 });
 
-app.webhooks.on(["issues.labeled", "issues.unlabeled"], ({ octokit, payload, id }) => {
-  handleIssues(octokit, payload as unknown as IssuesEvent, id);
-});
+// Cache write-through (issue #130): every action that mutates a field
+// stored in `target_cache` is subscribed so the chat-thread cache stays
+// fresh without waiting for a cold-miss backfill. Dispatch is still
+// gated to `labeled` by the early-returns inside `handleIssues`; the
+// other actions are cache-only.
+app.webhooks.on(
+  [
+    "issues.opened",
+    "issues.edited",
+    "issues.closed",
+    "issues.reopened",
+    "issues.deleted",
+    "issues.labeled",
+    "issues.unlabeled",
+  ],
+  ({ octokit, payload, id }) => {
+    handleIssues(octokit, payload as unknown as IssuesEvent, id);
+  },
+);
 
 app.webhooks.on("pull_request_review.submitted", ({ octokit, payload, id }) => {
   handleReview(octokit, payload as unknown as PullRequestReviewEvent, id);
