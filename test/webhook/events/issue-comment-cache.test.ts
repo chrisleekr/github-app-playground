@@ -150,12 +150,14 @@ describe("src/app.ts subscription (issue #129)", () => {
   it.each([["issue_comment.created"], ["issue_comment.edited"], ["issue_comment.deleted"]])(
     "subscribes to %s",
     (action) => {
-      // Match the action name as a quoted string in app.ts. Tolerates single or
-      // double quotes. Future array reshuffles or comment changes do not break
-      // the assertion; removing the action name does.
-      // eslint-disable-next-line security/detect-non-literal-regexp -- action comes from this file's hardcoded it.each table, no user input
-      const re = new RegExp(`['"]${action.replace(/\./g, "\\.")}['"]`);
-      expect(appSrc).toMatch(re);
+      // Tolerate either quote style. Substring instead of RegExp avoids any
+      // regex-escape footgun on the action name (CodeRabbit/CodeQL flagged
+      // the dynamic-regex variant on PR #131).
+      const hasDoubleQuoted = appSrc.includes(`"${action}"`);
+      const hasSingleQuoted = appSrc.includes(`'${action}'`);
+      expect(hasDoubleQuoted || hasSingleQuoted, `${action} not found as a quoted string`).toBe(
+        true,
+      );
     },
   );
 
