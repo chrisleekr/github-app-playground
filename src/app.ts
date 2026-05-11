@@ -77,9 +77,17 @@ const app = new App({
   webhooks: { secret: config.webhookSecret },
 });
 
-app.webhooks.on("issue_comment.created", ({ octokit, payload, id }) => {
-  handleIssueComment(octokit, payload as unknown as IssueCommentEvent, id);
-});
+// All three actions are subscribed so the chat-thread cache write-through
+// at `webhook/events/issue-comment.ts:writeCommentCacheThrough` fires on
+// edits and deletes too. The dispatch path is still gated to `created` by
+// the early-return inside the handler. Mirrors the review-comment block
+// below. See issue #129.
+app.webhooks.on(
+  ["issue_comment.created", "issue_comment.edited", "issue_comment.deleted"],
+  ({ octokit, payload, id }) => {
+    handleIssueComment(octokit, payload as unknown as IssueCommentEvent, id);
+  },
+);
 
 app.webhooks.on(
   [

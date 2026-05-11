@@ -33,6 +33,9 @@ export function handleIssueComment(
     logger.warn({ err, deliveryId }, "issue-comment: cache write-through failed");
   });
 
+  // Dispatch is created-only: editing a previously-mentioned comment must
+  // not re-fire the workflow (would be surprising UX and double-bill the
+  // user). The cache write-through above must run BEFORE this gate.
   if (payload.action !== "created") return;
   if (payload.comment.user.type === "Bot") return;
 
@@ -141,7 +144,7 @@ export function handleIssueComment(
  * configured, so wrap in try/catch and downgrade DB-not-configured to
  * a no-op.
  */
-async function writeCommentCacheThrough(payload: IssueCommentEvent): Promise<void> {
+export async function writeCommentCacheThrough(payload: IssueCommentEvent): Promise<void> {
   const owner = payload.repository.owner.login;
   const repo = payload.repository.name;
   const targetNumber = payload.issue.number;
