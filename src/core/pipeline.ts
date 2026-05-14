@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 
+import { config } from "../config";
 import { resolveMcpServers } from "../mcp/registry";
 import type { BotContext, EnrichedBotContext, ExecutionResult } from "../types";
 import { retryWithBackoff } from "../utils/retry";
@@ -9,7 +10,7 @@ import { checkoutRepo } from "./checkout";
 import { executeAgent } from "./executor";
 import { fetchGitHubData } from "./fetcher";
 import { resolveGithubToken } from "./github-token";
-import { buildPrompt, resolveAllowedTools } from "./prompt-builder";
+import { buildPrompt, buildPromptParts, resolveAllowedTools } from "./prompt-builder";
 import { createTrackingComment, finalizeTrackingComment } from "./tracking-comment";
 
 /** Read .daemon-actions.json written by the repo-memory MCP server during execution. */
@@ -239,7 +240,15 @@ export async function runPipeline(
       baseBranch: data.baseBranch ?? ctx.baseBranch ?? ctx.defaultBranch,
     };
 
+    // Build both prompt shapes: the legacy single-string `prompt` keeps the
+    // dry-run length log + executor fallback working byte-identical, and
+    // `promptParts` is forwarded when cacheable layout is on so the executor
+    // can pivot to systemPrompt.append + excludeDynamicSections (issue #134).
     const prompt = buildPrompt(enrichedCtx, data, resolvedTrackingCommentId);
+    const promptParts =
+      config.promptCacheLayout === "cacheable"
+        ? buildPromptParts(enrichedCtx, data, resolvedTrackingCommentId)
+        : undefined;
 
     if (ctx.dryRun === true) {
       ctx.log.info(
@@ -318,6 +327,7 @@ export async function runPipeline(
         installationToken,
         ...(overrides.maxTurns !== undefined ? { maxTurns: overrides.maxTurns } : {}),
         ...(overrides.signal !== undefined ? { signal: overrides.signal } : {}),
+        ...(promptParts !== undefined ? { promptParts } : {}),
       });
 
       if (resolvedTrackingCommentId !== undefined && !callerOwnsTrackingComment) {
