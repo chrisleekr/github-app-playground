@@ -11,6 +11,7 @@ import { describe, expect, it } from "bun:test";
 import {
   buildEnvironmentHeader,
   buildPrompt,
+  buildPromptParts,
   resolveAllowedTools,
 } from "../../src/core/prompt-builder";
 import type { DaemonCapabilities } from "../../src/shared/daemon-types";
@@ -619,5 +620,102 @@ describe("buildEnvironmentHeader", () => {
 
     expect(result).toContain("podman@5.0 (daemon: stopped)");
     expect(result).not.toContain("compose available");
+  });
+});
+
+// ─── buildPromptParts (issue #134) ──────────────────────────────────────────
+
+describe("buildPromptParts: cache-friendliness contract", () => {
+  it("returns a byte-identical append across two calls with the same shape", () => {
+    // The whole point of the cacheable layout: per-call dynamism (trigger
+    // body, comment IDs, fetched data, the per-call random nonce) must NOT
+    // leak into `append`, else the prompt cache key churns per invocation
+    // and we pay the cache-write surcharge on every job. This is the
+    // regression test for issue #134, the workDir embedded in the SDK
+    // `cwd` was the symptom; the fix is structural separation.
+    const ctxA = makeBotContext({
+      isPR: false,
+      entityNumber: 1,
+      triggerUsername: "alice",
+      triggerBody: "@chrisleekr-bot do A",
+      commentId: 100,
+      deliveryId: "delivery-A",
+    });
+    const ctxB = makeBotContext({
+      isPR: false,
+      entityNumber: 2,
+      triggerUsername: "bob",
+      triggerBody: "@chrisleekr-bot do B",
+      commentId: 200,
+      deliveryId: "delivery-B",
+    });
+    const dataA = makeIssueData({
+      title: "Issue A",
+      body: "Body A",
+      author: "alice",
+      comments: [
+        { id: "c1", author: "alice", body: "first comment", createdAt: "2025-01-01T00:00:00Z" },
+      ],
+    });
+    const dataB = makeIssueData({
+      title: "Issue B",
+      body: "Body B",
+      author: "bob",
+      comments: [],
+    });
+
+    const partsA = buildPromptParts(ctxA, dataA, 111);
+    const partsB = buildPromptParts(ctxB, dataB, 222);
+
+    expect(partsA.append).toBe(partsB.append);
+  });
+
+  it("keeps the per-call nonce out of append and inside userMessage", () => {
+    const ctx = makeBotContext({ isPR: true });
+    const data = makePrData();
+    const parts = buildPromptParts(ctx, data, 1);
+
+    // The nonce-substituted concrete tag names live in <per_call_runtime>.
+    expect(parts.userMessage).toMatch(/<per_call_runtime>/);
+    expect(parts.userMessage).toMatch(/<untrusted_pr_or_issue_body_[0-9a-f]{8}>/);
+
+    // The append references the spotlight tags by literal pattern, not
+    // nonce-substituted. The literal token `<nonce>` is the placeholder
+    // the security_directive explains; concrete 8-hex strings must NOT
+    // show up here or the cache key churns per call.
+    expect(parts.append).toContain("<untrusted_*_<nonce>>");
+    expect(parts.append).toContain("The literal <nonce> is a");
+    expect(parts.append).not.toMatch(/<untrusted_[a-z_]+_[0-9a-f]{8}>/);
+  });
+
+  it("produces different append for PR vs issue contexts (shape matters)", () => {
+    // PR-only branches (`commitInstructions`, "For PR reviews..." capability
+    // line) intentionally diverge by shape, so two distinct caches per
+    // event class is expected and correct, but within a class the append
+    // must stay byte-stable (covered above).
+    const prCtx = makeBotContext({ isPR: true });
+    const issueCtx = makeBotContext({ isPR: false });
+    const prData = makePrData();
+    const issueData = makeIssueData();
+
+    const prParts = buildPromptParts(prCtx, prData, 1);
+    const issueParts = buildPromptParts(issueCtx, issueData, 1);
+
+    expect(prParts.append).not.toBe(issueParts.append);
+    expect(prParts.append).toContain("Co-authored-by:");
+    expect(issueParts.append).not.toContain("Co-authored-by:");
+  });
+
+  it("does not let trackingCommentId variation change append", () => {
+    const ctx = makeBotContext({ isPR: true });
+    const data = makePrData();
+
+    const partsWith = buildPromptParts(ctx, data, 12345);
+    const partsWithout = buildPromptParts(ctx, data, undefined);
+
+    expect(partsWith.append).toBe(partsWithout.append);
+    // It DOES change the userMessage (claude_comment_id + comment_tool_info).
+    expect(partsWith.userMessage).toContain("<claude_comment_id>12345</claude_comment_id>");
+    expect(partsWithout.userMessage).not.toContain("<claude_comment_id>");
   });
 });
