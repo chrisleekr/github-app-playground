@@ -173,6 +173,18 @@ export interface ExecuteAgentParams {
    * by the same mechanism, so an external abort short-circuits the timer.
    */
   signal?: AbortSignal;
+  /**
+   * When `config.promptCacheLayout === "cacheable"` and this field is set,
+   * the executor pivots to the cache-friendly SDK shape:
+   *   - systemPrompt = { type: "preset", preset: "claude_code",
+   *                      append, excludeDynamicSections: true }
+   *   - prompt       = userMessage
+   * `append` is a byte-stable scaffolding the prompt cache can hit across
+   * invocations; `userMessage` carries every per-call dynamic value. When
+   * either condition is unmet, the executor falls back to the legacy single-
+   * string path using `prompt` and the bare preset systemPrompt.
+   */
+  promptParts?: { append: string; userMessage: string };
 }
 
 export async function executeAgent({
@@ -185,8 +197,15 @@ export async function executeAgent({
   maxTurns,
   installationToken,
   signal,
+  promptParts,
 }: ExecuteAgentParams): Promise<ExecutionResult> {
   const { log } = ctx;
+
+  // Pivot to the cacheable systemPrompt shape only when both: the operator
+  // opted in via PROMPT_CACHE_LAYOUT=cacheable AND the caller threaded a
+  // split prompt through `promptParts`. Either condition unmet → legacy path.
+  // Callers that haven't migrated yet keep working byte-for-byte.
+  const useCacheableLayout = config.promptCacheLayout === "cacheable" && promptParts !== undefined;
 
   log.info(
     {
@@ -196,6 +215,7 @@ export async function executeAgent({
       configModel: config.model,
       configPermissionMode: "bypassPermissions",
       allowedToolsCount: allowedTools.length,
+      promptCacheLayout: useCacheableLayout ? "cacheable" : "legacy",
     },
     "Starting Claude Agent SDK execution",
   );
@@ -237,7 +257,15 @@ export async function executeAgent({
     // tool list delivered in the SDK init message instead.
     disallowedTools: ["ToolSearch"],
     mcpServers,
-    systemPrompt: { type: "preset", preset: "claude_code" },
+    systemPrompt:
+      useCacheableLayout && promptParts !== undefined
+        ? {
+            type: "preset",
+            preset: "claude_code",
+            append: promptParts.append,
+            excludeDynamicSections: true,
+          }
+        : { type: "preset", preset: "claude_code" },
     env: buildProviderEnv(installationToken, artifactsDir),
     abortController: controller,
     // Without this, a non-zero CLI exit surfaces only as
@@ -304,8 +332,12 @@ export async function executeAgent({
   }, config.agentTimeoutMs);
 
   try {
+    // In cacheable layout the userMessage carries the per-call dynamic blocks;
+    // the static scaffolding has already been folded into systemPrompt.append.
+    const sdkPrompt =
+      useCacheableLayout && promptParts !== undefined ? promptParts.userMessage : prompt;
     const agentLoop = (async (): Promise<void> => {
-      for await (const message of query({ prompt, options: queryOptions })) {
+      for await (const message of query({ prompt: sdkPrompt, options: queryOptions })) {
         const msg = message as Record<string, unknown>;
         const msgType = typeof msg["type"] === "string" ? msg["type"] : "unknown";
 
@@ -389,12 +421,20 @@ export async function executeAgent({
 
   const durationMs = Date.now() - startTime;
 
+  // Cache hit/write metrics: `cache_read_input_tokens` is what we actually
+  // saved on, `cache_creation_input_tokens` is the (2x base price) surcharge
+  // paid to populate the 1h ephemeral cache. Operators flipping
+  // PROMPT_CACHE_LAYOUT=cacheable watch for non-zero read tokens on the
+  // second+ run of the same shape to confirm the cache key stabilized.
   log.info(
     {
       success: result?.subtype === "success",
       durationMs,
       costUsd: result?.total_cost_usd,
       numTurns: result?.num_turns,
+      cacheReadInputTokens: result?.usage?.cache_read_input_tokens,
+      cacheCreationInputTokens: result?.usage?.cache_creation_input_tokens,
+      promptCacheLayout: useCacheableLayout ? "cacheable" : "legacy",
     },
     "Claude Agent SDK execution completed",
   );
