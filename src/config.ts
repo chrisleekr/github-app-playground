@@ -543,6 +543,24 @@ const configSchema = z
     // recommends a manual re-review. Range: 1–5; default 2.
     reviewResolveMaxIterations: z.coerce.number().int().min(1).max(5).default(2),
 
+    // --- 12a. Prompt cache layout (issue #134) ---
+
+    // Selects the system/user prompt split passed to the Claude Agent SDK.
+    // `legacy` (default): single user-role string; system prompt is the
+    //   `claude_code` preset with dynamic sections (cwd, platform, shell, OS)
+    //   embedded. Because `cwd` is unique per delivery (per-event mkdtemp), the
+    //   system-prompt prefix is unique per job and the Anthropic prompt cache
+    //   misses on every invocation.
+    // `cacheable`: lifts the static scaffolding (security_directive,
+    //   freshness_directive, workflow steps, commit/CAPABILITIES boilerplate)
+    //   into `systemPrompt.append` and sets `excludeDynamicSections: true`, so
+    //   the system-prompt prefix is byte-identical across jobs of the same
+    //   shape and is reused via the prompt cache. The user-role message keeps
+    //   only the per-call dynamic blocks (formatted_context, untrusted_*,
+    //   per-call metadata). Flip after verifying non-zero
+    //   `cacheReadInputTokens` in the executor completion log.
+    promptCacheLayout: z.enum(["legacy", "cacheable"]).default("legacy"),
+
     // --- 13. Ship workflow (PR shepherding to merge-ready, feature 20260427-201332) ---
 
     // Wall-clock ceiling for a single `bot:ship` session: the maximum the
@@ -920,6 +938,9 @@ function loadConfig(): Config {
 
     // Group 12, Composite ship review/resolve loop
     reviewResolveMaxIterations: process.env["REVIEW_RESOLVE_MAX_ITERATIONS"],
+
+    // Group 12a, Prompt cache layout
+    promptCacheLayout: process.env["PROMPT_CACHE_LAYOUT"],
 
     // Group 13, Ship workflow (PR shepherding to merge-ready)
     maxWallClockPerShipRun: process.env["MAX_WALL_CLOCK_PER_SHIP_RUN"],
