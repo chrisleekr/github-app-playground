@@ -27,6 +27,10 @@ The agent classifies the issue (bug, feature, refactor, docs, unclear). For bugs
 
 "Race condition we can't trigger" alone is not a valid escape hatch.
 
+## Prompt cache layout
+
+When `PROMPT_CACHE_LAYOUT=cacheable`, the triage prompt is split: the static role intro plus Method and Rules go into `systemPrompt.append` (byte-stable across calls, so the prompt cache hits), and only the per-issue header (repo, issue number, title, body) stays in the user message. Under the default `legacy` layout the prompt is a single user-role string. Both layouts carry identical wording. See [configuration.md](../../operate/configuration.md#prompt-cache-layout).
+
 ## Outputs
 
 | Field                   | Type                               | Notes                                                                                                                                                                                           |
