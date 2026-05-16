@@ -29,10 +29,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   apt-get install -y --no-install-recommends nodejs && \
   rm -rf /var/lib/apt/lists/*
 
-# AFTER: trixie-correct package names + pin to patched version
+# Apply Debian security updates for OS packages baked into the oven/bun base
+# image. The orchestrator stage never reinstalls them otherwise, so it shipped
+# stale python3.13 / libsystemd0 / libnghttp2 / libcap2 with HIGH CVEs flagged
+# by the Trivy gate. This block lives in the shared base so both images carry
+# the patched versions. Targeted --only-upgrade (not a blanket apt-get upgrade)
+# keeps the build reproducible and avoids hadolint DL3005.
 RUN apt-get update && \
   apt-get install --only-upgrade -y --no-install-recommends \
-  openssl libssl3 && \
+  openssl libssl3 \
+  python3.13 python3.13-minimal libpython3.13-stdlib libpython3.13-minimal \
+  libsystemd0 libudev1 libnghttp2-14 libcap2 && \
   rm -rf /var/lib/apt/lists/*
 
 # Tracks 11.x major (unlike the exact pins elsewhere).

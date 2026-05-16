@@ -29,11 +29,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   rm -rf /var/lib/apt/lists/*
 
 # Apply Debian security updates for OS packages baked into the oven/bun base
-# image that the orchestrator stage never reinstalls. Targeted --only-upgrade
-# (not a blanket apt-get upgrade) keeps the build reproducible and avoids
-# hadolint DL3005. The python3.13 / libsystemd0 / libnghttp2 / libcap2 entries
-# patch HIGH CVEs flagged by the Trivy gate; the daemon image picks these up
-# incidentally via its larger apt toolchain, so it needs no equivalent block.
+# image. The orchestrator stage never reinstalls them otherwise, so it shipped
+# stale python3.13 / libsystemd0 / libnghttp2 / libcap2 with HIGH CVEs flagged
+# by the Trivy gate. This block lives in the shared base so both images carry
+# the patched versions. Targeted --only-upgrade (not a blanket apt-get upgrade)
+# keeps the build reproducible and avoids hadolint DL3005.
 RUN apt-get update && \
   apt-get install --only-upgrade -y --no-install-recommends \
   openssl libssl3 \
