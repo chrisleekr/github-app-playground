@@ -3,6 +3,7 @@ import { App, Octokit } from "octokit";
 
 import { config } from "../config";
 import { resolveGithubToken } from "../core/github-token";
+import { clearInFlightByJobId } from "../db/queries/scheduled-actions-store";
 import { logger } from "../logger";
 import { addReaction } from "../utils/reactions";
 import { findById, findInflightByOwner, type WorkflowRunRow } from "../workflows/runs-store";
@@ -639,6 +640,13 @@ async function handleScopedJobCompletion(
   decrementActiveCount();
   await decrementDaemonActiveJobs(daemonId);
 
+  // Release the scheduled-action single-flight lock now the run is terminal
+  // (success or failure). Without this the lock would persist until the
+  // stale window, skipping every slot of a sub-stale-window cron.
+  if (jobKind === "scheduled-action") {
+    await clearInFlightByJobId(deliveryId);
+  }
+
   // Per-kind event keys match the FR-018 canonical names documented in
   // `docs/OBSERVABILITY.md` (e.g. `ship.scoped.rebase.daemon.completed`).
   const kindKey = jobKind.replace(/^scoped-/, "").replaceAll("-", "_");
@@ -1008,6 +1016,23 @@ function scopedJobToContext(job: ScopedQueuedJob): ScopedJobContext {
         triggerCommentId: job.triggerCommentId,
         enqueuedAt: job.enqueuedAt,
         verdictSummary: job.verdictSummary,
+      };
+    case "scheduled-action":
+      return {
+        jobKind: "scheduled-action",
+        deliveryId: job.deliveryId,
+        installationId: job.installationId,
+        owner: job.repoOwner,
+        repo: job.repoName,
+        actionName: job.actionName,
+        cronSlotIso: job.cronSlotIso,
+        promptText: job.promptText,
+        ...(job.model !== undefined ? { model: job.model } : {}),
+        ...(job.maxTurns !== undefined ? { maxTurns: job.maxTurns } : {}),
+        ...(job.timeoutMs !== undefined ? { timeoutMs: job.timeoutMs } : {}),
+        ...(job.allowedTools !== undefined ? { allowedTools: job.allowedTools } : {}),
+        autoMerge: job.autoMerge,
+        enqueuedAt: job.enqueuedAt,
       };
   }
 }
