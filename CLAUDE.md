@@ -56,6 +56,7 @@ Single HTTP server (`src/app.ts`) using `octokit` App class. Webhook events arri
 - `src/k8s/`: Ephemeral daemon Pod spawner (`ephemeral-daemon-spawner.ts`). Creates a bare Pod running the same daemon image with `DAEMON_EPHEMERAL=true`.
 - `src/shared/`: Types shared between server and daemon: WebSocket message schemas (`ws-messages.ts`), daemon capability types (`daemon-types.ts`).
 - `src/mcp/`: MCP server registry and servers (extensible: add new servers). Includes `daemon-capabilities` server for daemon environment awareness.
+- `src/scheduler/`: Internal cron scheduler for the `.github-app.yaml` scheduled-actions feature. Runs in the webhook server: enumerates installations, fetches + validates each repo's config, evaluates cron, and enqueues `scheduled-action` jobs for the daemon fleet.
 - `src/utils/`: Retry logic, sanitization
 
 ## Key Concepts
@@ -64,6 +65,7 @@ Single HTTP server (`src/app.ts`) using `octokit` App class. Webhook events arri
 - **Idempotency**: Two-layer guard. Fast path: in-memory `Map` keyed by `X-GitHub-Delivery` header (lost on restart). Durable: `isAlreadyProcessed()` checks GitHub for an existing tracking comment, survives pod restarts and OOM kills.
 - **Repo checkout**: Each request clones the repo to a unique temp dir. Claude operates on local files via `cwd`.
 - **MCP servers**: Comment updates, inline reviews, and Context7 for library docs. Git changes are made via git CLI (Bash tool) on the cloned repo.
+- **Scheduled actions**: a repo may ship a `.github-app.yaml` at its default-branch root declaring prompt-based actions on a cron schedule. The internal scheduler (`src/scheduler/`, gated by `SCHEDULER_ENABLED` + `DATABASE_URL` + non-empty `ALLOWED_OWNERS`) enqueues a `scheduled-action` job, a new job kind on the scoped-job rail, that the daemon runs as one agent session via `src/daemon/scheduled-action-executor.ts`. Missed cron slots are skipped, not backfilled. The prompt is owner-trusted config. Cron parsing uses the `cron-parser` dependency. Auto-merge is triple-gated (`SCHEDULER_ALLOW_AUTO_MERGE` env + per-action `auto_merge` + the deterministic `merge_readiness` MCP tool); `resolve.ts` FR-017 is untouched.
 - **Comment-aware workflows**: the five structured workflows (`triage`, `plan`, `implement`, `review`, `resolve`) run `src/workflows/discussion-digest.ts` before the agent.
   - **What it does**: distills the issue/PR comment thread (issue comments, plus inline review comments for PRs) into a maintainer-guidance digest the prompt consumes in place of the raw thread.
   - **Trust model**: `ALLOWED_OWNERS` authors yield authoritative directives that override the body; other commenters are context-only; the bot's prior output is context. Directives are re-checked post-parse against the classified owner authors, so the boundary does not depend on the model.
@@ -153,6 +155,7 @@ The `docs/` tree is published as a MkDocs Material site at <https://chrisleekr.g
 - `src/k8s/ephemeral-daemon-spawner.ts` Pod-spec changes → `docs/operate/runbooks/daemon-fleet.md` + `docs/operate/deployment.md` (RBAC)
 - `src/daemon/` lifecycle → `docs/operate/runbooks/daemon-fleet.md`
 - `src/workflows/` registry, dispatcher, handlers, or orchestrator → `docs/use/workflows/`
+- `src/scheduler/` or the `.github-app.yaml` schema → `docs/use/scheduled-actions.md` + `docs/operate/runbooks/scheduled-actions.md`
 - New MCP server in `src/mcp/` → `docs/build/extending.md`
 - New Pino log field or metric → `docs/operate/observability.md`
 

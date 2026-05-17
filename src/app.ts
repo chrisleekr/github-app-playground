@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { access, constants, mkdir, readdir, rm, stat } from "node:fs/promises";
 import http from "node:http";
 import { join } from "node:path";
@@ -39,6 +39,7 @@ import {
 } from "./orchestrator/valkey";
 import { sweepValkeyOrphans } from "./orchestrator/valkey-cleanup";
 import { startWebSocketServer, stopWebSocketServer } from "./orchestrator/ws-server";
+import { createScheduler, type SchedulerHandle } from "./scheduler";
 import type { BotContext } from "./types";
 import { handleCheckRun } from "./webhook/events/check-run";
 import { handleCheckSuite } from "./webhook/events/check-suite";
@@ -216,6 +217,14 @@ const server = http.createServer((req, res) => {
       return;
     }
     void handleTestWebhook(req, res);
+    return;
+  }
+
+  // Operator endpoint: force one scheduled action to run now (the
+  // `workflow_dispatch` analogue). Authenticated with the daemon auth token
+  // since it triggers an agent run; 404 when the scheduler is disabled.
+  if (req.url === "/api/scheduler/run" && req.method === "POST") {
+    void handleSchedulerRun(req, res);
     return;
   }
 
@@ -477,17 +486,93 @@ async function runStartupChecks(): Promise<void> {
     },
   });
 
+  // Scheduled-actions scheduler (.github-app.yaml). `start()` is a no-op
+  // when SCHEDULER_ENABLED is false, no DB is configured, or ALLOWED_OWNERS
+  // is unset, so it is safe to construct unconditionally.
+  scheduledActionScheduler = createScheduler({ app });
+  await scheduledActionScheduler.start();
+
   isReady = true;
   logger.info({ valkeyHealthy: isValkeyHealthy() }, "Startup checks passed, server is ready");
 }
 
 let shipTickleScheduler: TickleScheduler | null = null;
 let proposalPoller: ProposalPollerHandle | null = null;
+let scheduledActionScheduler: SchedulerHandle | null = null;
 
 void runStartupChecks().catch((err: unknown) => {
   logger.error({ err }, "Startup checks failed unexpectedly");
   process.exit(1);
 });
+
+/**
+ * Constant-time bearer-token check for the operator scheduler endpoint.
+ * The endpoint triggers an agent run, so it is gated on the daemon auth
+ * token (an existing operator secret) rather than left unauthenticated.
+ */
+function schedulerBearerOk(header: string | undefined): boolean {
+  if (header === undefined) return false;
+  if (!header.startsWith("Bearer ")) return false;
+  const provided = Buffer.from(header.slice(7));
+  const expected = Buffer.from(config.daemonAuthToken ?? "");
+  return provided.length === expected.length && timingSafeEqual(provided, expected);
+}
+
+/**
+ * Operator endpoint handler: `POST /api/scheduler/run` with a JSON body
+ * `{ owner, repo, action }`. Forces one scheduled action to run now,
+ * bypassing the cron check. 404 when the scheduler is disabled, 401 on a
+ * bad token.
+ */
+async function handleSchedulerRun(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<void> {
+  if (!config.schedulerEnabled || scheduledActionScheduler === null) {
+    res.writeHead(404, { "Content-Type": "text/plain" }).end("not found");
+    return;
+  }
+  if (!schedulerBearerOk(req.headers.authorization)) {
+    res.writeHead(401, { "Content-Type": "text/plain" }).end("unauthorized");
+    return;
+  }
+  try {
+    const body = await new Promise<string>((resolve, reject) => {
+      let data = "";
+      req.on("data", (chunk: Buffer) => {
+        data += chunk.toString();
+      });
+      req.on("end", () => {
+        resolve(data);
+      });
+      req.on("error", reject);
+    });
+    const payload = JSON.parse(body) as { owner?: string; repo?: string; action?: string };
+    if (
+      typeof payload.owner !== "string" ||
+      typeof payload.repo !== "string" ||
+      typeof payload.action !== "string"
+    ) {
+      res
+        .writeHead(400, { "Content-Type": "application/json" })
+        .end(JSON.stringify({ error: "owner, repo, and action are required" }));
+      return;
+    }
+    const result = await scheduledActionScheduler.runAction({
+      owner: payload.owner,
+      repo: payload.repo,
+      actionName: payload.action,
+    });
+    res
+      .writeHead(result.enqueued ? 202 : 409, { "Content-Type": "application/json" })
+      .end(JSON.stringify(result));
+  } catch (err) {
+    logger.error({ err }, "scheduler: manual run endpoint failed");
+    res
+      .writeHead(500, { "Content-Type": "application/json" })
+      .end(JSON.stringify({ error: "internal error" }));
+  }
+}
 
 /**
  * Graceful shutdown handler.
@@ -511,6 +596,10 @@ function shutdown(signal: string): void {
         if (shipTickleScheduler !== null) {
           shipTickleScheduler.stop();
           shipTickleScheduler = null;
+        }
+        if (scheduledActionScheduler !== null) {
+          scheduledActionScheduler.stop();
+          scheduledActionScheduler = null;
         }
         if (proposalPoller !== null) {
           proposalPoller.stop();
