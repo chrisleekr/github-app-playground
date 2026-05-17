@@ -715,6 +715,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#prompt-cache-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prompt cache layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#outputs" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1462,6 +1473,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#prompt-cache-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prompt cache layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#outputs" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1565,6 +1587,8 @@
 <li>The triage state from the prior run (verdict, evidence, recommended next).</li>
 <li>A fresh shallow clone of the repository.</li>
 </ul>
+<h2 id="prompt-cache-layout">Prompt cache layout<a class="headerlink" href="#prompt-cache-layout" title="Permanent link">&para;</a></h2>
+<p>When <code>PROMPT_CACHE_LAYOUT=cacheable</code>, the plan prompt is split: the static role intro plus Steps go into <code>systemPrompt.append</code> (byte-stable across calls, so the prompt cache hits), and only the per-issue header (repo, issue number, title, body) stays in the user message. Under the default <code>legacy</code> layout the prompt is a single user-role string. Both layouts carry identical wording. See <a href="../../../operate/configuration/#prompt-cache-layout">configuration.md</a>.</p>
 <h2 id="outputs">Outputs<a class="headerlink" href="#outputs" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
