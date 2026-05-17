@@ -324,6 +324,7 @@ describe("triage handler (SDK-driven)", () => {
     config.promptCacheLayout = "legacy";
     await triageHandler(buildCtx());
 
+    expect(executeAgentMock).toHaveBeenCalledTimes(1);
     const params = executeAgentMock.mock.calls[0]?.[0] as { promptParts?: unknown };
     expect(params.promptParts).toBeUndefined();
   });
@@ -332,6 +333,7 @@ describe("triage handler (SDK-driven)", () => {
     config.promptCacheLayout = "cacheable";
     await triageHandler(buildCtx());
 
+    expect(executeAgentMock).toHaveBeenCalledTimes(1);
     const params = executeAgentMock.mock.calls[0]?.[0] as {
       promptParts?: { append: string; userMessage: string };
     };
