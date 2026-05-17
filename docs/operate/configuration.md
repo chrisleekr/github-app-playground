@@ -131,6 +131,33 @@ The orchestrator also expects a pre-existing `daemon-secrets` Kubernetes Secret 
 | `FIX_ATTEMPTS_PER_SIGNATURE_CAP`  | `3`                | Max attempts per failure signature within a single intent. Cap firing terminates with `terminal_blocker_category='flake-cap'`.                  |
 | `SHIP_FORBIDDEN_TARGET_BRANCHES`  | empty              | Comma-separated branches the bot refuses to shepherd PRs against.                                                                               |
 
+## Prompt cache layout
+
+Selects the system/user prompt split the agent executor passes to the Claude Agent SDK. See `src/config.ts:562` for the Zod definition and `src/core/executor.ts:208` for the runtime guard.
+
+| Variable              | Default  | Notes                                                                                                        |
+| --------------------- | -------- | ------------------------------------------------------------------------------------------------------------ |
+| `PROMPT_CACHE_LAYOUT` | `legacy` | `legacy` or `cacheable`. Selects how the prompt is split between `systemPrompt.append` and the user message. |
+
+**Why this exists.** The SDK's default systemPrompt (`{ type: "preset", preset: "claude_code" }`) embeds dynamic sections (cwd, platform, shell, OS) directly in the system-prompt prefix. Because each delivery clones to a unique `cwd` under `CLONE_BASE_DIR`, the system-prompt prefix is unique per job and the Anthropic prompt cache misses on every invocation, paying the 1-hour TTL `ephemeral_1h_input_tokens` cache-write surcharge (2× base price) with zero compensating reads.
+
+**`legacy` (default).** Single user-role string built by `buildPrompt()` in `src/core/prompt-builder.ts:126`. SystemPrompt is the unmodified `claude_code` preset. Backwards-compatible; safe rollback target.
+
+**`cacheable`.** Static scaffolding (`security_directive`, `freshness_directive`, workflow steps, commit/CAPABILITIES boilerplate) is lifted into `systemPrompt.append`, and `excludeDynamicSections: true` strips cwd / platform / shell / OS from the preset. Built by `buildPromptParts()` in `src/core/prompt-builder.ts:402`. The user-role message keeps only the per-call dynamic blocks (`formatted_context`, `untrusted_*` with per-call nonce, per-call metadata). The append is byte-identical across jobs of the same shape (PR vs issue), so the system-prompt prefix becomes a stable cache key.
+
+**Rollout.** Flip the variable to `cacheable`, then verify cache hits by tailing the executor completion log for non-zero `cacheReadInputTokens`:
+
+```text
+event: Claude Agent SDK execution completed
+cacheReadInputTokens: <non-zero on the second job of the same shape within 1h>
+cacheCreationInputTokens: <large on the cold first job, ~0 on warm reads>
+promptCacheLayout: cacheable
+```
+
+The first job warms the cache (creation tokens dominate); subsequent jobs of the same shape within the 1-hour TTL show large read tokens and minimal creation. Cost arithmetic: cache writes are 2× base input price; cache reads are 0.1× base input price. Break-even is ~3 hits per write; persistent fleets and tight-loop ship sessions exceed this comfortably. To roll back, set `PROMPT_CACHE_LAYOUT=legacy` and restart; the executor falls through to the unmodified preset path.
+
+**Security invariant.** The per-call nonce on `<untrusted_*>` spotlight tags lives ONLY in the user message. The append references those tags by literal `<nonce>` placeholder rather than naming the concrete nonce, so the attacker-unpredictable suffix stays intact while the append remains cacheable across calls. The trust boundary becomes structural: append is trusted scaffolding; the entire user message is attacker-influenceable data. See [architecture.md](../build/architecture.md#systemuser-trust-boundary) for the full picture.
+
 ## Mode matrix: what's required when
 
 | Role                                    | Required                                                                                                      |

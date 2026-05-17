@@ -152,6 +152,53 @@ flowchart LR
 
 The reactor (`fanOut`) writes `wake_at = now()` and `ZADD ship:tickle 0 <intent_id>` so the next cron tick (typically under 30 s) re-enters the runner. This keeps daemon slots free between iterations and gives the bot crash-restart safety: on boot, `tickle-scheduler` reconciles missed wakes from Postgres into Valkey before the periodic timer's first tick.
 
+## System/user trust boundary
+
+The agent executor (`src/core/executor.ts:208`) supports two prompt-layout strategies, selected by `PROMPT_CACHE_LAYOUT`. The legacy layout passes a single user-role string and the unmodified `claude_code` preset systemPrompt: simple, but the preset embeds dynamic sections (`cwd`, platform, shell, OS) that vary per delivery, so the prompt cache key churns and every job pays the 1-hour TTL cache-write surcharge with zero compensating reads.
+
+The `cacheable` layout splits the prompt by trust:
+
+- **Trusted scaffolding** (`security_directive`, `freshness_directive`, workflow steps, commit / CAPABILITIES boilerplate) → `systemPrompt.append`. Built by `buildPromptParts()` in `src/core/prompt-builder.ts:402`. Byte-identical across jobs of the same shape, so the system-prompt prefix becomes a stable cache key.
+- **Attacker-influenceable data** (`formatted_context` with title / body / comments, `<untrusted_*>` spotlight blocks with per-call nonce, per-call metadata like delivery ID) → user-role message.
+- **Dynamic preset sections** stripped via `excludeDynamicSections: true`.
+
+```mermaid
+flowchart LR
+    subgraph Static["systemPrompt.append<br/>(cacheable, byte-identical per shape)"]
+        SD["security_directive"]:::trusted
+        FD["freshness_directive"]:::trusted
+        WF["workflow steps"]:::trusted
+        CB["commit / CAPABILITIES<br/>boilerplate"]:::trusted
+        NREF["references untrusted_* tags<br/>by literal &lt;nonce&gt; placeholder"]:::trusted
+    end
+
+    subgraph Dyn["user-role message<br/>(per-call, never cached)"]
+        FC["formatted_context<br/>(title, body, comments)"]:::data
+        UT["untrusted_*_&lt;nonce&gt;<br/>(spotlight blocks)"]:::data
+        META["per-call metadata<br/>(deliveryId, trackingCommentId)"]:::data
+    end
+
+    Preset["preset: claude_code<br/>excludeDynamicSections: true"]:::preset
+    SDK["Claude Agent SDK query()"]:::sdk
+    Cache["Anthropic prompt cache<br/>1h ephemeral TTL"]:::cache
+
+    Preset --> SDK
+    Static --> SDK
+    Dyn --> SDK
+    SDK -. cache key .-> Cache
+    Cache -. cacheReadInputTokens .-> SDK
+
+    classDef trusted fill:#2a6f2a,stroke:#1a4d1a,color:#ffffff
+    classDef data fill:#8a5a00,stroke:#5c3d00,color:#ffffff
+    classDef preset fill:#114a82,stroke:#0a2f56,color:#ffffff
+    classDef sdk fill:#4a2e7a,stroke:#311f50,color:#ffffff
+    classDef cache fill:#0b5cad,stroke:#083e74,color:#ffffff
+```
+
+The per-call nonce on `<untrusted_*>` tags lives only in the user message; the append references those tags by literal `<nonce>` placeholder. The attacker-unpredictable suffix stays intact (so injected user data cannot close the spotlight block with a fixed string) while the append remains byte-identical across calls. The trust boundary is now structural rather than positional: append = trusted, user message = data.
+
+Three handlers ship the split today: the main pipeline (`src/core/pipeline.ts`) reads `config.promptCacheLayout` and conditionally threads `buildPromptParts()` output through; `src/workflows/handlers/triage.ts` and `src/workflows/handlers/plan.ts` do the same with their handler-specific builders. The executor's completion log surfaces `cacheReadInputTokens`, `cacheCreationInputTokens`, and `promptCacheLayout` so operators can verify hits before deciding to roll out further. See [`../operate/configuration.md`](../operate/configuration.md#prompt-cache-layout) for the rollout playbook.
+
 ## Directory layout
 
 | Directory           | Responsibility                                                                                                                         |

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { z } from "zod";
 
 import { parseStructuredResponse } from "../../ai/structured-output";
+import { config } from "../../config";
 import { checkoutRepo } from "../../core/checkout";
 import { executeAgent } from "../../core/executor";
 import type { BotContext } from "../../types";
@@ -123,13 +124,16 @@ export const handler: WorkflowHandler = async (ctx) => {
     const checkout = await checkoutRepo(botCtx, installationToken);
     cleanup = checkout.cleanup;
 
-    const prompt = buildTriagePrompt({
+    const promptInput = {
       issueTitle: issue.title,
       issueBody: issue.body ?? "",
       owner: target.owner,
       repo: target.repo,
       number: target.number,
-    });
+    };
+    const prompt = buildTriagePrompt(promptInput);
+    const promptParts =
+      config.promptCacheLayout === "cacheable" ? buildTriagePromptParts(promptInput) : undefined;
 
     const result = await executeAgent({
       ctx: botCtx,
@@ -137,6 +141,7 @@ export const handler: WorkflowHandler = async (ctx) => {
       mcpServers: {},
       workDir: checkout.workDir,
       allowedTools: ["Read", "Grep", "Glob", "Bash", "Write"],
+      ...(promptParts !== undefined ? { promptParts } : {}),
     });
 
     if (!result.success) {
@@ -255,24 +260,47 @@ function buildSyntheticBotContext(
   };
 }
 
-function buildTriagePrompt(input: {
+interface TriagePromptInput {
   issueTitle: string;
   issueBody: string;
   owner: string;
   repo: string;
   number: number;
-}): string {
+}
+
+function buildTriagePromptHeader(input: TriagePromptInput): string {
   return [
-    `You are a senior engineer triaging a GitHub issue against the actual codebase.`,
-    `Your job is NOT to fix or plan, only to VALIDATE: is this issue accurate, reproducible, and worth pursuing as written?`,
-    ``,
     `Repository: ${input.owner}/${input.repo}`,
     `Issue #${String(input.number)}: ${input.issueTitle}`,
     ``,
     `--- Issue body ---`,
     input.issueBody,
     `--- End issue body ---`,
+  ].join("\n");
+}
+
+/**
+ * Static portion used by cacheable layout: the role/intent intro, Method, and
+ * Rules, with the per-issue context referenced as "the user message" (which is
+ * where it lives in cacheable mode). Byte-stable across calls.
+ */
+function buildTriageStaticInstructions(): string {
+  return [
+    `You are a senior engineer triaging a GitHub issue against the actual codebase.`,
+    `Your job is NOT to fix or plan, only to VALIDATE: is this issue accurate, reproducible, and worth pursuing as written?`,
     ``,
+    `The repository, issue number, title, and body are supplied in the user message.`,
+    ``,
+    buildTriageMethodAndRules(),
+  ].join("\n");
+}
+
+/**
+ * Method + Rules body shared by the legacy and cacheable layouts so the
+ * authoritative wording lives in one place.
+ */
+function buildTriageMethodAndRules(): string {
+  return [
     `Method:`,
     `1. **Classify the issue.** Read it carefully and decide which class it falls into:`,
     `   - **bug**, claims that something currently broken / incorrect / failing.`,
@@ -363,6 +391,39 @@ function buildTriagePrompt(input: {
     `- The two output files (TRIAGE.md, TRIAGE_VERDICT.json) are the only artefacts you should leave at the repo root.`,
     `- When both files are saved, your job is done.`,
   ].join("\n");
+}
+
+function buildTriagePrompt(input: TriagePromptInput): string {
+  // Legacy single-string layout: header inserted between the opening
+  // role-statement and the Method section. Body sections are rebuilt rather
+  // than reusing buildTriageStaticInstructions() because the cacheable static
+  // version says "supplied in the user message", which doesn't apply when the
+  // header lives inside the same string.
+  return [
+    `You are a senior engineer triaging a GitHub issue against the actual codebase.`,
+    `Your job is NOT to fix or plan, only to VALIDATE: is this issue accurate, reproducible, and worth pursuing as written?`,
+    ``,
+    buildTriagePromptHeader(input),
+    ``,
+    buildTriageMethodAndRules(),
+  ].join("\n");
+}
+
+/**
+ * Cache-friendly split: the same prompt content, but the static method/rules
+ * lifted into `append` (system-prompt prefix) and the per-issue header into
+ * `userMessage`. See `buildPromptParts` in `src/core/prompt-builder.ts` for
+ * the principle: the append must be byte-stable across calls so the prompt
+ * cache hits.
+ */
+function buildTriagePromptParts(input: TriagePromptInput): {
+  append: string;
+  userMessage: string;
+} {
+  return {
+    append: buildTriageStaticInstructions(),
+    userMessage: buildTriagePromptHeader(input),
+  };
 }
 
 /**

@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { config } from "../../config";
 import { checkoutRepo } from "../../core/checkout";
 import { executeAgent } from "../../core/executor";
 import type { BotContext } from "../../types";
@@ -49,13 +50,16 @@ export const handler: WorkflowHandler = async (ctx) => {
     const checkout = await checkoutRepo(botCtx, installationToken);
     cleanup = checkout.cleanup;
 
-    const prompt = buildPlanPrompt({
+    const promptInput = {
       issueTitle: issue.title,
       issueBody: issue.body ?? "",
       owner: target.owner,
       repo: target.repo,
       number: target.number,
-    });
+    };
+    const prompt = buildPlanPrompt(promptInput);
+    const promptParts =
+      config.promptCacheLayout === "cacheable" ? buildPlanPromptParts(promptInput) : undefined;
 
     const result = await executeAgent({
       ctx: botCtx,
@@ -63,6 +67,7 @@ export const handler: WorkflowHandler = async (ctx) => {
       mcpServers: {},
       workDir: checkout.workDir,
       allowedTools: ["Read", "Grep", "Glob", "Write", "Bash"],
+      ...(promptParts !== undefined ? { promptParts } : {}),
     });
 
     if (!result.success) {
@@ -149,23 +154,27 @@ function buildSyntheticBotContext(
   };
 }
 
-function buildPlanPrompt(input: {
+interface PlanPromptInput {
   issueTitle: string;
   issueBody: string;
   owner: string;
   repo: string;
   number: number;
-}): string {
+}
+
+function buildPlanPromptHeader(input: PlanPromptInput): string {
   return [
-    `You are a planning agent. Your job is to read the repository and the issue below, then produce a markdown task decomposition at PLAN.md in the repo root.`,
-    ``,
     `Repository: ${input.owner}/${input.repo}`,
     `Issue #${String(input.number)}: ${input.issueTitle}`,
     ``,
     `--- Issue body ---`,
     input.issueBody,
     `--- End issue body ---`,
-    ``,
+  ].join("\n");
+}
+
+function buildPlanStepsAndStructure(): string {
+  return [
     `Steps:`,
     `1. Read relevant source files (src/, docs/, tests/) to understand context.`,
     `2. Identify the minimal, sequential tasks required to resolve the issue.`,
@@ -185,6 +194,33 @@ function buildPlanPrompt(input: {
     `5. Do NOT make code changes yet, only write PLAN.md.`,
     `6. When PLAN.md is written and saved, your job is done.`,
   ].join("\n");
+}
+
+function buildPlanPrompt(input: PlanPromptInput): string {
+  return [
+    `You are a planning agent. Your job is to read the repository and the issue below, then produce a markdown task decomposition at PLAN.md in the repo root.`,
+    ``,
+    buildPlanPromptHeader(input),
+    ``,
+    buildPlanStepsAndStructure(),
+  ].join("\n");
+}
+
+/**
+ * Cache-friendly split, see {@link buildTriagePromptParts} for the rationale.
+ * The role intro + Steps live in `append`; only the per-issue header lives in
+ * `userMessage`. The append text references the issue as "supplied in the
+ * user message" so it stays self-consistent in cacheable layout.
+ */
+function buildPlanPromptParts(input: PlanPromptInput): { append: string; userMessage: string } {
+  const append = [
+    `You are a planning agent. Your job is to read the repository and the issue below, then produce a markdown task decomposition at PLAN.md in the repo root.`,
+    ``,
+    `The repository, issue number, title, and body are supplied in the user message.`,
+    ``,
+    buildPlanStepsAndStructure(),
+  ].join("\n");
+  return { append, userMessage: buildPlanPromptHeader(input) };
 }
 
 /**

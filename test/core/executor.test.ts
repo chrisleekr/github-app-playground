@@ -18,9 +18,11 @@ import type { McpServerConfig } from "../../src/types";
 import { makeBotContext } from "../factories";
 
 interface QueryCall {
+  prompt?: string;
   options: {
     abortController?: AbortController;
     stderr?: (chunk: string) => void;
+    systemPrompt?: unknown;
   };
 }
 
@@ -50,7 +52,7 @@ void mock.module("@anthropic-ai/claude-agent-sdk", () => ({
       prompt: string;
       options: { abortController?: AbortController; stderr?: (chunk: string) => void };
     }) => {
-      lastQueryCall = { options: opts.options };
+      lastQueryCall = { prompt: opts.prompt, options: opts.options };
       return nextIterator();
     },
   ),
@@ -290,5 +292,157 @@ describe("executeAgent: stderr callback", () => {
 
     const logWarn = params.ctx.log.warn as ReturnType<typeof mock>;
     expect(logWarn).not.toHaveBeenCalled();
+  });
+});
+
+// ─── prompt cache metrics (issue #134) ──────────────────────────────────────
+
+/**
+ * Build an iterator that yields a single fake SDKResultMessage with the
+ * supplied usage fields, then terminates. The executor's completion log
+ * reads result?.usage?.cache_read_input_tokens / cache_creation_input_tokens.
+ */
+function singleResultIterator(usage: {
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+}): AsyncIterableIterator<unknown> {
+  let emitted = false;
+  return {
+    [Symbol.asyncIterator]() {
+      return this;
+    },
+    next: () => {
+      if (emitted) {
+        return Promise.resolve({ value: undefined, done: true });
+      }
+      emitted = true;
+      return Promise.resolve({
+        value: {
+          type: "result",
+          subtype: "success",
+          duration_ms: 100,
+          duration_api_ms: 50,
+          is_error: false,
+          num_turns: 3,
+          result: "ok",
+          stop_reason: "end_turn",
+          total_cost_usd: 0.01,
+          usage: {
+            cache_read_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+            ...usage,
+          },
+          modelUsage: {},
+          permission_denials: [],
+          uuid: "test-uuid",
+          session_id: "test-session",
+        },
+        done: false,
+      });
+    },
+    return: () => Promise.resolve({ value: undefined, done: true }),
+  } as AsyncIterableIterator<unknown>;
+}
+
+describe("executeAgent: prompt cache metrics", () => {
+  beforeEach(() => {
+    lastQueryCall = undefined;
+    nextIterator = emptyIterator;
+  });
+
+  it("logs cacheReadInputTokens and cacheCreationInputTokens from SDK usage", async () => {
+    nextIterator = (): AsyncIterableIterator<unknown> =>
+      singleResultIterator({
+        cache_read_input_tokens: 1234,
+        cache_creation_input_tokens: 567,
+      });
+
+    const params = baseParams();
+    const result = await executeAgent(params);
+
+    expect(result.success).toBe(true);
+
+    const logInfo = params.ctx.log.info as ReturnType<typeof mock>;
+    // Find the "Claude Agent SDK execution completed" call so we can assert
+    // on its structured fields. Earlier info() calls in the executor log
+    // unrelated diagnostics ("Starting...", per-message events).
+    const completion = logInfo.mock.calls.find(
+      (call) => call[1] === "Claude Agent SDK execution completed",
+    );
+    expect(completion).toBeDefined();
+    const fields = (completion as [Record<string, unknown>, string])[0];
+    expect(fields.cacheReadInputTokens).toBe(1234);
+    expect(fields.cacheCreationInputTokens).toBe(567);
+    expect(fields.success).toBe(true);
+  });
+
+  it("logs zero cache tokens when the SDK reports a cold cache", async () => {
+    nextIterator = (): AsyncIterableIterator<unknown> =>
+      singleResultIterator({ cache_read_input_tokens: 0, cache_creation_input_tokens: 8192 });
+
+    const params = baseParams();
+    await executeAgent(params);
+
+    const logInfo = params.ctx.log.info as ReturnType<typeof mock>;
+    const completion = logInfo.mock.calls.find(
+      (call) => call[1] === "Claude Agent SDK execution completed",
+    );
+    expect(completion).toBeDefined();
+    const fields = (completion as [Record<string, unknown>, string])[0];
+    expect(fields.cacheReadInputTokens).toBe(0);
+    expect(fields.cacheCreationInputTokens).toBe(8192);
+    // baseParams() passes no promptParts, so the effective layout is legacy
+    // regardless of config.promptCacheLayout.
+    expect(fields.promptCacheLayout).toBe("legacy");
+  });
+});
+
+// ─── cacheable prompt layout: SDK query shape (issue #134) ──────────────────
+
+describe("executeAgent: cacheable prompt layout", () => {
+  const ORIGINAL_LAYOUT = config.promptCacheLayout;
+  const PARTS = { append: "STATIC-APPEND-SCAFFOLDING", userMessage: "PER-CALL-USER-MESSAGE" };
+
+  beforeEach(() => {
+    lastQueryCall = undefined;
+    nextIterator = emptyIterator;
+  });
+  afterEach(() => {
+    config.promptCacheLayout = ORIGINAL_LAYOUT;
+  });
+
+  it("splits prompt into systemPrompt.append + userMessage when flag is cacheable", async () => {
+    config.promptCacheLayout = "cacheable";
+    await executeAgent(baseParams({ promptParts: PARTS }));
+
+    expect(lastQueryCall?.prompt).toBe(PARTS.userMessage);
+    const sp = lastQueryCall?.options.systemPrompt as {
+      type: string;
+      preset: string;
+      append?: string;
+      excludeDynamicSections?: boolean;
+    };
+    expect(sp.type).toBe("preset");
+    expect(sp.preset).toBe("claude_code");
+    expect(sp.append).toBe(PARTS.append);
+    expect(sp.excludeDynamicSections).toBe(true);
+  });
+
+  it("keeps the legacy prompt and bare preset when the flag is legacy", async () => {
+    config.promptCacheLayout = "legacy";
+    await executeAgent(baseParams({ promptParts: PARTS }));
+
+    expect(lastQueryCall?.prompt).toBe("test prompt");
+    const sp = lastQueryCall?.options.systemPrompt as { append?: string };
+    expect(sp.append).toBeUndefined();
+  });
+
+  it("falls back to legacy when the flag is cacheable but no promptParts are passed", async () => {
+    config.promptCacheLayout = "cacheable";
+    await executeAgent(baseParams());
+
+    expect(lastQueryCall?.prompt).toBe("test prompt");
+    const sp = lastQueryCall?.options.systemPrompt as { append?: string };
+    expect(sp.append).toBeUndefined();
   });
 });

@@ -18,6 +18,10 @@ Writes an implementation plan for an issue that has already passed triage.
 - The triage state from the prior run (verdict, evidence, recommended next).
 - A fresh shallow clone of the repository.
 
+## Prompt cache layout
+
+When `PROMPT_CACHE_LAYOUT=cacheable`, the plan prompt is split: the static role intro plus Steps go into `systemPrompt.append` (byte-stable across calls, so the prompt cache hits), and only the per-issue header (repo, issue number, title, body) stays in the user message. Under the default `legacy` layout the prompt is a single user-role string. Both layouts carry identical wording. See [configuration.md](../../operate/configuration.md#prompt-cache-layout).
+
 ## Outputs
 
 | Field                                              | Type     | Notes                                                                                              |
