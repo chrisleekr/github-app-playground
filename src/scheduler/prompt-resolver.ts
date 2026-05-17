@@ -40,6 +40,14 @@ function resolveSourceRepo(
   if (owner === undefined || repo === undefined) {
     throw new Error(`prompt.repo is malformed: "${promptRepo}"`);
   }
+  // The action runs with one installation token, scoped to a single account.
+  // A cross-owner ref is a different installation the token cannot read (it
+  // would 404), so cross-repo refs are restricted to the action's own owner.
+  if (owner !== ctxRepo.owner) {
+    throw new Error(
+      `prompt.repo "${promptRepo}" must be owned by "${ctxRepo.owner}" (same installation)`,
+    );
+  }
   if (!isOwnerAllowed(owner, log).allowed) {
     throw new Error(`prompt.repo owner "${owner}" is not in ALLOWED_OWNERS`);
   }

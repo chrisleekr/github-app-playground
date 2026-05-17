@@ -28,5 +28,5 @@ A `prompt` is one of:
 - `prompt: { ref: "dir/", entrypoint: "SKILL.md" }`: a folder; the entrypoint
   plus one level of sibling files are concatenated.
 
-Add `repo: "owner/name"` to a `ref` to source the prompt from another repo the
-App is installed on (that owner must also be allowlisted).
+Add `repo: "owner/name"` to a `ref` to source the prompt from another repo
+owned by the same owner as the action's repo (one installation token).

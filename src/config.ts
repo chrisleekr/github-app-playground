@@ -635,11 +635,13 @@ const configSchema = z
     // cost is not worth it; above 1h cron precision degrades. Default 5m.
     schedulerScanIntervalMs: z.coerce.number().int().min(60_000).max(3_600_000).default(300_000),
 
-    // Hard kill-switch for unattended auto-merge by scheduled actions.
-    // Effective auto-merge requires BOTH this AND the per-action
-    // `auto_merge: true` in `.github-app.yaml`. When false (default) the
-    // `merge_readiness` MCP tool is never exposed, so a scheduled action
-    // cannot merge a PR regardless of per-action config.
+    // Gate for the bot-provided `merge_readiness` MCP tool. The tool is
+    // exposed to a scheduled action only when this is true AND the action
+    // sets `auto_merge: true`. NOTE: this does not sandbox the agent from
+    // merging by other means: `allowed_tools` is owner-trusted config, so an
+    // action granted a merge-capable tool (e.g. `Bash(gh pr merge:*)`) can
+    // still merge. This switch governs the deterministic readiness tool, not
+    // every possible merge path.
     schedulerAllowAutoMerge: z.boolean().default(false),
 
     // Filename the scheduler reads from each installed repo's default

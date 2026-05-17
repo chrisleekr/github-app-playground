@@ -121,6 +121,22 @@ export async function releaseInFlight(
 }
 
 /**
+ * Clear the single-flight lock when a scheduled-action run completes.
+ * Called from the scoped-job-completion handler so a finished run releases
+ * the lock immediately instead of waiting out the stale window: without this
+ * any cron more frequent than the stale window would have its later slots
+ * skipped even after the prior run finished. Scoped to `jobId` (the unique
+ * per-run deliveryId) so it cannot clear a newer run's lock.
+ */
+export async function clearInFlightByJobId(jobId: string, sql: SQL = requireDb()): Promise<void> {
+  await sql`
+    UPDATE scheduled_action_state
+       SET in_flight_job_id = NULL, in_flight_started_at = NULL
+     WHERE in_flight_job_id = ${jobId}
+  `;
+}
+
+/**
  * Advance past a MISSED slot without running it (the "skip missed slots"
  * policy). Only the `last_run_at < slotTime` guard applies: advancing is
  * safe even while a prior run is in-flight, and it does not touch the lock.

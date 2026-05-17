@@ -60,8 +60,8 @@ A malformed file fails validation and the whole repo is skipped for that scan
 | file   | `prompt: { ref: "path/to/file.md" }`              | The file's contents are the prompt.                                           |
 | folder | `prompt: { ref: "dir/", entrypoint: "SKILL.md" }` | Entrypoint + one level of sibling files, concatenated with `=== FILE: … ===`. |
 
-Add `repo: "owner/name"` to a `ref` to source the prompt from another repo the
-App is installed on. That owner must also be in `ALLOWED_OWNERS`.
+Add `repo: "owner/name"` to a `ref` to source the prompt from another repo
+owned by the **same owner** as the action's repo (see [Trust model](#trust-model)).
 
 ## How a run executes
 
@@ -89,13 +89,19 @@ the verdict is `ready` **and** the agent is confident.
 
 `merge_readiness` only _reports_ readiness: it does not merge. For the agent
 to actually merge, the action's `allowed_tools` must additionally include a
-merge-capable tool (e.g. `"Bash(gh pr merge:*)"`). `auto_merge: true` with the
-default read-only tool set gates a merge it cannot perform.
+merge-capable tool (e.g. `"Bash(gh pr merge:*)"`).
+
+**The two switches gate the `merge_readiness` tool, not merging itself.**
+`allowed_tools` is owner-trusted config: an action granted a merge-capable
+Bash tool can merge even with `SCHEDULER_ALLOW_AUTO_MERGE=false`: it just
+loses the deterministic readiness check. The switches exist so the
+bot-provided readiness tool is offered only to runs the operator has opted
+in; they are not a sandbox. If you must prevent any unattended merge, do not
+grant a merge-capable tool in `allowed_tools`.
 
 Both switches default off. The verdict bounds _mergeability_, not
 _correctness_: a scheduled action that merges still trusts the LLM's judgement
-on whether the change is right. Keep `SCHEDULER_ALLOW_AUTO_MERGE` off unless
-you accept that.
+on whether the change is right.
 
 ## Trust model
 
@@ -104,11 +110,13 @@ push access to the repo, so they are treated as **trusted-as-owner config**,
 the same trust tier as a `.github/workflows/` file. The owner-allowlist gate is
 load-bearing: scheduled actions run only for `ALLOWED_OWNERS` repos.
 
-A cross-repo prompt `ref` (`repo: "owner/name"`) is honoured only when that
-owner is also allowlisted. Note the boundary is the **owner**, not the repo: a
-contributor with push access to repo A can source a prompt from any other repo
-the same allowlisted owner controls that the installation can read. Keep prompt
-sources within trust you already extend to that owner.
+A cross-repo prompt `ref` (`repo: "owner/name"`) must name a repo owned by the
+**same owner** as the action's repo: the run holds one installation token,
+scoped to a single account, so a cross-owner ref is a different installation
+the token cannot read and is rejected. Within that owner, a contributor with
+push access to repo A can source a prompt from any other repo the owner
+controls that the installation can read; keep prompt sources within trust you
+already extend to that owner.
 
 ## Manual trigger
 
@@ -129,6 +137,7 @@ the scheduler is disabled, `401` on a bad token.
 This repo ships a `research` action: the in-App replacement for the
 `.github/workflows/research.yml` GitHub Actions workflow. The skill prompt is
 `.github/skills/research.md`; a copyable example is under
-`examples/scheduled-actions/`. It runs at 05:00 AEST, **2 hours after**
-`research.yml`'s 03:00 slot, so while both are live they never overlap. The
-cutover is to verify the action in production, then delete `research.yml`.
+`examples/scheduled-actions/`. It runs at 19:00 UTC, a fixed **2 hours after**
+`research.yml`'s 17:00 UTC slot (both in UTC, so daylight saving never shrinks
+the gap), so while both are live they never overlap. The cutover is to verify
+the action in production, then delete `research.yml`.

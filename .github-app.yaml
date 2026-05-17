@@ -11,13 +11,15 @@
 version: 1
 
 config:
-  timezone: "Australia/Melbourne"
+  # UTC so the gap below research.yml is a fixed 2h year-round; a local
+  # timezone would shrink the gap to 1h under daylight saving.
+  timezone: "UTC"
 
 scheduled_actions:
   - name: research
-    # research.yml runs `0 17 * * *` UTC (3 AM AEST). This runs at 5 AM AEST
-    # (19:00 UTC), 2h later, so the in-App and Actions runs never overlap.
-    cron: "0 5 * * *"
+    # research.yml runs `0 17 * * *` UTC. This runs at 19:00 UTC, a fixed
+    # 2h later, so the in-App and Actions runs never overlap.
+    cron: "0 19 * * *"
     enabled: true
     model: "opus"
     max_turns: 200

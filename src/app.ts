@@ -547,7 +547,16 @@ async function handleSchedulerRun(
       });
       req.on("error", reject);
     });
-    const payload = JSON.parse(body) as { owner?: string; repo?: string; action?: string };
+    let payload: { owner?: unknown; repo?: unknown; action?: unknown };
+    try {
+      payload = JSON.parse(body) as typeof payload;
+    } catch {
+      // Malformed client input is a 400, not a 500.
+      res
+        .writeHead(400, { "Content-Type": "application/json" })
+        .end(JSON.stringify({ error: "request body is not valid JSON" }));
+      return;
+    }
     if (
       typeof payload.owner !== "string" ||
       typeof payload.repo !== "string" ||

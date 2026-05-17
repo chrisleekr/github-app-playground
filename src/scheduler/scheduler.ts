@@ -25,18 +25,24 @@ import {
   releaseInFlight,
 } from "../db/queries/scheduled-actions-store";
 import { logger as rootLogger } from "../logger";
-import { createExecution } from "../orchestrator/history";
+import { createExecution, markExecutionFailed } from "../orchestrator/history";
 import { enqueueJob } from "../orchestrator/job-queue";
+import { isOwnerAllowed } from "../webhook/authorize";
 import { fetchRepoConfig } from "./config-fetcher";
 import type { ScheduledAction } from "./config-schema";
 import { computeDueDecision } from "./due-evaluator";
 import { enumerateScheduledRepos, type ScheduledRepo } from "./installation-enumerator";
 import { resolvePrompt } from "./prompt-resolver";
 
-/** In-flight lock is treated as released after this long, longer than any
- * agent run (`config.agentTimeoutMs` defaults to 1h), so it self-heals a
- * daemon that died mid-run without ever double-firing a live run. */
-const STALE_IN_FLIGHT_MS = 2 * 60 * 60 * 1000;
+/**
+ * In-flight lock staleness backstop. The lock is normally cleared when the
+ * run completes (`clearInFlightByJobId`, called from the scoped-job-completion
+ * handler); this window only releases a lock whose daemon died without ever
+ * reporting completion. Derived as 2x `config.agentTimeoutMs` so it is always
+ * longer than the longest possible run regardless of how high an operator
+ * sets the timeout, so a live run is never reclaimed.
+ */
+const STALE_IN_FLIGHT_MS = 2 * config.agentTimeoutMs;
 
 export interface SchedulerDeps {
   readonly app: App;
@@ -224,13 +230,15 @@ async function processAction(
       deliveryId,
     });
   } catch (err) {
-    // The slot is claimed but no job landed; release the in-flight lock so
-    // the next slot can retry without waiting out the stale window.
+    // The slot is claimed but no job landed; release the in-flight lock and
+    // fail the executions row `enqueueRun` created, so it does not linger
+    // `queued`. `markExecutionFailed` is a no-op when no row exists.
     ctx.log.error(
       { err, deliveryId, action: action.name },
       "scheduler: enqueue failed after claim, releasing lock",
     );
     await releaseInFlight({ ...key, jobId: deliveryId });
+    await markExecutionFailed(deliveryId, "scheduler: enqueue failed after slot claim");
   }
 }
 
@@ -274,6 +282,13 @@ async function runAction(
   ctx: SchedulerCtx,
   input: { owner: string; repo: string; actionName: string },
 ): Promise<{ enqueued: boolean; reason?: string }> {
+  // The manual endpoint must honour the same owner-allowlist trust gate as
+  // the periodic scan; otherwise it could run an action for a repo the
+  // scheduler would never scan (the gate that the `.github-app.yaml` trust
+  // model depends on).
+  if (!isOwnerAllowed(input.owner, ctx.log).allowed) {
+    return { enqueued: false, reason: `owner "${input.owner}" is not in ALLOWED_OWNERS` };
+  }
   let installationId: number;
   let octokit: Octokit;
   try {
@@ -341,8 +356,8 @@ async function runAction(
   try {
     await enqueueRun(ctx, { repo, action, slotIso: now.toISOString(), promptText, deliveryId });
   } catch (err) {
-    // Release the lock so a transient enqueue failure does not strand the
-    // action for the full stale window.
+    // Release the lock and fail the orphaned executions row so a transient
+    // enqueue failure does not strand the action for the full stale window.
     await releaseInFlight({
       installationId,
       owner: input.owner,
@@ -350,6 +365,7 @@ async function runAction(
       actionName: action.name,
       jobId: deliveryId,
     });
+    await markExecutionFailed(deliveryId, "scheduler: enqueue failed after slot claim");
     ctx.log.error(
       { err, owner: input.owner, repo: input.repo },
       "scheduler: manual run enqueue failed",
