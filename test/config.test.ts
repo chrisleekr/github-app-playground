@@ -473,3 +473,22 @@ describe("configSchema: SHIP_FORBIDDEN_TARGET_BRANCHES parsing", () => {
     if (result.success) expect(result.data.shipForbiddenTargetBranches).toEqual([]);
   });
 });
+
+describe("configSchema: PROMPT_CACHE_LAYOUT", () => {
+  it("defaults to legacy when unset", () => {
+    const result = configSchema.safeParse({ ...ANTHROPIC_BASE });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.promptCacheLayout).toBe("legacy");
+  });
+
+  it("accepts the cacheable value", () => {
+    const result = configSchema.safeParse({ ...ANTHROPIC_BASE, promptCacheLayout: "cacheable" });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.promptCacheLayout).toBe("cacheable");
+  });
+
+  it("rejects an unknown layout value", () => {
+    const result = configSchema.safeParse({ ...ANTHROPIC_BASE, promptCacheLayout: "turbo" });
+    expect(result.success).toBe(false);
+  });
+});

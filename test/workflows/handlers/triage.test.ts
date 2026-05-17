@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import type { Octokit } from "octokit";
 import type pino from "pino";
 
+import { config } from "../../../src/config";
 import type { WorkflowRunContext } from "../../../src/workflows/registry";
 
 let agentResult: {
@@ -31,8 +32,11 @@ void mock.module("../../../src/core/checkout", () => ({
   ),
 }));
 
+// Hoisted so tests can inspect the params the handler forwards (e.g. whether
+// `promptParts` is threaded through under PROMPT_CACHE_LAYOUT=cacheable).
+const executeAgentMock = mock(async () => Promise.resolve(agentResult));
 void mock.module("../../../src/core/executor", () => ({
-  executeAgent: mock(async () => Promise.resolve(agentResult)),
+  executeAgent: executeAgentMock,
 }));
 
 // Spread the real fs/promises so other test files' uses of writeFile, mkdir,
@@ -98,6 +102,7 @@ function buildCtx(issueOverrides?: { title?: string; body?: string }): WorkflowR
 }
 
 beforeEach(() => {
+  executeAgentMock.mockClear();
   agentResult = { success: true, costUsd: 0.05, numTurns: 12, durationMs: 30_000 };
   triageMd = "# Triage\n\nValid bug, evidence at src/foo.ts:42.";
   triageVerdict = JSON.stringify({
@@ -114,8 +119,11 @@ beforeEach(() => {
   });
 });
 
+const ORIGINAL_PROMPT_CACHE_LAYOUT = config.promptCacheLayout;
+
 afterEach(() => {
   mock.restore();
+  config.promptCacheLayout = ORIGINAL_PROMPT_CACHE_LAYOUT;
 });
 
 describe("triage handler (SDK-driven)", () => {
@@ -310,5 +318,25 @@ describe("triage handler (SDK-driven)", () => {
     if (result.status === "failed") {
       expect(result.reason).toContain("issue target");
     }
+  });
+
+  it("does not forward promptParts under the legacy layout", async () => {
+    config.promptCacheLayout = "legacy";
+    await triageHandler(buildCtx());
+
+    const params = executeAgentMock.mock.calls[0]?.[0] as { promptParts?: unknown };
+    expect(params.promptParts).toBeUndefined();
+  });
+
+  it("forwards split promptParts to the executor under the cacheable layout", async () => {
+    config.promptCacheLayout = "cacheable";
+    await triageHandler(buildCtx());
+
+    const params = executeAgentMock.mock.calls[0]?.[0] as {
+      promptParts?: { append: string; userMessage: string };
+    };
+    expect(params.promptParts).toBeDefined();
+    expect(params.promptParts?.append.length).toBeGreaterThan(0);
+    expect(params.promptParts?.userMessage.length).toBeGreaterThan(0);
   });
 });

@@ -18,9 +18,11 @@ import type { McpServerConfig } from "../../src/types";
 import { makeBotContext } from "../factories";
 
 interface QueryCall {
+  prompt?: string;
   options: {
     abortController?: AbortController;
     stderr?: (chunk: string) => void;
+    systemPrompt?: unknown;
   };
 }
 
@@ -50,7 +52,7 @@ void mock.module("@anthropic-ai/claude-agent-sdk", () => ({
       prompt: string;
       options: { abortController?: AbortController; stderr?: (chunk: string) => void };
     }) => {
-      lastQueryCall = { options: opts.options };
+      lastQueryCall = { prompt: opts.prompt, options: opts.options };
       return nextIterator();
     },
   ),
@@ -385,8 +387,62 @@ describe("executeAgent: prompt cache metrics", () => {
     const completion = logInfo.mock.calls.find(
       (call) => call[1] === "Claude Agent SDK execution completed",
     );
+    expect(completion).toBeDefined();
     const fields = (completion as [Record<string, unknown>, string])[0];
     expect(fields.cacheReadInputTokens).toBe(0);
     expect(fields.cacheCreationInputTokens).toBe(8192);
+    // baseParams() passes no promptParts, so the effective layout is legacy
+    // regardless of config.promptCacheLayout.
+    expect(fields.promptCacheLayout).toBe("legacy");
+  });
+});
+
+// ─── cacheable prompt layout: SDK query shape (issue #134) ──────────────────
+
+describe("executeAgent: cacheable prompt layout", () => {
+  const ORIGINAL_LAYOUT = config.promptCacheLayout;
+  const PARTS = { append: "STATIC-APPEND-SCAFFOLDING", userMessage: "PER-CALL-USER-MESSAGE" };
+
+  beforeEach(() => {
+    lastQueryCall = undefined;
+    nextIterator = emptyIterator;
+  });
+  afterEach(() => {
+    config.promptCacheLayout = ORIGINAL_LAYOUT;
+  });
+
+  it("splits prompt into systemPrompt.append + userMessage when flag is cacheable", async () => {
+    config.promptCacheLayout = "cacheable";
+    await executeAgent(baseParams({ promptParts: PARTS }));
+
+    expect(lastQueryCall?.prompt).toBe(PARTS.userMessage);
+    const sp = lastQueryCall?.options.systemPrompt as {
+      type: string;
+      preset: string;
+      append?: string;
+      excludeDynamicSections?: boolean;
+    };
+    expect(sp.type).toBe("preset");
+    expect(sp.preset).toBe("claude_code");
+    expect(sp.append).toBe(PARTS.append);
+    expect(sp.excludeDynamicSections).toBe(true);
+  });
+
+  it("keeps the legacy prompt and bare preset when the flag is legacy", async () => {
+    config.promptCacheLayout = "legacy";
+    await executeAgent(baseParams({ promptParts: PARTS }));
+
+    expect(lastQueryCall?.prompt).toBe("test prompt");
+    const sp = lastQueryCall?.options.systemPrompt as { append?: string };
+    expect(sp.append).toBeUndefined();
+  });
+
+  it("falls back to legacy when the flag is cacheable but no promptParts are passed", async () => {
+    config.promptCacheLayout = "cacheable";
+    await executeAgent(baseParams());
+
+    expect(lastQueryCall?.prompt).toBe("test prompt");
+    const sp = lastQueryCall?.options.systemPrompt as { append?: string };
+    expect(sp.append).toBeUndefined();
   });
 });

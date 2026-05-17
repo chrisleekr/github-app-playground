@@ -24,6 +24,96 @@ function buildTruncationBanner(data: FetchedData): string {
 }
 
 /**
+ * Per-call prelude shared verbatim by {@link buildPrompt} and
+ * {@link buildPromptParts}.
+ */
+interface PromptPrelude {
+  sections: ReturnType<typeof formatAllSections>;
+  triggerComment: string;
+  truncationBanner: string;
+  nonce: string;
+  T: (name: string) => string;
+  FC: string;
+  sanitizedBaseBranch: string | undefined;
+  sanitizedTriggerUsername: string;
+  eventType: "REVIEW_COMMENT" | "GENERAL_COMMENT";
+  triggerContext: string;
+  diffInstructions: string;
+}
+
+/**
+ * Compute the spotlighting nonce, sanitized inputs, formatted sections, and
+ * derived instruction fragments shared by the legacy and cacheable layouts.
+ * Centralized so the load-bearing sanitization invariants (CLAUDE.md) are
+ * asserted at one site and cannot drift between the two prompt builders.
+ */
+function buildPromptPrelude(ctx: BotContext, data: FetchedData): PromptPrelude {
+  const sections = formatAllSections(data, ctx.isPR);
+  const triggerComment = sanitizeContent(ctx.triggerBody);
+  const truncationBanner = buildTruncationBanner(data);
+  // Per-call nonce for spotlighting tags. Untrusted content cannot have been
+  // constructed to anticipate this suffix, so a fake `</untrusted_*>` injected
+  // by an attacker cannot escape the data block. Mirrors the technique used
+  // by `src/utils/llm-output-scanner.ts` for its `<scan_target_*>` tags.
+  const nonce = crypto.randomBytes(4).toString("hex");
+  const T = (name: string): string => `untrusted_${name}_${nonce}`;
+  // `formatted_context` is the spotlight wrapper for the data BLOCK rendered by
+  // `formatAllSections`. Historically named without the `untrusted_` prefix,
+  // keep the historical name, just suffix the nonce.
+  const FC = `formatted_context_${nonce}`;
+  // `data.baseBranch` is interpolated into instruction text (NOT inside an
+  // `<untrusted_*>` tag). The CLAUDE.md security invariant requires every
+  // attacker-controllable string crossing into the prompt to pass through
+  // `sanitizeContent`, apply it here so the invariant holds verbatim at every
+  // interpolation site, not just the formatter-helper one.
+  const sanitizedBaseBranch =
+    data.baseBranch !== undefined ? sanitizeContent(data.baseBranch) : undefined;
+
+  // Sanitize the trigger username before it lands in the git Co-authored-by
+  // trailer. A newline in a username would forge an additional trailer line;
+  // GitHub usernames cannot legitimately contain whitespace, so reject
+  // outright rather than silently strip, silent stripping could land the
+  // commit under an unintended identity.
+  const sanitizedTriggerUsername = sanitizeContent(ctx.triggerUsername);
+  // `\s` already covers `\r`, `\n`, `\t`, space, and Unicode whitespace,
+  // GitHub usernames legitimately contain none of these.
+  if (/\s/.test(sanitizedTriggerUsername)) {
+    throw new Error(
+      `prompt-builder: triggerUsername contains illegal whitespace/newline (length=${ctx.triggerUsername.length}); refusing to build prompt`,
+    );
+  }
+
+  const eventType =
+    ctx.eventName === "pull_request_review_comment" ? "REVIEW_COMMENT" : "GENERAL_COMMENT";
+  const triggerContext =
+    ctx.eventName === "pull_request_review_comment"
+      ? `PR review comment with '${config.triggerPhrase}'`
+      : `issue comment with '${config.triggerPhrase}'`;
+
+  // PR-specific diff instructions
+  const diffInstructions =
+    ctx.isPR && sanitizedBaseBranch !== undefined
+      ? `
+   - For PR reviews: the PR base branch is 'origin/${sanitizedBaseBranch}'
+   - To see PR changes: use 'git diff origin/${sanitizedBaseBranch}...HEAD' or 'git log origin/${sanitizedBaseBranch}..HEAD'`
+      : "";
+
+  return {
+    sections,
+    triggerComment,
+    truncationBanner,
+    nonce,
+    T,
+    FC,
+    sanitizedBaseBranch,
+    sanitizedTriggerUsername,
+    eventType,
+    triggerContext,
+    diffInstructions,
+  };
+}
+
+/**
  * Build the complete prompt for Claude.
  * Ported from claude-code-action's generateDefaultPrompt() in src/create-prompt/index.ts
  *
@@ -38,57 +128,18 @@ export function buildPrompt(
   data: FetchedData,
   trackingCommentId: number | undefined,
 ): string {
-  const sections = formatAllSections(data, ctx.isPR);
-  const triggerComment = sanitizeContent(ctx.triggerBody);
-  const truncationBanner = buildTruncationBanner(data);
-  // Per-call nonce for spotlighting tags. Untrusted content cannot have been
-  // constructed to anticipate this suffix, so a fake `</untrusted_*>` injected
-  // by an attacker cannot escape the data block. Mirrors the technique used
-  // by `src/utils/llm-output-scanner.ts` for its `<scan_target_*>` tags.
-  const nonce = crypto.randomBytes(4).toString("hex");
-  const T = (name: string): string => `untrusted_${name}_${nonce}`;
-  // `formatted_context` is the spotlight wrapper for the data BLOCK rendered by
-  // `formatAllSections`. Historically named without the `untrusted_` prefix,
-  // keep the historical name, just suffix the nonce.
-  const FC = `formatted_context_${nonce}`;
-  // `data.baseBranch` is interpolated into instruction text below (NOT inside
-  // an `<untrusted_*>` tag). The CLAUDE.md security invariant requires every
-  // attacker-controllable string crossing into `buildPrompt` to pass through
-  // `sanitizeContent`, apply it here so the invariant holds verbatim at every
-  // interpolation site, not just the formatter-helper one.
-  const sanitizedBaseBranch =
-    data.baseBranch !== undefined ? sanitizeContent(data.baseBranch) : undefined;
-
-  // Sanitize the trigger username before it lands in the git Co-authored-by
-  // trailer below. A newline in a username would forge an additional trailer
-  // line; GitHub usernames cannot legitimately contain whitespace, so reject
-  // outright rather than silently strip, silent stripping could land the
-  // commit under an unintended identity.
-  const sanitizedTriggerUsername = sanitizeContent(ctx.triggerUsername);
-  // `\s` already covers `\r`, `\n`, `\t`, space, and Unicode whitespace,
-  // GitHub usernames legitimately contain none of these.
-  if (/\s/.test(sanitizedTriggerUsername)) {
-    throw new Error(
-      `prompt-builder: triggerUsername contains illegal whitespace/newline (length=${ctx.triggerUsername.length}); refusing to build prompt`,
-    );
-  }
-
-  // Determine event type label for metadata
-  const eventType =
-    ctx.eventName === "pull_request_review_comment" ? "REVIEW_COMMENT" : "GENERAL_COMMENT";
-
-  const triggerContext =
-    ctx.eventName === "pull_request_review_comment"
-      ? `PR review comment with '${config.triggerPhrase}'`
-      : `issue comment with '${config.triggerPhrase}'`;
-
-  // PR-specific diff instructions
-  const diffInstructions =
-    ctx.isPR && sanitizedBaseBranch !== undefined
-      ? `
-   - For PR reviews: the PR base branch is 'origin/${sanitizedBaseBranch}'
-   - To see PR changes: use 'git diff origin/${sanitizedBaseBranch}...HEAD' or 'git log origin/${sanitizedBaseBranch}..HEAD'`
-      : "";
+  const {
+    sections,
+    triggerComment,
+    truncationBanner,
+    T,
+    FC,
+    sanitizedBaseBranch,
+    sanitizedTriggerUsername,
+    eventType,
+    triggerContext,
+    diffInstructions,
+  } = buildPromptPrelude(ctx, data);
 
   // Commit instructions: we use git CLI since the repo is cloned locally
   const commitInstructions = ctx.isPR
@@ -348,38 +399,24 @@ f. If you are unable to complete certain steps, explain this in your comment.
  * cacheable across calls. The trust boundary becomes structural: the
  * append is the trusted side; the entire user message is data.
  */
-// eslint-disable-next-line complexity
 export function buildPromptParts(
   ctx: BotContext,
   data: FetchedData,
   trackingCommentId: number | undefined,
 ): { append: string; userMessage: string } {
-  const sections = formatAllSections(data, ctx.isPR);
-  const triggerComment = sanitizeContent(ctx.triggerBody);
-  const truncationBanner = buildTruncationBanner(data);
-  const nonce = crypto.randomBytes(4).toString("hex");
-  const T = (name: string): string => `untrusted_${name}_${nonce}`;
-  const FC = `formatted_context_${nonce}`;
-  const sanitizedBaseBranch =
-    data.baseBranch !== undefined ? sanitizeContent(data.baseBranch) : undefined;
-  const sanitizedTriggerUsername = sanitizeContent(ctx.triggerUsername);
-  if (/\s/.test(sanitizedTriggerUsername)) {
-    throw new Error(
-      `prompt-builder: triggerUsername contains illegal whitespace/newline (length=${ctx.triggerUsername.length}); refusing to build prompt`,
-    );
-  }
-  const eventType =
-    ctx.eventName === "pull_request_review_comment" ? "REVIEW_COMMENT" : "GENERAL_COMMENT";
-  const triggerContext =
-    ctx.eventName === "pull_request_review_comment"
-      ? `PR review comment with '${config.triggerPhrase}'`
-      : `issue comment with '${config.triggerPhrase}'`;
-  const diffInstructions =
-    ctx.isPR && sanitizedBaseBranch !== undefined
-      ? `
-   - For PR reviews: the PR base branch is 'origin/${sanitizedBaseBranch}'
-   - To see PR changes: use 'git diff origin/${sanitizedBaseBranch}...HEAD' or 'git log origin/${sanitizedBaseBranch}..HEAD'`
-      : "";
+  const {
+    sections,
+    triggerComment,
+    truncationBanner,
+    nonce,
+    T,
+    FC,
+    sanitizedBaseBranch,
+    sanitizedTriggerUsername,
+    eventType,
+    triggerContext,
+    diffInstructions,
+  } = buildPromptPrelude(ctx, data);
 
   const append = buildStaticAppend(ctx);
   const userMessage = `Here's the context for your current task:
@@ -424,20 +461,6 @@ ${trackingCommentId !== undefined ? `<claude_comment_id>${trackingCommentId}</cl
 ${triggerComment}
 </${T("trigger_comment")}>
 ${
-  trackingCommentId !== undefined
-    ? `<comment_tool_info>
-IMPORTANT: You have been provided with the mcp__github_comment__update_claude_comment tool to update your comment. This tool automatically handles both issue and PR comments.
-
-Tool usage example for mcp__github_comment__update_claude_comment:
-{
-  "body": "Your comment text here"
-}
-Only the body parameter is required - the tool automatically knows which comment to update.
-</comment_tool_info>`
-    : ""
-}
-
-${
   ctx.repoMemory !== undefined && ctx.repoMemory.length > 0
     ? `<${T("repo_memory")}>
 The following learnings have been accumulated from previous work on this repository.
@@ -479,8 +502,9 @@ function buildStaticAppend(ctx: BotContext): string {
         - Stage files: Bash(git add <files>)
         - Commit with a descriptive message: Bash(git commit -m "<message>")
         - When committing, include a Co-authored-by trailer using the trigger
-          username from the user message's <untrusted_trigger_username_*> tag:
-          Bash(git commit -m "<message>\\n\\nCo-authored-by: <username> <<username>@users.noreply.github.com>")
+          username (call it USERNAME) from the user message's
+          <untrusted_trigger_username_*> tag. Substitute USERNAME twice:
+          Bash(git commit -m "<message>\\n\\nCo-authored-by: USERNAME <USERNAME@users.noreply.github.com>")
         - Push to the remote: Bash(git push origin HEAD)
         - NEVER force push`
     : "";
@@ -533,6 +557,16 @@ for review comments (the inline-on-diff kind, no tool covers those yet). Do not 
 a tool when the snapshot already has the same data and you have no reason to suspect
 it is stale within this job's lifetime.
 </freshness_directive>
+
+<comment_tool_info>
+IMPORTANT: You have been provided with the mcp__github_comment__update_claude_comment tool to update your tracking comment. This tool automatically handles both issue and PR comments and knows which comment to update; the comment id is supplied as <claude_comment_id> in the user message.
+
+Tool usage example for mcp__github_comment__update_claude_comment:
+{
+  "body": "Your comment text here"
+}
+Only the body parameter is required.
+</comment_tool_info>
 
 Your task is to analyze the user-message context, understand the request, and provide helpful responses and/or implement code changes as needed.
 
