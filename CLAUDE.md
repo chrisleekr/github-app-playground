@@ -114,7 +114,7 @@ Five workflow files form the pipeline; each owns one responsibility.
 | `.github/workflows/release.yml`      | `workflow_dispatch` only (manual)                         | Calls `ci.yml` → semantic-release prod → calls `docker-build.yml`                                                                                                                                                         |
 | `.github/workflows/docker-build.yml` | `workflow_call` + `workflow_dispatch`                     | Reusable image builder: matrix split-and-merge (amd64 on `ubuntu-24.04` + arm64 on `ubuntu-24.04-arm`), SLSA v1 provenance + SBOM attestations (BuildKit + Sigstore), `gh attestation verify` regression gate, Trivy scan |
 
-- **Bun version is single-sourced** via `.tool-versions` (`bun 1.3.13`). All workflows use `oven-sh/setup-bun` with `bun-version-file: .tool-versions`.
+- **Bun version is single-sourced** via `.tool-versions` (`bun 1.3.14`). All workflows use `oven-sh/setup-bun` with `bun-version-file: .tool-versions`.
 - **`audit:ci` (`scripts/audit-ci.ts`)** wraps `bun audit --json` to gate on severity: blocks on high+critical, warns on moderate+low, with an inline `IGNORED` GHSA allowlist (each entry must carry an `expires` date). Required because `bun audit` exits 1 on **any** finding regardless of `--audit-level`.
 - **Semantic release config** (`release.config.mjs`) is single-file with `SEMREL_CHANNEL=dev|prod` env switching: replaces the previous file-swap hack.
 - **Prod releases are manual.** Push to main only triggers `ci.yml` (sanity). Cut a release with `gh workflow run release.yml`.
@@ -173,17 +173,17 @@ The `docs.yml` `pull_request:` trigger has no `paths:` filter, so these gates ru
 - TypeScript 5.9.3, strict mode (`exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `useUnknownInCatchVariables`) + `octokit`, `@anthropic-ai/claude-agent-sdk` (multi-turn agent flows for fix-thread/open-pr executors; conversational chat-thread runs via the single-turn `src/ai/llm-client.ts` path), `@modelcontextprotocol/sdk`, `pino`, `zod`, Bun built-in `WebSocket` + `RedisClient`. **No new npm dependencies.** (20260429-212559-ship-iteration-wiring)
 - Postgres 17 via `Bun.sql` singleton: no schema changes; reuses existing `ship_intents`, `ship_iterations`, `ship_continuations`, `workflow_runs` tables. Valkey 8, reuses existing `ship:tickle` sorted set and `queue:jobs` list. (20260429-212559-ship-iteration-wiring)
 
-- TypeScript 5.9.3 strict mode on Bun ≥1.3.13 + `octokit` (webhook + GraphQL/REST), `@anthropic-ai/claude-agent-sdk` (multi-turn handlers), `@anthropic-ai/bedrock-sdk` (single-turn intent classification via `src/ai/llm-client.ts`), `@modelcontextprotocol/sdk`, `pino`, `zod`. No new npm dependencies. (20260421-181205-bot-workflows)
+- TypeScript 5.9.3 strict mode on Bun ≥1.3.14 + `octokit` (webhook + GraphQL/REST), `@anthropic-ai/claude-agent-sdk` (multi-turn handlers), `@anthropic-ai/bedrock-sdk` (single-turn intent classification via `src/ai/llm-client.ts`), `@modelcontextprotocol/sdk`, `pino`, `zod`. No new npm dependencies. (20260421-181205-bot-workflows)
 - PostgreSQL 17 via `Bun.sql` singleton: adds one migration (`005_workflow_runs.sql`). Valkey 8 via Bun built-in `RedisClient`, existing job queue reused unchanged. (20260421-181205-bot-workflows)
 
-- TypeScript 5.9.3 (strict mode with `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `useUnknownInCatchVariables`) on Bun ≥1.3.13 (see `package.json` `packageManager` pin). Deps: `octokit`, `@anthropic-ai/claude-agent-sdk`, `@anthropic-ai/bedrock-sdk` (Bedrock single-turn adaptor in `src/ai/llm-client.ts`), `@modelcontextprotocol/sdk`, `@kubernetes/client-node` (ephemeral-daemon Pod spawning in `src/k8s/ephemeral-daemon-spawner.ts`), `pino`, `zod`, Bun built-in `WebSocket` + `RedisClient`. `@anthropic-ai/sdk` is a transitive dep of `claude-agent-sdk`.
+- TypeScript 5.9.3 (strict mode with `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `useUnknownInCatchVariables`) on Bun ≥1.3.14 (see `package.json` `packageManager` pin). Deps: `octokit`, `@anthropic-ai/claude-agent-sdk`, `@anthropic-ai/bedrock-sdk` (Bedrock single-turn adaptor in `src/ai/llm-client.ts`), `@modelcontextprotocol/sdk`, `@kubernetes/client-node` (ephemeral-daemon Pod spawning in `src/k8s/ephemeral-daemon-spawner.ts`), `pino`, `zod`, Bun built-in `WebSocket` + `RedisClient`. `@anthropic-ai/sdk` is a transitive dep of `claude-agent-sdk`.
 - **Dispatch taxonomy (post-collapse)**: `DispatchTarget` = `daemon` (singleton, kept as a field for DB/log stability); `DispatchReason` = `persistent-daemon` | `ephemeral-daemon-triage` | `ephemeral-daemon-overflow` | `ephemeral-spawn-failed`. Canonical source: `src/shared/dispatch-types.ts`. (20260419-collapse-dispatch-to-daemon)
 - PostgreSQL 17 via `Bun.sql` singleton (`executions` + `triage_results` tables from migrations `001_initial.sql` → `004_collapse_dispatch_to_daemon.sql`); Valkey 8 (Redis-compatible) via Bun built-in `RedisClient` for the daemon job queue. Operator aggregates in `src/db/queries/dispatch-stats.ts`.
 
-- TypeScript 5.9.3 strict mode on Bun >=1.3.13 + `octokit`, `@anthropic-ai/claude-agent-sdk`, `@modelcontextprotocol/sdk`, `pino`, `zod` (all existing). New: Bun built-in `WebSocket` + `RedisClient` (zero new npm dependencies). (20260413-191249-daemon-orchestrator-core)
+- TypeScript 5.9.3 strict mode on Bun >=1.3.14 + `octokit`, `@anthropic-ai/claude-agent-sdk`, `@modelcontextprotocol/sdk`, `pino`, `zod` (all existing). New: Bun built-in `WebSocket` + `RedisClient` (zero new npm dependencies). (20260413-191249-daemon-orchestrator-core)
 - PostgreSQL 17 (pgvector-ready, existing `executions` + `daemons` tables from `001_initial.sql`) + Valkey 8 (Redis 7.2-compatible, via Bun built-in `RedisClient`) (20260413-191249-daemon-orchestrator-core)
 
-- TypeScript (strict mode) on Bun >=1.3.13 + `octokit`, `@anthropic-ai/claude-agent-sdk`, `@modelcontextprotocol/sdk`, `pino`, `zod`
+- TypeScript (strict mode) on Bun >=1.3.14 + `octokit`, `@anthropic-ai/claude-agent-sdk`, `@modelcontextprotocol/sdk`, `pino`, `zod`
 
 <!-- SPECKIT START -->
 
