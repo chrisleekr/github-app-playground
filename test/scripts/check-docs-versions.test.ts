@@ -165,6 +165,17 @@ describe("scripts/check-docs-versions.ts", () => {
     expect(stderr).toContain("found `1.3.8`");
   });
 
+  it("does not false-positive a dotted non-Bun owner like `Node.js` (issue #136, PR #138 review)", () => {
+    const root = makeFixture({
+      toolVersion: "1.3.13",
+      rootDocs: { "CLAUDE.md": "Node.js 20.18.0 runs alongside Bun ≥1.3.13.\n" },
+    });
+    fixtures.push(root);
+    const { exitCode, stdout } = runScript(root);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("OK: every Bun version reference matches");
+  });
+
   it("flags package.json `engines.bun` disagreement with the canonical pin", () => {
     const root = makeFixture({
       toolVersion: "1.3.13",

@@ -199,20 +199,23 @@ const NON_BUN_OWNERS = new Set([
 
 // The word, if any, that immediately precedes a semver at `idx`. Only
 // version-range decoration (whitespace, `≥ ≤ > < = * ~ ^`) is skipped on the
-// way back; any other non-letter char (`|`, backtick, `(`, `:` …) is treated
-// as a hard boundary and yields "". Used to reject semvers owned by a
-// non-Bun token on a line that also mentions Bun: the line-level `/bun/i`
-// test alone is too loose for prose-dense files like CLAUDE.md where a
-// TypeScript version and a Bun version share one line.
+// way back; any other non-word char (`|`, backtick, `(`, `:` …) is treated
+// as a hard boundary and yields "". The word run accepts `.` and `-` so a
+// dotted token like `Node.js` is captured whole, then those separators are
+// stripped before return so the result matches a flat `NON_BUN_OWNERS` entry
+// (`nodejs`). Used to reject semvers owned by a non-Bun token on a line that
+// also mentions Bun: the line-level `/bun/i` test alone is too loose for
+// prose-dense files like CLAUDE.md where a TypeScript version and a Bun
+// version share one line.
 function precedingWord(line: string, idx: number): string {
   let j = idx - 1;
   while (j >= 0 && /[\s≥≤><=*~^]/.test(line[j] ?? "")) j--;
   let word = "";
-  while (j >= 0 && /[A-Za-z]/.test(line[j] ?? "")) {
+  while (j >= 0 && /[A-Za-z.-]/.test(line[j] ?? "")) {
     word = (line[j] ?? "") + word;
     j--;
   }
-  return word;
+  return word.replace(/[.-]/g, "");
 }
 
 function checkDocFile(path: string, canonical: string): Mismatch[] {
