@@ -33,7 +33,7 @@ flowchart LR
     classDef done fill:#2da44e,stroke:#0b4a1e,color:#ffffff
 ```
 
-See [Architecture](https://chrisleekr.github.io/github-app-playground/ARCHITECTURE/) for the full flow, including idempotency, triage, and the pipeline stages.
+See [Architecture](https://chrisleekr.github.io/github-app-playground/build/architecture/) for the full flow, including idempotency, triage, and the pipeline stages.
 
 ## Quick start
 

@@ -9,6 +9,8 @@ const SCRIPT = resolve(import.meta.dir, "..", "..", "scripts", "check-docs-citat
 interface Layout {
   src?: Record<string, string>;
   docs?: Record<string, string>;
+  // Root-level Markdown (README.md / CONTRIBUTING.md / CLAUDE.md), keyed by filename.
+  rootDocs?: Record<string, string>;
 }
 
 function makeFixture(layout: Layout): string {
@@ -24,6 +26,9 @@ function makeFixture(layout: Layout): string {
     const abs = join(root, "docs", rel);
     mkdirSync(resolve(abs, ".."), { recursive: true });
     writeFileSync(abs, body);
+  }
+  for (const [name, body] of Object.entries(layout.rootDocs ?? {})) {
+    writeFileSync(join(root, name), body);
   }
   return root;
 }
@@ -103,6 +108,28 @@ describe("scripts/check-docs-citations.ts", () => {
     const { exitCode, stdout } = runScript(root);
     expect(exitCode).toBe(0);
     expect(stdout).toContain("OK: every src/<path>:<line> citation");
+  });
+
+  it("passes a valid citation in a root-level doc (issue #136)", () => {
+    const root = makeFixture({
+      src: { "app.ts": "a\nb\nc\nd\n" },
+      rootDocs: { "README.md": "See `src/app.ts:2` for the entrypoint.\n" },
+    });
+    fixtures.push(root);
+    const { exitCode, stdout } = runScript(root);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("OK: every src/<path>:<line> citation");
+  });
+
+  it("scans root-level CONTRIBUTING.md and flags a broken citation there (issue #136)", () => {
+    const root = makeFixture({
+      rootDocs: { "CONTRIBUTING.md": "See `src/gone.ts:1` for details.\n" },
+    });
+    fixtures.push(root);
+    const { exitCode, stderr } = runScript(root);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("CONTRIBUTING.md:1");
+    expect(stderr).toContain("file does not exist");
   });
 
   it("flags an end-line that exceeds the file length in a range citation", () => {

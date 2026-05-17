@@ -7,11 +7,11 @@ the development workflow, and the conventions enforced by the tooling.
 
 ## Prerequisites
 
-| Tool                          | Version | Purpose                                    |
-| ----------------------------- | ------- | ------------------------------------------ |
-| [Bun](https://bun.sh)         | ≥ 1.3.8 | Runtime and package manager                |
-| [Git](https://git-scm.com)    | any     | Version control                            |
-| [Node.js](https://nodejs.org) | ≥ 20    | Required by the Claude Code CLI subprocess |
+| Tool                          | Version  | Purpose                                    |
+| ----------------------------- | -------- | ------------------------------------------ |
+| [Bun](https://bun.sh)         | ≥ 1.3.13 | Runtime and package manager                |
+| [Git](https://git-scm.com)    | any      | Version control                            |
+| [Node.js](https://nodejs.org) | ≥ 20     | Required by the Claude Code CLI subprocess |
 
 ---
 
@@ -27,7 +27,7 @@ bun install
 
 # 3. Copy and fill in the environment file
 cp .env.example .env
-# Edit .env: see docs/SETUP.md for the full variable reference
+# Edit .env: see docs/operate/setup.md for the full variable reference
 ```
 
 ---
@@ -252,6 +252,6 @@ chore: upgrade @anthropic-ai/claude-agent-sdk to 0.3.0
 
 ## Project Structure
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full directory layout and
-request flow. See [docs/EXTENDING.md](docs/EXTENDING.md) for how to add new webhook
+See [docs/build/architecture.md](docs/build/architecture.md) for the full directory layout and
+request flow. See [docs/build/extending.md](docs/build/extending.md) for how to add new webhook
 event handlers and MCP servers.
