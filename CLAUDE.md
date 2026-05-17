@@ -106,12 +106,13 @@ Five workflow files form the pipeline; each owns one responsibility.
 | `.github/workflows/release.yml`      | `workflow_dispatch` only (manual)                         | Calls `ci.yml` → semantic-release prod → calls `docker-build.yml`                                                                                                                                                         |
 | `.github/workflows/docker-build.yml` | `workflow_call` + `workflow_dispatch`                     | Reusable image builder: matrix split-and-merge (amd64 on `ubuntu-24.04` + arm64 on `ubuntu-24.04-arm`), SLSA v1 provenance + SBOM attestations (BuildKit + Sigstore), `gh attestation verify` regression gate, Trivy scan |
 
-- **Bun version is single-sourced** via `.tool-versions` (`bun 1.3.13`). All workflows use `oven-sh/setup-bun@v2` with `bun-version-file: .tool-versions`.
+- **Bun version is single-sourced** via `.tool-versions` (`bun 1.3.13`). All workflows use `oven-sh/setup-bun` with `bun-version-file: .tool-versions`.
 - **`audit:ci` (`scripts/audit-ci.ts`)** wraps `bun audit --json` to gate on severity: blocks on high+critical, warns on moderate+low, with an inline `IGNORED` GHSA allowlist (each entry must carry an `expires` date). Required because `bun audit` exits 1 on **any** finding regardless of `--audit-level`.
 - **Semantic release config** (`release.config.mjs`) is single-file with `SEMREL_CHANNEL=dev|prod` env switching: replaces the previous file-swap hack.
 - **Prod releases are manual.** Push to main only triggers `ci.yml` (sanity). Cut a release with `gh workflow run release.yml`.
 - Multi-arch images: amd64 builds on `ubuntu-24.04`, arm64 builds natively on `ubuntu-24.04-arm` (free for public repos). Both runners are explicitly pinned (not `ubuntu-latest`) so the rolling alias can't silently flip to a new major and break the build, see the header of `.github/workflows/docker-build.yml`. Manifest assembled by `docker buildx imagetools create`. GHA cache scoped per arch.
 - Defense-in-depth on workflow injection: every dynamic input flowing into a `run:` block is passed via `env:` first.
+- **GitHub Actions are SHA-pinned.** Every third-party `uses:` reference is pinned to a full 40-char commit SHA (with a `# vX.Y.Z` comment), not a mutable tag, so a force-moved upstream tag cannot change the bytes a runner executes. Renovate keeps the SHAs current via the `helpers:pinGitHubActionDigests` preset behind the existing 7-day `minimumReleaseAge` soak. `ci.yml` runs `bun run check:action-pins` (`scripts/check-action-pins.ts`), which fails the build if any third-party `uses:` is on a tag. Local reusable-workflow calls (`uses: ./...`) are exempt.
 
 ## Security invariants (prompt-injection hardening)
 
