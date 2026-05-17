@@ -1,6 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended", ":semanticCommits"],
+  "extends": ["config:recommended", ":semanticCommits", "helpers:pinGitHubActionDigests"],
   "timezone": "Australia/Melbourne",
   "schedule": ["before 4am on Monday"],
   "labels": ["dependencies", "renovate"],
