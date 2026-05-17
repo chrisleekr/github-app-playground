@@ -446,6 +446,12 @@ const configSchema = z
     // triage latency/cost only, does NOT change the main agent's model.
     triageModel: z.string().default("sonnet-4-6"),
 
+    // Model ID for the discussion-digest LLM call (src/workflows/discussion-digest.ts).
+    // The digest distills the issue/PR comment thread into a guidance summary the
+    // structured workflows consume. Sonnet by default: low-hallucination extraction
+    // and the reduce-merge precedence logic need the reasoning headroom.
+    digestModel: z.string().default("sonnet-4-6"),
+
     // Strict (1.0) on day 1 so only perfectly confident triage decisions are
     // accepted; below threshold, the scaler falls back to persistent-daemon routing.
     triageConfidenceThreshold: z.coerce.number().min(0).max(1).default(1.0),
@@ -911,6 +917,7 @@ function loadConfig(): Config {
       process.env["TRIAGE_TOOLS_ENABLED"],
     ),
     triageModel: process.env["TRIAGE_MODEL"],
+    digestModel: process.env["DISCUSSION_DIGEST_MODEL"],
     triageConfidenceThreshold: process.env["TRIAGE_CONFIDENCE_THRESHOLD"],
     triageMaxTokens: process.env["TRIAGE_MAX_TOKENS"],
     triageTimeoutMs: process.env["TRIAGE_TIMEOUT_MS"],

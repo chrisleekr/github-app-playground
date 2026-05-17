@@ -1,5 +1,6 @@
 import { runPipeline } from "../../core/pipeline";
 import type { BotContext } from "../../types";
+import { fetchAndBuildDigest, renderDigestSection } from "../discussion-digest";
 import type { WorkflowHandler } from "../registry";
 import { findById } from "../runs-store";
 import { type BranchStaleness, formatRefreshDirective, getBranchStaleness } from "./branch-refresh";
@@ -92,6 +93,23 @@ export const handler: WorkflowHandler = async (ctx) => {
 
     const staleness = await getBranchStaleness(octokit, target.owner, target.repo, target.number);
 
+    // Build the discussion digest BEFORE the seed setState below: that first
+    // setState triggers the re-run cleanup that deletes a prior tracking
+    // comment, and the digest must read that comment while it still exists.
+    const digestSection = renderDigestSection(
+      await fetchAndBuildDigest({
+        octokit,
+        owner: target.owner,
+        repo: target.repo,
+        number: target.number,
+        title: pr.title,
+        body: pr.body ?? "",
+        workflowName: ctx.workflowName,
+        includeReviewComments: true,
+        log,
+      }),
+    );
+
     // Seed the tracking comment up front so the agent can post mid-run
     // progress against it. See review.ts for the same pattern + rationale.
     await ctx.setState(
@@ -143,6 +161,7 @@ export const handler: WorkflowHandler = async (ctx) => {
         ? { trackingCommentId }
         : {}),
       ...(topLevelComments.length > 0 ? { enableResolveReviewThread: true } : {}),
+      ...(digestSection.length > 0 ? { discussionDigest: digestSection } : {}),
     });
     if (!result.success) {
       // `reason` is internal (DB state.failedReason → orchestrator quota

@@ -42,6 +42,15 @@ void mock.module("../../../src/workflows/runs-store", () => ({
   ),
 }));
 
+// Stub the discussion-digest module so this test (which mocks `config` down
+// to a single field) does not transitively load the real module's `logger`
+// import against an incomplete config. The digest path is covered by
+// test/workflows/discussion-digest.test.ts.
+void mock.module("../../../src/workflows/discussion-digest", () => ({
+  fetchAndBuildDigest: mock(() => Promise.resolve({ ok: false, reason: "no-comments" })),
+  renderDigestSection: mock(() => ""),
+}));
+
 const { handler: implementHandler } = await import("../../../src/workflows/handlers/implement");
 
 function silentLog(): pino.Logger {

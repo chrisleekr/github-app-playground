@@ -161,6 +161,13 @@ export interface RunPipelineOverrides {
    * narrowly scoped workflow that should not touch the API).
    */
   enableGithubState?: boolean;
+  /**
+   * Rendered discussion-digest section (see `src/workflows/discussion-digest.ts`).
+   * When a non-empty string, `buildPrompt` replaces the raw issue-comment dump
+   * with this distilled, maintainer-authoritative view. Omitted / empty falls
+   * back to the legacy raw `formatComments` rendering.
+   */
+  discussionDigest?: string;
 }
 
 /**
@@ -244,10 +251,15 @@ export async function runPipeline(
     // dry-run length log + executor fallback working byte-identical, and
     // `promptParts` is forwarded when cacheable layout is on so the executor
     // can pivot to systemPrompt.append + excludeDynamicSections (issue #134).
-    const prompt = buildPrompt(enrichedCtx, data, resolvedTrackingCommentId);
+    const prompt = buildPrompt(
+      enrichedCtx,
+      data,
+      resolvedTrackingCommentId,
+      overrides.discussionDigest,
+    );
     const promptParts =
       config.promptCacheLayout === "cacheable"
-        ? buildPromptParts(enrichedCtx, data, resolvedTrackingCommentId)
+        ? buildPromptParts(enrichedCtx, data, resolvedTrackingCommentId, overrides.discussionDigest)
         : undefined;
 
     if (ctx.dryRun === true) {

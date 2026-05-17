@@ -623,6 +623,59 @@ describe("buildEnvironmentHeader", () => {
   });
 });
 
+// ─── buildPrompt / buildPromptParts: discussionDigest ───────────────────────
+
+describe("buildPrompt: discussionDigest", () => {
+  const DIGEST = "## Maintainer guidance (authoritative)\nDIGEST_MARKER_TEXT";
+
+  it("renders the raw comment thread when no digest is supplied (legacy path)", () => {
+    const ctx = makeBotContext({ isPR: false });
+    const data = makeIssueData({
+      comments: [{ author: "alice", body: "RAW_COMMENT_BODY", createdAt: "2025-01-01T00:00:00Z" }],
+    });
+    const result = buildPrompt(ctx, data, 1);
+    expect(result).toContain("RAW_COMMENT_BODY");
+    expect(result).not.toContain("DIGEST_MARKER_TEXT");
+  });
+
+  it("replaces the raw issue-comment dump with the digest when one is supplied", () => {
+    const ctx = makeBotContext({ isPR: false });
+    const data = makeIssueData({
+      comments: [{ author: "alice", body: "RAW_COMMENT_BODY", createdAt: "2025-01-01T00:00:00Z" }],
+    });
+    const result = buildPrompt(ctx, data, 1, DIGEST);
+    expect(result).not.toContain("RAW_COMMENT_BODY");
+    expect(result).toContain("DIGEST_MARKER_TEXT");
+    expect(result).toContain("distilled into the maintainer-guidance digest");
+  });
+
+  it("leaves the diff-anchored review-comments block untouched when a digest is supplied", () => {
+    const ctx = makeBotContext({ isPR: true });
+    const data = makePrData({
+      reviewComments: [
+        { author: "bob", body: "REVIEW_COMMENT_BODY", path: "src/a.ts", line: 3, createdAt: "x" },
+      ],
+    });
+    const result = buildPrompt(ctx, data, 1, DIGEST);
+    expect(result).toContain("REVIEW_COMMENT_BODY");
+    expect(result).toContain("DIGEST_MARKER_TEXT");
+  });
+
+  it("buildPromptParts puts the digest in userMessage and keeps append byte-stable", () => {
+    const ctx = makeBotContext({ isPR: false });
+    const data = makeIssueData({
+      comments: [{ author: "alice", body: "RAW_COMMENT_BODY", createdAt: "2025-01-01T00:00:00Z" }],
+    });
+    const withDigest = buildPromptParts(ctx, data, 1, DIGEST);
+    const withoutDigest = buildPromptParts(ctx, data, 1);
+    expect(withDigest.userMessage).toContain("DIGEST_MARKER_TEXT");
+    expect(withDigest.userMessage).not.toContain("RAW_COMMENT_BODY");
+    expect(withoutDigest.userMessage).toContain("RAW_COMMENT_BODY");
+    // The digest is per-call data: it must not perturb the cacheable append.
+    expect(withDigest.append).toBe(withoutDigest.append);
+  });
+});
+
 // ─── buildPromptParts (issue #134) ──────────────────────────────────────────
 
 describe("buildPromptParts: cache-friendliness contract", () => {

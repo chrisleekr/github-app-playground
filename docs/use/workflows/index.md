@@ -25,6 +25,18 @@ Six workflows are registered today (`src/workflows/registry.ts`). Each has a sin
 - **Tracking comments are idempotent.** Every tracking comment carries a hidden `<!-- workflow-run:{id} -->` marker. `setState()` in `src/workflows/tracking-mirror.ts` scans for the marker before posting, adopts any pre-existing comment found (e.g. after an octokit retry that silently duplicated a `POST`, or a pod restart between create and CAS reservation), and reconciles duplicates after create, keeping a single canonical comment per run regardless of transient API failures.
 - **Cost is visible.** Every workflow records `cost_usd`, `turns`, and `wall_clock_ms` on the run row. The shepherding lifecycle exposes cumulative spend in the tracking comment header.
 
+## Maintainer comments steer the workflow
+
+The five structured workflows (`triage`, `plan`, `implement`, `review`, `resolve`) are comment-aware. Before each run, `src/workflows/discussion-digest.ts` distills the issue/PR comment thread into a guidance digest that the workflow prompt consumes in place of the raw thread:
+
+- **Later owner comments override the body.** Comments by `ALLOWED_OWNERS` authors become authoritative directives; where one conflicts with the issue/PR body, the directive wins. So you can run `bot:plan`, comment a correction, run `bot:plan` again, and the second run honours the correction (the issue body alone no longer pins the result).
+- **Non-owner comments are context only.** They appear in the digest labelled as untrusted discussion the agent must account for but never obey.
+- **The bot's own prior output is context.** A reply to the bot's earlier plan/review is interpretable because that prior output is summarised into the digest.
+- **PR review-thread comments count.** On a PR, inline review comments and review summary bodies feed the digest too, with their `path:line` anchors preserved.
+- **No comment-count limit.** A large thread is summarised via map-reduce; no comment is dropped. The step is fail-open: any LLM or fetch error falls back to body-only / raw-comment context.
+
+Re-running a workflow also **removes that workflow's previous tracking comment** before posting the new one, so the thread does not pile up stale bot output.
+
 ## Trigger-comment intent classifier
 
 A comment that mentions the trigger phrase is routed through `src/workflows/intent-classifier.ts`: a single-turn Haiku call that returns `{ workflow, confidence, rationale }`.

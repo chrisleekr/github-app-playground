@@ -119,6 +119,18 @@ The orchestrator also expects a pre-existing `daemon-secrets` Kubernetes Secret 
 | `TRIAGE_TIMEOUT_MS`           | `5000`      | Per-call wall clock. Beyond this, the circuit-breaker counter increments.                              |
 | `INTENT_CONFIDENCE_THRESHOLD` | `0.75`      | Range `[0, 1]`. Below this, a mention-driven comment gets a clarification reply instead of a dispatch. |
 
+## Discussion digest
+
+| Variable                  | Default      | Notes                                                                                                                       |
+| ------------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `DISCUSSION_DIGEST_MODEL` | `sonnet-4-6` | Alias resolved at runtime. Model for the LLM that distills an issue/PR comment thread into maintainer guidance (see below). |
+
+The discussion-digest step (`src/workflows/discussion-digest.ts`) runs before each
+structured workflow: it summarises the comment thread into a guidance digest the
+workflow prompt consumes in place of the raw thread. It is fail-open (any LLM or
+parse error falls back to body-only / raw-comment context) and has no comment-count
+cap, so there is nothing else to tune.
+
 ## Ship
 
 | Variable                          | Default            | Notes                                                                                                                                           |
