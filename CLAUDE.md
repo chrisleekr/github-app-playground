@@ -64,6 +64,12 @@ Single HTTP server (`src/app.ts`) using `octokit` App class. Webhook events arri
 - **Idempotency**: Two-layer guard. Fast path: in-memory `Map` keyed by `X-GitHub-Delivery` header (lost on restart). Durable: `isAlreadyProcessed()` checks GitHub for an existing tracking comment, survives pod restarts and OOM kills.
 - **Repo checkout**: Each request clones the repo to a unique temp dir. Claude operates on local files via `cwd`.
 - **MCP servers**: Comment updates, inline reviews, and Context7 for library docs. Git changes are made via git CLI (Bash tool) on the cloned repo.
+- **Comment-aware workflows**: the five structured workflows (`triage`, `plan`, `implement`, `review`, `resolve`) run `src/workflows/discussion-digest.ts` before the agent.
+  - **What it does**: distills the issue/PR comment thread (issue comments, plus inline review comments for PRs) into a maintainer-guidance digest the prompt consumes in place of the raw thread.
+  - **Trust model**: `ALLOWED_OWNERS` authors yield authoritative directives that override the body; other commenters are context-only; the bot's prior output is context. Directives are re-checked post-parse against the classified owner authors, so the boundary does not depend on the model.
+  - **Scale**: map-reduce summarisation, no comment-count cap.
+  - **Fail-open**: any LLM or fetch error falls back to raw-comment context.
+  - **Re-run hygiene**: re-running a workflow deletes that workflow's prior tracking comment (`findPriorTrackingComments` + cleanup in `tracking-mirror.ts`) so the thread does not pile up.
 
 ## Authentication options
 

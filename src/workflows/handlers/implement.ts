@@ -1,6 +1,7 @@
 import { config } from "../../config";
 import { runPipeline } from "../../core/pipeline";
 import type { BotContext } from "../../types";
+import { fetchAndBuildDigest, renderDigestSection } from "../discussion-digest";
 import type { WorkflowHandler } from "../registry";
 import { findLatestSucceededForTarget } from "../runs-store";
 
@@ -46,6 +47,23 @@ export const handler: WorkflowHandler = async (ctx) => {
       repo: target.repo,
       issue_number: target.number,
     });
+
+    // Build the discussion digest BEFORE postStartingComment: the starting
+    // setState triggers the re-run cleanup that deletes a prior tracking
+    // comment, and the digest must read that comment while it still exists.
+    const digestSection = renderDigestSection(
+      await fetchAndBuildDigest({
+        octokit,
+        owner: target.owner,
+        repo: target.repo,
+        number: target.number,
+        title: issue.title,
+        body: issue.body ?? "",
+        workflowName: ctx.workflowName,
+        includeReviewComments: false,
+        log,
+      }),
+    );
 
     await postStartingComment(ctx, {
       title: issue.title,
@@ -109,7 +127,10 @@ export const handler: WorkflowHandler = async (ctx) => {
       log,
     };
 
-    const result = await runPipeline(botCtx, { captureFiles: ["IMPLEMENT.md"] });
+    const result = await runPipeline(botCtx, {
+      captureFiles: ["IMPLEMENT.md"],
+      ...(digestSection.length > 0 ? { discussionDigest: digestSection } : {}),
+    });
     if (!result.success) {
       // `reason` is internal (DB state.failedReason → orchestrator quota
       // detection + operator logs); `humanMessage` is the public tracking

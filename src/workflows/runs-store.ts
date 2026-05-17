@@ -346,6 +346,65 @@ export async function findLatestSucceededForTarget(
 }
 
 /**
+ * Terminal prior runs of the same (workflow, target) that still have a
+ * tracking comment on GitHub. Used by the re-run cleanup in
+ * `tracking-mirror.setState` to delete a workflow's stale output comment
+ * before posting the new run's comment, keeping the thread free of pile-up.
+ *
+ * `status NOT IN ('queued','running')` excludes in-flight runs: their
+ * comments are live. `id <> excludeRunId` excludes the current run. The
+ * `workflow_name` match scopes cleanup to the same workflow.
+ *
+ * The `parent_run_id` clause protects a composite's children: a row that is
+ * a child of a still-in-flight `ship` parent is left alone, otherwise a
+ * standalone `bot:plan` re-run would delete the `plan` child comment that a
+ * live `ship` composite's tracking comment still deep-links to. Standalone
+ * runs (`parent_run_id IS NULL`) and children of terminal composites are
+ * eligible.
+ */
+export async function findPriorTrackingComments(
+  workflowName: WorkflowName,
+  target: { owner: string; repo: string; number: number },
+  excludeRunId: string,
+  sql: SQL = requireDb(),
+): Promise<{ runId: string; trackingCommentId: number }[]> {
+  const rows: { id: string; tracking_comment_id: number | string }[] = await sql`
+    SELECT id, tracking_comment_id FROM workflow_runs r
+     WHERE workflow_name = ${workflowName}
+       AND target_owner = ${target.owner}
+       AND target_repo = ${target.repo}
+       AND target_number = ${target.number}
+       AND id <> ${excludeRunId}
+       AND tracking_comment_id IS NOT NULL
+       AND status NOT IN ('queued', 'running')
+       AND (
+         parent_run_id IS NULL
+         OR NOT EXISTS (
+           SELECT 1 FROM workflow_runs p
+            WHERE p.id = r.parent_run_id
+              AND p.status IN ('queued', 'running')
+         )
+       )
+  `;
+  return rows.map((r) => ({
+    runId: r.id,
+    trackingCommentId: coerceCommentId(r.tracking_comment_id),
+  }));
+}
+
+/**
+ * Null out a run's `tracking_comment_id` after its tracking comment has been
+ * deleted from GitHub by the re-run cleanup. Without this, the row keeps a
+ * dangling id and `findPriorTrackingComments` would return it on every future
+ * re-run, re-attempting a 404 delete each time.
+ */
+export async function clearTrackingCommentId(runId: string, sql: SQL = requireDb()): Promise<void> {
+  await sql`
+    UPDATE workflow_runs SET tracking_comment_id = NULL WHERE id = ${runId}
+  `;
+}
+
+/**
  * In-flight rows owned by a specific (kind, id): used by the disconnect
  * cleanup path to find workflow_runs that need a user-facing failure
  * notification when their owning daemon dies abruptly.

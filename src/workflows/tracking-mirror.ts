@@ -4,7 +4,9 @@ import type pino from "pino";
 import { safePostToGitHub } from "../utils/github-output-guard";
 import type { WorkflowName } from "./registry";
 import {
+  clearTrackingCommentId,
   findById,
+  findPriorTrackingComments,
   listChildrenByParent,
   mergeState,
   tryReserveTrackingCommentId,
@@ -121,6 +123,12 @@ export async function setState(
   let resultRow: WorkflowRunRow;
   if (row.tracking_comment_id === null) {
     resultRow = await createOrAdoptTrackingComment(deps, row, body, humanMessage);
+    // First touch for this run: AFTER the new comment is safely created and
+    // reserved, delete this workflow's stale tracking comment(s) from earlier
+    // runs so re-running a workflow does not pile up comments. Ordered after
+    // create so a create failure never leaves the thread with no comment.
+    // Best-effort: never blocks.
+    await cleanupPriorTrackingComments(deps, resultRow);
   } else {
     const commentId = row.tracking_comment_id;
     await safePostToGitHub({
@@ -158,6 +166,69 @@ export async function setState(
   }
 
   return resultRow;
+}
+
+/**
+ * Re-run hygiene: delete the tracking comment(s) left by earlier terminal
+ * runs of the same (workflow, target) so re-running a workflow replaces its
+ * output comment instead of piling a new one alongside the stale ones.
+ *
+ * Best-effort end to end: a DB error or a delete error is logged and
+ * swallowed, it must never block the new run's own comment. A run equal to
+ * the current run's `parent_run_id` is skipped so a child run can never
+ * delete a live composite parent's comment (defence-in-depth, the
+ * same-`workflow_name` scoping in `findPriorTrackingComments` already
+ * excludes the parent).
+ */
+async function cleanupPriorTrackingComments(
+  deps: TrackingMirrorDeps,
+  row: WorkflowRunRow,
+): Promise<void> {
+  const { octokit, logger } = deps;
+  try {
+    const priors = await findPriorTrackingComments(
+      row.workflow_name,
+      { owner: row.target_owner, repo: row.target_repo, number: row.target_number },
+      row.id,
+    );
+    for (const prior of priors) {
+      if (prior.runId === row.parent_run_id) continue;
+      try {
+        await octokit.rest.issues.deleteComment({
+          owner: row.target_owner,
+          repo: row.target_repo,
+          comment_id: prior.trackingCommentId,
+        });
+        // Clear the prior row's id so a future re-run does not re-list and
+        // re-attempt a 404 delete on this already-removed comment.
+        await clearTrackingCommentId(prior.runId);
+        logger.info(
+          {
+            runId: row.id,
+            priorRunId: prior.runId,
+            commentId: prior.trackingCommentId,
+            workflowName: row.workflow_name,
+          },
+          "Deleted prior-run tracking comment on workflow re-run",
+        );
+      } catch (err) {
+        logger.warn(
+          {
+            runId: row.id,
+            priorRunId: prior.runId,
+            commentId: prior.trackingCommentId,
+            err: err instanceof Error ? err.message : String(err),
+          },
+          "Failed to delete prior-run tracking comment, continuing",
+        );
+      }
+    }
+  } catch (err) {
+    logger.warn(
+      { runId: row.id, err: err instanceof Error ? err.message : String(err) },
+      "Prior tracking-comment lookup failed, skipping re-run cleanup",
+    );
+  }
 }
 
 /**
