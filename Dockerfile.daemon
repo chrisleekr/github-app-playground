@@ -81,7 +81,7 @@ ARG KUBECTL_VERSION=v1.36.0
 # renovate: datasource=github-releases depName=helm/helm
 ARG HELM_VERSION=v4.1.4
 # renovate: datasource=github-releases depName=hashicorp/terraform
-ARG TERRAFORM_VERSION=1.14.9
+ARG TERRAFORM_VERSION=1.15.2
 # renovate: datasource=github-releases depName=aws/aws-cli
 ARG AWSCLI_VERSION=2.34.32
 # renovate: datasource=github-releases depName=mikefarah/yq
@@ -95,9 +95,9 @@ ARG KUSTOMIZE_VERSION=v5.8.1
 # renovate: datasource=github-releases depName=derailed/k9s
 ARG K9S_VERSION=v0.50.18
 # renovate: datasource=github-releases depName=stern/stern
-ARG STERN_VERSION=v1.33.1
+ARG STERN_VERSION=v1.34.0
 # renovate: datasource=github-releases depName=argoproj/argo-cd
-ARG ARGOCD_VERSION=v3.3.8
+ARG ARGOCD_VERSION=v3.4.1
 # renovate: datasource=github-releases depName=fluxcd/flux2
 ARG FLUX_VERSION=v2.8.6
 # renovate: datasource=github-releases depName=terraform-linters/tflint
@@ -107,9 +107,9 @@ ARG SHELLCHECK_VERSION=v0.11.0
 # renovate: datasource=github-releases depName=hadolint/hadolint
 ARG HADOLINT_VERSION=v2.14.0
 # renovate: datasource=golang-version depName=golang
-ARG GO_VERSION=1.26.2
+ARG GO_VERSION=1.26.3
 # renovate: datasource=pypi depName=poetry
-ARG POETRY_VERSION=2.3.4
+ARG POETRY_VERSION=2.4.1
 
 # 1. Debian apt staples + language runtimes + data clients.
 RUN apt-get update && apt-get install -y --no-install-recommends \
