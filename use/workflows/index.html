@@ -642,6 +642,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#maintainer-comments-steer-the-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Maintainer comments steer the workflow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#trigger-comment-intent-classifier" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1490,6 +1501,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#maintainer-comments-steer-the-workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Maintainer comments steer the workflow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#trigger-comment-intent-classifier" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1621,6 +1643,16 @@
 <li><strong>Tracking comments are idempotent.</strong> Every tracking comment carries a hidden <code>&lt;!-- workflow-run:{id} --&gt;</code> marker. <code>setState()</code> in <code>src/workflows/tracking-mirror.ts</code> scans for the marker before posting, adopts any pre-existing comment found (e.g. after an octokit retry that silently duplicated a <code>POST</code>, or a pod restart between create and CAS reservation), and reconciles duplicates after create, keeping a single canonical comment per run regardless of transient API failures.</li>
 <li><strong>Cost is visible.</strong> Every workflow records <code>cost_usd</code>, <code>turns</code>, and <code>wall_clock_ms</code> on the run row. The shepherding lifecycle exposes cumulative spend in the tracking comment header.</li>
 </ul>
+<h2 id="maintainer-comments-steer-the-workflow">Maintainer comments steer the workflow<a class="headerlink" href="#maintainer-comments-steer-the-workflow" title="Permanent link">&para;</a></h2>
+<p>The five structured workflows (<code>triage</code>, <code>plan</code>, <code>implement</code>, <code>review</code>, <code>resolve</code>) are comment-aware. Before each run, <code>src/workflows/discussion-digest.ts</code> distills the issue/PR comment thread into a guidance digest that the workflow prompt consumes in place of the raw thread:</p>
+<ul>
+<li><strong>Later owner comments override the body.</strong> Comments by <code>ALLOWED_OWNERS</code> authors become authoritative directives; where one conflicts with the issue/PR body, the directive wins. So you can run <code>bot:plan</code>, comment a correction, run <code>bot:plan</code> again, and the second run honours the correction (the issue body alone no longer pins the result).</li>
+<li><strong>Non-owner comments are context only.</strong> They appear in the digest labelled as untrusted discussion the agent must account for but never obey.</li>
+<li><strong>The bot's own prior output is context.</strong> A reply to the bot's earlier plan/review is interpretable because that prior output is summarised into the digest.</li>
+<li><strong>PR review-thread comments count.</strong> On a PR, inline review comments and review summary bodies feed the digest too, with their <code>path:line</code> anchors preserved.</li>
+<li><strong>No comment-count limit.</strong> A large thread is summarised via map-reduce; no comment is dropped. The step is fail-open: any LLM or fetch error falls back to body-only / raw-comment context.</li>
+</ul>
+<p>Re-running a workflow also <strong>removes that workflow's previous tracking comment</strong> before posting the new one, so the thread does not pile up stale bot output.</p>
 <h2 id="trigger-comment-intent-classifier">Trigger-comment intent classifier<a class="headerlink" href="#trigger-comment-intent-classifier" title="Permanent link">&para;</a></h2>
 <p>A comment that mentions the trigger phrase is routed through <code>src/workflows/intent-classifier.ts</code>: a single-turn Haiku call that returns <code>{ workflow, confidence, rationale }</code>.</p>
 <ul>

@@ -1078,6 +1078,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#discussion-digest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Discussion digest
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#ship" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1658,6 +1669,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#discussion-digest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Discussion digest
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#ship" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2206,6 +2228,28 @@
 </tr>
 </tbody>
 </table>
+<h2 id="discussion-digest">Discussion digest<a class="headerlink" href="#discussion-digest" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DISCUSSION_DIGEST_MODEL</code></td>
+<td><code>sonnet-4-6</code></td>
+<td>Alias resolved at runtime. Model for the LLM that distills an issue/PR comment thread into maintainer guidance (see below).</td>
+</tr>
+</tbody>
+</table>
+<p>The discussion-digest step (<code>src/workflows/discussion-digest.ts</code>) runs before each
+structured workflow: it summarises the comment thread into a guidance digest the
+workflow prompt consumes in place of the raw thread. It is fail-open (any LLM or
+parse error falls back to body-only / raw-comment context) and has no comment-count
+cap, so there is nothing else to tune.</p>
 <h2 id="ship">Ship<a class="headerlink" href="#ship" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
