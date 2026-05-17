@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 /**
  * CI guard: every `src/<path>:<line>` (or `:<start>-<end>`) citation in
- * docs/ points at a file that exists and a line range that is in bounds.
+ * docs/, plus root-level README.md, CONTRIBUTING.md and CLAUDE.md,
+ * points at a file that exists and a line range that is in bounds.
  *
  * Catches the silent-rot case where a refactor shifts line numbers but
  * the doc keeps citing the old offset. We only flag citations that
@@ -11,7 +12,7 @@
  *
  * Exit 0 on clean, 1 on any broken citation.
  */
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -22,6 +23,8 @@ import { fileURLToPath } from "node:url";
 const repoRoot =
   process.env["DOCS_CHECK_REPO_ROOT"] ?? resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DOCS_ROOT = join(repoRoot, "docs");
+// Root-level Markdown that ships outside docs/ but cites src/ all the same.
+const ROOT_DOCS = ["README.md", "CONTRIBUTING.md", "CLAUDE.md"];
 
 // Match `src/<path>.<ext>:<line>` or `:<start>-<end>`. Path may include
 // `[A-Za-z0-9_./-]`; extension is one of the source-code extensions we
@@ -51,6 +54,19 @@ function walkMarkdown(dir: string): string[] {
   return out;
 }
 
+// Markdown files in scope: everything under docs/ plus the root-level docs
+// listed in `ROOT_DOCS` that actually exist (a missing one is skipped so the
+// gate stays portable if a file is later removed).
+function collectMarkdownFiles(): string[] {
+  const out = walkMarkdown(DOCS_ROOT);
+  for (const name of ROOT_DOCS) {
+    const full = join(repoRoot, name);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant repo-root names
+    if (existsSync(full)) out.push(full);
+  }
+  return out;
+}
+
 function fileLineCount(absPath: string): number {
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- absPath is constructed from a regex-matched repo-relative path; existence is checked by caller
   const buf = readFileSync(absPath);
@@ -72,8 +88,8 @@ function fileExists(absPath: string): boolean {
 
 function check(): BrokenCitation[] {
   const broken: BrokenCitation[] = [];
-  for (const md of walkMarkdown(DOCS_ROOT)) {
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- enumerated from docs/
+  for (const md of collectMarkdownFiles()) {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- enumerated from docs/ and ROOT_DOCS
     const contents = readFileSync(md, "utf-8");
     const lines = contents.split("\n");
     for (let i = 0; i < lines.length; i++) {
@@ -138,10 +154,10 @@ function check(): BrokenCitation[] {
 function main(): void {
   const broken = check();
   if (broken.length === 0) {
-    console.log("OK: every src/<path>:<line> citation in docs/ points at an in-range location");
+    console.log("OK: every src/<path>:<line> citation points at an in-range location");
     return;
   }
-  console.error(`ERROR: ${String(broken.length)} stale src citation(s) in docs/:\n`);
+  console.error(`ERROR: ${String(broken.length)} stale src citation(s):\n`);
   for (const b of broken) {
     console.error(`  - ${b.docFile}:${String(b.docLine)} cites \`${b.citation}\`, ${b.reason}`);
   }

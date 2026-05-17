@@ -26,6 +26,8 @@ interface Layout {
   dockerfileOrch?: string;
   dockerfileDaemon?: string;
   docs?: Record<string, string>;
+  // Root-level Markdown (README.md / CONTRIBUTING.md / CLAUDE.md), keyed by filename.
+  rootDocs?: Record<string, string>;
 }
 
 function makeFixture(layout: Layout): string {
@@ -39,6 +41,9 @@ function makeFixture(layout: Layout): string {
     const abs = join(root, "docs", rel);
     mkdirSync(resolve(abs, ".."), { recursive: true });
     writeFileSync(abs, body);
+  }
+  for (const [name, body] of Object.entries(layout.rootDocs ?? {})) {
+    writeFileSync(join(root, name), body);
   }
   return root;
 }
@@ -109,6 +114,55 @@ describe("scripts/check-docs-versions.ts", () => {
     const { exitCode, stdout } = runScript(root);
     expect(exitCode).toBe(0);
     expect(stdout).toContain("OK: every Bun version reference matches");
+  });
+
+  it("scans root-level README.md and flags a stale Bun version there (issue #136)", () => {
+    const root = makeFixture({
+      toolVersion: "1.3.13",
+      rootDocs: { "README.md": "Bun 1.3.8 is required to build.\n" },
+    });
+    fixtures.push(root);
+    const { exitCode, stderr } = runScript(root);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("README.md:1");
+    expect(stderr).toContain("found `1.3.8`");
+  });
+
+  it("flags a stale Bun version in a CONTRIBUTING.md table cell (issue #136)", () => {
+    const root = makeFixture({
+      toolVersion: "1.3.13",
+      rootDocs: {
+        "CONTRIBUTING.md": "| [Bun](https://bun.sh) | ≥ 1.3.8 | Runtime |\n",
+      },
+    });
+    fixtures.push(root);
+    const { exitCode, stderr } = runScript(root);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("CONTRIBUTING.md:1");
+    expect(stderr).toContain("found `1.3.8`");
+  });
+
+  it("does not false-positive a non-Bun semver sharing a line with a Bun version (issue #136)", () => {
+    const root = makeFixture({
+      toolVersion: "1.3.13",
+      rootDocs: { "CLAUDE.md": "TypeScript 5.9.3 strict mode on Bun ≥1.3.13.\n" },
+    });
+    fixtures.push(root);
+    const { exitCode, stdout } = runScript(root);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("OK: every Bun version reference matches");
+  });
+
+  it("still flags a stale Bun pin behind an unrecognised word (issue #136)", () => {
+    const root = makeFixture({
+      toolVersion: "1.3.13",
+      rootDocs: { "README.md": "Bun is required; install version 1.3.8 first.\n" },
+    });
+    fixtures.push(root);
+    const { exitCode, stderr } = runScript(root);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("README.md:1");
+    expect(stderr).toContain("found `1.3.8`");
   });
 
   it("flags package.json `engines.bun` disagreement with the canonical pin", () => {

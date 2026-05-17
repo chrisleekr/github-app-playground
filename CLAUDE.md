@@ -106,7 +106,7 @@ Five workflow files form the pipeline; each owns one responsibility.
 | `.github/workflows/release.yml`      | `workflow_dispatch` only (manual)                         | Calls `ci.yml` → semantic-release prod → calls `docker-build.yml`                                                                                                                                                         |
 | `.github/workflows/docker-build.yml` | `workflow_call` + `workflow_dispatch`                     | Reusable image builder: matrix split-and-merge (amd64 on `ubuntu-24.04` + arm64 on `ubuntu-24.04-arm`), SLSA v1 provenance + SBOM attestations (BuildKit + Sigstore), `gh attestation verify` regression gate, Trivy scan |
 
-- **Bun version is single-sourced** via `.tool-versions` (`bun 1.3.12`). All workflows use `oven-sh/setup-bun@v2` with `bun-version-file: .tool-versions`.
+- **Bun version is single-sourced** via `.tool-versions` (`bun 1.3.13`). All workflows use `oven-sh/setup-bun@v2` with `bun-version-file: .tool-versions`.
 - **`audit:ci` (`scripts/audit-ci.ts`)** wraps `bun audit --json` to gate on severity: blocks on high+critical, warns on moderate+low, with an inline `IGNORED` GHSA allowlist (each entry must carry an `expires` date). Required because `bun audit` exits 1 on **any** finding regardless of `--audit-level`.
 - **Semantic release config** (`release.config.mjs`) is single-file with `SEMREL_CHANNEL=dev|prod` env switching: replaces the previous file-swap hack.
 - **Prod releases are manual.** Push to main only triggers `ci.yml` (sanity). Cut a release with `gh workflow run release.yml`.
@@ -153,8 +153,8 @@ Validate locally with `bun run docs:build` before pushing. If no matching doc ex
 
 **CI-enforced doc gates.** Two project-specific checks run in `.github/workflows/docs.yml` ahead of `mkdocs build --strict` (which only validates internal links and snippet targets, not prose-vs-source agreement):
 
-- Bun version strings in `docs/` are pinned to `.tool-versions` via `bun run scripts/check-docs-versions.ts` (also asserts `package.json` `engines.bun` / `packageManager` and the two `Dockerfile.*` `FROM oven/bun:<ver>` lines agree).
-- `src/<file>:<line>` citations in `docs/` are anchor-verified via `bun run scripts/check-docs-citations.ts` (file must exist; cited line / range must be in bounds).
+- Bun version strings in `docs/` **and root-level `README.md` / `CONTRIBUTING.md` / `CLAUDE.md`** are pinned to `.tool-versions` via `bun run scripts/check-docs-versions.ts` (also asserts `package.json` `engines.bun` / `packageManager` and the two `Dockerfile.*` `FROM oven/bun:<ver>` lines agree).
+- `src/<file>:<line>` citations in `docs/` **and the same three root-level files** are anchor-verified via `bun run scripts/check-docs-citations.ts` (file must exist; cited line / range must be in bounds).
 
 The `docs.yml` `pull_request:` trigger has no `paths:` filter, so these gates run on every PR, code-side bumps that invalidate doc facts (Renovate Bun bump, refactor that shifts cited line numbers) trip the build the same way doc edits do. `Deploy to GitHub Pages` is still gated on `push` / `workflow_dispatch`, so PRs validate but never publish.
 
@@ -166,14 +166,14 @@ The `docs.yml` `pull_request:` trigger has no `paths:` filter, so these gates ru
 - TypeScript 5.9.3 strict mode on Bun ≥1.3.13 + `octokit` (webhook + GraphQL/REST), `@anthropic-ai/claude-agent-sdk` (multi-turn handlers), `@anthropic-ai/bedrock-sdk` (single-turn intent classification via `src/ai/llm-client.ts`), `@modelcontextprotocol/sdk`, `pino`, `zod`. No new npm dependencies. (20260421-181205-bot-workflows)
 - PostgreSQL 17 via `Bun.sql` singleton: adds one migration (`005_workflow_runs.sql`). Valkey 8 via Bun built-in `RedisClient`, existing job queue reused unchanged. (20260421-181205-bot-workflows)
 
-- TypeScript 5.9.3 (strict mode with `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `useUnknownInCatchVariables`) on Bun ≥1.3.12 (see `package.json` `packageManager` pin). Deps: `octokit`, `@anthropic-ai/claude-agent-sdk`, `@anthropic-ai/bedrock-sdk` (Bedrock single-turn adaptor in `src/ai/llm-client.ts`), `@modelcontextprotocol/sdk`, `@kubernetes/client-node` (ephemeral-daemon Pod spawning in `src/k8s/ephemeral-daemon-spawner.ts`), `pino`, `zod`, Bun built-in `WebSocket` + `RedisClient`. `@anthropic-ai/sdk` is a transitive dep of `claude-agent-sdk`.
+- TypeScript 5.9.3 (strict mode with `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `useUnknownInCatchVariables`) on Bun ≥1.3.13 (see `package.json` `packageManager` pin). Deps: `octokit`, `@anthropic-ai/claude-agent-sdk`, `@anthropic-ai/bedrock-sdk` (Bedrock single-turn adaptor in `src/ai/llm-client.ts`), `@modelcontextprotocol/sdk`, `@kubernetes/client-node` (ephemeral-daemon Pod spawning in `src/k8s/ephemeral-daemon-spawner.ts`), `pino`, `zod`, Bun built-in `WebSocket` + `RedisClient`. `@anthropic-ai/sdk` is a transitive dep of `claude-agent-sdk`.
 - **Dispatch taxonomy (post-collapse)**: `DispatchTarget` = `daemon` (singleton, kept as a field for DB/log stability); `DispatchReason` = `persistent-daemon` | `ephemeral-daemon-triage` | `ephemeral-daemon-overflow` | `ephemeral-spawn-failed`. Canonical source: `src/shared/dispatch-types.ts`. (20260419-collapse-dispatch-to-daemon)
 - PostgreSQL 17 via `Bun.sql` singleton (`executions` + `triage_results` tables from migrations `001_initial.sql` → `004_collapse_dispatch_to_daemon.sql`); Valkey 8 (Redis-compatible) via Bun built-in `RedisClient` for the daemon job queue. Operator aggregates in `src/db/queries/dispatch-stats.ts`.
 
-- TypeScript 5.9.3 strict mode on Bun >=1.3.8 + `octokit`, `@anthropic-ai/claude-agent-sdk`, `@modelcontextprotocol/sdk`, `pino`, `zod` (all existing). New: Bun built-in `WebSocket` + `RedisClient` (zero new npm dependencies). (20260413-191249-daemon-orchestrator-core)
+- TypeScript 5.9.3 strict mode on Bun >=1.3.13 + `octokit`, `@anthropic-ai/claude-agent-sdk`, `@modelcontextprotocol/sdk`, `pino`, `zod` (all existing). New: Bun built-in `WebSocket` + `RedisClient` (zero new npm dependencies). (20260413-191249-daemon-orchestrator-core)
 - PostgreSQL 17 (pgvector-ready, existing `executions` + `daemons` tables from `001_initial.sql`) + Valkey 8 (Redis 7.2-compatible, via Bun built-in `RedisClient`) (20260413-191249-daemon-orchestrator-core)
 
-- TypeScript (strict mode) on Bun >=1.3.8 + `octokit`, `@anthropic-ai/claude-agent-sdk`, `@modelcontextprotocol/sdk`, `pino`, `zod`
+- TypeScript (strict mode) on Bun >=1.3.13 + `octokit`, `@anthropic-ai/claude-agent-sdk`, `@modelcontextprotocol/sdk`, `pino`, `zod`
 
 <!-- SPECKIT START -->
 

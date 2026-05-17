@@ -5,16 +5,23 @@
  * packageManager) and the two Dockerfiles agree, so the canonical pin is
  * authoritative across the repo.
  *
- * Detected forms in docs/**:
- *   - bare semver "1.3.13" inside a Bun context (preceding text contains
- *     the word `bun`, case-insensitive, anywhere in the same Markdown
- *     line; covers tables, prose, code fences). The `bun` requirement
- *     avoids false matches on unrelated semvers (e.g. Node 20.x, openssl pins).
+ * Scope: every Markdown file under docs/ plus the root-level README.md,
+ * CONTRIBUTING.md and CLAUDE.md. Those three are read by humans on every
+ * repo visit and by the bot on every agent run, so a stale Bun pin there
+ * is as damaging as one inside docs/.
+ *
+ * Detected forms:
+ *   - bare semver "1.3.13" inside a Bun context: the line mentions `bun`
+ *     (case-insensitive) and the semver is not immediately preceded by a
+ *     recognised non-Bun token (e.g. `TypeScript 5.9.3`, `Node 20.x`). An
+ *     unrecognised preceding word leaves the semver in scope on purpose,
+ *     so a line that names both a Bun version and another version is
+ *     handled without silently skipping an unexpected phrasing.
  *   - `oven/bun:<ver>` references.
  *
  * Exit 0 on match, 1 on any mismatch with a per-file diff on stderr.
  */
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -31,6 +38,8 @@ const DOCKERFILES = [
   join(repoRoot, "Dockerfile.daemon"),
 ];
 const DOCS_ROOT = join(repoRoot, "docs");
+// Root-level Markdown that ships outside docs/ but is just as load-bearing.
+const ROOT_DOCS = ["README.md", "CONTRIBUTING.md", "CLAUDE.md"];
 
 const SEMVER = /\d+\.\d+\.\d+/;
 
@@ -156,11 +165,58 @@ function walkMarkdown(dir: string): string[] {
   return out;
 }
 
+// Markdown files in scope: everything under docs/ plus the root-level docs
+// listed in `ROOT_DOCS` that actually exist (a missing one is skipped so the
+// gate stays portable if a file is later removed).
+function collectMarkdownFiles(): string[] {
+  const out = walkMarkdown(DOCS_ROOT);
+  for (const name of ROOT_DOCS) {
+    const full = join(repoRoot, name);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant repo-root names
+    if (existsSync(full)) out.push(full);
+  }
+  return out;
+}
+
 const OVEN_RE = /oven\/bun:(\d+\.\d+\.\d+)/g;
 const BUN_SEMVER_RE = /(?<![\w.-])(\d+\.\d+\.\d+)(?![\w.-])/g;
 
+// Tokens that own a non-Bun version on a line that also mentions Bun. A
+// semver immediately preceded by one of these is not a Bun version. This is
+// a denylist on purpose: an unknown preceding word leaves the semver in
+// scope, so the gate fails loud on an unflagged stale pin rather than
+// silently skipping a phrasing it did not anticipate.
+const NON_BUN_OWNERS = new Set([
+  "typescript",
+  "node",
+  "nodejs",
+  "postgres",
+  "postgresql",
+  "redis",
+  "valkey",
+  "openssl",
+]);
+
+// The word, if any, that immediately precedes a semver at `idx`. Only
+// version-range decoration (whitespace, `≥ ≤ > < = * ~ ^`) is skipped on the
+// way back; any other non-letter char (`|`, backtick, `(`, `:` …) is treated
+// as a hard boundary and yields "". Used to reject semvers owned by a
+// non-Bun token on a line that also mentions Bun: the line-level `/bun/i`
+// test alone is too loose for prose-dense files like CLAUDE.md where a
+// TypeScript version and a Bun version share one line.
+function precedingWord(line: string, idx: number): string {
+  let j = idx - 1;
+  while (j >= 0 && /[\s≥≤><=*~^]/.test(line[j] ?? "")) j--;
+  let word = "";
+  while (j >= 0 && /[A-Za-z]/.test(line[j] ?? "")) {
+    word = (line[j] ?? "") + word;
+    j--;
+  }
+  return word;
+}
+
 function checkDocFile(path: string, canonical: string): Mismatch[] {
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- enumerated from docs/
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- enumerated from docs/ and ROOT_DOCS
   const contents = readFileSync(path, "utf-8");
   const lines = contents.split("\n");
   const out: Mismatch[] = [];
@@ -186,6 +242,12 @@ function checkDocFile(path: string, canonical: string): Mismatch[] {
       const before = line.slice(Math.max(0, idx - 12), idx);
       // Skip the `oven/bun:<ver>` matches we already handled above.
       if (/oven\/bun:$/.test(before)) continue;
+      // Skip a semver owned by a recognised non-Bun token (e.g. `TypeScript
+      // 5.9.3`). An empty or unrecognised preceding word leaves the semver
+      // in scope: the gate must fail loud on a stale pin, not skip wording
+      // it did not anticipate.
+      const owner = precedingWord(line, idx).toLowerCase();
+      if (NON_BUN_OWNERS.has(owner)) continue;
       const found = semverMatch[1] as string;
       if (found !== canonical) {
         out.push({
@@ -205,7 +267,7 @@ function main(): void {
   const mismatches: Mismatch[] = [];
   mismatches.push(...checkPackageJson(canonical));
   for (const df of DOCKERFILES) mismatches.push(...checkDockerfile(df, canonical));
-  for (const md of walkMarkdown(DOCS_ROOT)) mismatches.push(...checkDocFile(md, canonical));
+  for (const md of collectMarkdownFiles()) mismatches.push(...checkDocFile(md, canonical));
 
   if (mismatches.length === 0) {
     console.log(
