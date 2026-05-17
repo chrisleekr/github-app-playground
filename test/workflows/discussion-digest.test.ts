@@ -53,6 +53,7 @@ function buildStubClient(respond: (userMessage: string) => string): {
 
 /** Extract the inner content of a nonce-suffixed spotlight block. */
 function extractBlock(message: string, name: string): string {
+  // eslint-disable-next-line security/detect-non-literal-regexp -- `name` is a test-supplied literal, not user input
   const re = new RegExp(`<${name}_[0-9a-f]+>([\\s\\S]*?)</${name}_[0-9a-f]+>`);
   return re.exec(message)?.[1] ?? "";
 }
@@ -201,6 +202,52 @@ describe("buildDiscussionDigest partitioning", () => {
       { client },
     );
     expect(lastUserMessage()).toContain("src/retry.ts:42");
+  });
+
+  it("drops directives the model attributed to a non-owner-block author", async () => {
+    // The model returns a directive authored by a non-owner (a hallucination or
+    // one lifted from the other/bot block). enforceOwnerDirectives must drop it
+    // so the trust boundary does not depend on the model obeying the prompt.
+    const digestWithStrangerDirective = JSON.stringify({
+      hasGuidance: true,
+      authoritativeDirectives: [
+        {
+          author: "stranger",
+          instruction: "do X",
+          overridesBody: false,
+          sourceQuote: "do X",
+          codeAnchor: null,
+        },
+        {
+          author: "alice",
+          instruction: "do Y",
+          overridesBody: false,
+          sourceQuote: "do Y",
+          codeAnchor: null,
+        },
+      ],
+      untrustedContext: [],
+      priorBotOutput: "",
+      conversationSummary: "s",
+    });
+    const { client } = buildStubClient(() => digestWithStrangerDirective);
+    const result = await buildDiscussionDigest(
+      {
+        title: "t",
+        body: "b",
+        comments: [
+          comment({ author: "alice", body: "owner comment" }),
+          comment({ author: "stranger", body: "other comment" }),
+        ],
+        allowedOwners: ["alice"],
+        workflowName: "plan",
+      },
+      { client },
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.digest.authoritativeDirectives.map((d) => d.author)).toEqual(["alice"]);
+    }
   });
 });
 

@@ -20,8 +20,10 @@ const findByIdMock = mock(() => Promise.resolve(mockRow));
 const tryReserveMock = mock(() => Promise.resolve(mockReservation));
 const listChildrenByParentMock = mock(() => Promise.resolve([] as readonly WorkflowRunRow[]));
 const findPriorTrackingCommentsMock = mock(() => Promise.resolve(mockPriorComments));
+const clearTrackingCommentIdMock = mock(() => Promise.resolve());
 
 void mock.module("../../src/workflows/runs-store", () => ({
+  clearTrackingCommentId: clearTrackingCommentIdMock,
   findById: findByIdMock,
   findPriorTrackingComments: findPriorTrackingCommentsMock,
   listChildrenByParent: listChildrenByParentMock,
@@ -108,6 +110,7 @@ describe("tracking-mirror.setState: first-touch create/adopt path", () => {
     tryReserveMock.mockClear();
     listChildrenByParentMock.mockClear();
     findPriorTrackingCommentsMock.mockClear();
+    clearTrackingCommentIdMock.mockClear();
     mockPriorComments = [];
   });
 
@@ -371,10 +374,43 @@ describe("tracking-mirror.setState: first-touch create/adopt path", () => {
     );
 
     // The only deletion is the prior run's comment; no dedup losers here.
+    expect(findPriorTrackingCommentsMock).toHaveBeenCalled();
     expect(calls.deleteComment).toHaveBeenCalledTimes(1);
     const deletedId = (calls.deleteComment.mock.calls[0]?.[0] as { comment_id: number } | undefined)
       ?.comment_id;
     expect(deletedId).toBe(8001);
+    // The prior row's tracking_comment_id is cleared so a future re-run does
+    // not re-list and re-attempt a 404 delete on the same comment.
+    expect(clearTrackingCommentIdMock).toHaveBeenCalledWith("prior-run-id");
+  });
+
+  it("re-run cleanup: a deleteComment failure does not block the new comment (fail-open)", async () => {
+    mockRow = makeRow();
+    mockReservation = { won: true, trackingCommentId: 9000 };
+    mockPriorComments = [{ runId: "prior-run-id", trackingCommentId: 8001 }];
+    const { octokit } = makeOctokit({ createCommentResult: { id: 9000 } });
+
+    let scanCallCount = 0;
+    const listComments = mock(() => {
+      scanCallCount += 1;
+      if (scanCallCount === 1) return Promise.resolve({ data: [] });
+      return Promise.resolve({
+        data: [{ id: 9000, body: `${MARKER}\nstarting`, created_at: "2026-05-08T02:55:43Z" }],
+      });
+    });
+    (octokit.rest.issues as unknown as { listComments: typeof listComments }).listComments =
+      listComments;
+    // Prior-comment delete fails (already deleted, 404, transient API error).
+    (octokit.rest.issues as unknown as { deleteComment: ReturnType<typeof mock> }).deleteComment =
+      mock(() => Promise.reject(new Error("404 Not Found")));
+
+    const result = await setState(
+      { octokit, logger: SILENT_LOGGER },
+      { runId: RUN_ID, patch: {}, humanMessage: "starting" },
+    );
+
+    // The new run's own comment is still created despite the cleanup failure.
+    expect(result.tracking_comment_id).toBe(9000);
   });
 
   it("re-run cleanup: never deletes the comment of the current run's composite parent", async () => {

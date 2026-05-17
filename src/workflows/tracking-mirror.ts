@@ -4,6 +4,7 @@ import type pino from "pino";
 import { safePostToGitHub } from "../utils/github-output-guard";
 import type { WorkflowName } from "./registry";
 import {
+  clearTrackingCommentId,
   findById,
   findPriorTrackingComments,
   listChildrenByParent,
@@ -121,11 +122,13 @@ export async function setState(
 
   let resultRow: WorkflowRunRow;
   if (row.tracking_comment_id === null) {
-    // First touch for this run: delete this workflow's stale tracking
-    // comment(s) from earlier runs so re-running a workflow does not pile
-    // up comments. Best-effort, never blocks the new comment.
-    await cleanupPriorTrackingComments(deps, row);
     resultRow = await createOrAdoptTrackingComment(deps, row, body, humanMessage);
+    // First touch for this run: AFTER the new comment is safely created and
+    // reserved, delete this workflow's stale tracking comment(s) from earlier
+    // runs so re-running a workflow does not pile up comments. Ordered after
+    // create so a create failure never leaves the thread with no comment.
+    // Best-effort: never blocks.
+    await cleanupPriorTrackingComments(deps, resultRow);
   } else {
     const commentId = row.tracking_comment_id;
     await safePostToGitHub({
@@ -196,6 +199,9 @@ async function cleanupPriorTrackingComments(
           repo: row.target_repo,
           comment_id: prior.trackingCommentId,
         });
+        // Clear the prior row's id so a future re-run does not re-list and
+        // re-attempt a 404 delete on this already-removed comment.
+        await clearTrackingCommentId(prior.runId);
         logger.info(
           {
             runId: row.id,

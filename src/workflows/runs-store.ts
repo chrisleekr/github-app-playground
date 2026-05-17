@@ -393,6 +393,18 @@ export async function findPriorTrackingComments(
 }
 
 /**
+ * Null out a run's `tracking_comment_id` after its tracking comment has been
+ * deleted from GitHub by the re-run cleanup. Without this, the row keeps a
+ * dangling id and `findPriorTrackingComments` would return it on every future
+ * re-run, re-attempting a 404 delete each time.
+ */
+export async function clearTrackingCommentId(runId: string, sql: SQL = requireDb()): Promise<void> {
+  await sql`
+    UPDATE workflow_runs SET tracking_comment_id = NULL WHERE id = ${runId}
+  `;
+}
+
+/**
  * In-flight rows owned by a specific (kind, id): used by the disconnect
  * cleanup path to find workflow_runs that need a user-facing failure
  * notification when their owning daemon dies abruptly.
