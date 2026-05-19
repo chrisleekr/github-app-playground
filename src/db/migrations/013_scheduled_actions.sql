@@ -52,6 +52,12 @@ CREATE TABLE scheduled_action_state (
 CREATE UNIQUE INDEX idx_scheduled_action_state_identity
     ON scheduled_action_state (installation_id, owner, repo, action_name);
 
+-- The terminal-path lock release (clearInFlightByJobId) updates WHERE
+-- in_flight_job_id = $1. Partial index keeps that lookup off a full scan.
+CREATE INDEX idx_scheduled_action_state_in_flight_job_id
+    ON scheduled_action_state (in_flight_job_id)
+    WHERE in_flight_job_id IS NOT NULL;
+
 -- Touch updated_at on any row change. Same trigger pattern as
 -- chat_proposals (migration 010) and workflow_runs (migration 005).
 CREATE OR REPLACE FUNCTION scheduled_action_state_bump_updated_at() RETURNS TRIGGER AS $$

@@ -79,6 +79,12 @@ export const promptRefSchema = z.preprocess(
   (raw) => {
     if (raw === null || typeof raw !== "object") return raw;
     const obj = raw as Record<string, unknown>;
+    // `inline` and `ref` are mutually exclusive: a doc carrying both is
+    // ambiguous. Return it untagged so the discriminated union rejects it
+    // rather than silently coercing to `inline`.
+    if (typeof obj["inline"] === "string" && typeof obj["ref"] === "string") {
+      return raw;
+    }
     if (typeof obj["inline"] === "string") {
       return { form: "inline", text: obj["inline"] };
     }
@@ -98,9 +104,11 @@ export const promptRefSchema = z.preprocess(
     return raw;
   },
   z.discriminatedUnion("form", [
-    z.object({ form: z.literal("inline"), text: z.string().min(1).max(50_000) }),
-    z.object({ form: z.literal("file"), ref: safeRepoPath, repo: repoSlug.optional() }),
-    z.object({
+    // `strictObject` rejects unknown keys, so a misspelled prompt field
+    // fails the file loudly instead of being silently stripped.
+    z.strictObject({ form: z.literal("inline"), text: z.string().min(1).max(50_000) }),
+    z.strictObject({ form: z.literal("file"), ref: safeRepoPath, repo: repoSlug.optional() }),
+    z.strictObject({
       form: z.literal("folder"),
       ref: safeRepoPath,
       entrypoint: safeRepoPath,
@@ -110,8 +118,8 @@ export const promptRefSchema = z.preprocess(
 );
 export type PromptRef = z.infer<typeof promptRefSchema>;
 
-/** A single scheduled action. */
-export const scheduledActionSchema = z.object({
+/** A single scheduled action. `strictObject` rejects unknown keys. */
+export const scheduledActionSchema = z.strictObject({
   name: z.string().regex(/^[a-z0-9-]{1,64}$/, "name must be 1-64 chars of [a-z0-9-]"),
   cron: z.string().min(1),
   /** Optional per-action override of `config.timezone`. */
@@ -132,9 +140,9 @@ export type ScheduledAction = z.infer<typeof scheduledActionSchema>;
 
 /** The whole `.github-app.yaml` document. */
 export const githubAppConfigSchema = z
-  .object({
+  .strictObject({
     version: z.literal(1),
-    config: z.object({ timezone: ianaTimezone.default("UTC") }).default({ timezone: "UTC" }),
+    config: z.strictObject({ timezone: ianaTimezone.default("UTC") }).default({ timezone: "UTC" }),
     scheduled_actions: z.array(scheduledActionSchema).max(50).default([]),
   })
   .superRefine((doc, ctx) => {

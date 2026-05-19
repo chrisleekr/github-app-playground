@@ -43,6 +43,11 @@ interface CacheEntry {
 // saves a body re-parse, not correctness.
 const etagCache = new Map<string, CacheEntry>();
 
+// Bound the cache so a long-lived server with churning installations cannot
+// grow it without limit. Map preserves insertion order, so evicting the
+// first key is a simple FIFO. One entry per (owner, repo), 1000 is ample.
+const MAX_ETAG_CACHE_ENTRIES = 1_000;
+
 function statusOf(err: unknown): number | undefined {
   return typeof err === "object" && err !== null && "status" in err
     ? (err as { status?: number }).status
@@ -106,6 +111,10 @@ export async function fetchRepoConfig(
   const value: FetchedRepoConfig = { config: result.data, sha: data.sha };
   const etag = res.headers.etag;
   if (typeof etag === "string" && etag.length > 0) {
+    if (!etagCache.has(cacheKey) && etagCache.size >= MAX_ETAG_CACHE_ENTRIES) {
+      const oldest = etagCache.keys().next().value;
+      if (oldest !== undefined) etagCache.delete(oldest);
+    }
     etagCache.set(cacheKey, { etag, value });
   }
   return value;

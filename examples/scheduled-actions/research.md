@@ -48,7 +48,7 @@ You have a limited turn budget. Do NOT read every file.
 
 Run:
 
-```
+```bash
 gh issue list --label research --state all --limit 100 --json title,state,labels,body
 ```
 
@@ -109,7 +109,7 @@ Common Mermaid pitfalls (GitHub renderer + `mmdc`):
 
 First, create the labels (idempotent with `--force`):
 
-```
+```bash
 gh label create research --description "Automated research finding" --color 0e8a16 --force
 gh label create "area: <focus-area>" --description "Focus area" --color 1d76db --force
 ```
@@ -132,7 +132,7 @@ contain, in this order:
 
 Then create the issue EXACTLY ONCE:
 
-```
+```bash
 gh issue create \
   --title "<type>(<focus-area>): <summary>" \
   --label "research,area: <focus-area>" \

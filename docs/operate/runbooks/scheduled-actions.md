@@ -20,7 +20,7 @@ that action in the repo's `.github-app.yaml`.
 
 ## Force a run
 
-```
+```bash
 curl -X POST https://<bot-host>/api/scheduler/run \
   -H "Authorization: Bearer $DAEMON_AUTH_TOKEN" \
   -d '{"owner":"<owner>","repo":"<repo>","action":"<name>"}'

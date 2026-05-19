@@ -126,10 +126,14 @@ export async function executeScheduledAction(
       ...(input.autoMerge ? { enableMergeReadiness: true } : {}),
     });
 
+    // A per-action `allowed_tools` is authoritative: it is NOT widened with
+    // the read-only github_state set, so an action declaring a narrow
+    // allowlist keeps least privilege. github_state is added only to the
+    // implicit default set. `merge_readiness` is provisioned whenever
+    // auto-merge is effective, the documented contract for `auto_merge: true`.
+    const baseTools = input.allowedTools ?? [...DEFAULT_ALLOWED_TOOLS, ...GITHUB_STATE_TOOLS];
     const allowedTools = [
-      ...(input.allowedTools ?? DEFAULT_ALLOWED_TOOLS),
-      ...GITHUB_STATE_TOOLS,
-      ...(input.autoMerge ? [MERGE_READINESS_TOOL] : []),
+      ...new Set([...baseTools, ...(input.autoMerge ? [MERGE_READINESS_TOOL] : [])]),
     ];
 
     // Per-action timeout fires via a combined signal; `executeAgent` also

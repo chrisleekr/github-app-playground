@@ -122,7 +122,7 @@ already extend to that owner.
 
 Operators can force one action to run immediately, bypassing the cron check:
 
-```
+```bash
 curl -X POST https://<bot-host>/api/scheduler/run \
   -H "Authorization: Bearer $DAEMON_AUTH_TOKEN" \
   -H "Content-Type: application/json" \
