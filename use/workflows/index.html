@@ -868,6 +868,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="remember/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    bot:remember
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1660,7 +1688,7 @@
 
 
 <h1 id="workflows">Workflows<a class="headerlink" href="#workflows" title="Permanent link">&para;</a></h1>
-<p>Six workflows are registered today (<code>src/workflows/registry.ts</code>). Each has a single label, a single comment-mention verb, and produces one Markdown artifact that becomes the body of the tracking comment.</p>
+<p>Seven workflows are registered today (<code>src/workflows/registry.ts</code>). Each has a single label, a single comment-mention verb, and produces one Markdown artifact that becomes the body of the tracking comment.</p>
 <table>
 <thead>
 <tr>
@@ -1712,6 +1740,13 @@
 <td><code>bot:ship</code></td>
 <td>PR comment, label, or natural-language mention</td>
 <td>Shepherds an open PR to merge-ready: probe → fix → reply → wait, until clean</td>
+<td>tracking comment</td>
+</tr>
+<tr>
+<td><a href="remember/"><code>remember</code></a></td>
+<td><code>bot:remember</code></td>
+<td>Issue or PR (any comment)</td>
+<td>Captures a maintainer review-policy directive into <code>review_learnings</code> for future reviews</td>
 <td>tracking comment</td>
 </tr>
 </tbody>

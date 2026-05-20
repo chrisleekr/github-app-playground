@@ -747,6 +747,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/remember/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    bot:remember
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -868,6 +896,45 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="When a learning gets created">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#path-1-autonomous-capture-in-resolve" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Path 1: autonomous capture in resolve
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#path-2-autonomous-capture-in-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Path 2: autonomous capture in review
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#path-3-explicit-chrisleekr-bot-remember-issue-160-option-a" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Path 3: explicit @chrisleekr-bot remember (issue #160 Option A)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1596,6 +1663,45 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="When a learning gets created">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#path-1-autonomous-capture-in-resolve" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Path 1: autonomous capture in resolve
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#path-2-autonomous-capture-in-review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Path 2: autonomous capture in review
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#path-3-explicit-chrisleekr-bot-remember-issue-160-option-a" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Path 3: explicit @chrisleekr-bot remember (issue #160 Option A)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1751,23 +1857,52 @@ in <code>src/db/migrations/014_review_learnings.sql</code>:</p>
 so a multi-tenant deployment cannot accumulate cross-owner contamination via
 agent-initiated saves.</p>
 <h2 id="when-a-learning-gets-created">When a learning gets created<a class="headerlink" href="#when-a-learning-gets-created" title="Permanent link">&para;</a></h2>
-<p><code>v1</code> is <strong>agent-initiated only</strong>: the <code>review</code> and <code>resolve</code> workflow prompts
-expose three MCP tools on the existing <code>repo_memory</code> server.</p>
+<p>Three capture paths exist today; the <code>review</code> and <code>resolve</code> workflow
+prompts expose three MCP tools on the existing <code>repo_memory</code> server that
+all three paths share:</p>
 <ul>
 <li><code>mcp__repo_memory__save_review_learning({ directive, rationale, file_glob, scope, source_pr, source_thread, source_author })</code></li>
 <li><code>mcp__repo_memory__delete_review_learning({ id })</code></li>
-<li><code>mcp__repo_memory__get_review_learnings()</code>: returns the same set already
-  rendered into the prompt; useful when the agent needs the IDs to call
+<li><code>mcp__repo_memory__get_review_learnings()</code>: returns the full applicable
+  set for this run, including any rows the prompt's 24KB byte budget
+  omitted from the <code>&lt;review_learnings_…&gt;</code> block (the truncation marker
+  points here as its escape hatch). Useful for dedup before
+  <code>save_review_learning</code>, and for fetching IDs before
   <code>delete_review_learning</code>.</li>
 </ul>
-<p>The recommended trigger inside the <code>resolve</code> workflow is: when a maintainer
-pushes back on an inline finding with a clear "this is intentional because…"
-rationale and the agent's reply classifies the finding as <code>Invalid</code>, the
-agent saves a learning capturing the rationale, the file scope, and the
-source PR. The next <code>review</code> run on the same repo (or any repo under the
-same owner, if <code>scope: global</code>) sees the directive as policy.</p>
-<p>There is <strong>no extraction LLM</strong>: capture is the agent's responsibility. There
-is also no <code>@chrisleekr-bot remember &lt;…&gt;</code> command; that is a follow-up.</p>
+<h3 id="path-1-autonomous-capture-in-resolve">Path 1: autonomous capture in <code>resolve</code><a class="headerlink" href="#path-1-autonomous-capture-in-resolve" title="Permanent link">&para;</a></h3>
+<p>When a maintainer pushes back on an inline finding with a clear "this is
+intentional because…" rationale and the resolve agent's reply classifies
+the finding as <code>Invalid</code>, the agent decides autonomously whether the
+rationale represents durable repo policy. If yes, it calls
+<code>save_review_learning</code> with the directive, the maintainer's rationale,
+the file glob, and full provenance. No propose step, no confirmation.</p>
+<h3 id="path-2-autonomous-capture-in-review">Path 2: autonomous capture in <code>review</code><a class="headerlink" href="#path-2-autonomous-capture-in-review" title="Permanent link">&para;</a></h3>
+<p>When the discussion digest's maintainer-authoritative directives section
+contains a rule the bot would otherwise have flagged AND that rule is
+not already in the <code>&lt;review_learnings_…&gt;</code> block, the review agent
+captures the digest's directive verbatim. Same autonomous decision rule
+as the resolve path; same MCP save.</p>
+<h3 id="path-3-explicit-chrisleekr-bot-remember-issue-160-option-a">Path 3: explicit <code>@chrisleekr-bot remember</code> (issue #160 Option A)<a class="headerlink" href="#path-3-explicit-chrisleekr-bot-remember-issue-160-option-a" title="Permanent link">&para;</a></h3>
+<p>The dedicated <a href="../workflows/remember/"><code>bot:remember</code></a> workflow handles
+explicit directive capture from any comment surface: issue comments, PR
+comments, and PR review comments. Two trigger forms:</p>
+<ul>
+<li><strong>Inline:</strong> <code>@chrisleekr-bot remember: do not flag fixture duplication
+in test/**/*.test.ts</code></li>
+<li><strong>Referential:</strong> <code>@chrisleekr-bot remember this</code>, the agent walks the
+  discussion digest to locate the upstream maintainer policy statement
+  the trigger refers to.</li>
+</ul>
+<p>The handler runs a focused agent session with a narrowed tool surface
+(<code>save_review_learning</code>, <code>get_review_learnings</code>,
+<code>update_claude_comment</code> only, no Bash, no Edit, no code mutation).
+Dedup against existing entries happens before the save. The tracking
+comment is the audit log: directive, scope, rationale, provenance, and
+the outcome (<code>saved as &lt;id&gt;</code> / <code>deduped against &lt;existing_id&gt;</code> /
+<code>refused (reason)</code>).</p>
+<p>The next <code>review</code> or <code>resolve</code> run on the same repo (or any repo under
+the same owner, when <code>scope: 'global'</code>) sees the directive as policy.</p>
 <h2 id="how-a-learning-is-surfaced-in-the-prompt">How a learning is surfaced in the prompt<a class="headerlink" href="#how-a-learning-is-surfaced-in-the-prompt" title="Permanent link">&para;</a></h2>
 <p>Each <code>review</code> / <code>resolve</code> run filters the loaded set down to directives that
 apply to the PR's changed files (<code>file_glob</code> matches via <code>picomatch</code>, or
