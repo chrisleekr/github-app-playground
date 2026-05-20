@@ -9,7 +9,7 @@ Captures a maintainer-authored review-policy directive and persists it to
 | Mention         | `@chrisleekr-bot remember: do not flag fixture duplication in test/**/*.test.ts` · `@chrisleekr-bot remember this` · `@chrisleekr-bot remember the rule above`                   |
 | Accepted target | Issue OR pull request                                                                                                                                                            |
 | Requires prior  | _none_                                                                                                                                                                           |
-| Artifact        | `$BOT_ARTIFACT_DIR/REMEMBER.md` (sibling temp dir, never committed)                                                                                                              |
+| Artifact        | _none_, the tracking comment IS the audit log (no sibling file; the agent has no `Write` tool)                                                                                   |
 | Side effects    | One row inserted into the `review_learnings` table via the `save_review_learning` MCP tool. No code edits, no commits, no review-thread changes. Tracking comment carries audit. |
 | Source          | `src/workflows/handlers/remember.ts`                                                                                                                                             |
 
