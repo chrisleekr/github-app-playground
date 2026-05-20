@@ -32,13 +32,13 @@ the intent classifier here.
 
 **Inline**, the directive sits in the trigger comment:
 
-```
+```text
 @chrisleekr-bot remember: do not flag fixture duplication in test/**/*.test.ts
 ```
 
 **Referential**, the directive lives upstream in the thread:
 
-```
+```text
 > [earlier maintainer comment]
 > We keep these per-file rather than centralising; the closure needs
 > the literal at module-evaluation time.

@@ -10,7 +10,7 @@ Seven workflows are registered today (`src/workflows/registry.ts`). Each has a s
 | [`review`](review.md)       | `bot:review`    | PR label or comment                            | Reads the diff in full, posts findings as inline comments                                | `REVIEW.md`      |
 | [`resolve`](resolve.md)     | `bot:resolve`   | PR label or comment                            | Fixes failing CI, replies to review threads, pushes new commits                          | `RESOLVE.md`     |
 | [`ship`](ship.md)           | `bot:ship`      | PR comment, label, or natural-language mention | Shepherds an open PR to merge-ready: probe → fix → reply → wait, until clean             | tracking comment |
-| [`remember`](remember.md)   | `bot:remember`  | Issue or PR (any comment)                      | Captures a maintainer review-policy directive into `review_learnings` for future reviews | `REMEMBER.md`    |
+| [`remember`](remember.md)   | `bot:remember`  | Issue or PR (any comment)                      | Captures a maintainer review-policy directive into `review_learnings` for future reviews | tracking comment |
 
 ## How they relate
 
