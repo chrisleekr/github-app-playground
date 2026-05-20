@@ -221,6 +221,19 @@ export interface RunPipelineOverrides {
    * inadvertently suppress findings or persist review-policy directives.
    */
   enableReviewLearnings?: boolean;
+  /**
+   * When `enableReviewLearnings` is true, the pipeline filters
+   * `ctx.reviewLearnings` down to the PR's changed-file matches before
+   * forwarding into both the prompt block and the MCP env. That's the right
+   * default for review / resolve where the agent only acts on directives
+   * applicable to the diff. The `remember` workflow needs the unfiltered
+   * universe so its dedup pre-check (`get_review_learnings`) doesn't miss
+   * directives sitting outside the current PR's changed files (or every
+   * glob-scoped directive on issue-context invocations). Set to `true` to
+   * skip the applicability filter; the MCP tool then enumerates the
+   * orchestrator's full pre-loaded set.
+   */
+  unfilteredReviewLearnings?: boolean;
 }
 
 /**
@@ -309,7 +322,10 @@ export async function runPipeline(
       // erase the property entirely so downstream `!== undefined` checks
       // remain accurate.
       delete enrichedCtx.reviewLearnings;
-    } else if (enrichedCtx.reviewLearnings !== undefined) {
+    } else if (
+      enrichedCtx.reviewLearnings !== undefined &&
+      overrides.unfilteredReviewLearnings !== true
+    ) {
       // Narrow the orchestrator-loaded universe to directives applicable to
       // this PR's changed files BEFORE downstream consumers see it. Without
       // this, the prompt block (glob-filtered + byte-capped) and the MCP
@@ -318,6 +334,10 @@ export async function runPipeline(
       // would return "every active directive (including the omitted ones)"
       // but the tool also returned glob-non-matching rows. Filtering here
       // makes both surfaces enumerate the same applicable universe.
+      //
+      // The `remember` workflow opts out via `unfilteredReviewLearnings`:
+      // its dedup pre-check needs the full set, including directives
+      // outside the current PR's changed files.
       enrichedCtx.reviewLearnings = pickApplicableLearnings(
         enrichedCtx.reviewLearnings,
         enrichedCtx.isPR ? data.changedFiles.map((f) => f.filename) : [],
