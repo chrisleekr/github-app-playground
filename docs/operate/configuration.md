@@ -188,7 +188,7 @@ before committing:
 
 ## Prompt cache layout
 
-Selects the system/user prompt split the agent executor passes to the Claude Agent SDK. See `src/config.ts:562` for the Zod definition and `src/core/executor.ts:208` for the runtime guard.
+Selects the system/user prompt split the agent executor passes to the Claude Agent SDK. See `src/config.ts:568#promptCacheLayout` for the Zod definition and `src/core/executor.ts:208` for the runtime guard.
 
 | Variable              | Default  | Notes                                                                                                        |
 | --------------------- | -------- | ------------------------------------------------------------------------------------------------------------ |
@@ -196,9 +196,9 @@ Selects the system/user prompt split the agent executor passes to the Claude Age
 
 **Why this exists.** The SDK's default systemPrompt (`{ type: "preset", preset: "claude_code" }`) embeds dynamic sections (cwd, platform, shell, OS) directly in the system-prompt prefix. Because each delivery clones to a unique `cwd` under `CLONE_BASE_DIR`, the system-prompt prefix is unique per job and the Anthropic prompt cache misses on every invocation, paying the 1-hour TTL `ephemeral_1h_input_tokens` cache-write surcharge (2× base price) with zero compensating reads.
 
-**`legacy` (default).** Single user-role string built by `buildPrompt()` in `src/core/prompt-builder.ts:126`. SystemPrompt is the unmodified `claude_code` preset. Backwards-compatible; safe rollback target.
+**`legacy` (default).** Single user-role string built by `buildPrompt()` in `src/core/prompt-builder.ts:155#buildPrompt`. SystemPrompt is the unmodified `claude_code` preset. Backwards-compatible; safe rollback target.
 
-**`cacheable`.** Static scaffolding (`security_directive`, `freshness_directive`, workflow steps, commit/CAPABILITIES boilerplate) is lifted into `systemPrompt.append`, and `excludeDynamicSections: true` strips cwd / platform / shell / OS from the preset. Built by `buildPromptParts()` in `src/core/prompt-builder.ts:402`. The user-role message keeps only the per-call dynamic blocks (`formatted_context`, `untrusted_*` with per-call nonce, per-call metadata). The append is byte-identical across jobs of the same shape (PR vs issue), so the system-prompt prefix becomes a stable cache key.
+**`cacheable`.** Static scaffolding (`security_directive`, `freshness_directive`, workflow steps, commit/CAPABILITIES boilerplate) is lifted into `systemPrompt.append`, and `excludeDynamicSections: true` strips cwd / platform / shell / OS from the preset. Built by `buildPromptParts()` in `src/core/prompt-builder.ts:448#buildPromptParts`. The user-role message keeps only the per-call dynamic blocks (`formatted_context`, `untrusted_*` with per-call nonce, per-call metadata). The append is byte-identical across jobs of the same shape (PR vs issue), so the system-prompt prefix becomes a stable cache key.
 
 **Rollout.** Flip the variable to `cacheable`, then verify cache hits by tailing the executor completion log for non-zero `cacheReadInputTokens`:
 
