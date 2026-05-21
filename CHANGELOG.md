@@ -1,3 +1,23 @@
+# [1.13.0](https://github.com/chrisleekr/github-app-playground/compare/v1.12.2...v1.13.0) (2026-05-21)
+
+
+### Bug Fixes
+
+* **deps:** update dependency @anthropic-ai/bedrock-sdk to ^0.29.0 ([#147](https://github.com/chrisleekr/github-app-playground/issues/147)) ([eb95c64](https://github.com/chrisleekr/github-app-playground/commit/eb95c64b366fc4484be3e7afd2b26b2f03bdc7da))
+* **deps:** update dependency @anthropic-ai/claude-agent-sdk to ^0.3.0 ([#154](https://github.com/chrisleekr/github-app-playground/issues/154)) ([15add8e](https://github.com/chrisleekr/github-app-playground/commit/15add8ea4d88c2cb0e9d4dd5eef6ac7284d22bb9))
+* **docs:** anchor-verify src citations to catch silent line-shift rot ([#163](https://github.com/chrisleekr/github-app-playground/issues/163)) ([5a67863](https://github.com/chrisleekr/github-app-playground/commit/5a6786306bf5f50671d6f919843f48bf9fb1e5da))
+* **webhook:** subscribe issue_comment.edited/.deleted for cache write-through ([#131](https://github.com/chrisleekr/github-app-playground/issues/131)) ([c84361d](https://github.com/chrisleekr/github-app-playground/commit/c84361d50b09b5df55d0e0abda88f3e808e57a9f))
+* **webhook:** write-through target_cache on issues/pull_request events ([#130](https://github.com/chrisleekr/github-app-playground/issues/130)) ([#132](https://github.com/chrisleekr/github-app-playground/issues/132)) ([8b79c10](https://github.com/chrisleekr/github-app-playground/commit/8b79c10a98a88b5f18420c3d855d708af504d495))
+
+
+### Features
+
+* **prompt:** opt-in cacheable system/user prompt split ([#135](https://github.com/chrisleekr/github-app-playground/issues/135)) ([bb80ca7](https://github.com/chrisleekr/github-app-playground/commit/bb80ca78f34244b4b5288ebb25a33526133b35aa))
+* **review-learnings:** explicit [@bot](https://github.com/bot) remember + autonomous capture ([#160](https://github.com/chrisleekr/github-app-playground/issues/160)) ([#162](https://github.com/chrisleekr/github-app-playground/issues/162)) ([1c4c53a](https://github.com/chrisleekr/github-app-playground/commit/1c4c53a2dbef62592accb36b1c450c3305d5f384))
+* **review-learnings:** persistent per-repo review-policy directives ([#161](https://github.com/chrisleekr/github-app-playground/issues/161)) ([ba50972](https://github.com/chrisleekr/github-app-playground/commit/ba50972b20729eb534636dd5e5711dce460eaf66))
+* **scheduler:** scheduled actions via .github-app.yaml ([#159](https://github.com/chrisleekr/github-app-playground/issues/159)) ([142a5bc](https://github.com/chrisleekr/github-app-playground/commit/142a5bc2472bcfd34447990fb14f333bf1eab1fb))
+* **workflows:** comment-aware structured workflows via LLM discussion digest ([#148](https://github.com/chrisleekr/github-app-playground/issues/148)) ([7a6b315](https://github.com/chrisleekr/github-app-playground/commit/7a6b31558850f5bf85800dd9143c862fbb399fb1))
+
 ## [1.12.2](https://github.com/chrisleekr/github-app-playground/compare/v1.12.1...v1.12.2) (2026-05-10)
 
 
