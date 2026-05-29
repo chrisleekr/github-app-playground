@@ -19,7 +19,7 @@ import { App, Octokit } from "octokit";
 import { config } from "./config";
 import { closeDb, getDb } from "./db";
 import { runMigrations } from "./db/migrate";
-import { logger } from "./logger";
+import { installFatalHandlers, logger } from "./logger";
 import { recoverStaleExecutions } from "./orchestrator/history";
 import { getInstanceId } from "./orchestrator/instance-id";
 import { startInstanceHeartbeat, stopInstanceHeartbeat } from "./orchestrator/instance-liveness";
@@ -677,6 +677,10 @@ function shutdown(signal: string): void {
     process.exit(1);
   }, 290_000); // 10s below K8s default terminationGracePeriodSeconds (300s)
 }
+
+// Route crashes through the redacting pino chokepoint instead of the
+// runtime's default plaintext stderr stack (issue #164).
+installFatalHandlers("orchestrator");
 
 process.on("SIGTERM", () => {
   shutdown("SIGTERM");
