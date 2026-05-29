@@ -30,7 +30,7 @@ concurrency:
 
 jobs:
   research:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60 # hard 1-hour wall-clock ceiling
 
     steps:

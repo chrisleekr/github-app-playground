@@ -91,6 +91,7 @@ Five workflow files form the pipeline; each owns one responsibility.
 Notes:
 
 - **Multi-arch images.** amd64 builds on `ubuntu-24.04`, arm64 builds natively on `ubuntu-24.04-arm` (free for public repos). Both runners are explicitly pinned (not `ubuntu-latest`) so the rolling alias cannot silently flip to a new major. Manifest assembled by `docker buildx imagetools create`. GHA cache scoped per arch.
+- **Runners pinned repo-wide.** Every `runs-on:` across `.github/workflows/` targets an explicit image (`ubuntu-24.04`), never a `*-latest` rolling alias. `ci.yml` runs `bun run check:runner-pins` (`scripts/check-runner-pins.ts`), which fails the build if any `runs-on:` is on a `*-latest` alias; matrix expressions are exempt. See issue #173.
 - **Defense in depth.** Every dynamic input flowing into a `run:` block is passed via `env:` first.
 - **Prod releases are manual.** Push to main triggers only `ci.yml`. Cut a release with `gh workflow run release.yml`.
 
