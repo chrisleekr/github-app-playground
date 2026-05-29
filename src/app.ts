@@ -20,6 +20,7 @@ import { config } from "./config";
 import { closeDb, getDb } from "./db";
 import { runMigrations } from "./db/migrate";
 import { installFatalHandlers, logger } from "./logger";
+import { startFleetSnapshot, stopFleetSnapshot } from "./orchestrator/fleet-snapshot";
 import { recoverStaleExecutions } from "./orchestrator/history";
 import { getInstanceId } from "./orchestrator/instance-id";
 import { startInstanceHeartbeat, stopInstanceHeartbeat } from "./orchestrator/instance-liveness";
@@ -440,6 +441,10 @@ async function runStartupChecks(): Promise<void> {
   }
   startLivenessReaper();
 
+  // Periodic fleet-state gauge so queue depth / pool saturation are log-visible
+  // even when no webhook is arriving to trigger an on-demand read (issue #174).
+  startFleetSnapshot(config.fleetSnapshotIntervalMs);
+
   startWebSocketServer();
   logger.info({ wsPort: config.wsPort }, "Orchestrator WebSocket server started");
 
@@ -662,6 +667,7 @@ function shutdown(signal: string): void {
         }
         await stopQueueWorker();
         stopLivenessReaper();
+        stopFleetSnapshot();
         await stopWebSocketServer();
         await stopInstanceHeartbeat();
         closeValkey();

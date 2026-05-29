@@ -327,6 +327,11 @@ const configSchema = z
     heartbeatIntervalMs: z.coerce.number().int().positive().default(30_000),
     heartbeatTimeoutMs: z.coerce.number().int().positive().default(90_000),
 
+    // Periodic fleet-state gauge cadence (issue #174). 0 disables the snapshot
+    // (e.g. inline-mode local dev). Non-zero values are clamped to [10s, 300s]
+    // at the sampler so a typo cannot busy-loop or stall visibility. Default 30s.
+    fleetSnapshotIntervalMs: z.coerce.number().int().nonnegative().default(30_000),
+
     // How long an execution may sit in status="running" before the watcher treats
     // it as abandoned and marks it failed. Should generally be ≥ agentTimeoutMs
     // so a legitimate long run isn't reaped mid-flight; the built-in default
@@ -937,6 +942,7 @@ function loadConfig(): Config {
     orchestratorUrl: process.env["ORCHESTRATOR_URL"],
     heartbeatIntervalMs: process.env["HEARTBEAT_INTERVAL_MS"],
     heartbeatTimeoutMs: process.env["HEARTBEAT_TIMEOUT_MS"],
+    fleetSnapshotIntervalMs: process.env["FLEET_SNAPSHOT_INTERVAL_MS"],
     staleExecutionThresholdMs: process.env["STALE_EXECUTION_THRESHOLD_MS"],
     daemonDrainTimeoutMs: process.env["DAEMON_DRAIN_TIMEOUT_MS"],
     jobMaxRetries: process.env["JOB_MAX_RETRIES"],
