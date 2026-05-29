@@ -1135,6 +1135,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#github-api-rate-limit-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GitHub API rate-limit fields
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#ship-workflow-log-fields" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1699,6 +1710,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#github-api-rate-limit-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GitHub API rate-limit fields
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#ship-workflow-log-fields" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1958,6 +1980,35 @@
 <tr>
 <td><code>pipeline.failed</code></td>
 <td>Failure terminal line; carries <code>pipeline_wall_clock_ms</code> + the redacted <code>err</code>.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="github-api-rate-limit-fields">GitHub API rate-limit fields<a class="headerlink" href="#github-api-rate-limit-fields" title="Permanent link">&para;</a></h2>
+<p>The <code>App</code> is constructed with <code>ObservableOctokit</code> (<code>src/utils/octokit-observability.ts</code>), an <code>Octokit.plugin</code> subclass shared by <code>app.octokit</code> and every installation octokit. It logs GitHub's per-installation rate-limit headers via <code>octokit.hook.after</code> / <code>hook.error</code>. The <code>pipeline.stage</code>-style strict Zod schema (<code>GithubApiLogFieldsSchema</code>) pins the field shape.</p>
+<p>Volume policy: the per-request line is <code>debug</code> (default <code>info</code> stays quiet on a fleet issuing thousands of calls/hour); a <code>warn</code> fires only when quota runs low or a rate-limit error lands. Set <code>LOG_LEVEL=debug</code> for full per-call visibility, no separate sampling knob.</p>
+<table>
+<thead>
+<tr>
+<th><code>event</code></th>
+<th>Level</th>
+<th>Fields</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>github.api.request</code></td>
+<td>debug</td>
+<td><code>route</code>, <code>status</code>, <code>rate_limit_limit</code>, <code>rate_limit_remaining</code>, <code>rate_limit_reset_in_s</code>, <code>rate_limit_resource</code></td>
+</tr>
+<tr>
+<td><code>github.api.rate_limit_low</code></td>
+<td>warn</td>
+<td>Same fields; emitted once <code>rate_limit_remaining</code> drops below <code>RATE_LIMIT_LOW_WATER</code> (500).</td>
+</tr>
+<tr>
+<td><code>github.api.rate_limit_warning</code></td>
+<td>warn</td>
+<td><code>route</code>, <code>status</code>, <code>retry_after_s</code>; on a 429 or 403 secondary-rate-limit response.</td>
 </tr>
 </tbody>
 </table>
