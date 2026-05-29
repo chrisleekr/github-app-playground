@@ -5,7 +5,7 @@ import { config } from "../config";
 import { resolveGithubToken } from "../core/github-token";
 import { clearInFlightByJobId } from "../db/queries/scheduled-actions-store";
 import { logger } from "../logger";
-import { ObservableOctokit } from "../utils/octokit-observability";
+import { observableOctokit } from "../utils/octokit-observability";
 import { addReaction } from "../utils/reactions";
 import { findById, findInflightByOwner, type WorkflowRunRow } from "../workflows/runs-store";
 import { setState } from "../workflows/tracking-mirror";
@@ -98,7 +98,7 @@ function getOrCreateApp(): InstanceType<typeof App> {
     appId: config.appId,
     privateKey: config.privateKey,
     // Rate-limit observability on app.octokit + installation octokits (#170).
-    Octokit: ObservableOctokit,
+    Octokit: observableOctokit(),
   });
   return cachedApp;
 }

@@ -137,11 +137,20 @@ export function installRateLimitHooks(octokit: Pick<Octokit, "hook">): void {
   });
 }
 
+let observableOctokitClass: typeof Octokit | undefined;
+
 /**
  * Octokit subclass with the rate-limit hooks pre-installed. Pass as the `App`'s
  * `Octokit` option so `app.octokit` and every `getInstallationOctokit()` inherit
  * the observability hooks from a single shared class.
+ *
+ * Built lazily and memoised: importing this module must have no side effect, so
+ * a consumer (e.g. connection-handler) stays importable under a test that mocks
+ * the `octokit` module. The plugin subclass is created once on first call.
  */
-export const ObservableOctokit = Octokit.plugin((octokit) => {
-  installRateLimitHooks(octokit);
-});
+export function observableOctokit(): typeof Octokit {
+  observableOctokitClass ??= Octokit.plugin((octokit) => {
+    installRateLimitHooks(octokit);
+  });
+  return observableOctokitClass;
+}

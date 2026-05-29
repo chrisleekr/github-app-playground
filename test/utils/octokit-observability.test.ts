@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test";
 import {
   GITHUB_API_LOG_EVENTS,
   GithubApiLogFieldsSchema,
-  ObservableOctokit,
+  observableOctokit,
   RATE_LIMIT_LOW_WATER,
   rateLimitFields,
 } from "../../src/utils/octokit-observability";
@@ -19,7 +19,7 @@ function octokitWithFetch(status: number, headers: Record<string, string>, body:
         headers: { "content-type": "application/json", ...headers },
       }),
     );
-  return new ObservableOctokit({
+  return new (observableOctokit())({
     auth: "test-token",
     retry: { enabled: false },
     throttle: { enabled: false },

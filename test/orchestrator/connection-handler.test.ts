@@ -125,6 +125,11 @@ void mock.module("octokit", () => ({
   // shape so the import resolves under bun's mock.module.
   Octokit: class MockOctokit {
     constructor(public options: unknown) {}
+    // Real octokit `Octokit` exposes a static `plugin`; observableOctokit()
+    // (#170) calls it. Return the class so `new App({ Octokit })` stays valid.
+    static plugin() {
+      return MockOctokit;
+    }
   },
 }));
 
