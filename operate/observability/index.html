@@ -1146,6 +1146,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#mcp-server-log-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP server log fields
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#ship-workflow-log-fields" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1721,6 +1732,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#mcp-server-log-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP server log fields
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#ship-workflow-log-fields" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2012,6 +2034,31 @@
 </tr>
 </tbody>
 </table>
+<h2 id="mcp-server-log-fields">MCP server log fields<a class="headerlink" href="#mcp-server-log-fields" title="Permanent link">&para;</a></h2>
+<p>The stdio MCP servers (<code>src/mcp/servers/*.ts</code>) run as subprocesses without the daemon <code>config</code>, so they cannot import <code>src/logger.ts</code> (it reads <code>config</code> at module load). Instead they build a pino logger via <code>createMcpLogger(serverName)</code> (<code>src/mcp/mcp-logger.ts</code>), which writes to <strong>stderr</strong> (stdout carries JSON-RPC) and applies the same <code>REDACT_PATHS</code> + <code>errSerializer</code> as the main logger, imported from the config-free <code>src/utils/log-redaction.ts</code> so redaction has parity without pulling in <code>config</code>. This replaced the prior raw <code>console.error</code> calls, where a <code>console.error(err)</code> on an Octokit <code>RequestError</code> could dump a <code>ghs_…</code> token verbatim.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>server</code></td>
+<td>MCP server name (e.g. <code>github-comment</code>, <code>github-state</code>, <code>merge-readiness</code>).</td>
+</tr>
+<tr>
+<td><code>deliveryId</code></td>
+<td>Inherited from the parent request via the <code>DELIVERY_ID</code> env (set in <code>registry.ts</code> <code>sharedEnv</code>).</td>
+</tr>
+<tr>
+<td><code>event</code></td>
+<td>Structured event key, e.g. <code>secret_redacted</code> when the output secret-guard strips bytes.</td>
+</tr>
+</tbody>
+</table>
+<p><code>LOG_LEVEL</code> is in the executor subprocess env allowlist, so <code>LOG_LEVEL=debug</code> on the daemon propagates to the CLI and the MCP subprocesses for incident response.</p>
 <h2 id="ship-workflow-log-fields">Ship workflow log fields<a class="headerlink" href="#ship-workflow-log-fields" title="Permanent link">&para;</a></h2>
 <p>The shepherding lifecycle emits structured pino lines validated against the canonical Zod schema in <code>src/workflows/ship/log-fields.ts</code>. Field names and types are pinned so emitters cannot drift.</p>
 <table>
