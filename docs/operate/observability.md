@@ -73,6 +73,19 @@ The stdio MCP servers (`src/mcp/servers/*.ts`) run as subprocesses without the d
 
 `LOG_LEVEL` is in the executor subprocess env allowlist, so `LOG_LEVEL=debug` on the daemon propagates to the CLI and the MCP subprocesses for incident response.
 
+## Fleet snapshot fields
+
+The orchestrator emits a periodic `fleet.snapshot` info line (`src/orchestrator/fleet-snapshot.ts`, cadence `FLEET_SNAPSHOT_INTERVAL_MS`, default 30s) so backlog and pool saturation stay log-visible even when no webhook is arriving to trigger an on-demand read. Set `FLEET_SNAPSHOT_INTERVAL_MS=0` to disable.
+
+| Field                   | Meaning                                                                   |
+| ----------------------- | ------------------------------------------------------------------------- |
+| `queue_depth`           | `LLEN queue:jobs`, the shared job queue backlog.                          |
+| `active_daemons_total`  | Number of live daemons in the `active_daemons` set.                       |
+| `busy_slots_total`      | Sum of in-flight jobs across the live daemons.                            |
+| `persistent_free_slots` | Spare capacity (`maxConcurrentJobs - active`) across the persistent pool. |
+
+Alerts worth having: `queue_depth` rising while `persistent_free_slots > 0` for several snapshots (suggests broken capability matching, work isn't reaching idle daemons); `active_daemons_total` dropping to 0 while `queue_depth > 0` (no workers).
+
 ## Ship workflow log fields
 
 The shepherding lifecycle emits structured pino lines validated against the canonical Zod schema in `src/workflows/ship/log-fields.ts`. Field names and types are pinned so emitters cannot drift.
