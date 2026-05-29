@@ -1,7 +1,7 @@
 import { platform } from "node:os";
 
 import { config } from "../config";
-import { logger } from "../logger";
+import { installFatalHandlers, logger } from "../logger";
 import type { DaemonCapabilities } from "../shared/daemon-types";
 import {
   createMessageEnvelope,
@@ -345,6 +345,11 @@ function startEphemeralIdleLoop(): void {
 
 async function main(): Promise<void> {
   logger.info({ daemonId }, "Daemon starting");
+
+  // Route crashes through the redacting pino chokepoint instead of the
+  // runtime's default plaintext stderr stack (issue #164). Registered before
+  // the async startup work below so a throw during discovery is captured too.
+  installFatalHandlers("daemon");
 
   // Surface silent exits: if the event loop ever drains while we're not
   // explicitly shutting down, log it so future regressions of the "daemon

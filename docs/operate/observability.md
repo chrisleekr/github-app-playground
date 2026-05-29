@@ -14,6 +14,8 @@ The serializer operates on a copy, so the original Error instance is never mutat
 
 If you add a new secret-bearing config field to `src/config.ts`, add its property name to `REDACT_PATHS` in the same PR. The point helpers `redactGitHubTokens` and `redactValkeyUrl` remain in place for their non-log call sites (prompt sanitisation and the Valkey startup info log respectively); the logger config is the system-wide default.
 
+The crash path is covered too. `installFatalHandlers(processName)` in `src/logger.ts` registers `uncaughtException` and `unhandledRejection` handlers at both entrypoints (`src/app.ts`, `src/daemon/main.ts`) that log via `logger.fatal({ err })` and then `process.exit(1)`. Without them the runtime's default handler would print a plain `stderr` stack that bypasses `errSerializer`, so a token echoed inside an octokit error would reach the log shipper in cleartext. The default destination flushes synchronously on the process `exit` event, so the fatal line is written before exit; `pino.final` is intentionally not used because it throws when the logger is built with the dev-only `pino-pretty` transport. Crash lines carry `level: 60` (fatal) and a `processName` of `orchestrator` or `daemon`, so an alert on sustained `level:60` flags a crash-looping process.
+
 ## Common log fields
 
 | Field                                | Meaning                                                                                                                                                                                                                                                                                                                                                                      |
