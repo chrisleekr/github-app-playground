@@ -1157,6 +1157,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#fleet-snapshot-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fleet snapshot fields
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#ship-workflow-log-fields" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1743,6 +1754,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#fleet-snapshot-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fleet snapshot fields
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#ship-workflow-log-fields" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2059,6 +2081,35 @@
 </tbody>
 </table>
 <p><code>LOG_LEVEL</code> is in the executor subprocess env allowlist, so <code>LOG_LEVEL=debug</code> on the daemon propagates to the CLI and the MCP subprocesses for incident response.</p>
+<h2 id="fleet-snapshot-fields">Fleet snapshot fields<a class="headerlink" href="#fleet-snapshot-fields" title="Permanent link">&para;</a></h2>
+<p>The orchestrator emits a periodic <code>fleet.snapshot</code> info line (<code>src/orchestrator/fleet-snapshot.ts</code>, cadence <code>FLEET_SNAPSHOT_INTERVAL_MS</code>, default 30s) so backlog and pool saturation stay log-visible even when no webhook is arriving to trigger an on-demand read. Set <code>FLEET_SNAPSHOT_INTERVAL_MS=0</code> to disable.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>queue_depth</code></td>
+<td><code>LLEN queue:jobs</code>, the shared job queue backlog.</td>
+</tr>
+<tr>
+<td><code>active_daemons_total</code></td>
+<td>Number of live daemons in the <code>active_daemons</code> set.</td>
+</tr>
+<tr>
+<td><code>busy_slots_total</code></td>
+<td>Sum of in-flight jobs across the live daemons.</td>
+</tr>
+<tr>
+<td><code>persistent_free_slots</code></td>
+<td>Spare capacity (<code>maxConcurrentJobs - active</code>) across the persistent pool.</td>
+</tr>
+</tbody>
+</table>
+<p>Alerts worth having: <code>queue_depth</code> rising while <code>persistent_free_slots &gt; 0</code> for several snapshots (suggests broken capability matching, work isn't reaching idle daemons); <code>active_daemons_total</code> dropping to 0 while <code>queue_depth &gt; 0</code> (no workers).</p>
 <h2 id="ship-workflow-log-fields">Ship workflow log fields<a class="headerlink" href="#ship-workflow-log-fields" title="Permanent link">&para;</a></h2>
 <p>The shepherding lifecycle emits structured pino lines validated against the canonical Zod schema in <code>src/workflows/ship/log-fields.ts</code>. Field names and types are pinned so emitters cannot drift.</p>
 <table>
