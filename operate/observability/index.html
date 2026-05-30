@@ -1982,6 +1982,10 @@
 <td>Canonical issue or PR number for the request. Emitted by <code>createChildLogger</code> (<code>src/logger.ts</code>) across the webhook event handlers and the workflow executor so a request is greppable by entity. Two adjacent layers keep their own names: the job-payload schema uses <code>prNumber</code> / <code>issueNumber</code>, and the scoped-rail executors use snake_case <code>pr_number</code> / <code>issue_number</code>.</td>
 </tr>
 <tr>
+<td><code>installationId</code></td>
+<td>GitHub App installation id. Emitted by the webhook event handlers (<code>src/webhook/events/</code>) and the daemon job executor (<code>src/daemon/job-executor.ts</code>) so a per-installation rate-limit (see <a href="#github-api-rate-limit-fields">GitHub API rate-limit fields</a>) is greppable to its installation. App mode only; absent under a <code>GITHUB_PERSONAL_ACCESS_TOKEN</code> (PAT) where there is no per-installation bucket.</td>
+</tr>
+<tr>
 <td><code>event</code></td>
 <td>GitHub event name (<code>pull_request</code>, <code>issue_comment</code>, …) or canonical event key for ship workflow logs.</td>
 </tr>
