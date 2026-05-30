@@ -237,6 +237,8 @@ export async function dispatchJob(job: QueuedJob): Promise<boolean> {
       deliveryId: job.deliveryId,
       daemonId,
       offerId,
+      fleetSize,
+      requiredTools,
     },
     "Job offered to daemon",
   );

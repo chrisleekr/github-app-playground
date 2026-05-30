@@ -9,13 +9,15 @@ import {
 } from "../../src/orchestrator/log-fields";
 
 describe("DispatcherOfferLogSchema (#187)", () => {
-  it("accepts a well-formed offer.sent line (no latency yet)", () => {
+  it("accepts a well-formed offer.sent line (kind + fleetSize + requiredTools, no latency)", () => {
     const result = DispatcherOfferLogSchema.safeParse({
       event: DISPATCHER_LOG_EVENTS.offer_sent,
+      kind: "legacy",
       deliveryId: "delivery-1",
       daemonId: "daemon-1",
       offerId: "offer-1",
-      kind: "legacy",
+      fleetSize: 3,
+      requiredTools: ["mcp__github"],
     });
     expect(result.success).toBe(true);
   });
@@ -27,7 +29,6 @@ describe("DispatcherOfferLogSchema (#187)", () => {
       daemonId: "daemon-1",
       offerId: "offer-1",
       offer_latency_ms: 42,
-      kind: "non-scoped",
     });
     expect(result.success).toBe(true);
   });
@@ -44,13 +45,49 @@ describe("DispatcherOfferLogSchema (#187)", () => {
     expect(result.success).toBe(true);
   });
 
-  it("rejects an unknown field (strict shape pins drift)", () => {
+  it("accepts an offer.timed_out line carrying latency", () => {
+    const result = DispatcherOfferLogSchema.safeParse({
+      event: DISPATCHER_LOG_EVENTS.offer_timed_out,
+      deliveryId: "delivery-1",
+      daemonId: "daemon-1",
+      offerId: "offer-1",
+      offer_latency_ms: 5000,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects offer.sent missing requiredTools", () => {
+    const result = DispatcherOfferLogSchema.safeParse({
+      event: DISPATCHER_LOG_EVENTS.offer_sent,
+      kind: "legacy",
+      deliveryId: "delivery-1",
+      daemonId: "daemon-1",
+      offerId: "offer-1",
+      fleetSize: 3,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects offer.accepted carrying kind (accept emitter omits it)", () => {
+    const result = DispatcherOfferLogSchema.safeParse({
+      event: DISPATCHER_LOG_EVENTS.offer_accepted,
+      kind: "non-scoped",
+      deliveryId: "delivery-1",
+      daemonId: "daemon-1",
+      offerId: "offer-1",
+      offer_latency_ms: 42,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects reason on a non-rejected event (per-event strictness)", () => {
     const result = DispatcherOfferLogSchema.safeParse({
       event: DISPATCHER_LOG_EVENTS.offer_accepted,
       deliveryId: "delivery-1",
       daemonId: "daemon-1",
       offerId: "offer-1",
-      offerLatencyMs: 42, // camelCase metric, wrong: must be offer_latency_ms
+      offer_latency_ms: 42,
+      reason: "should not be here",
     });
     expect(result.success).toBe(false);
   });
@@ -85,8 +122,8 @@ describe("DispatcherNoEligibleDaemonLogSchema (#187)", () => {
   it("accepts a well-formed no_eligible_daemon line", () => {
     const result = DispatcherNoEligibleDaemonLogSchema.safeParse({
       event: DISPATCHER_LOG_EVENTS.no_eligible_daemon,
-      deliveryId: "delivery-1",
       kind: "legacy",
+      deliveryId: "delivery-1",
       fleetSize: 0,
       requiredTools: ["mcp__github"],
     });
@@ -96,6 +133,7 @@ describe("DispatcherNoEligibleDaemonLogSchema (#187)", () => {
   it("rejects a missing required field (fleetSize)", () => {
     const result = DispatcherNoEligibleDaemonLogSchema.safeParse({
       event: DISPATCHER_LOG_EVENTS.no_eligible_daemon,
+      kind: "legacy",
       deliveryId: "delivery-1",
       requiredTools: [],
     });
@@ -105,6 +143,7 @@ describe("DispatcherNoEligibleDaemonLogSchema (#187)", () => {
   it("rejects the wrong event literal", () => {
     const result = DispatcherNoEligibleDaemonLogSchema.safeParse({
       event: DISPATCHER_LOG_EVENTS.offer_sent,
+      kind: "legacy",
       deliveryId: "delivery-1",
       fleetSize: 1,
       requiredTools: [],
@@ -123,6 +162,14 @@ describe("DaemonHeartbeatLogSchema (#187)", () => {
     expect(result.success).toBe(true);
   });
 
+  it("rejects pong_missed without missedPongs (required on this event)", () => {
+    const result = DaemonHeartbeatLogSchema.safeParse({
+      event: DAEMON_HEARTBEAT_LOG_EVENTS.pong_missed,
+      daemonId: "daemon-1",
+    });
+    expect(result.success).toBe(false);
+  });
+
   it("accepts a timeout line without missedPongs", () => {
     const result = DaemonHeartbeatLogSchema.safeParse({
       event: DAEMON_HEARTBEAT_LOG_EVENTS.timeout,
@@ -131,32 +178,30 @@ describe("DaemonHeartbeatLogSchema (#187)", () => {
     expect(result.success).toBe(true);
   });
 
-  it("rejects an unknown field (strict shape pins drift)", () => {
+  it("rejects missedPongs on the timeout event (pinned to pong_missed only)", () => {
     const result = DaemonHeartbeatLogSchema.safeParse({
-      event: DAEMON_HEARTBEAT_LOG_EVENTS.pong_missed,
+      event: DAEMON_HEARTBEAT_LOG_EVENTS.timeout,
       daemonId: "daemon-1",
-      missed_pongs: 2, // snake_case, wrong: counts stay camelCase
+      missedPongs: 1,
     });
     expect(result.success).toBe(false);
   });
 
-  it("rejects the wrong event literal", () => {
-    const result = DaemonHeartbeatLogSchema.safeParse({
-      event: DISPATCHER_LOG_EVENTS.offer_sent,
-      daemonId: "daemon-1",
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects ttl_refresh_failed carrying err (err is a runtime field, intentionally not pinned)", () => {
-    // The emit at the ttl_refresh_failed site logs { event, err, daemonId }; err
-    // is the cross-cutting pino serializer field, deliberately outside the strict
-    // drift-contract (same as the child-logger bindings on pipeline.stage). This
-    // asserts that decision so a future contributor cannot silently pin err.
+  it("accepts ttl_refresh_failed carrying err (it is emitted inline with the error)", () => {
     const result = DaemonHeartbeatLogSchema.safeParse({
       event: DAEMON_HEARTBEAT_LOG_EVENTS.ttl_refresh_failed,
       daemonId: "daemon-1",
       err: new Error("valkey unreachable"),
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects an unknown field (strict shape pins drift)", () => {
+    const result = DaemonHeartbeatLogSchema.safeParse({
+      event: DAEMON_HEARTBEAT_LOG_EVENTS.pong_missed,
+      daemonId: "daemon-1",
+      missedPongs: 2,
+      missed_pongs: 2, // snake_case dup, must be rejected
     });
     expect(result.success).toBe(false);
   });
