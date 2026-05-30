@@ -1168,6 +1168,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#dispatcher-log-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dispatcher log fields
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#daemon-heartbeat-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Daemon heartbeat fields
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#ship-workflow-log-fields" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1765,6 +1787,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#dispatcher-log-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dispatcher log fields
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#daemon-heartbeat-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Daemon heartbeat fields
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#ship-workflow-log-fields" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2110,6 +2154,74 @@
 </tbody>
 </table>
 <p>Alerts worth having: <code>queue_depth</code> rising while <code>persistent_free_slots &gt; 0</code> for several snapshots (suggests broken capability matching, work isn't reaching idle daemons); <code>active_daemons_total</code> dropping to 0 while <code>queue_depth &gt; 0</code> (no workers).</p>
+<h2 id="dispatcher-log-fields">Dispatcher log fields<a class="headerlink" href="#dispatcher-log-fields" title="Permanent link">&para;</a></h2>
+<p>The job dispatcher (<code>src/orchestrator/job-dispatcher.ts</code>) and the accept handler in <code>src/orchestrator/connection-handler.ts</code> emit the offer lifecycle as structured events. The four <code>dispatcher.offer.*</code> keys are pinned per-event by a <code>z.discriminatedUnion</code> (<code>src/orchestrator/log-fields.ts:55#DispatcherOfferLogSchema</code>), so each event carries exactly its own fields; <code>dispatcher.no_eligible_daemon</code> has its own shape. Event-key constants live in <code>src/orchestrator/log-fields.ts:28#DISPATCHER_LOG_EVENTS</code>, and the co-located test rejects field drift.</p>
+<table>
+<thead>
+<tr>
+<th><code>event</code></th>
+<th>Level</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dispatcher.offer.sent</code></td>
+<td>info</td>
+<td>An offer was sent to a selected daemon. Carries <code>kind</code>, <code>deliveryId</code>, <code>daemonId</code>, <code>offerId</code>, plus <code>fleetSize</code> + <code>requiredTools</code> for capacity/capability diagnostics.</td>
+</tr>
+<tr>
+<td><code>dispatcher.offer.accepted</code></td>
+<td>info</td>
+<td>The daemon claimed the offer. Carries <code>deliveryId</code>, <code>daemonId</code>, <code>offerId</code> plus <code>offer_latency_ms</code>, the offer→accept WebSocket round-trip, measured the instant the accept arrives so it excludes the orchestrator-side context lookup + token mint. <code>kind</code> is omitted here; correlate to the <code>sent</code> line by <code>offerId</code> for the authoritative job kind.</td>
+</tr>
+<tr>
+<td><code>dispatcher.offer.rejected</code></td>
+<td>info</td>
+<td>The daemon refused the offer; carries <code>reason</code> + <code>offer_latency_ms</code>. The job is re-queued for another daemon.</td>
+</tr>
+<tr>
+<td><code>dispatcher.offer.timed_out</code></td>
+<td>warn</td>
+<td>No accept or reject arrived within <code>OFFER_TIMEOUT_MS</code> (default 5s); carries <code>offer_latency_ms</code> (≈ the timeout). The job is re-queued.</td>
+</tr>
+<tr>
+<td><code>dispatcher.no_eligible_daemon</code></td>
+<td>info</td>
+<td>No live daemon matched the job's <code>requiredTools</code> or had free capacity. Carries <code>fleetSize</code> + <code>requiredTools</code> so an operator can separate a capability-match miss from sheer capacity exhaustion.</td>
+</tr>
+</tbody>
+</table>
+<p><code>offer_latency_ms</code> is the only snake_case field, matching the <code>delta_ms</code> metric idiom; ids stay camelCase, consistent with the app-wide pino correlation fields.</p>
+<h2 id="daemon-heartbeat-fields">Daemon heartbeat fields<a class="headerlink" href="#daemon-heartbeat-fields" title="Permanent link">&para;</a></h2>
+<p>The orchestrator pings each connected daemon every <code>HEARTBEAT_INTERVAL_MS</code> (default 30s) and evicts one that misses pongs past <code>HEARTBEAT_TIMEOUT_MS</code> (default 90s). The heartbeat lifecycle in <code>src/orchestrator/connection-handler.ts</code> emits three structured events pinned per-event by a <code>z.discriminatedUnion</code> (<code>src/orchestrator/log-fields.ts:114#DaemonHeartbeatLogSchema</code>), so <code>missedPongs</code> is pinned to <code>pong_missed</code> and <code>ttl_refresh_failed</code> carries its <code>err</code>; constants live in <code>src/orchestrator/log-fields.ts:36#DAEMON_HEARTBEAT_LOG_EVENTS</code>.</p>
+<table>
+<thead>
+<tr>
+<th><code>event</code></th>
+<th>Level</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>daemon.heartbeat.pong_missed</code></td>
+<td>warn</td>
+<td>A ping was sent while the prior pong was still outstanding; carries the running <code>missedPongs</code> count.</td>
+</tr>
+<tr>
+<td><code>daemon.heartbeat.timeout</code></td>
+<td>warn</td>
+<td>The pong window elapsed; the connection is closed and the daemon eligible for re-registration.</td>
+</tr>
+<tr>
+<td><code>daemon.heartbeat.ttl_refresh_failed</code></td>
+<td>error</td>
+<td>A pong arrived but refreshing the daemon's Valkey/Postgres TTL failed; carries the redacted <code>err</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Alerts worth having: a sustained <code>daemon.heartbeat.timeout</code> rate points at network or resource-floor issues (a flapping daemon), distinct from a daemon that is responding slowly (visible as rising p99 <code>offer_latency_ms</code>).</p>
 <h2 id="ship-workflow-log-fields">Ship workflow log fields<a class="headerlink" href="#ship-workflow-log-fields" title="Permanent link">&para;</a></h2>
 <p>The shepherding lifecycle emits structured pino lines validated against the canonical Zod schema in <code>src/workflows/ship/log-fields.ts</code>. Field names and types are pinned so emitters cannot drift.</p>
 <table>
@@ -2352,7 +2464,9 @@ daemon executor.</p>
 <ul>
 <li><strong>Triage error rate.</strong> <code>parse-error</code> + <code>llm-error</code> + <code>timeout</code> + <code>circuit-open</code> above a sustained threshold (e.g. 10 % over 15 minutes) signals provider trouble or a regression.</li>
 <li><strong>Ephemeral spawn failures.</strong> Any <code>dispatch_reason=ephemeral-spawn-failed</code> points at RBAC, quota, or control-plane issues.</li>
-<li><strong>Heartbeat drift.</strong> Daemons missing heartbeats past <code>HEARTBEAT_TIMEOUT_MS</code> get evicted; sustained eviction points at network or resource-floor issues.</li>
+<li><strong>Heartbeat drift.</strong> Daemons missing heartbeats past <code>HEARTBEAT_TIMEOUT_MS</code> get evicted; sustained eviction points at network or resource-floor issues. A <code>daemon.heartbeat.timeout</code> rate above baseline is the log-side signal.</li>
+<li><strong>Daemons refusing work.</strong> A sustained <code>event:"dispatcher.offer.rejected"</code> rate (group by <code>reason</code>) means daemons are bouncing offers, a capacity or capability mismatch, before the queue visibly backs up.</li>
+<li><strong>Offer round-trip latency.</strong> A p99 regression on <code>offer_latency_ms</code> for <code>event:"dispatcher.offer.accepted"</code> flags a daemon that is responding but slow (GC pause, capability rescan stall, WebSocket back-pressure), eating dispatch headroom without tripping the heartbeat timeout.</li>
 <li><strong>OOM / crash loops.</strong> Standard infra alerts. Durable idempotency means a restart will not replay a processed event.</li>
 <li><strong>Ship terminal-blocker rate.</strong> A spike in <code>ship.intent.transition</code> events with <code>to_status:human_took_over</code> and <code>terminal_blocker_category:flake-cap</code> points at PR-flake regressions, not bot misbehaviour.</li>
 </ul>
