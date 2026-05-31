@@ -446,3 +446,26 @@ describe("executeAgent: cacheable prompt layout", () => {
     expect(sp.append).toBeUndefined();
   });
 });
+
+// ─── filesystem settings isolation: settingSources [] (issue #191) ──────────
+// cwd is the cloned PR head (checkout.ts), which can carry an attacker's
+// .claude/settings.json. Omitting settingSources makes the SDK load
+// user/project/local filesystem settings by default, so a SessionStart shell
+// hook there would fire in this subprocess with the installation token in env,
+// before any tool gate. Deep equality (not just "defined") catches both removal
+// and a quiet flip to a permissive value like ["user"].
+
+describe("executeAgent: filesystem settings isolation", () => {
+  beforeEach(() => {
+    lastQueryCall = undefined;
+    nextIterator = emptyIterator;
+  });
+
+  it("passes settingSources [] so SDK ignores cwd .claude/settings.json", async () => {
+    await executeAgent(baseParams());
+
+    expect(lastQueryCall).toBeDefined();
+    const opts = lastQueryCall?.options as { settingSources?: string[] };
+    expect(opts.settingSources).toEqual([]);
+  });
+});
