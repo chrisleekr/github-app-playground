@@ -266,6 +266,15 @@ export async function executeAgent({
     // single fat tracking-comment dump. Block it so the model uses the eager
     // tool list delivered in the SDK init message instead.
     disallowedTools: ["ToolSearch"],
+    // cwd is the cloned PR head (checkout.ts), which can carry an attacker's
+    // .claude/settings.json. Omitting settingSources makes the SDK load
+    // user/project/local filesystem settings by default (v0.3.x), so a
+    // SessionStart shell hook there would fire in this subprocess with the
+    // installation token in env, before any tool gate. Pin to [] to skip all
+    // three filesystem tiers (the managed-settings policy tier, which is
+    // operator-controlled and outside the cloned tree, is unaffected).
+    // Any new SDK option must not flip this back to a permissive value. See #191.
+    settingSources: [],
     mcpServers,
     systemPrompt:
       useCacheableLayout && promptParts !== undefined
