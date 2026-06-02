@@ -13,12 +13,22 @@
 import type { Octokit } from "octokit";
 
 import type { LLMTool, LLMToolCall, LLMToolResult } from "../ai/llm-client";
+import type { Logger } from "../logger";
+import { retryWithBackoff } from "../utils/retry";
 import { PROBE_QUERY } from "./queries";
 
 export interface GithubStateDeps {
   readonly octokit: Octokit;
   readonly owner: string;
   readonly repo: string;
+  /**
+   * Optional delivery-scoped logger. When provided it is passed to
+   * retryWithBackoff so transient-failure retry warnings carry the
+   * deliveryId binding; when omitted the retry helper logs via its
+   * config-free default. `import type` keeps this module config-free for
+   * the github-state MCP subprocess. See issue #199.
+   */
+  readonly log?: Logger;
 }
 
 const MAX_TEXT_BYTES = 60_000;
@@ -101,11 +111,15 @@ export async function getPrStateCheckRollup(
   deps: GithubStateDeps,
   prNumber: number,
 ): Promise<string> {
-  const data = await deps.octokit.graphql<ProbeQueryShape>(PROBE_QUERY, {
-    owner: deps.owner,
-    repo: deps.repo,
-    number: prNumber,
-  });
+  const data = await retryWithBackoff(
+    () =>
+      deps.octokit.graphql<ProbeQueryShape>(PROBE_QUERY, {
+        owner: deps.owner,
+        repo: deps.repo,
+        number: prNumber,
+      }),
+    { log: deps.log },
+  );
   const pr = data.repository?.pullRequest;
   if (pr === null || pr === undefined) {
     return serialize({ error: `PR #${prNumber} not found` });
@@ -166,11 +180,15 @@ export async function getCheckRunOutput(
   deps: GithubStateDeps,
   checkRunId: number,
 ): Promise<string> {
-  const result = await deps.octokit.rest.checks.get({
-    owner: deps.owner,
-    repo: deps.repo,
-    check_run_id: checkRunId,
-  });
+  const result = await retryWithBackoff(
+    () =>
+      deps.octokit.rest.checks.get({
+        owner: deps.owner,
+        repo: deps.repo,
+        check_run_id: checkRunId,
+      }),
+    { log: deps.log },
+  );
   const text = result.data.output.text ?? "";
   const truncated = truncate(text, MAX_CHECK_OUTPUT_BYTES);
   return serialize({
@@ -191,11 +209,15 @@ export async function getCheckRunOutput(
 }
 
 export async function getWorkflowRun(deps: GithubStateDeps, runId: number): Promise<string> {
-  const result = await deps.octokit.rest.actions.getWorkflowRun({
-    owner: deps.owner,
-    repo: deps.repo,
-    run_id: runId,
-  });
+  const result = await retryWithBackoff(
+    () =>
+      deps.octokit.rest.actions.getWorkflowRun({
+        owner: deps.owner,
+        repo: deps.repo,
+        run_id: runId,
+      }),
+    { log: deps.log },
+  );
   return serialize({
     id: result.data.id,
     name: result.data.name,
@@ -213,43 +235,58 @@ export async function getWorkflowRun(deps: GithubStateDeps, runId: number): Prom
 }
 
 export async function getBranchProtection(deps: GithubStateDeps, branch: string): Promise<string> {
-  try {
-    const result = await deps.octokit.rest.repos.getBranchProtection({
-      owner: deps.owner,
-      repo: deps.repo,
-      branch,
-    });
-    return serialize({
-      branch,
-      protected: true,
-      required_status_checks: result.data.required_status_checks ?? null,
-      required_pull_request_reviews: result.data.required_pull_request_reviews ?? null,
-      enforce_admins: result.data.enforce_admins?.enabled ?? false,
-      restrictions: result.data.restrictions ?? null,
-    });
-  } catch (err) {
-    // 404 is expected for unprotected branches, return a structured payload, not an error.
-    // Octokit RequestError carries `status` directly; that's more reliable than
-    // matching the message string (which varies by SDK version and locale).
-    if (
-      err !== null &&
-      typeof err === "object" &&
-      "status" in err &&
-      (err as { status: unknown }).status === 404
-    ) {
-      return serialize({ branch, protected: false });
-    }
-    throw err;
+  // A 404 means the branch is unprotected, an expected outcome, not a failure.
+  // Convert it to a `null` sentinel INSIDE the retried operation so the retry
+  // helper never sees it as an error: no spurious "non-retriable" warn log and
+  // no wasted attempt. Octokit RequestError carries `status` directly; that's
+  // more reliable than matching the message string (which varies by SDK version
+  // and locale). Genuine transient failures still propagate and retry.
+  const result = await retryWithBackoff(
+    async () => {
+      try {
+        return await deps.octokit.rest.repos.getBranchProtection({
+          owner: deps.owner,
+          repo: deps.repo,
+          branch,
+        });
+      } catch (err) {
+        if (
+          err !== null &&
+          typeof err === "object" &&
+          "status" in err &&
+          (err as { status: unknown }).status === 404
+        ) {
+          return null;
+        }
+        throw err;
+      }
+    },
+    { log: deps.log },
+  );
+  if (result === null) {
+    return serialize({ branch, protected: false });
   }
+  return serialize({
+    branch,
+    protected: true,
+    required_status_checks: result.data.required_status_checks ?? null,
+    required_pull_request_reviews: result.data.required_pull_request_reviews ?? null,
+    enforce_admins: result.data.enforce_admins?.enabled ?? false,
+    restrictions: result.data.restrictions ?? null,
+  });
 }
 
 export async function getPrDiff(deps: GithubStateDeps, prNumber: number): Promise<string> {
-  const result = await deps.octokit.rest.pulls.get({
-    owner: deps.owner,
-    repo: deps.repo,
-    pull_number: prNumber,
-    mediaType: { format: "diff" },
-  });
+  const result = await retryWithBackoff(
+    () =>
+      deps.octokit.rest.pulls.get({
+        owner: deps.owner,
+        repo: deps.repo,
+        pull_number: prNumber,
+        mediaType: { format: "diff" },
+      }),
+    { log: deps.log },
+  );
   const diff = typeof result.data === "string" ? result.data : JSON.stringify(result.data);
   const { text, truncated } = truncate(diff, MAX_DIFF_BYTES);
   return serialize(
@@ -264,12 +301,16 @@ export async function getPrDiff(deps: GithubStateDeps, prNumber: number): Promis
 }
 
 export async function getPrFiles(deps: GithubStateDeps, prNumber: number): Promise<string> {
-  const result = await deps.octokit.rest.pulls.listFiles({
-    owner: deps.owner,
-    repo: deps.repo,
-    pull_number: prNumber,
-    per_page: 100,
-  });
+  const result = await retryWithBackoff(
+    () =>
+      deps.octokit.rest.pulls.listFiles({
+        owner: deps.owner,
+        repo: deps.repo,
+        pull_number: prNumber,
+        per_page: 100,
+      }),
+    { log: deps.log },
+  );
   return serialize({
     pr_number: prNumber,
     file_count: result.data.length,
@@ -290,13 +331,17 @@ export async function listPrComments(
   prNumber: number,
   page = 1,
 ): Promise<string> {
-  const result = await deps.octokit.rest.issues.listComments({
-    owner: deps.owner,
-    repo: deps.repo,
-    issue_number: prNumber,
-    per_page: 30,
-    page,
-  });
+  const result = await retryWithBackoff(
+    () =>
+      deps.octokit.rest.issues.listComments({
+        owner: deps.owner,
+        repo: deps.repo,
+        issue_number: prNumber,
+        per_page: 30,
+        page,
+      }),
+    { log: deps.log },
+  );
   const comments = result.data.map((c) => ({
     id: c.id,
     author: c.user?.login ?? "(unknown)",
