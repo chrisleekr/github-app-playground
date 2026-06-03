@@ -77,6 +77,20 @@ export interface BotContext {
 }
 
 /**
+ * Per-model token + cost breakdown, derived from SDKResultMessage.modelUsage
+ * (issue #192). One entry per model a single execution touched; useful when a
+ * path runs more than one model (e.g. Haiku subagents + an Opus main agent).
+ */
+export interface ModelUsageEntry {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadInputTokens: number;
+  cacheCreationInputTokens: number;
+  costUsd: number;
+}
+
+/**
  * Result from a Claude Agent SDK execution.
  */
 export interface ExecutionResult {
@@ -95,6 +109,16 @@ export interface ExecutionResult {
   durationMs?: number;
   /** Number of agent turns used */
   numTurns?: number;
+  /** Prompt (input) tokens billed for this execution (SDKResultMessage.usage). */
+  inputTokens?: number;
+  /** Completion (output) tokens billed for this execution. */
+  outputTokens?: number;
+  /** Tokens served from the prompt cache (the cache-savings numerator). */
+  cacheReadInputTokens?: number;
+  /** Tokens written to populate the prompt cache (the 2x-price surcharge). */
+  cacheCreationInputTokens?: number;
+  /** Per-model token + cost breakdown; logged in full and persisted as JSONB. */
+  modelUsage?: readonly ModelUsageEntry[];
   /** When true, indicates this was a dry-run (no Claude execution) */
   dryRun?: boolean;
   /** Daemon actions collected from execution (learnings and deletions from .daemon-actions.json) */

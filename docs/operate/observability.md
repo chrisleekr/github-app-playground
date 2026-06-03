@@ -43,12 +43,24 @@ The crash path is covered too. `installFatalHandlers(processName)` in `src/logge
 
 `runPipeline` (`src/core/pipeline.ts`) emits structured timing events whose `pipeline.stage` shape is pinned by the `.strict()` Zod schema in `src/core/log-fields.ts` (parallel to the ship schema below; the co-located test rejects field drift). Four event keys:
 
-| `event`              | Meaning                                                                                                                                                                                                |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `pipeline.started`   | Request entered `runPipeline`. Carries the child-logger bindings (deliveryId, entity).                                                                                                                 |
-| `pipeline.stage`     | One stage finished; carries `stage` + `delta_ms`. Stages: trackingComment.create, token.resolve, github.fetch, prompt.build, repo.clone, executor.invoke, trackingComment.finalize, workspace.cleanup. |
-| `pipeline.completed` | Success terminal line; carries `pipeline_wall_clock_ms` alongside the existing cost/turn fields.                                                                                                       |
-| `pipeline.failed`    | Failure terminal line; carries `pipeline_wall_clock_ms` + the redacted `err`.                                                                                                                          |
+| `event`              | Meaning                                                                                                                                                                                                                                                    |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pipeline.started`   | Request entered `runPipeline`. Carries the child-logger bindings (deliveryId, entity).                                                                                                                                                                     |
+| `pipeline.stage`     | One stage finished; carries `stage` + `delta_ms`. Stages: trackingComment.create, token.resolve, github.fetch, prompt.build, repo.clone, executor.invoke, trackingComment.finalize, workspace.cleanup.                                                     |
+| `pipeline.completed` | Success terminal line; carries `pipeline_wall_clock_ms` alongside `costUsd` / `numTurns` and the token counters `inputTokens` / `outputTokens` / `cacheReadInputTokens` / `cacheCreationInputTokens` (issue #192). Pinned by `PipelineCompletedLogSchema`. |
+| `pipeline.failed`    | Failure terminal line; carries `pipeline_wall_clock_ms` + the redacted `err`.                                                                                                                                                                              |
+
+### Token usage and the cache hit-ratio
+
+The executor's `Claude Agent SDK execution completed` line (`src/core/executor.ts`) and the `pipeline.completed` line carry the SDK token counters; the executor line additionally carries a `modelUsage` array (one `{ model, inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens, costUsd }` entry per model). The same four scalar counters are persisted to the `executions` table (`input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`) plus a `model_usage` JSONB column (migration `016_executions_tokens.sql`), so per-installation / per-workflow / per-day aggregates can join them.
+
+Cost alone is opaque: a 500 KB-prompt / 2-turn run and a 5 KB-prompt / 50-turn run can bill the same `costUsd`. Tokens disambiguate them, an oversized prompt is an `inputTokens` problem; a runaway tool-loop is an `outputTokens` + `numTurns` problem. The load-bearing metric for prompt-cache stability (#134) is the hit-ratio:
+
+```
+cache_read_input_tokens / (input_tokens + cache_read_input_tokens + cache_creation_input_tokens)
+```
+
+(The ratio is undefined when the denominator is zero, e.g. a dry-run that never called the model; guard against that in the query.) A high ratio on the second+ run of the same prompt shape confirms `PROMPT_CACHE_LAYOUT=cacheable` is working; a sudden drop in the per-installation cache-read share is the signature of a prompt-cache stability regression. Alert on `sum(cache_read_input_tokens) / sum(input_tokens + cache_read_input_tokens + cache_creation_input_tokens)` falling below its established baseline.
 
 ## GitHub API rate-limit fields
 

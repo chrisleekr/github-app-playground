@@ -80,7 +80,7 @@ describe.skipIf(sql === null)("runMigrations", () => {
     const versions: { version: string }[] = await requireDb()`
       SELECT version FROM _migrations ORDER BY version
     `;
-    expect(versions.length).toBe(15);
+    expect(versions.length).toBe(16);
     expect(versions[0]?.version).toBe("001_initial");
     expect(versions[1]?.version).toBe("002_repo_knowledge");
     expect(versions[2]?.version).toBe("003_dispatch_decisions");
@@ -96,6 +96,7 @@ describe.skipIf(sql === null)("runMigrations", () => {
     expect(versions[12]?.version).toBe("013_scheduled_actions");
     expect(versions[13]?.version).toBe("014_review_learnings");
     expect(versions[14]?.version).toBe("015_review_learnings_embedding");
+    expect(versions[15]?.version).toBe("016_executions_tokens");
   });
 
   it("is idempotent: second run is a no-op", async () => {
@@ -105,7 +106,7 @@ describe.skipIf(sql === null)("runMigrations", () => {
     const versions: { version: string }[] = await requireDb()`
       SELECT version FROM _migrations ORDER BY version
     `;
-    expect(versions.length).toBe(15);
+    expect(versions.length).toBe(16);
   });
 
   it("creates the executions table with expected columns", async () => {
@@ -125,6 +126,12 @@ describe.skipIf(sql === null)("runMigrations", () => {
     expect(names).toContain("cost_usd");
     expect(names).toContain("triage_result");
     expect(names).toContain("daemon_id");
+    // Migration 016 token columns (issue #192).
+    expect(names).toContain("input_tokens");
+    expect(names).toContain("output_tokens");
+    expect(names).toContain("cache_read_input_tokens");
+    expect(names).toContain("cache_creation_input_tokens");
+    expect(names).toContain("model_usage");
   });
 
   it("creates the daemons table with expected columns", async () => {

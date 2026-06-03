@@ -4,6 +4,7 @@ import { config } from "../config";
 import { getDb } from "../db";
 import { logger } from "../logger";
 import type { SerializableBotContext } from "../shared/daemon-types";
+import type { ModelUsageEntry } from "../types";
 import { decrementDaemonActiveJobs } from "./daemon-registry";
 
 /**
@@ -158,17 +159,32 @@ export async function markExecutionRunning(deliveryId: string): Promise<void> {
  */
 export async function markExecutionCompleted(
   deliveryId: string,
-  result: { costUsd?: number; durationMs?: number; numTurns?: number },
+  result: {
+    costUsd?: number;
+    durationMs?: number;
+    numTurns?: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    cacheReadInputTokens?: number;
+    cacheCreationInputTokens?: number;
+    modelUsage?: readonly ModelUsageEntry[];
+  },
 ): Promise<void> {
   const db = getDb();
   if (db === null) return;
 
+  // Bun.sql serialises the modelUsage array to JSONB automatically.
   await db`
     UPDATE executions
     SET status = 'completed', completed_at = now(),
         cost_usd = ${result.costUsd ?? null},
         duration_ms = ${result.durationMs ?? null},
-        num_turns = ${result.numTurns ?? null}
+        num_turns = ${result.numTurns ?? null},
+        input_tokens = ${result.inputTokens ?? null},
+        output_tokens = ${result.outputTokens ?? null},
+        cache_read_input_tokens = ${result.cacheReadInputTokens ?? null},
+        cache_creation_input_tokens = ${result.cacheCreationInputTokens ?? null},
+        model_usage = ${result.modelUsage ?? null}
     WHERE delivery_id = ${deliveryId} AND status = 'running'
   `;
 }

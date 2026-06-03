@@ -55,6 +55,7 @@ import {
   WS_CLOSE_CODES,
   WS_ERROR_CODES,
 } from "../shared/ws-messages";
+import type { ModelUsageEntry } from "../types";
 import { decrementActiveCount, incrementActiveCount } from "./concurrency";
 import {
   decrementDaemonActiveJobs,
@@ -1402,14 +1403,37 @@ async function finalizeExecution(
     costUsd?: number | undefined;
     durationMs?: number | undefined;
     numTurns?: number | undefined;
+    inputTokens?: number | undefined;
+    outputTokens?: number | undefined;
+    cacheReadInputTokens?: number | undefined;
+    cacheCreationInputTokens?: number | undefined;
+    modelUsage?: readonly ModelUsageEntry[] | undefined;
     errorMessage?: string | undefined;
   },
 ): Promise<void> {
   if (payload.success) {
-    const result: { costUsd?: number; durationMs?: number; numTurns?: number } = {};
+    const result: {
+      costUsd?: number;
+      durationMs?: number;
+      numTurns?: number;
+      inputTokens?: number;
+      outputTokens?: number;
+      cacheReadInputTokens?: number;
+      cacheCreationInputTokens?: number;
+      modelUsage?: readonly ModelUsageEntry[];
+    } = {};
     if (payload.costUsd !== undefined) result.costUsd = payload.costUsd;
     if (payload.durationMs !== undefined) result.durationMs = payload.durationMs;
     if (payload.numTurns !== undefined) result.numTurns = payload.numTurns;
+    if (payload.inputTokens !== undefined) result.inputTokens = payload.inputTokens;
+    if (payload.outputTokens !== undefined) result.outputTokens = payload.outputTokens;
+    if (payload.cacheReadInputTokens !== undefined) {
+      result.cacheReadInputTokens = payload.cacheReadInputTokens;
+    }
+    if (payload.cacheCreationInputTokens !== undefined) {
+      result.cacheCreationInputTokens = payload.cacheCreationInputTokens;
+    }
+    if (payload.modelUsage !== undefined) result.modelUsage = payload.modelUsage;
     await markExecutionCompleted(deliveryId, result);
   } else {
     await markExecutionFailed(deliveryId, payload.errorMessage ?? "Execution failed on daemon");
