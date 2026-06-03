@@ -102,16 +102,19 @@ function scan(
       const lines = text.split(/\r?\n/);
       for (let i = 0; i < lines.length; i += 1) {
         const line = lines[i] ?? "";
-        // Skip pure comment lines that document the prohibition: `//` line
-        // comments, block-comment bodies (`*`), and single-line block comments
-        // (`/* ... */`). A scoped executor's prompt strings legitimately quote
-        // the forbidden calls inside such comments.
+        // `//` line comments and block-comment bodies (`*`) are pure
+        // documentation, skip them.
         const stripped = line.trim();
-        if (stripped.startsWith("//") || stripped.startsWith("*") || stripped.startsWith("/*")) {
-          continue;
-        }
+        if (stripped.startsWith("//") || stripped.startsWith("*")) continue;
+        // Strip CLOSED `/* ... */` spans, then test the remaining code. A line
+        // that is entirely a single-line block comment collapses to empty (the
+        // legit `/* NEVER call gh pr merge */` doc case), but a destructive call
+        // hiding after a closed comment (`/* */ gh pr merge`) is NOT exempted:
+        // testing only the code part keeps that CI-guard bypass closed.
+        const codePart = line.replace(/\/\*[\s\S]*?\*\//g, "").trim();
+        if (codePart === "") continue;
         for (const rule of FORBIDDEN) {
-          if (rule.pattern.test(line)) {
+          if (rule.pattern.test(codePart)) {
             violations.push({
               file,
               line: i + 1,

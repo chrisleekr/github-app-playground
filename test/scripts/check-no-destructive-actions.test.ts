@@ -106,6 +106,17 @@ describe("scripts/check-no-destructive-actions.ts", () => {
     expect(exitCode).toBe(0);
   });
 
+  it("still flags a destructive call hidden after a closed block comment (no bypass)", () => {
+    const root = makeFixture({
+      // The leading closed /* */ must not exempt the trailing real call.
+      daemonFiles: { "scoped-fix-thread-executor.ts": '/* */ await sh("gh pr merge 1");\n' },
+    });
+    fixtures.push(root);
+    const { exitCode, stderr } = runScript(root);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("gh pr merge");
+  });
+
   it("excludes a non-executor daemon file from the scan (narrowing boundary)", () => {
     const root = makeFixture({
       daemonFiles: {
