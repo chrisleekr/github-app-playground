@@ -170,6 +170,22 @@ describe("DispatcherNoEligibleDaemonLogSchema (#187)", () => {
     expect(result.success).toBe(false);
   });
 
+  it("rejects a negative or non-integer queue_wait_ms on no_eligible_daemon", () => {
+    const base = {
+      event: DISPATCHER_LOG_EVENTS.no_eligible_daemon,
+      kind: "legacy",
+      deliveryId: "delivery-1",
+      fleetSize: 0,
+      requiredTools: ["mcp__github"],
+    };
+    expect(
+      DispatcherNoEligibleDaemonLogSchema.safeParse({ ...base, queue_wait_ms: -1 }).success,
+    ).toBe(false);
+    expect(
+      DispatcherNoEligibleDaemonLogSchema.safeParse({ ...base, queue_wait_ms: 1.5 }).success,
+    ).toBe(false);
+  });
+
   it("rejects a missing required field (fleetSize)", () => {
     const result = DispatcherNoEligibleDaemonLogSchema.safeParse({
       event: DISPATCHER_LOG_EVENTS.no_eligible_daemon,

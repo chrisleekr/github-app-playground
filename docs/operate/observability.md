@@ -113,7 +113,7 @@ The job dispatcher (`src/orchestrator/job-dispatcher.ts`) and the accept handler
 
 `offer_latency_ms` and `queue_wait_ms` are the snake_case fields, matching the `delta_ms` metric idiom; ids stay camelCase, consistent with the app-wide pino correlation fields.
 
-`queue_wait_ms` is `max(0, Date.now() - job.enqueuedAt)` at the moment of the event. **It is per-attempt, not end-to-end:** `enqueuedAt` is reset on every requeue (`src/orchestrator/job-queue.ts`), so a job that bounces through `no_eligible_daemon` or a daemon reject restarts the clock. Read it as "how long this attempt waited for a dispatch decision," the saturation signal (USE-method "time waiting" / Sidekiq queue latency), not total time in system. Alert: a sustained p99 `queue_wait_ms` over ~30s on `dispatcher.offer.sent` indicates fleet undersizing; cross-check against `offer_latency_ms` (rising there instead points to slow daemons, not too few of them).
+`queue_wait_ms` is `max(0, Date.now() - job.enqueuedAt)` at the moment of the event. **It is per-attempt, not end-to-end:** `enqueuedAt` is reset to `Date.now()` on every requeue (the `requeueJob` paths in `src/orchestrator/job-queue.ts` and the `reconstructJobFromOffer` paths in `src/orchestrator/job-dispatcher.ts`), so a job that bounces through `no_eligible_daemon` or a daemon reject restarts the clock. Read it as "how long this attempt waited for a dispatch decision," the saturation signal (USE-method "time waiting" / Sidekiq queue latency), not total time in system. Alert: a sustained p99 `queue_wait_ms` over ~30s on `dispatcher.offer.sent` indicates fleet undersizing; cross-check against `offer_latency_ms` (rising there instead points to slow daemons, not too few of them).
 
 ## Daemon heartbeat fields
 
