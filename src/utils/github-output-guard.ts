@@ -127,7 +127,7 @@ export async function safePostToGitHub<R>(input: SafePostInput<R>): Promise<Safe
       // regex-only body, exactly as the empty-body over-match path does. The
       // subsequence check runs only for a non-empty containsSecret verdict, so
       // honest deletions still apply unchanged.
-      const scannerSubstituted =
+      const scannerSubstitutionRejected =
         llmResult.containsSecret &&
         !scannerOverMatched &&
         !isDeletionOnly(regexResult.body, llmResult.redactedBody);
@@ -143,7 +143,7 @@ export async function safePostToGitHub<R>(input: SafePostInput<R>): Promise<Safe
           },
           "llm scanner emptied body that regex pass kept; falling back to regex-only body",
         );
-      } else if (scannerSubstituted) {
+      } else if (scannerSubstitutionRejected) {
         log.warn(
           {
             event: "llm_scanner_substitution_rejected",
