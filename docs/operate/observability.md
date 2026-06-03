@@ -60,7 +60,7 @@ Cost alone is opaque: a 500 KB-prompt / 2-turn run and a 5 KB-prompt / 50-turn r
 cache_read_input_tokens / (input_tokens + cache_read_input_tokens + cache_creation_input_tokens)
 ```
 
-A high ratio on the second+ run of the same prompt shape confirms `PROMPT_CACHE_LAYOUT=cacheable` is working; a sudden drop in the per-installation cache-read share is the signature of a prompt-cache stability regression. Alert on `sum(cache_read_input_tokens) / sum(input_tokens + cache_read_input_tokens + cache_creation_input_tokens)` falling below its established baseline.
+(The ratio is undefined when the denominator is zero, e.g. a dry-run that never called the model; guard against that in the query.) A high ratio on the second+ run of the same prompt shape confirms `PROMPT_CACHE_LAYOUT=cacheable` is working; a sudden drop in the per-installation cache-read share is the signature of a prompt-cache stability regression. Alert on `sum(cache_read_input_tokens) / sum(input_tokens + cache_read_input_tokens + cache_creation_input_tokens)` falling below its established baseline.
 
 ## GitHub API rate-limit fields
 

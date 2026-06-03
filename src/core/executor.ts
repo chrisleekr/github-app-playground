@@ -467,20 +467,25 @@ export async function executeAgent({
 /**
  * Flatten the SDK's `modelUsage` map (keyed by model) into the compact
  * per-model array stored on ExecutionResult and persisted as JSONB. Returns
- * undefined when the SDK reported no per-model breakdown (issue #192).
+ * undefined when the SDK reported no per-model breakdown, including an empty
+ * map, so `modelUsage` is omitted from the log / WS / JSONB rather than
+ * persisted as `[]`. Sorted by model name for deterministic order, since
+ * object key order is insertion-defined (issue #192).
  */
 function compactModelUsage(
   modelUsage: Record<string, ModelUsage> | undefined,
 ): ModelUsageEntry[] | undefined {
-  if (modelUsage === undefined) return undefined;
-  return Object.entries(modelUsage).map(([model, u]) => ({
-    model,
-    inputTokens: u.inputTokens,
-    outputTokens: u.outputTokens,
-    cacheReadInputTokens: u.cacheReadInputTokens,
-    cacheCreationInputTokens: u.cacheCreationInputTokens,
-    costUsd: u.costUSD,
-  }));
+  if (modelUsage === undefined || Object.keys(modelUsage).length === 0) return undefined;
+  return Object.entries(modelUsage)
+    .map(([model, u]) => ({
+      model,
+      inputTokens: u.inputTokens,
+      outputTokens: u.outputTokens,
+      cacheReadInputTokens: u.cacheReadInputTokens,
+      cacheCreationInputTokens: u.cacheCreationInputTokens,
+      costUsd: u.costUSD,
+    }))
+    .sort((a, b) => a.model.localeCompare(b.model));
 }
 
 /** Build ExecutionResult from SDK output (exactOptionalPropertyTypes-safe). */

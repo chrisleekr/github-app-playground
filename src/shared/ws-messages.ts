@@ -391,7 +391,7 @@ const jobResultSchema = z.object({
     modelUsage: z
       .array(
         z.object({
-          model: z.string(),
+          model: z.string().min(1),
           inputTokens: z.number().int().nonnegative(),
           outputTokens: z.number().int().nonnegative(),
           cacheReadInputTokens: z.number().int().nonnegative(),
