@@ -1,7 +1,7 @@
-import { query, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
+import { type ModelUsage, query, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 
 import { config } from "../config";
-import type { BotContext, ExecutionResult, McpServerConfig } from "../types";
+import type { BotContext, ExecutionResult, McpServerConfig, ModelUsageEntry } from "../types";
 import { redactSecrets } from "../utils/sanitize";
 
 function isResultMessage(msg: unknown): msg is SDKResultMessage {
@@ -451,14 +451,36 @@ export async function executeAgent({
       durationMs,
       costUsd: result?.total_cost_usd,
       numTurns: result?.num_turns,
+      inputTokens: result?.usage?.input_tokens,
+      outputTokens: result?.usage?.output_tokens,
       cacheReadInputTokens: result?.usage?.cache_read_input_tokens,
       cacheCreationInputTokens: result?.usage?.cache_creation_input_tokens,
+      modelUsage: compactModelUsage(result?.modelUsage),
       promptCacheLayout: useCacheableLayout ? "cacheable" : "legacy",
     },
     "Claude Agent SDK execution completed",
   );
 
   return buildExecutionResult(result, durationMs);
+}
+
+/**
+ * Flatten the SDK's `modelUsage` map (keyed by model) into the compact
+ * per-model array stored on ExecutionResult and persisted as JSONB. Returns
+ * undefined when the SDK reported no per-model breakdown (issue #192).
+ */
+function compactModelUsage(
+  modelUsage: Record<string, ModelUsage> | undefined,
+): ModelUsageEntry[] | undefined {
+  if (modelUsage === undefined) return undefined;
+  return Object.entries(modelUsage).map(([model, u]) => ({
+    model,
+    inputTokens: u.inputTokens,
+    outputTokens: u.outputTokens,
+    cacheReadInputTokens: u.cacheReadInputTokens,
+    cacheCreationInputTokens: u.cacheCreationInputTokens,
+    costUsd: u.costUSD,
+  }));
 }
 
 /** Build ExecutionResult from SDK output (exactOptionalPropertyTypes-safe). */
@@ -476,6 +498,22 @@ function buildExecutionResult(
   }
   if (result?.num_turns !== undefined) {
     executionResult.numTurns = result.num_turns;
+  }
+  if (result?.usage?.input_tokens !== undefined) {
+    executionResult.inputTokens = result.usage.input_tokens;
+  }
+  if (result?.usage?.output_tokens !== undefined) {
+    executionResult.outputTokens = result.usage.output_tokens;
+  }
+  if (result?.usage?.cache_read_input_tokens !== undefined) {
+    executionResult.cacheReadInputTokens = result.usage.cache_read_input_tokens;
+  }
+  if (result?.usage?.cache_creation_input_tokens !== undefined) {
+    executionResult.cacheCreationInputTokens = result.usage.cache_creation_input_tokens;
+  }
+  const modelUsage = compactModelUsage(result?.modelUsage);
+  if (modelUsage !== undefined) {
+    executionResult.modelUsage = modelUsage;
   }
   // SDK returned a non-success terminal result (e.g. error_max_turns,
   // error_max_budget_usd) without throwing. Surface the subtype + any

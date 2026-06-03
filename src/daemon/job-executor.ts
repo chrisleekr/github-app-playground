@@ -412,6 +412,16 @@ export async function executeJob(
           durationMs: Date.now() - job.startedAt,
           costUsd: result.costUsd,
           numTurns: result.numTurns,
+          // SDK token usage for executions-row persistence (issue #192).
+          ...(result.inputTokens !== undefined ? { inputTokens: result.inputTokens } : {}),
+          ...(result.outputTokens !== undefined ? { outputTokens: result.outputTokens } : {}),
+          ...(result.cacheReadInputTokens !== undefined
+            ? { cacheReadInputTokens: result.cacheReadInputTokens }
+            : {}),
+          ...(result.cacheCreationInputTokens !== undefined
+            ? { cacheCreationInputTokens: result.cacheCreationInputTokens }
+            : {}),
+          ...(result.modelUsage !== undefined ? { modelUsage: [...result.modelUsage] } : {}),
           ...(result.success ? {} : { errorMessage: "Pipeline completed with failure" }),
           ...(learnings.length > 0 ? { learnings } : {}),
           ...(deletions.length > 0 ? { deletions } : {}),

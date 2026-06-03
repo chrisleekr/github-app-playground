@@ -383,6 +383,23 @@ const jobResultSchema = z.object({
     costUsd: z.number().nonnegative().optional(),
     durationMs: z.number().int().nonnegative().optional(),
     numTurns: z.number().int().nonnegative().optional(),
+    // SDK token usage, persisted to the executions row (issue #192).
+    inputTokens: z.number().int().nonnegative().optional(),
+    outputTokens: z.number().int().nonnegative().optional(),
+    cacheReadInputTokens: z.number().int().nonnegative().optional(),
+    cacheCreationInputTokens: z.number().int().nonnegative().optional(),
+    modelUsage: z
+      .array(
+        z.object({
+          model: z.string(),
+          inputTokens: z.number().int().nonnegative(),
+          outputTokens: z.number().int().nonnegative(),
+          cacheReadInputTokens: z.number().int().nonnegative(),
+          cacheCreationInputTokens: z.number().int().nonnegative(),
+          costUsd: z.number().nonnegative(),
+        }),
+      )
+      .optional(),
     errorMessage: z.string().optional(),
     dryRun: z.boolean().optional(),
     learnings: z.array(z.object({ category: z.string(), content: z.string() })).optional(),

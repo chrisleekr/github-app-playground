@@ -37,6 +37,31 @@ export const PipelineStageLogSchema = z
 export type PipelineStageLog = z.infer<typeof PipelineStageLogSchema>;
 
 /**
+ * Shape of the terminal `pipeline.completed` line. The metric fields are
+ * `.optional()` because the SDK can omit them (e.g. a dry-run that never calls
+ * the model); pino drops the `undefined` keys. The token counters surface
+ * prompt size and the cache hit-ratio `cache_read / (input + cache_read +
+ * cache_creation)` (issue #192). `.strict()` so an emitter that adds an
+ * unpinned field, or mistypes one, trips the co-located test.
+ */
+export const PipelineCompletedLogSchema = z
+  .object({
+    event: z.literal(CORE_PIPELINE_LOG_EVENTS.completed),
+    success: z.boolean(),
+    durationMs: z.number().int().nonnegative().optional(),
+    costUsd: z.number().nonnegative().optional(),
+    numTurns: z.number().int().nonnegative().optional(),
+    inputTokens: z.number().int().nonnegative().optional(),
+    outputTokens: z.number().int().nonnegative().optional(),
+    cacheReadInputTokens: z.number().int().nonnegative().optional(),
+    cacheCreationInputTokens: z.number().int().nonnegative().optional(),
+    pipeline_wall_clock_ms: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export type PipelineCompletedLog = z.infer<typeof PipelineCompletedLogSchema>;
+
+/**
  * Emit a `pipeline.stage` event measuring `Date.now() - startedAt`. The child
  * logger's bindings (deliveryId, owner, repo, entityNumber) are prepended by
  * pino, so the structured line is greppable per request and per stage.

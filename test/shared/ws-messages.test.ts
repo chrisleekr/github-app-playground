@@ -359,6 +359,21 @@ describe("daemonMessageSchema", () => {
         costUsd: 0.05,
         durationMs: 12000,
         numTurns: 5,
+        // Token usage fields (issue #192).
+        inputTokens: 1500,
+        outputTokens: 220,
+        cacheReadInputTokens: 9000,
+        cacheCreationInputTokens: 0,
+        modelUsage: [
+          {
+            model: "claude-opus-4-7",
+            inputTokens: 1500,
+            outputTokens: 220,
+            cacheReadInputTokens: 9000,
+            cacheCreationInputTokens: 0,
+            costUsd: 0.05,
+          },
+        ],
         dryRun: false,
         learnings: [{ category: "architecture", content: "Uses monorepo" }],
         deletions: ["old-learning-id-1"],
@@ -366,6 +381,23 @@ describe("daemonMessageSchema", () => {
     };
     const result = daemonMessageSchema.safeParse(msg);
     expect(result.success).toBe(true);
+  });
+
+  it("rejects a job:result with a malformed modelUsage entry (#192)", () => {
+    const msg = {
+      type: "job:result",
+      ...envelope(),
+      payload: {
+        success: true,
+        deliveryId: "del-123",
+        // Missing required entry fields (only `model` present) and a negative
+        // counter: the modelUsage entry object is fully required, so this is
+        // the part of the new contract a parse can reject.
+        modelUsage: [{ model: "claude-opus-4-7", inputTokens: -1 }],
+      },
+    };
+    const result = daemonMessageSchema.safeParse(msg);
+    expect(result.success).toBe(false);
   });
 
   it("parses a valid job:result message with minimal fields", () => {

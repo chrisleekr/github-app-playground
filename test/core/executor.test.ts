@@ -302,10 +302,15 @@ describe("executeAgent: stderr callback", () => {
  * supplied usage fields, then terminates. The executor's completion log
  * reads result?.usage?.cache_read_input_tokens / cache_creation_input_tokens.
  */
-function singleResultIterator(usage: {
-  cache_read_input_tokens?: number;
-  cache_creation_input_tokens?: number;
-}): AsyncIterableIterator<unknown> {
+function singleResultIterator(
+  usage: {
+    input_tokens?: number;
+    output_tokens?: number;
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
+  },
+  modelUsage: Record<string, unknown> = {},
+): AsyncIterableIterator<unknown> {
   let emitted = false;
   return {
     [Symbol.asyncIterator]() {
@@ -328,11 +333,13 @@ function singleResultIterator(usage: {
           stop_reason: "end_turn",
           total_cost_usd: 0.01,
           usage: {
+            input_tokens: 0,
+            output_tokens: 0,
             cache_read_input_tokens: 0,
             cache_creation_input_tokens: 0,
             ...usage,
           },
-          modelUsage: {},
+          modelUsage,
           permission_denials: [],
           uuid: "test-uuid",
           session_id: "test-session",
@@ -394,6 +401,43 @@ describe("executeAgent: prompt cache metrics", () => {
     // baseParams() passes no promptParts, so the effective layout is legacy
     // regardless of config.promptCacheLayout.
     expect(fields.promptCacheLayout).toBe("legacy");
+  });
+
+  it("threads input/output tokens and a renamed modelUsage onto the result (#192)", async () => {
+    nextIterator = (): AsyncIterableIterator<unknown> =>
+      singleResultIterator(
+        { input_tokens: 1500, output_tokens: 220, cache_read_input_tokens: 9000 },
+        {
+          "claude-opus-4-7": {
+            inputTokens: 1500,
+            outputTokens: 220,
+            cacheReadInputTokens: 9000,
+            cacheCreationInputTokens: 0,
+            webSearchRequests: 0,
+            costUSD: 0.012,
+            contextWindow: 200000,
+            maxOutputTokens: 8192,
+          },
+        },
+      );
+
+    const params = baseParams();
+    const result = await executeAgent(params);
+
+    expect(result.inputTokens).toBe(1500);
+    expect(result.outputTokens).toBe(220);
+    expect(result.cacheReadInputTokens).toBe(9000);
+    expect(result.modelUsage?.[0]?.model).toBe("claude-opus-4-7");
+    // SDK ModelUsage.costUSD is renamed to costUsd on ModelUsageEntry.
+    expect(result.modelUsage?.[0]?.costUsd).toBe(0.012);
+
+    const logInfo = params.ctx.log.info as ReturnType<typeof mock>;
+    const completion = logInfo.mock.calls.find(
+      (call) => call[1] === "Claude Agent SDK execution completed",
+    );
+    const fields = (completion as [Record<string, unknown>, string])[0];
+    expect(Array.isArray(fields.modelUsage)).toBe(true);
+    expect(fields.inputTokens).toBe(1500);
   });
 });
 
