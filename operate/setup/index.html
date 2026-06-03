@@ -1012,10 +1012,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#expose-the-local-server" class="md-nav__link">
+  <a href="#relay-webhooks-to-your-local-server" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Expose the local server
+        Relay webhooks to your local server
       
     </span>
   </a>
@@ -1605,10 +1605,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#expose-the-local-server" class="md-nav__link">
+  <a href="#relay-webhooks-to-your-local-server" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Expose the local server
+        Relay webhooks to your local server
       
     </span>
   </a>
@@ -1706,9 +1706,9 @@
 <td>Admin access to the org or personal account where the App is registered.</td>
 </tr>
 <tr>
-<td>Tunnelling tool</td>
+<td>Webhook relay</td>
 <td><em>none</em></td>
-<td>ngrok or smee.io to expose <code>localhost:3000</code> to GitHub.</td>
+<td>A <a href="https://smee.io">smee.io</a> channel to relay GitHub webhook deliveries to your local server.</td>
 </tr>
 <tr>
 <td>AI provider credentials</td>
@@ -1736,51 +1736,53 @@
 </span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>bun<span class="w"> </span>run<span class="w"> </span>dev
 </span></code></pre></div>
 <p>The HTTP server binds to <code>PORT</code> (default <code>3000</code>). Hit <code>http://localhost:3000/healthz</code> to confirm it's up; <code>http://localhost:3000/readyz</code> confirms the data layer is reachable.</p>
-<h2 id="expose-the-local-server">Expose the local server<a class="headerlink" href="#expose-the-local-server" title="Permanent link">&para;</a></h2>
-<p>GitHub must reach your webhook URL over the internet.</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Wrapped script: ngrok on port 3000</span>
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>bun<span class="w"> </span>run<span class="w"> </span>dev:ngrok
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="c1"># Copy the https://....ngrok.io URL into the GitHub App&#39;s webhook URL field.</span>
-</span></code></pre></div>
-<p>Alternative, smee.io:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>smee<span class="w"> </span>--url<span class="w"> </span>https://smee.io/&lt;your-channel&gt;<span class="w"> </span>--path<span class="w"> </span>/api/github/webhooks<span class="w"> </span>--port<span class="w"> </span><span class="m">3000</span>
+<h2 id="relay-webhooks-to-your-local-server">Relay webhooks to your local server<a class="headerlink" href="#relay-webhooks-to-your-local-server" title="Permanent link">&para;</a></h2>
+<p>GitHub delivers webhooks to a public smee.io channel URL (not to your laptop directly); a local client subscribes to that channel and relays each delivery to your server, so no inbound tunnel is needed.</p>
+<ol>
+<li>Create a channel at <a href="https://smee.io">smee.io</a> and copy its URL.</li>
+<li>Put it in the GitHub App's webhook URL field, and set <code>SMEE_URL=https://smee.io/&lt;your-channel&gt;</code> in <code>.env</code>.</li>
+<li>Run the relay:</li>
+</ol>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Wrapped script: forwards SMEE_URL -&gt; http://localhost:$PORT/api/github/webhooks (PORT default 3000).</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="c1"># Override the whole target with SMEE_TARGET in .env.</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>bun<span class="w"> </span>run<span class="w"> </span>dev:smee
 </span></code></pre></div>
 <p>The local trigger phrase is conventionally <code>@chrisleekr-bot-dev</code> (set <code>TRIGGER_PHRASE</code> in <code>.env</code>) so the dev installation does not collide with the production bot's mention.</p>
 <h2 id="common-dev-commands">Common dev commands<a class="headerlink" href="#common-dev-commands" title="Permanent link">&para;</a></h2>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>bun<span class="w"> </span>run<span class="w"> </span>dev<span class="w">             </span><span class="c1"># Watch mode</span>
-</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>bun<span class="w"> </span>run<span class="w"> </span>start<span class="w">           </span><span class="c1"># Production binary (after bun run build)</span>
-</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>bun<span class="w"> </span>run<span class="w"> </span>build<span class="w">           </span><span class="c1"># Compile to dist/</span>
-</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
-</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>bun<span class="w"> </span>run<span class="w"> </span>check<span class="w">           </span><span class="c1"># Unified gate: typecheck + lint + format + tests + no-destructive</span>
-</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>bun<span class="w"> </span>run<span class="w"> </span>typecheck<span class="w">       </span><span class="c1"># tsc --noEmit</span>
-</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>bun<span class="w"> </span>run<span class="w"> </span>lint<span class="w">            </span><span class="c1"># ESLint</span>
-</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>bun<span class="w"> </span>run<span class="w"> </span>lint:fix<span class="w">        </span><span class="c1"># ESLint auto-fix</span>
-</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>bun<span class="w"> </span>run<span class="w"> </span>format<span class="w">          </span><span class="c1"># Prettier check</span>
-</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>bun<span class="w"> </span>run<span class="w"> </span>format:fix<span class="w">      </span><span class="c1"># Prettier auto-fix</span>
-</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>
-</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>bun<span class="w"> </span><span class="nb">test</span><span class="w">                </span><span class="c1"># Run tests via scripts/test-isolated.sh (Bun mock isolation)</span>
-</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>bun<span class="w"> </span>run<span class="w"> </span>test:fast<span class="w">       </span><span class="c1"># Direct bun test (no isolation)</span>
-</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>bun<span class="w"> </span>run<span class="w"> </span>test:watch<span class="w">      </span><span class="c1"># Watch mode</span>
-</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>bun<span class="w"> </span>run<span class="w"> </span>test:coverage<span class="w">   </span><span class="c1"># With coverage report</span>
-</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>
-</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>bun<span class="w"> </span>run<span class="w"> </span>audit:ci<span class="w">        </span><span class="c1"># Severity-gated bun audit (used by CI)</span>
-</span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>bun<span class="w"> </span>run<span class="w"> </span>db:migrate<span class="w">      </span><span class="c1"># Run migrations against DATABASE_URL</span>
-</span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>bun<span class="w"> </span>run<span class="w"> </span>dev:deps<span class="w">        </span><span class="c1"># Up Postgres + Valkey</span>
-</span><span id="__span-3-20"><a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a>bun<span class="w"> </span>run<span class="w"> </span>dev:deps:down<span class="w">   </span><span class="c1"># Tear down</span>
-</span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>bun<span class="w"> </span>run<span class="w"> </span>dev:daemon<span class="w">      </span><span class="c1"># Run a daemon locally against the running orchestrator</span>
-</span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>
-</span><span id="__span-3-23"><a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a>bun<span class="w"> </span>run<span class="w"> </span>docs:install<span class="w">    </span><span class="c1"># Install MkDocs Python deps (one-time)</span>
-</span><span id="__span-3-24"><a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a>bun<span class="w"> </span>run<span class="w"> </span>docs:serve<span class="w">      </span><span class="c1"># Live-reload preview at http://localhost:8000</span>
-</span><span id="__span-3-25"><a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a>bun<span class="w"> </span>run<span class="w"> </span>docs:build<span class="w">      </span><span class="c1"># Strict build (CI also runs this)</span>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>bun<span class="w"> </span>run<span class="w"> </span>dev<span class="w">             </span><span class="c1"># Watch mode</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>bun<span class="w"> </span>run<span class="w"> </span>start<span class="w">           </span><span class="c1"># Production binary (after bun run build)</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>bun<span class="w"> </span>run<span class="w"> </span>build<span class="w">           </span><span class="c1"># Compile to dist/</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>bun<span class="w"> </span>run<span class="w"> </span>check<span class="w">           </span><span class="c1"># Unified gate: typecheck + lint + format + tests + no-destructive</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>bun<span class="w"> </span>run<span class="w"> </span>typecheck<span class="w">       </span><span class="c1"># tsc --noEmit</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>bun<span class="w"> </span>run<span class="w"> </span>lint<span class="w">            </span><span class="c1"># ESLint</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>bun<span class="w"> </span>run<span class="w"> </span>lint:fix<span class="w">        </span><span class="c1"># ESLint auto-fix</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>bun<span class="w"> </span>run<span class="w"> </span>format<span class="w">          </span><span class="c1"># Prettier check</span>
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>bun<span class="w"> </span>run<span class="w"> </span>format:fix<span class="w">      </span><span class="c1"># Prettier auto-fix</span>
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>bun<span class="w"> </span><span class="nb">test</span><span class="w">                </span><span class="c1"># Run tests via scripts/test-isolated.sh (Bun mock isolation)</span>
+</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>bun<span class="w"> </span>run<span class="w"> </span>test:fast<span class="w">       </span><span class="c1"># Direct bun test (no isolation)</span>
+</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>bun<span class="w"> </span>run<span class="w"> </span>test:watch<span class="w">      </span><span class="c1"># Watch mode</span>
+</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>bun<span class="w"> </span>run<span class="w"> </span>test:coverage<span class="w">   </span><span class="c1"># With coverage report</span>
+</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>
+</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>bun<span class="w"> </span>run<span class="w"> </span>audit:ci<span class="w">        </span><span class="c1"># Severity-gated bun audit (used by CI)</span>
+</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>bun<span class="w"> </span>run<span class="w"> </span>db:migrate<span class="w">      </span><span class="c1"># Run migrations against DATABASE_URL</span>
+</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>bun<span class="w"> </span>run<span class="w"> </span>dev:deps<span class="w">        </span><span class="c1"># Up Postgres + Valkey</span>
+</span><span id="__span-2-20"><a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>bun<span class="w"> </span>run<span class="w"> </span>dev:deps:down<span class="w">   </span><span class="c1"># Tear down</span>
+</span><span id="__span-2-21"><a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>bun<span class="w"> </span>run<span class="w"> </span>dev:daemon<span class="w">      </span><span class="c1"># Run a daemon locally against the running orchestrator</span>
+</span><span id="__span-2-22"><a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>
+</span><span id="__span-2-23"><a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a>bun<span class="w"> </span>run<span class="w"> </span>docs:install<span class="w">    </span><span class="c1"># Install MkDocs Python deps (one-time)</span>
+</span><span id="__span-2-24"><a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>bun<span class="w"> </span>run<span class="w"> </span>docs:serve<span class="w">      </span><span class="c1"># Live-reload preview at http://localhost:8000</span>
+</span><span id="__span-2-25"><a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a>bun<span class="w"> </span>run<span class="w"> </span>docs:build<span class="w">      </span><span class="c1"># Strict build (CI also runs this)</span>
 </span></code></pre></div>
 <p><code>bun run check</code> is the single command to run before opening a PR.</p>
 <h2 id="running-a-daemon-locally">Running a daemon locally<a class="headerlink" href="#running-a-daemon-locally" title="Permanent link">&para;</a></h2>
 <p>The webhook server embeds an orchestrator that talks to daemons over WebSocket. To exercise the full pipeline locally:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Terminal 1: orchestrator (webhook server)</span>
-</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>bun<span class="w"> </span>run<span class="w"> </span>dev
-</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
-</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="c1"># Terminal 2: local daemon</span>
-</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>bun<span class="w"> </span>run<span class="w"> </span>dev:daemon
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Terminal 1: orchestrator (webhook server)</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>bun<span class="w"> </span>run<span class="w"> </span>dev
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># Terminal 2: local daemon</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>bun<span class="w"> </span>run<span class="w"> </span>dev:daemon
 </span></code></pre></div>
 <p>The daemon connects back to <code>ws://localhost:3002</code> (<code>WS_PORT</code>) using <code>DAEMON_AUTH_TOKEN</code> from <code>.env</code>. From there, every <code>@chrisleekr-bot-dev</code> mention exercises the full webhook → orchestrator → daemon → pipeline path.</p>
 <h2 id="testing-webhook-delivery">Testing webhook delivery<a class="headerlink" href="#testing-webhook-delivery" title="Permanent link">&para;</a></h2>

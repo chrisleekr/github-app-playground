@@ -664,6 +664,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#label-path-dispatch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Label-path dispatch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#conversational-chat-thread-sub-threshold-fallback" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1635,6 +1646,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#label-path-dispatch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Label-path dispatch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#conversational-chat-thread-sub-threshold-fallback" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1780,6 +1802,8 @@
 <li><code>workflow</code> in registry → same dispatch as the label path.</li>
 </ul>
 <p>The classifier prompt distinguishes <code>review</code> (proactive, find bugs, post inline findings) from <code>resolve</code> (reactive, fix CI, answer feedback). Tune the threshold per environment with <code>INTENT_CONFIDENCE_THRESHOLD</code>.</p>
+<h2 id="label-path-dispatch">Label-path dispatch<a class="headerlink" href="#label-path-dispatch" title="Permanent link">&para;</a></h2>
+<p>Both the label trigger and the in-registry classifier verdict run the same seven-step sequence in <code>src/workflows/dispatcher.ts</code>: registry lookup → context check → prior-output requirement → label mutex → idempotency insert → job enqueue → return. Prior-output is checked before the mutex, so refusing a workflow that lacks its prerequisite (e.g. <code>bot:implement</code> before any <code>bot:plan</code>) does not strip unrelated <code>bot:*</code> labels. The idempotency insert is the durable in-flight guard: a redelivered or concurrent label event for the same workflow and target is rejected at the database, not just at the best-effort Valkey claim.</p>
 <h2 id="conversational-chat-thread-sub-threshold-fallback">Conversational <code>chat-thread</code> (sub-threshold fallback)<a class="headerlink" href="#conversational-chat-thread-sub-threshold-fallback" title="Permanent link">&para;</a></h2>
 <p>When the intent classifier verdict is below <code>INTENT_CONFIDENCE_THRESHOLD</code> AND the conversational backend (<code>DATABASE_URL</code>) is configured, the dispatcher routes the comment to <code>src/workflows/ship/scoped/chat-thread.ts</code> instead of refusing: a freeform exchange entry point for review threads, PR replies, and issue comments. Output modes the executor can return are validated by Zod (<code>answer</code>, <code>decline</code>, <code>execute-workflow</code>, <code>propose-workflow</code>, <code>propose-action</code>, <code>approve-pending</code>, <code>decline-pending</code>, <code>replace-proposal</code>).</p>
 <h3 id="tool-surface-pr-conversations-only">Tool surface (PR conversations only)<a class="headerlink" href="#tool-surface-pr-conversations-only" title="Permanent link">&para;</a></h3>

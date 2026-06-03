@@ -1882,10 +1882,9 @@ Organization: <strong>Org settings → Developer settings → GitHub Apps → Ne
 </tbody>
 </table>
 <p>The path <code>/api/github</code> is set by <code>pathPrefix</code> in <code>createNodeMiddleware</code> (<code>src/app.ts</code>). Don't change the path unless you also change the source.</p>
-<p>For local dev, use a tunnel:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>bun<span class="w"> </span>run<span class="w"> </span>dev:ngrok
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="c1"># or</span>
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>smee<span class="w"> </span>--url<span class="w"> </span>https://smee.io/&lt;channel&gt;<span class="w"> </span>--path<span class="w"> </span>/api/github/webhooks<span class="w"> </span>--port<span class="w"> </span><span class="m">3000</span>
+<p>For local dev, set the Webhook URL to a <a href="https://smee.io">smee.io</a> channel and relay it to your local server:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># SMEE_URL=https://smee.io/&lt;channel&gt; in .env, then:</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>bun<span class="w"> </span>run<span class="w"> </span>dev:smee
 </span></code></pre></div>
 <h3 id="14-oauth-setup-post-install">1.4 OAuth, Setup, post-install<a class="headerlink" href="#14-oauth-setup-post-install" title="Permanent link">&para;</a></h3>
 <p>Leave all OAuth, callback URL, Device Flow, and Setup URL fields empty/unchecked. This App uses <strong>installation tokens only</strong> (server-to-server) and never acts on behalf of an individual user. See <a href="https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/about-authentication-with-a-github-app">About authentication with a GitHub App</a>.</p>

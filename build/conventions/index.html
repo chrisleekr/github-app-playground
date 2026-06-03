@@ -1825,7 +1825,7 @@
 </tbody>
 </table>
 <h2 id="em-dashes">Em dashes<a class="headerlink" href="#em-dashes" title="Permanent link">&para;</a></h2>
-<p>The repo-wide style rule (per <code>~/.claude/CLAUDE.md</code>) forbids em dashes (U+2014). Use commas, colons, semicolons, or parentheses instead. Enforced in CI via <code>scripts/em-dash-sweep.ts --check</code> (also wired into the umbrella <code>bun run check</code>). The check skips <code>specs/</code>, <code>src/db/migrations/</code>, <code>CHANGELOG.md</code>, <code>test/**/fixtures/</code>, build outputs, and spec-kit-managed assets (<code>.specify/</code>, <code>.claude/skills/speckit*</code>, <code>.github/agents/speckit*</code>); those are sync'd from upstream and editing them in-repo gets clobbered. To remediate an offending line locally, run <code>bun run scripts/em-dash-sweep.ts &lt;path&gt;</code> to apply the heuristic rewrite, then hand-review the result. See issue #116 for the original sweep.</p>
+<p>The repo-wide style rule (per <code>~/.claude/CLAUDE.md</code>) forbids em dashes (U+2014). Use commas, colons, semicolons, or parentheses instead. Enforced in CI via <code>scripts/em-dash-sweep.ts --check</code> (also wired into the umbrella <code>bun run check</code>). The check skips <code>src/db/migrations/</code>, <code>CHANGELOG.md</code>, <code>test/**/fixtures/</code>, and build outputs. To remediate an offending line locally, run <code>bun run scripts/em-dash-sweep.ts &lt;path&gt;</code> to apply the heuristic rewrite, then hand-review the result. See issue #116 for the original sweep.</p>
 <h2 id="pre-commit-hooks">Pre-commit hooks<a class="headerlink" href="#pre-commit-hooks" title="Permanent link">&para;</a></h2>
 <p><code>.husky/pre-commit</code>:</p>
 <ol>
