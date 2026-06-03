@@ -1146,6 +1146,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#output-secret-guard-log-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Output secret-guard log events
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#mcp-server-log-fields" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1765,6 +1776,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#output-secret-guard-log-events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Output secret-guard log events
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#mcp-server-log-fields" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2101,6 +2123,44 @@
 <td><code>github.api.rate_limit_warning</code></td>
 <td>warn</td>
 <td><code>route</code>, <code>status</code>, <code>retry_after_s</code>; on a 429 or 403 secondary-rate-limit response.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="output-secret-guard-log-events">Output secret-guard log events<a class="headerlink" href="#output-secret-guard-log-events" title="Permanent link">&para;</a></h2>
+<p><code>safePostToGitHub</code> (<code>src/utils/github-output-guard.ts</code>) is the output-side chokepoint for every byte sent to GitHub. It emits structured <code>warn</code>/<code>error</code> events when the regex pass or the optional LLM scanner acts on a body. Per the logging contract, none of these carry the matched bytes, surrounding context, or a hash, only <code>kinds</code>, counts, lengths, <code>callsite</code>, and <code>deliveryId</code>.</p>
+<table>
+<thead>
+<tr>
+<th><code>event</code></th>
+<th>Level</th>
+<th>When</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>secret_redacted</code></td>
+<td>warn</td>
+<td>Regex pass (<code>scanner: "regex"</code>) or LLM scanner (<code>scanner: "llm"</code>) stripped secret bytes from an outgoing body.</td>
+</tr>
+<tr>
+<td><code>llm_scanner_emptied_body_fallback</code></td>
+<td>warn</td>
+<td>LLM scanner emptied a body the regex pass kept; treated as a false positive, regex-only body posted.</td>
+</tr>
+<tr>
+<td><code>llm_scanner_substitution_rejected</code></td>
+<td>warn</td>
+<td>LLM scanner returned a non-deletion-only body (added/reordered/altered bytes); substitution rejected, regex-only body posted. A prompt-injected scanner is the leading hypothesis. The regex floor still applies, so the body is not guaranteed secret-free beyond it. See issue #198.</td>
+</tr>
+<tr>
+<td><code>llm_scanner_error</code></td>
+<td>warn</td>
+<td>LLM scanner threw (e.g. Bedrock outage); fail-open, body that survived the regex pass is posted.</td>
+</tr>
+<tr>
+<td><code>secret_redaction_emptied_body</code></td>
+<td>error</td>
+<td>Body was whitespace-only after redaction; the GitHub call is skipped entirely (no blank comment).</td>
 </tr>
 </tbody>
 </table>
