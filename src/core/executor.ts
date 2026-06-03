@@ -276,6 +276,18 @@ export async function executeAgent({
     // Any new SDK option must not flip this back to a permissive value. See #191.
     settingSources: [],
     mcpServers,
+    // settingSources:[] gates settings.json / CLAUDE.md / hooks, but NOT a
+    // project `.mcp.json`: the CLI auto-discovers MCP servers by default (it is
+    // a distinct item from settings/memory in the `--bare` discovery list), so
+    // a hostile `.mcp.json` committed in the cloned PR tree at `cwd` would
+    // register a stdio MCP server whose `command` runs on connect under
+    // bypassPermissions, the same RCE primitive class as #191. The SDK maps
+    // this option to the CLI `--strict-mcp-config` flag, which restricts MCP
+    // loading to the `--mcp-config` set (our `mcpServers`), ignoring project
+    // `.mcp.json`. Verified against the agent-sdk arg construction + the CLI
+    // reference. See #196. The TS `strictMcpConfig` docstring only mentions
+    // validation strictness, but the flag it emits also suppresses discovery.
+    strictMcpConfig: true,
     systemPrompt:
       useCacheableLayout && promptParts !== undefined
         ? {

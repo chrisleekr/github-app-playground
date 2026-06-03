@@ -23,6 +23,10 @@ interface QueryCall {
     abortController?: AbortController;
     stderr?: (chunk: string) => void;
     systemPrompt?: unknown;
+    // Security pins asserted by the #196 / #191 regression tests.
+    strictMcpConfig?: boolean;
+    settingSources?: unknown[];
+    mcpServers?: unknown;
   };
 }
 
@@ -104,6 +108,29 @@ function awaitAbortIterator(
     return: () => Promise.resolve({ value: undefined, done: true }),
   } as AsyncIterableIterator<unknown>;
 }
+
+describe("executeAgent: MCP config hardening (#196)", () => {
+  beforeEach(() => {
+    lastQueryCall = undefined;
+    nextIterator = emptyIterator;
+  });
+
+  it("sets strictMcpConfig so a cloned-PR .mcp.json is not auto-loaded, keeping the injected mcpServers", async () => {
+    // settingSources:[] does NOT gate project `.mcp.json` MCP discovery; the
+    // SDK maps strictMcpConfig -> the CLI `--strict-mcp-config` flag, which
+    // restricts MCP loading to the explicit `mcpServers` (--mcp-config) set.
+    const mcpServers = {
+      fake: { type: "stdio", command: "node", args: [] },
+    } as unknown as McpServerConfig;
+    await executeAgent(baseParams({ mcpServers }));
+
+    expect(lastQueryCall?.options.strictMcpConfig).toBe(true);
+    // The legitimately-injected servers must still be forwarded (criterion 2).
+    expect(lastQueryCall?.options.mcpServers).toBe(mcpServers);
+    // The #191 sibling pin stays in place.
+    expect(lastQueryCall?.options.settingSources).toEqual([]);
+  });
+});
 
 describe("executeAgent: cancellation", () => {
   beforeEach(() => {
