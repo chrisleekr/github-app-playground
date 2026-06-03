@@ -1765,7 +1765,7 @@
 <li>Bundles findings into a single wall-of-text review POST.</li>
 </ul>
 <h2 id="idempotency">Idempotency<a class="headerlink" href="#idempotency" title="Permanent link">&para;</a></h2>
-<p>A duplicate webhook delivery, same <code>X-GitHub-Delivery</code> header or same tracking-comment marker, is dropped before any work runs. The fast in-memory <code>Map</code> is lost on restart; the durable check (looking for the bot's hidden delivery marker in existing tracking comments) survives crash loops.</p>
+<p>A duplicate webhook delivery (same <code>X-GitHub-Delivery</code> header) is dropped before any work runs: the side-effecting handlers claim each delivery once via a Valkey <code>SET NX</code> with a 3-day TTL (<code>claimDelivery</code>), and the <code>idx_workflow_runs_inflight</code> index is the durable backstop that rejects a second in-flight run for the same workflow+target if the claim was skipped (issue #202).</p>
 <h2 id="fork-prs">Fork PRs<a class="headerlink" href="#fork-prs" title="Permanent link">&para;</a></h2>
 <p>The bot's installation token cannot push to a fork branch. PR-side workflows (<code>review</code>, <code>resolve</code>, <code>ship</code>) detect this, post a top-level comment asking the contributor to rebase, and proceed against the stale head, flagging affected findings in the final report.</p>
 

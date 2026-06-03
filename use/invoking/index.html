@@ -1737,12 +1737,12 @@
     classDef work fill:#114a82,stroke:#0a2f56,color:#ffffff
     classDef done fill:#2a6f2a,stroke:#1a4d1a,color:#ffffff</code></pre>
 <h2 id="idempotency">Idempotency<a class="headerlink" href="#idempotency" title="Permanent link">&para;</a></h2>
-<p>A duplicate webhook delivery never spawns a duplicate job. The router checks two layers:</p>
+<p>A duplicate webhook delivery never spawns a duplicate job (issue #202). Two layers:</p>
 <ol>
-<li><strong>Fast in-memory</strong>: a <code>Map</code> keyed by the <code>X-GitHub-Delivery</code> header, swept every 60 minutes (<code>src/webhook/router.ts</code>). Lost on restart.</li>
-<li><strong>Durable</strong>, <code>isAlreadyProcessed</code> looks for the hidden delivery marker that the bot embeds in its tracking comment. Survives pod restarts, OOM kills, and crash loops; works without <code>DATABASE_URL</code>.</li>
+<li><strong>Best-effort claim</strong>: the side-effecting event handlers call <code>claimDelivery(deliveryId)</code> (<code>src/webhook/idempotency.ts</code>), a Valkey <code>SET key 1 NX EX 259200</code> that returns <code>true</code> exactly once per <code>X-GitHub-Delivery</code> within GitHub's 3-day redelivery window; a redelivery gets <code>false</code> and returns early. Fail-open: a Valkey outage degrades to at-least-once rather than dropping webhooks.</li>
+<li><strong>Durable backstop</strong>: the <code>idx_workflow_runs_inflight</code> partial-unique index makes the dispatcher reject a second in-flight run for the same workflow+target even if the Valkey claim was skipped.</li>
 </ol>
-<p>If both miss, the request proceeds to the allowlist + concurrency guard.</p>
+<p>The legacy in-memory <code>Map</code> + tracking-comment marker scan was retired in issue #211.</p>
 <h2 id="what-you-see-while-it-runs">What you see while it runs<a class="headerlink" href="#what-you-see-while-it-runs" title="Permanent link">&para;</a></h2>
 <p>Comment-driven runs stack four reactions on your trigger comment so the lifecycle is visible at a glance:</p>
 <table>
