@@ -115,7 +115,7 @@ server.tool(
               repo: REPO_NAME,
               pull_number,
             }),
-          { log, op: "mcp.inlineComment.fetchPr" },
+          { log, op: "mcp.inline_comment.fetch_pr" },
         );
         commitSha = pr.data.head.sha;
       }
@@ -140,7 +140,7 @@ server.tool(
 
       const result = await retryWithBackoff(() => octokit.rest.pulls.createReviewComment(params), {
         log,
-        op: "mcp.inlineComment.createReviewComment",
+        op: "mcp.inline_comment.create_review_comment",
       });
 
       return {

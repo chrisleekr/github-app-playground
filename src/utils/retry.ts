@@ -98,8 +98,8 @@ export async function retryWithBackoff<T>(
     maxDelayMs = 20000,
     backoffFactor = 2,
     log = defaultLog,
-    op = "unknown",
   } = options;
+  const op = normalizeOp(options.op);
 
   // Fail fast on invalid input. Each check names the offending option and
   // value. Without these guards, NaN/Infinity/below-min values could bypass
@@ -137,9 +137,14 @@ export async function retryWithBackoff<T>(
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
       const elapsedMs = Date.now() - startedAt;
+      // Read once; spread into both emit paths so an operator graphing
+      // transient-failure rate can break `attempt_failed` down by HTTP
+      // status (e.g. 503 surge vs 429 surge) without parsing the `err`
+      // serializer payload. Optional in the schema so undefined just
+      // omits the key.
+      const status = (error as { status?: number }).status;
 
       if (isNonRetriable(error, lastError)) {
-        const status = (error as { status?: number }).status;
         log.warn(
           {
             event: RETRY_LOG_EVENTS.nonRetriable,
@@ -156,8 +161,11 @@ export async function retryWithBackoff<T>(
       }
 
       // Compute the next delay BEFORE the emit so the line carries the delay
-      // that will actually be slept. Omit the field on the final attempt
+      // that will actually be slept. Omit `delay_ms` on the final attempt
       // because no sleep will occur (the loop falls through to `exhausted`).
+      // pino serialises objects via JSON.stringify so undefined-valued keys
+      // are dropped from the emitted line, matching the schema's
+      // .optional() shape for both `delay_ms` and `status`.
       const willRetry = attempt < maxAttempts;
       log.warn(
         {
@@ -166,7 +174,8 @@ export async function retryWithBackoff<T>(
           attempt,
           max_attempts: maxAttempts,
           elapsed_ms: elapsedMs,
-          ...(willRetry ? { delay_ms: delayMs } : {}),
+          delay_ms: willRetry ? delayMs : undefined,
+          status,
           err: lastError,
         },
         "Operation attempt failed",
@@ -195,6 +204,18 @@ export async function retryWithBackoff<T>(
   // at least once, meaning `lastError` was assigned in the catch block.
   // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
   throw lastError!;
+}
+
+/**
+ * Coerce `op` to a non-empty identifier so the `op: z.string().min(1)`
+ * contract pinned in `retry-log-fields.ts` holds even when a caller threads
+ * an empty / whitespace-only / non-string value. The destructure default
+ * only fires for literal `undefined`, so `op: ""`, `op: "   "`, and a
+ * stray non-string slip through without this.
+ */
+function normalizeOp(op: unknown): string {
+  const trimmed = typeof op === "string" ? op.trim() : "";
+  return trimmed.length > 0 ? trimmed : "unknown";
 }
 
 /**

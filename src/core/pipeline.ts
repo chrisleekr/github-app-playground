@@ -304,7 +304,7 @@ export async function runPipeline(
           maxAttempts: 3,
           initialDelayMs: 1000,
           log: ctx.log,
-          op: "trackingComment.create",
+          op: "tracking_comment.create",
         }),
       );
     }
@@ -470,7 +470,7 @@ export async function runPipeline(
                 maxAttempts: 3,
                 initialDelayMs: 1000,
                 log: enrichedCtx.log,
-                op: "trackingComment.finalize",
+                op: "tracking_comment.finalize",
               },
             ),
           );
@@ -590,7 +590,7 @@ export async function runPipeline(
             maxAttempts: 3,
             initialDelayMs: 1000,
             log: ctx.log,
-            op: "trackingComment.finalize.failure",
+            op: "tracking_comment.finalize.failure",
           },
         );
       } catch (commentError) {

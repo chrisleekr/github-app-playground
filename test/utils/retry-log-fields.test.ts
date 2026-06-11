@@ -171,3 +171,77 @@ describe("RetryLogFieldsSchema: rejects field-name drift", () => {
     expect(result.success).toBe(false);
   });
 });
+
+describe("RetryLogFieldsSchema: per-event field constraints (discriminated union)", () => {
+  it("rejects retry.non_retriable without status (status is required on this branch)", () => {
+    const result = RetryLogFieldsSchema.safeParse({
+      event: RETRY_LOG_EVENTS.nonRetriable,
+      op: "github.fetch",
+      attempt: 1,
+      max_attempts: 3,
+      elapsed_ms: 12,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects retry.exhausted with delay_ms (no sleep follows the exhausted emit)", () => {
+    const result = RetryLogFieldsSchema.safeParse({
+      event: RETRY_LOG_EVENTS.exhausted,
+      op: "github.fetch",
+      attempt: 3,
+      max_attempts: 3,
+      elapsed_ms: 30_000,
+      delay_ms: 5000,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects retry.succeeded_after_retry with delay_ms (no retry follows success)", () => {
+    const result = RetryLogFieldsSchema.safeParse({
+      event: RETRY_LOG_EVENTS.succeededAfterRetry,
+      op: "github.fetch",
+      attempt: 2,
+      max_attempts: 3,
+      elapsed_ms: 5_100,
+      delay_ms: 5000,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects retry.succeeded_after_retry with status (only error-bearing events carry status)", () => {
+    const result = RetryLogFieldsSchema.safeParse({
+      event: RETRY_LOG_EVENTS.succeededAfterRetry,
+      op: "github.fetch",
+      attempt: 2,
+      max_attempts: 3,
+      elapsed_ms: 5_100,
+      status: 503,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts retry.attempt_failed with status (5xx transient failure)", () => {
+    const result = RetryLogFieldsSchema.safeParse({
+      event: RETRY_LOG_EVENTS.attemptFailed,
+      op: "github.fetch",
+      attempt: 1,
+      max_attempts: 3,
+      elapsed_ms: 42,
+      delay_ms: 5000,
+      status: 503,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts retry.attempt_failed without status (non-HTTP error like a connection reset)", () => {
+    const result = RetryLogFieldsSchema.safeParse({
+      event: RETRY_LOG_EVENTS.attemptFailed,
+      op: "github.fetch",
+      attempt: 1,
+      max_attempts: 3,
+      elapsed_ms: 42,
+      delay_ms: 5000,
+    });
+    expect(result.success).toBe(true);
+  });
+});

@@ -98,7 +98,7 @@ async function paginateReviewThreads(
           number: args.pr_number,
           cursor,
         }),
-      { op: "ship.probe.reviewThreads" },
+      { op: "ship.probe.review_threads" },
     );
     const rt = page.repository?.pullRequest?.reviewThreads;
     if (rt === undefined) break;
