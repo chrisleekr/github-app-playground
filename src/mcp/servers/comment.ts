@@ -113,7 +113,7 @@ server.tool(
             comment_id: commentId,
             body: bodyWithMarker,
           }),
-        { log },
+        { log, op: "mcp.comment.update" },
       );
 
       return {

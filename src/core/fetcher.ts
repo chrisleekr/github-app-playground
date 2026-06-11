@@ -441,7 +441,7 @@ async function fetchRemainingReviewComments(
           reviewId,
           cursor: startCursor,
         }),
-      { log },
+      { log, op: "github.review.followup" },
     );
     return result.node?.comments.nodes ?? [];
   } catch (err) {

@@ -90,13 +90,15 @@ async function paginateReviewThreads(
   let cursor: string | null = startCursor;
   while (cursor !== null) {
     // eslint-disable-next-line no-await-in-loop -- pagination is inherently sequential
-    const page = await retryWithBackoff(() =>
-      octokit.graphql<ReviewThreadsPageResponse>(REVIEW_THREADS_PAGE_QUERY, {
-        owner: args.owner,
-        repo: args.repo,
-        number: args.pr_number,
-        cursor,
-      }),
+    const page = await retryWithBackoff(
+      () =>
+        octokit.graphql<ReviewThreadsPageResponse>(REVIEW_THREADS_PAGE_QUERY, {
+          owner: args.owner,
+          repo: args.repo,
+          number: args.pr_number,
+          cursor,
+        }),
+      { op: "ship.probe.reviewThreads" },
     );
     const rt = page.repository?.pullRequest?.reviewThreads;
     if (rt === undefined) break;
@@ -159,12 +161,14 @@ export async function runProbe(input: RunProbeInput): Promise<ProbeResult> {
   let lastResponse: ProbeResponseShape | null = null;
   for (let attempt = 0; attempt <= backoff.length; attempt += 1) {
     // eslint-disable-next-line no-await-in-loop -- attempts are inherently sequential per FR-021
-    const response = await retryWithBackoff(() =>
-      input.octokit.graphql<ProbeResponseShape>(PROBE_QUERY, {
-        owner: input.owner,
-        repo: input.repo,
-        number: input.pr_number,
-      }),
+    const response = await retryWithBackoff(
+      () =>
+        input.octokit.graphql<ProbeResponseShape>(PROBE_QUERY, {
+          owner: input.owner,
+          repo: input.repo,
+          number: input.pr_number,
+        }),
+      { op: "ship.probe.main" },
     );
     lastResponse = response;
     const mergeable = response.repository?.pullRequest?.mergeable ?? null;
