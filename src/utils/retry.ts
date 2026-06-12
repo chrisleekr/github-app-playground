@@ -2,6 +2,7 @@ import pino from "pino";
 
 import type { Logger } from "../logger";
 import { errSerializer, REDACT_PATHS, resolveLogLevel } from "./log-redaction";
+import { RETRY_LOG_EVENTS } from "./retry-log-fields";
 
 // Config-free default logger (issue #184). Importing retry.ts must not pull in
 // src/logger.ts -> src/config, so the stdio MCP servers that use retry (e.g.
@@ -40,6 +41,13 @@ export interface RetryOptions {
    * same), so callers can forward a maybe-undefined logger without a guard.
    */
   log?: Logger | undefined;
+  /**
+   * Short dotted identifier for the wrapped operation (e.g. `"github.fetch"`,
+   * `"mcp.comment.update"`). Surfaces on every `retry.*` event so an operator
+   * can break the retry rate down per upstream call site. Defaults to
+   * `"unknown"` when omitted so emits always carry a non-empty `op`.
+   */
+  op?: string | undefined;
 }
 
 /**
@@ -91,6 +99,7 @@ export async function retryWithBackoff<T>(
     backoffFactor = 2,
     log = defaultLog,
   } = options;
+  const op = normalizeOp(options.op);
 
   // Fail fast on invalid input. Each check names the offending option and
   // value. Without these guards, NaN/Infinity/below-min values could bypass
@@ -100,42 +109,79 @@ export async function retryWithBackoff<T>(
   validateNumberOption("maxDelayMs", maxDelayMs, { min: 0 });
   validateNumberOption("backoffFactor", backoffFactor, { min: 1 });
 
+  const startedAt = Date.now();
   let delayMs = initialDelayMs;
   let lastError: Error | undefined;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       // eslint-disable-next-line no-await-in-loop
-      return await operation();
+      const value = await operation();
+      // Weak-flake leading indicator: emit only when the call succeeded after
+      // at least one prior failure. First-try successes stay silent so the
+      // event count tracks the body of the transient-failure distribution,
+      // not normal traffic.
+      if (attempt > 1) {
+        log.info(
+          {
+            event: RETRY_LOG_EVENTS.succeededAfterRetry,
+            op,
+            attempt,
+            max_attempts: maxAttempts,
+            elapsed_ms: Date.now() - startedAt,
+          },
+          "Operation succeeded after retry",
+        );
+      }
+      return value;
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
-
-      // Do not retry permanent client errors (4xx except 429 Too Many Requests).
-      // Octokit wraps HTTP errors with a .status property; non-HTTP errors lack it.
+      const elapsedMs = Date.now() - startedAt;
+      // Read once; spread into both emit paths so an operator graphing
+      // transient-failure rate can break `attempt_failed` down by HTTP
+      // status (e.g. 503 surge vs 429 surge) without parsing the `err`
+      // serializer payload. Optional in the schema so undefined just
+      // omits the key.
       const status = (error as { status?: number }).status;
-      if (status !== undefined && status >= 400 && status < 500 && status !== 429) {
-        // Exception: GitHub delivers a *secondary* rate limit as HTTP 403 (not
-        // 429) with a "secondary rate limit" body. A status-only check would
-        // misclassify it as a permanent permission error, so inspect the
-        // message and let a secondary rate limit fall through to the backoff
-        // path. A plain 403 (no marker) still fails fast. The message is
-        // inspected only inside this 4xx branch, so non-4xx errors skip the
-        // string work. See issue #199.
-        const isSecondaryRateLimit = lastError.message
-          .toLowerCase()
-          .includes("secondary rate limit");
-        if (!isSecondaryRateLimit) {
-          log.warn(
-            { attempt, status, err: lastError },
-            "Non-retriable error, throwing immediately",
-          );
-          throw lastError;
-        }
+
+      if (isNonRetriable(error, lastError)) {
+        log.warn(
+          {
+            event: RETRY_LOG_EVENTS.nonRetriable,
+            op,
+            attempt,
+            max_attempts: maxAttempts,
+            elapsed_ms: elapsedMs,
+            status,
+            err: lastError,
+          },
+          "Non-retriable error, throwing immediately",
+        );
+        throw lastError;
       }
 
-      log.warn({ attempt, maxAttempts, err: lastError }, "Operation attempt failed");
+      // Compute the next delay BEFORE the emit so the line carries the delay
+      // that will actually be slept. Omit `delay_ms` on the final attempt
+      // because no sleep will occur (the loop falls through to `exhausted`).
+      // pino serialises objects via JSON.stringify so undefined-valued keys
+      // are dropped from the emitted line, matching the schema's
+      // .optional() shape for both `delay_ms` and `status`.
+      const willRetry = attempt < maxAttempts;
+      log.warn(
+        {
+          event: RETRY_LOG_EVENTS.attemptFailed,
+          op,
+          attempt,
+          max_attempts: maxAttempts,
+          elapsed_ms: elapsedMs,
+          delay_ms: willRetry ? delayMs : undefined,
+          status,
+          err: lastError,
+        },
+        "Operation attempt failed",
+      );
 
-      if (attempt < maxAttempts) {
+      if (willRetry) {
         // eslint-disable-next-line no-await-in-loop
         await new Promise((resolve) => setTimeout(resolve, delayMs));
         delayMs = Math.min(delayMs * backoffFactor, maxDelayMs);
@@ -143,9 +189,52 @@ export async function retryWithBackoff<T>(
     }
   }
 
-  log.error({ maxAttempts }, "Operation failed after all attempts");
+  log.error(
+    {
+      event: RETRY_LOG_EVENTS.exhausted,
+      op,
+      attempt: maxAttempts,
+      max_attempts: maxAttempts,
+      elapsed_ms: Date.now() - startedAt,
+      err: lastError,
+    },
+    "Operation failed after all attempts",
+  );
   // Safe to assert: `maxAttempts >= 1` is enforced above, so the loop ran
   // at least once, meaning `lastError` was assigned in the catch block.
   // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
   throw lastError!;
+}
+
+/**
+ * Coerce `op` to a non-empty identifier so the `op: z.string().min(1)`
+ * contract pinned in `retry-log-fields.ts` holds even when a caller threads
+ * an empty / whitespace-only / non-string value. The destructure default
+ * only fires for literal `undefined`, so `op: ""`, `op: "   "`, and a
+ * stray non-string slip through without this.
+ */
+function normalizeOp(op: unknown): string {
+  const trimmed = typeof op === "string" ? op.trim() : "";
+  return trimmed.length > 0 ? trimmed : "unknown";
+}
+
+/**
+ * Decide whether an error is a permanent 4xx that should bypass retry.
+ *
+ * Octokit wraps HTTP errors with a `.status` property; non-HTTP errors lack
+ * it. A 4xx is non-retriable EXCEPT 429 (Too Many Requests) and a 403 whose
+ * message marks a GitHub *secondary* rate limit (delivered as 403, not 429).
+ * The secondary-rate-limit marker is inspected only inside the 4xx branch so
+ * non-4xx errors skip the string work. See issue #199.
+ *
+ * Extracted from `retryWithBackoff` so the main loop's complexity stays
+ * tractable as more structured-log branches accumulate.
+ */
+function isNonRetriable(error: unknown, normalized: Error): boolean {
+  const status = (error as { status?: number }).status;
+  if (status === undefined || status < 400 || status >= 500 || status === 429) {
+    return false;
+  }
+  const isSecondaryRateLimit = normalized.message.toLowerCase().includes("secondary rate limit");
+  return !isSecondaryRateLimit;
 }

@@ -304,6 +304,7 @@ export async function runPipeline(
           maxAttempts: 3,
           initialDelayMs: 1000,
           log: ctx.log,
+          op: "tracking_comment.create",
         }),
       );
     }
@@ -318,6 +319,7 @@ export async function runPipeline(
         maxAttempts: 3,
         initialDelayMs: 2000,
         log: ctx.log,
+        op: "github.fetch",
       }),
     );
 
@@ -468,6 +470,7 @@ export async function runPipeline(
                 maxAttempts: 3,
                 initialDelayMs: 1000,
                 log: enrichedCtx.log,
+                op: "tracking_comment.finalize",
               },
             ),
           );
@@ -587,6 +590,7 @@ export async function runPipeline(
             maxAttempts: 3,
             initialDelayMs: 1000,
             log: ctx.log,
+            op: "tracking_comment.finalize.failure",
           },
         );
       } catch (commentError) {

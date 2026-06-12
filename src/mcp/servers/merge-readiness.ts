@@ -87,7 +87,7 @@ server.tool(
             repo: REPO_NAME,
             number: pr_number,
           }),
-        { log },
+        { log, op: "mcp.merge_readiness.probe" },
       );
       // The probe fetches the first 100 review threads only, sufficient for
       // a scheduled action's own freshly-created PR. botPushedShas is empty:

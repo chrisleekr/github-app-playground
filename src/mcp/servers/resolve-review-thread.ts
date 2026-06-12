@@ -172,7 +172,7 @@ server.tool(
       // still see prompt failures.
       const preflight = await retryWithBackoff(
         () => octokit.graphql<PreflightResponse>(GET_THREAD_QUERY, { threadId: thread_id }),
-        { log },
+        { log, op: "mcp.resolve_review_thread.preflight" },
       );
       const preflightPr = preflight.node?.pullRequest.number;
       const preflightRepo = preflight.node?.pullRequest.repository;
@@ -208,7 +208,7 @@ server.tool(
 
       const result = await retryWithBackoff(
         () => octokit.graphql<ResolveResponse>(RESOLVE_MUTATION, { threadId: thread_id }),
-        { log },
+        { log, op: "mcp.resolve_review_thread.mutate" },
       );
       const thread = result.resolveReviewThread.thread;
 

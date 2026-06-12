@@ -118,7 +118,7 @@ export async function getPrStateCheckRollup(
         repo: deps.repo,
         number: prNumber,
       }),
-    { log: deps.log },
+    { log: deps.log, op: "github.state.pr_state_check_rollup" },
   );
   const pr = data.repository?.pullRequest;
   if (pr === null || pr === undefined) {
@@ -187,7 +187,7 @@ export async function getCheckRunOutput(
         repo: deps.repo,
         check_run_id: checkRunId,
       }),
-    { log: deps.log },
+    { log: deps.log, op: "github.state.check_run_output" },
   );
   const text = result.data.output.text ?? "";
   const truncated = truncate(text, MAX_CHECK_OUTPUT_BYTES);
@@ -216,7 +216,7 @@ export async function getWorkflowRun(deps: GithubStateDeps, runId: number): Prom
         repo: deps.repo,
         run_id: runId,
       }),
-    { log: deps.log },
+    { log: deps.log, op: "github.state.workflow_run" },
   );
   return serialize({
     id: result.data.id,
@@ -261,7 +261,7 @@ export async function getBranchProtection(deps: GithubStateDeps, branch: string)
         throw err;
       }
     },
-    { log: deps.log },
+    { log: deps.log, op: "github.state.branch_protection" },
   );
   if (result === null) {
     return serialize({ branch, protected: false });
@@ -285,7 +285,7 @@ export async function getPrDiff(deps: GithubStateDeps, prNumber: number): Promis
         pull_number: prNumber,
         mediaType: { format: "diff" },
       }),
-    { log: deps.log },
+    { log: deps.log, op: "github.state.pr_diff" },
   );
   const diff = typeof result.data === "string" ? result.data : JSON.stringify(result.data);
   const { text, truncated } = truncate(diff, MAX_DIFF_BYTES);
@@ -309,7 +309,7 @@ export async function getPrFiles(deps: GithubStateDeps, prNumber: number): Promi
         pull_number: prNumber,
         per_page: 100,
       }),
-    { log: deps.log },
+    { log: deps.log, op: "github.state.pr_files" },
   );
   return serialize({
     pr_number: prNumber,
@@ -340,7 +340,7 @@ export async function listPrComments(
         per_page: 30,
         page,
       }),
-    { log: deps.log },
+    { log: deps.log, op: "github.state.pr_comments" },
   );
   const comments = result.data.map((c) => ({
     id: c.id,

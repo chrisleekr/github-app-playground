@@ -1,9 +1,31 @@
 import { describe, expect, it, mock } from "bun:test";
 
 import { retryWithBackoff } from "../../src/utils/retry";
+import { RETRY_LOG_EVENTS, RetryLogFieldsSchema } from "../../src/utils/retry-log-fields";
 import { makeSilentLogger } from "../factories";
 
 const silentLog = makeSilentLogger();
+
+/**
+ * Extract the first object-form argument of a captured `log.warn` / `log.info`
+ * / `log.error` call. pino emitters take `(obj, msg)` shape, so the first arg
+ * is the structured fields. Strips `err` (pino's errSerializer handles it) and
+ * any other non-schema scalars before returning so the result can be fed
+ * straight into `RetryLogFieldsSchema.parse`.
+ */
+function structuredFields(call: readonly unknown[]): Record<string, unknown> {
+  const arg = call[0];
+  if (typeof arg !== "object" || arg === null) {
+    throw new Error("expected first arg to be a structured fields object");
+  }
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(arg as Record<string, unknown>)) {
+    if (k === "err") continue;
+    // eslint-disable-next-line security/detect-object-injection -- keys come from the test's own mock captures, not external input
+    out[k] = v;
+  }
+  return out;
+}
 
 function makeStatusError(status: number): Error & { status: number } {
   const err = new Error(`HTTP ${status}`) as Error & { status: number };
@@ -240,5 +262,233 @@ describe("retryWithBackoff: input validation", () => {
 
   it("rejects backoffFactor: 0.5 (below min 1)", async () => {
     await expectValidationError({ backoffFactor: 0.5 }, "backoffFactor must be >= 1");
+  });
+});
+
+describe("retryWithBackoff: structured log events (#215)", () => {
+  it("emits nothing on first-try success (succeeded_after_retry is gated on attempt > 1)", async () => {
+    const log = makeSilentLogger();
+    const op = mock(() => Promise.resolve("ok"));
+    const result = await retryWithBackoff(op, { log, op: "test.success" });
+    expect(result).toBe("ok");
+    expect(log.info).toHaveBeenCalledTimes(0);
+    expect(log.warn).toHaveBeenCalledTimes(0);
+    expect(log.error).toHaveBeenCalledTimes(0);
+  });
+
+  it("emits retry.attempt_failed (with delay_ms) then retry.succeeded_after_retry on attempt-2 success", async () => {
+    const log = makeSilentLogger();
+    let calls = 0;
+    const op = mock(() => {
+      calls++;
+      if (calls === 1) return Promise.reject(new Error("transient"));
+      return Promise.resolve("recovered");
+    });
+    const result = await retryWithBackoff(op, {
+      maxAttempts: 3,
+      initialDelayMs: 1,
+      log,
+      op: "test.attempt2",
+    });
+    expect(result).toBe("recovered");
+
+    expect(log.warn).toHaveBeenCalledTimes(1);
+    const warnFields = structuredFields(log.warn.mock.calls[0] ?? []);
+    expect(warnFields).toMatchObject({
+      event: RETRY_LOG_EVENTS.attemptFailed,
+      op: "test.attempt2",
+      attempt: 1,
+      max_attempts: 3,
+      delay_ms: 1,
+    });
+    expect(typeof warnFields["elapsed_ms"]).toBe("number");
+    expect(() => RetryLogFieldsSchema.parse(warnFields)).not.toThrow();
+
+    expect(log.info).toHaveBeenCalledTimes(1);
+    const infoFields = structuredFields(log.info.mock.calls[0] ?? []);
+    expect(infoFields).toMatchObject({
+      event: RETRY_LOG_EVENTS.succeededAfterRetry,
+      op: "test.attempt2",
+      attempt: 2,
+      max_attempts: 3,
+    });
+    expect(typeof infoFields["elapsed_ms"]).toBe("number");
+    expect(() => RetryLogFieldsSchema.parse(infoFields)).not.toThrow();
+  });
+
+  it("emits retry.non_retriable (with status) on a 404 and rethrows", async () => {
+    const log = makeSilentLogger();
+    const err = new Error("HTTP 404") as Error & { status: number };
+    err.status = 404;
+    const op = mock(() => Promise.reject(err));
+
+    let thrown: unknown;
+    try {
+      await retryWithBackoff(op, {
+        maxAttempts: 3,
+        initialDelayMs: 1,
+        log,
+        op: "test.nonretriable",
+      });
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBe(err);
+
+    expect(log.warn).toHaveBeenCalledTimes(1);
+    const fields = structuredFields(log.warn.mock.calls[0] ?? []);
+    expect(fields).toMatchObject({
+      event: RETRY_LOG_EVENTS.nonRetriable,
+      op: "test.nonretriable",
+      attempt: 1,
+      max_attempts: 3,
+      status: 404,
+    });
+    expect(typeof fields["elapsed_ms"]).toBe("number");
+    expect(() => RetryLogFieldsSchema.parse(fields)).not.toThrow();
+  });
+
+  it("emits retry.exhausted (error level) after the final attempt fails", async () => {
+    const log = makeSilentLogger();
+    const op = mock(() => Promise.reject(new Error("always fails")));
+
+    let thrown = "";
+    try {
+      await retryWithBackoff(op, {
+        maxAttempts: 3,
+        initialDelayMs: 1,
+        log,
+        op: "test.exhausted",
+      });
+    } catch (e) {
+      thrown = e instanceof Error ? e.message : String(e);
+    }
+    expect(thrown).toBe("always fails");
+
+    expect(log.error).toHaveBeenCalledTimes(1);
+    const fields = structuredFields(log.error.mock.calls[0] ?? []);
+    expect(fields).toMatchObject({
+      event: RETRY_LOG_EVENTS.exhausted,
+      op: "test.exhausted",
+      attempt: 3,
+      max_attempts: 3,
+    });
+    expect(typeof fields["elapsed_ms"]).toBe("number");
+    expect(() => RetryLogFieldsSchema.parse(fields)).not.toThrow();
+
+    // Final attempt_failed line carries NO delay_ms (no sleep will follow).
+    expect(log.warn).toHaveBeenCalledTimes(3);
+    const finalWarn = structuredFields(log.warn.mock.calls[2] ?? []);
+    expect(finalWarn["event"]).toBe(RETRY_LOG_EVENTS.attemptFailed);
+    expect(finalWarn["attempt"]).toBe(3);
+    expect(finalWarn["delay_ms"]).toBeUndefined();
+    expect(() => RetryLogFieldsSchema.parse(finalWarn)).not.toThrow();
+  });
+
+  it("defaults op to 'unknown' when the caller has not threaded one", async () => {
+    const log = makeSilentLogger();
+    const op = mock(() => Promise.reject(new Error("always fails")));
+    let thrown: unknown;
+    try {
+      await retryWithBackoff(op, { maxAttempts: 1, initialDelayMs: 1, log });
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    expect(log.error).toHaveBeenCalledTimes(1);
+    const fields = structuredFields(log.error.mock.calls[0] ?? []);
+    expect(fields["op"]).toBe("unknown");
+  });
+
+  it("normalizes an empty op to 'unknown' (so the non-empty op contract holds)", async () => {
+    const log = makeSilentLogger();
+    const op = mock(() => Promise.reject(new Error("always fails")));
+    try {
+      await retryWithBackoff(op, { maxAttempts: 1, initialDelayMs: 1, log, op: "" });
+    } catch {
+      /* expected */
+    }
+    const fields = structuredFields(log.error.mock.calls[0] ?? []);
+    expect(fields["op"]).toBe("unknown");
+    expect(() => RetryLogFieldsSchema.parse(fields)).not.toThrow();
+  });
+
+  it("normalizes a whitespace-only op to 'unknown'", async () => {
+    const log = makeSilentLogger();
+    const op = mock(() => Promise.reject(new Error("always fails")));
+    try {
+      await retryWithBackoff(op, { maxAttempts: 1, initialDelayMs: 1, log, op: "   " });
+    } catch {
+      /* expected */
+    }
+    const fields = structuredFields(log.error.mock.calls[0] ?? []);
+    expect(fields["op"]).toBe("unknown");
+  });
+
+  it("trims surrounding whitespace from a non-empty op", async () => {
+    const log = makeSilentLogger();
+    const op = mock(() => Promise.reject(new Error("always fails")));
+    try {
+      await retryWithBackoff(op, {
+        maxAttempts: 1,
+        initialDelayMs: 1,
+        log,
+        op: "  github.fetch  ",
+      });
+    } catch {
+      /* expected */
+    }
+    const fields = structuredFields(log.error.mock.calls[0] ?? []);
+    expect(fields["op"]).toBe("github.fetch");
+  });
+
+  it("includes status on retry.attempt_failed when the error carried one (mirrors non_retriable)", async () => {
+    const log = makeSilentLogger();
+    let calls = 0;
+    const op = mock(() => {
+      calls++;
+      if (calls === 1) return Promise.reject(makeStatusError(503));
+      return Promise.resolve("recovered");
+    });
+    const result = await retryWithBackoff(op, {
+      maxAttempts: 3,
+      initialDelayMs: 1,
+      log,
+      op: "test.transient5xx",
+    });
+    expect(result).toBe("recovered");
+
+    expect(log.warn).toHaveBeenCalledTimes(1);
+    const warnFields = structuredFields(log.warn.mock.calls[0] ?? []);
+    expect(warnFields).toMatchObject({
+      event: RETRY_LOG_EVENTS.attemptFailed,
+      op: "test.transient5xx",
+      attempt: 1,
+      max_attempts: 3,
+      delay_ms: 1,
+      status: 503,
+    });
+    expect(() => RetryLogFieldsSchema.parse(warnFields)).not.toThrow();
+  });
+
+  it("omits status on retry.attempt_failed when the error has none (non-HTTP errors)", async () => {
+    const log = makeSilentLogger();
+    let calls = 0;
+    const op = mock(() => {
+      calls++;
+      if (calls === 1) return Promise.reject(new Error("ECONNRESET"));
+      return Promise.resolve("recovered");
+    });
+    await retryWithBackoff(op, {
+      maxAttempts: 3,
+      initialDelayMs: 1,
+      log,
+      op: "test.connreset",
+    });
+
+    expect(log.warn).toHaveBeenCalledTimes(1);
+    const warnFields = structuredFields(log.warn.mock.calls[0] ?? []);
+    expect(warnFields["status"]).toBeUndefined();
+    expect(() => RetryLogFieldsSchema.parse(warnFields)).not.toThrow();
   });
 });

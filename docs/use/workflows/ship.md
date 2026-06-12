@@ -112,6 +112,8 @@ Other non-readiness reasons (`failing_checks`, `behind_base`, `pending_checks`, 
 
 The `chat-thread` executor's GitHub-state tool calls (CI rollup, check output, branch protection, PR diff/files, comments) go through `dispatchGithubStateTool`, whose fetchers wrap every octokit call in `retryWithBackoff`. A transient GitHub API blip (5xx, 429, or a secondary rate limit) is retried up to three times with exponential backoff and a deliveryId-correlated retry-warning log, instead of surfacing to the model as a tool error it would have to recover from semantically (issue #199).
 
+The merge-readiness probe (`src/workflows/ship/probe.ts`) follows the same pattern. Both its main `PROBE_QUERY` call and the `paginateReviewThreads` follow-up are wrapped in `retryWithBackoff`, carrying `op: "ship.probe.main"` and `op: "ship.probe.review_threads"` respectively so probe-side retries can be sliced out from the surrounding fleet in observability dashboards (see [Retry log fields](../../operate/observability.md#retry-log-fields)). A single GraphQL rate-limit or network blip is recovered in-place rather than tearing down the verdict and yielding the session.
+
 ## Re-triggering
 
 Re-applying the `bot:ship` label or re-commenting `bot:ship` on the same PR while a session is **active** is a no-op. Re-applying after the session is **terminal** starts a fresh session: the prior `ship_intents` row is preserved for audit.
