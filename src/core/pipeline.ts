@@ -14,7 +14,12 @@ import { checkoutRepo } from "./checkout";
 import { executeAgent } from "./executor";
 import { fetchGitHubData } from "./fetcher";
 import { resolveGithubToken } from "./github-token";
-import { CORE_PIPELINE_LOG_EVENTS, logPipelineStage, timeStage } from "./log-fields";
+import {
+  CORE_PIPELINE_LOG_EVENTS,
+  createStageTracker,
+  logPipelineStage,
+  timeStage,
+} from "./log-fields";
 import { buildPrompt, buildPromptParts, resolveAllowedTools } from "./prompt-builder";
 import { createTrackingComment, finalizeTrackingComment } from "./tracking-comment";
 
@@ -286,6 +291,9 @@ export async function runPipeline(
   // (issue #166); pipeline_wall_clock_ms on the terminal line is measured from
   // here so an operator can see total request cost without a webhook arriving.
   const pipelineStartedAt = Date.now();
+  // Cursor of the stage in flight; cleared on each stage's success so the outer
+  // catch can attribute which stage threw (issue #226).
+  const stageTracker = createStageTracker();
 
   try {
     ctx.log.info({ event: CORE_PIPELINE_LOG_EVENTS.started }, "Pipeline started");
@@ -299,28 +307,39 @@ export async function runPipeline(
     } else if (ctx.skipTrackingComments === true) {
       ctx.log.info("Skipping tracking comment (skipTrackingComments)");
     } else {
-      trackingCommentId = await timeStage(ctx.log, "trackingComment.create", () =>
-        retryWithBackoff(() => createTrackingComment(ctx), {
-          maxAttempts: 3,
-          initialDelayMs: 1000,
-          log: ctx.log,
-          op: "tracking_comment.create",
-        }),
+      trackingCommentId = await timeStage(
+        ctx.log,
+        "trackingComment.create",
+        () =>
+          retryWithBackoff(() => createTrackingComment(ctx), {
+            maxAttempts: 3,
+            initialDelayMs: 1000,
+            log: ctx.log,
+            op: "tracking_comment.create",
+          }),
+        stageTracker,
       );
     }
     const resolvedTrackingCommentId = trackingCommentId;
 
-    const installationToken = await timeStage(ctx.log, "token.resolve", () =>
-      resolveGithubToken(ctx.octokit),
+    const installationToken = await timeStage(
+      ctx.log,
+      "token.resolve",
+      () => resolveGithubToken(ctx.octokit),
+      stageTracker,
     );
 
-    const data = await timeStage(ctx.log, "github.fetch", () =>
-      retryWithBackoff(() => fetchGitHubData(ctx), {
-        maxAttempts: 3,
-        initialDelayMs: 2000,
-        log: ctx.log,
-        op: "github.fetch",
-      }),
+    const data = await timeStage(
+      ctx.log,
+      "github.fetch",
+      () =>
+        retryWithBackoff(() => fetchGitHubData(ctx), {
+          maxAttempts: 3,
+          initialDelayMs: 2000,
+          log: ctx.log,
+          op: "github.fetch",
+        }),
+      stageTracker,
     );
 
     const enrichedCtx: EnrichedBotContext = {
@@ -365,6 +384,7 @@ export async function runPipeline(
     // `promptParts` is forwarded when cacheable layout is on so the executor
     // can pivot to systemPrompt.append + excludeDynamicSections (issue #134).
     const promptBuildAt = Date.now();
+    stageTracker.active = { stage: "prompt.build", startedAt: promptBuildAt };
     const prompt = buildPrompt(
       enrichedCtx,
       data,
@@ -376,6 +396,7 @@ export async function runPipeline(
         ? buildPromptParts(enrichedCtx, data, resolvedTrackingCommentId, overrides.discussionDigest)
         : undefined;
     logPipelineStage(ctx.log, "prompt.build", promptBuildAt);
+    stageTracker.active = null;
 
     if (ctx.dryRun === true) {
       ctx.log.info(
@@ -385,8 +406,11 @@ export async function runPipeline(
       return { success: true, durationMs: 0, costUsd: 0, numTurns: 0, dryRun: true };
     }
 
-    const { workDir, cleanup } = await timeStage(enrichedCtx.log, "repo.clone", () =>
-      checkoutRepo(enrichedCtx, installationToken, enrichedCtx.baseBranch),
+    const { workDir, cleanup } = await timeStage(
+      enrichedCtx.log,
+      "repo.clone",
+      () => checkoutRepo(enrichedCtx, installationToken, enrichedCtx.baseBranch),
+      stageTracker,
     );
     overrides.onWorkDirReady?.(workDir);
 
@@ -445,36 +469,48 @@ export async function runPipeline(
           ]
         : withResolveTool;
 
-      const result = await timeStage(enrichedCtx.log, "executor.invoke", () =>
-        executeAgent({
-          ctx: enrichedCtx,
-          prompt,
-          mcpServers,
-          workDir,
-          artifactsDir,
-          allowedTools,
-          installationToken,
-          ...(overrides.maxTurns !== undefined ? { maxTurns: overrides.maxTurns } : {}),
-          ...(overrides.signal !== undefined ? { signal: overrides.signal } : {}),
-          ...(promptParts !== undefined ? { promptParts } : {}),
-        }),
+      const result = await timeStage(
+        enrichedCtx.log,
+        "executor.invoke",
+        () =>
+          executeAgent({
+            ctx: enrichedCtx,
+            prompt,
+            mcpServers,
+            workDir,
+            artifactsDir,
+            allowedTools,
+            installationToken,
+            ...(overrides.maxTurns !== undefined ? { maxTurns: overrides.maxTurns } : {}),
+            ...(overrides.signal !== undefined ? { signal: overrides.signal } : {}),
+            ...(promptParts !== undefined ? { promptParts } : {}),
+          }),
+        stageTracker,
       );
 
       if (resolvedTrackingCommentId !== undefined && !callerOwnsTrackingComment) {
         try {
           const finalOpts = buildFinalOpts(result);
-          await timeStage(enrichedCtx.log, "trackingComment.finalize", () =>
-            retryWithBackoff(
-              () => finalizeTrackingComment(enrichedCtx, resolvedTrackingCommentId, finalOpts),
-              {
-                maxAttempts: 3,
-                initialDelayMs: 1000,
-                log: enrichedCtx.log,
-                op: "tracking_comment.finalize",
-              },
-            ),
+          await timeStage(
+            enrichedCtx.log,
+            "trackingComment.finalize",
+            () =>
+              retryWithBackoff(
+                () => finalizeTrackingComment(enrichedCtx, resolvedTrackingCommentId, finalOpts),
+                {
+                  maxAttempts: 3,
+                  initialDelayMs: 1000,
+                  log: enrichedCtx.log,
+                  op: "tracking_comment.finalize",
+                },
+              ),
+            stageTracker,
           );
         } catch (finalizeError) {
+          // The finalize error is handled here, so no stage is in flight anymore.
+          // Clear the tracker so a later throw is not mis-attributed to
+          // trackingComment.finalize (timeStage sets active but never clears on throw).
+          stageTracker.active = null;
           enrichedCtx.log.error(
             { err: finalizeError },
             "Failed to finalize tracking comment after successful execution",
@@ -553,7 +589,7 @@ export async function runPipeline(
       };
     } finally {
       try {
-        await timeStage(ctx.log, "workspace.cleanup", () => cleanup());
+        await timeStage(ctx.log, "workspace.cleanup", () => cleanup(), stageTracker);
       } catch (cleanupError) {
         ctx.log.error({ err: cleanupError }, "Failed to cleanup temp directory");
       }
@@ -565,10 +601,16 @@ export async function runPipeline(
     }
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error));
+    // Non-null only if a timed stage was in flight when the throw happened
+    // (issue #226); each stage clears it on success.
+    const failed = stageTracker.active;
     ctx.log.error(
       {
         event: CORE_PIPELINE_LOG_EVENTS.failed,
         err,
+        ...(failed
+          ? { failed_stage: failed.stage, failed_stage_delta_ms: Date.now() - failed.startedAt }
+          : {}),
         pipeline_wall_clock_ms: Date.now() - pipelineStartedAt,
       },
       "Request processing failed",
