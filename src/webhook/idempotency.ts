@@ -1,6 +1,7 @@
 import type { Logger } from "pino";
 
 import { getValkeyClient, isValkeyHealthy } from "../orchestrator/valkey";
+import { IDEMPOTENCY_LOG_EVENTS } from "./idempotency-log-fields";
 
 /**
  * Webhook delivery idempotency (issue #202).
@@ -44,7 +45,10 @@ export async function claimDelivery(deliveryId: string, log: Logger): Promise<bo
   // takes the immediate fail-open path, leaving the durable backstops
   // (`idx_workflow_runs_inflight` + tracking-comment marker scan) to dedup.
   if (client === null || !isValkeyHealthy()) {
-    log.warn({ deliveryId }, "claimDelivery: Valkey unavailable, proceeding (fail-open)");
+    log.warn(
+      { deliveryId, event: IDEMPOTENCY_LOG_EVENTS.failedOpen, reason: "unavailable" },
+      "claimDelivery: Valkey unavailable, proceeding (fail-open)",
+    );
     return true;
   }
   try {
@@ -58,15 +62,29 @@ export async function claimDelivery(deliveryId: string, log: Logger): Promise<bo
       "EX",
       String(TTL_SECONDS),
     ])) as string | null;
-    if (res === "OK") return true;
+    if (res === "OK") {
+      // debug, not info: this fires once per non-duplicate delivery, too loud at
+      // info for a busy installation (issue #232 volume policy, mirroring
+      // github.api.request). duplicate_skipped/failed_open carry the operator signal.
+      log.debug(
+        { deliveryId, event: IDEMPOTENCY_LOG_EVENTS.claimed },
+        "claimDelivery: claimed new webhook delivery",
+      );
+      return true;
+    }
     log.info(
-      { deliveryId, event: "dedup-skip" },
+      { deliveryId, event: IDEMPOTENCY_LOG_EVENTS.duplicateSkipped },
       "claimDelivery: duplicate webhook delivery, skipping",
     );
     return false;
   } catch (err) {
     log.warn(
-      { deliveryId, err: err instanceof Error ? err.message : String(err) },
+      {
+        deliveryId,
+        event: IDEMPOTENCY_LOG_EVENTS.failedOpen,
+        reason: "error",
+        err: err instanceof Error ? err.message : String(err),
+      },
       "claimDelivery: Valkey error, proceeding (fail-open)",
     );
     return true;

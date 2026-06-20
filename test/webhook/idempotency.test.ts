@@ -9,6 +9,8 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type { Logger } from "pino";
 
+import { IdempotencyLogFieldsSchema } from "../../src/webhook/idempotency-log-fields";
+
 // Configurable Valkey stub: the mock is wired once at module load (below);
 // each test swaps `clientImpl` (and `healthy`) before invoking claimDelivery.
 // getValkeyClient returns whatever clientImpl holds at call time.
@@ -26,10 +28,32 @@ void mock.module("../../src/orchestrator/valkey", () => ({
 
 const { claimDelivery } = await import("../../src/webhook/idempotency");
 
+// Recording logger: captures the structured field object of each emit and
+// parses it through the canonical schema AT CAPTURE TIME, so every emitted line
+// (not only those a test later asserts on) is held to the strict contract. A
+// stray/misnamed field, a `reason` on the wrong event, or `err` on the
+// `unavailable` path throws here, surfacing the offending test directly.
+type Level = "debug" | "info" | "warn";
+let logged: { level: Level; fields: Record<string, unknown> }[] = [];
+function record(level: Level) {
+  return (fields: Record<string, unknown>) => {
+    IdempotencyLogFieldsSchema.parse(fields);
+    logged.push({ level, fields });
+  };
+}
 const log = {
-  warn: () => {},
-  info: () => {},
+  debug: record("debug"),
+  info: record("info"),
+  warn: record("warn"),
 } as unknown as Logger;
+
+// Assert an emit with `event` was captured (its schema validity is already
+// guaranteed by the capture-time parse above) and return its fields.
+function expectEmittedEvent(event: string): Record<string, unknown> {
+  const rec = logged.find((r) => r.fields.event === event);
+  expect(rec).toBeDefined();
+  return rec?.fields ?? {};
+}
 
 // SET-NX-EX semantics: first SET of a key returns "OK", a second SET of the
 // same key returns null (the key already exists). Mirrors real Valkey NX.
@@ -52,6 +76,7 @@ describe("claimDelivery (issue #202)", () => {
   beforeEach(() => {
     clientImpl = null;
     healthy = true;
+    logged = [];
   });
 
   it("claims a new delivery once, then rejects the redelivery", async () => {
@@ -60,6 +85,8 @@ describe("claimDelivery (issue #202)", () => {
     const second = await claimDelivery("delivery-abc", log);
     expect(first).toBe(true);
     expect(second).toBe(false);
+    expectEmittedEvent("idempotency.claimed");
+    expectEmittedEvent("idempotency.duplicate_skipped");
   });
 
   it("treats distinct deliveryIds independently", async () => {
@@ -83,6 +110,7 @@ describe("claimDelivery (issue #202)", () => {
   it("fails OPEN (true) when Valkey is unconfigured (null client)", async () => {
     clientImpl = null;
     expect(await claimDelivery("delivery-no-valkey", log)).toBe(true);
+    expect(expectEmittedEvent("idempotency.failed_open").reason).toBe("unavailable");
   });
 
   it("fails OPEN (true) when the Valkey SET throws", async () => {
@@ -90,6 +118,9 @@ describe("claimDelivery (issue #202)", () => {
       send: () => Promise.reject(new Error("ECONNREFUSED")),
     };
     expect(await claimDelivery("delivery-error", log)).toBe(true);
+    const failed = expectEmittedEvent("idempotency.failed_open");
+    expect(failed.reason).toBe("error");
+    expect(failed.err).toBe("ECONNREFUSED");
   });
 
   it("fails OPEN (true) without issuing SET when configured-but-disconnected", async () => {
