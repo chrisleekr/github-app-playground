@@ -85,6 +85,25 @@ describe("IdempotencyLogFieldsSchema: rejects drift and bad input", () => {
     expect(result.success).toBe(false);
   });
 
+  it("rejects err on the unavailable branch (err only valid with reason error)", () => {
+    const result = IdempotencyLogFieldsSchema.safeParse({
+      event: IDEMPOTENCY_LOG_EVENTS.failedOpen,
+      deliveryId: "d1",
+      reason: "unavailable",
+      err: "boom",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a failed_open record with reason error but no err", () => {
+    const result = IdempotencyLogFieldsSchema.safeParse({
+      event: IDEMPOTENCY_LOG_EVENTS.failedOpen,
+      deliveryId: "d1",
+      reason: "error",
+    });
+    expect(result.success).toBe(false);
+  });
+
   it("rejects an empty deliveryId", () => {
     const result = IdempotencyLogFieldsSchema.safeParse({
       event: IDEMPOTENCY_LOG_EVENTS.claimed,

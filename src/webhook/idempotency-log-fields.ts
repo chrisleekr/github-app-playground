@@ -8,11 +8,14 @@
  * objects via `log.info` / `log.warn`; the schema is the drift-prevention
  * contract, not a runtime validator on the hot path.
  *
- * The schema is a `z.discriminatedUnion` on `event` so per-event field presence
- * is pinned: `idempotency.failed_open` requires a `reason` enum and may carry
- * `err`; the `claimed` / `duplicate_skipped` branches carry neither. Future
- * emitter changes that drop `reason` or attach it to the wrong event trip the
- * co-located test.
+ * The schema is a union of strict per-outcome objects so per-event field
+ * presence is pinned exactly: `claimed` / `duplicate_skipped` carry only
+ * `deliveryId`; `failed_open` splits into a `reason: "unavailable"` branch
+ * (no `err`) and a `reason: "error"` branch (`err` required). The fail-open
+ * split is two branches rather than a `reason` enum + optional `err` so the
+ * contract "`err` only on the `error` path" is enforced by the schema itself,
+ * not just by emit-site discipline: a future emit attaching `err` to an
+ * `unavailable` line is rejected here and trips the co-located test.
  */
 import { z } from "zod";
 
@@ -26,34 +29,29 @@ export const IDEMPOTENCY_LOG_EVENTS = {
 // child-logger delivery identifier binding; new metric-style fields use snake_case.
 const deliveryId = z.string().min(1);
 
-export const IdempotencyLogFieldsSchema = z.discriminatedUnion("event", [
-  /**
-   * Info-level emit when the SET-NX won the claim (first delivery seen). The
-   * caller proceeds.
-   */
+export const IdempotencyLogFieldsSchema = z.union([
+  /** Info: the SET-NX won the claim (first delivery seen); the caller proceeds. */
   z.strictObject({
     event: z.literal(IDEMPOTENCY_LOG_EVENTS.claimed),
     deliveryId,
   }),
-  /**
-   * Info-level emit when the SET-NX found an existing key (a redelivery). The
-   * caller skips.
-   */
+  /** Info: the SET-NX found an existing key (a redelivery); the caller skips. */
   z.strictObject({
     event: z.literal(IDEMPOTENCY_LOG_EVENTS.duplicateSkipped),
     deliveryId,
   }),
-  /**
-   * Warn-level emit on the fail-open path: `reason` is `unavailable` when
-   * Valkey is unconfigured/disconnected (no SET issued) or `error` when the SET
-   * threw. `err` carries the error message on the `error` branch only. Either
-   * way the caller proceeds (at-least-once degradation).
-   */
+  /** Warn: Valkey unconfigured/disconnected, no SET issued. The caller proceeds. */
   z.strictObject({
     event: z.literal(IDEMPOTENCY_LOG_EVENTS.failedOpen),
     deliveryId,
-    reason: z.enum(["unavailable", "error"]),
-    err: z.string().optional(),
+    reason: z.literal("unavailable"),
+  }),
+  /** Warn: the SET threw; `err` carries the message. The caller proceeds. */
+  z.strictObject({
+    event: z.literal(IDEMPOTENCY_LOG_EVENTS.failedOpen),
+    deliveryId,
+    reason: z.literal("error"),
+    err: z.string(),
   }),
 ]);
 
