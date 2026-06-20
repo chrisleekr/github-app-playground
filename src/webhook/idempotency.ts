@@ -63,7 +63,10 @@ export async function claimDelivery(deliveryId: string, log: Logger): Promise<bo
       String(TTL_SECONDS),
     ])) as string | null;
     if (res === "OK") {
-      log.info(
+      // debug, not info: this fires once per non-duplicate delivery, too loud at
+      // info for a busy installation (issue #232 volume policy, mirroring
+      // github.api.request). duplicate_skipped/failed_open carry the operator signal.
+      log.debug(
         { deliveryId, event: IDEMPOTENCY_LOG_EVENTS.claimed },
         "claimDelivery: claimed new webhook delivery",
       );

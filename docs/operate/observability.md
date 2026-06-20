@@ -117,7 +117,7 @@ The load-bearing event is `retry.succeeded_after_retry`: it is the only signal i
 
 | `event`                         | Level | Fields                                                                                                                                                                                                                   |
 | ------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `idempotency.claimed`           | info  | `deliveryId`. The SET-NX won the claim (first time this delivery is seen); the caller proceeds.                                                                                                                          |
+| `idempotency.claimed`           | debug | `deliveryId`. The SET-NX won the claim (first time this delivery is seen); the caller proceeds. At `debug` because it fires once per non-duplicate delivery, too loud at `info` for a busy installation.                 |
 | `idempotency.duplicate_skipped` | info  | `deliveryId`. The SET-NX found an existing key (a redelivery); the caller skips.                                                                                                                                         |
 | `idempotency.failed_open`       | warn  | `deliveryId`, `reason` (`unavailable` when Valkey is unconfigured/disconnected, `error` when the SET threw), and `err` (the error message, on the `error` branch only). The caller proceeds (at-least-once degradation). |
 

@@ -28,22 +28,30 @@ void mock.module("../../src/orchestrator/valkey", () => ({
 
 const { claimDelivery } = await import("../../src/webhook/idempotency");
 
-// Recording logger: captures the structured field object of each emit so the
-// tests can assert the canonical `idempotency.*` event names and fail-open reasons.
-let logged: { level: "info" | "warn"; fields: Record<string, unknown> }[] = [];
+// Recording logger: captures the structured field object of each emit and
+// parses it through the canonical schema AT CAPTURE TIME, so every emitted line
+// (not only those a test later asserts on) is held to the strict contract. A
+// stray/misnamed field, a `reason` on the wrong event, or `err` on the
+// `unavailable` path throws here, surfacing the offending test directly.
+type Level = "debug" | "info" | "warn";
+let logged: { level: Level; fields: Record<string, unknown> }[] = [];
+function record(level: Level) {
+  return (fields: Record<string, unknown>) => {
+    IdempotencyLogFieldsSchema.parse(fields);
+    logged.push({ level, fields });
+  };
+}
 const log = {
-  info: (fields: Record<string, unknown>) => logged.push({ level: "info", fields }),
-  warn: (fields: Record<string, unknown>) => logged.push({ level: "warn", fields }),
+  debug: record("debug"),
+  info: record("info"),
+  warn: record("warn"),
 } as unknown as Logger;
 
-// Assert an emit with `event` was logged AND that its exact field object
-// validates against the canonical schema. Parsing the real emitted object
-// closes the drift hole a loose string check leaves open: a stray/misnamed
-// field or a `reason` on the wrong event trips the strict schema here.
+// Assert an emit with `event` was captured (its schema validity is already
+// guaranteed by the capture-time parse above) and return its fields.
 function expectEmittedEvent(event: string): Record<string, unknown> {
   const rec = logged.find((r) => r.fields.event === event);
   expect(rec).toBeDefined();
-  expect(() => IdempotencyLogFieldsSchema.parse(rec?.fields)).not.toThrow();
   return rec?.fields ?? {};
 }
 
