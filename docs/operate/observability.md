@@ -111,6 +111,16 @@ The load-bearing event is `retry.succeeded_after_retry`: it is the only signal i
 | `retry.exhausted`             | error | All `max_attempts` attempts failed. Carries the full retry-window `elapsed_ms`; rethrows the last error. Neither `delay_ms` nor `status` are emitted on this event.                                                                                                                 |
 | `retry.succeeded_after_retry` | info  | The call succeeded on `attempt > 1`. Weak-flake leading indicator: gated on `attempt > 1` so first-try successes stay silent. Alert on `count(...) by op` over 5-minute windows. Neither `delay_ms` nor `status` are emitted on this event.                                         |
 
+## Idempotency log fields
+
+`claimDelivery` (`src/webhook/idempotency.ts`) is the webhook dedup chokepoint: a Valkey `SET key 1 NX EX` claim that returns `true` exactly once per `deliveryId` within GitHub's 3-day redelivery window. Its three-event family is pinned by a `z.discriminatedUnion` of strict objects in `src/webhook/idempotency-log-fields.ts` so an emitter that mistypes an event name or drops `reason` from a fail-open line trips the co-located test. Every event carries `deliveryId` (camelCase, the established child-logger delivery identifier binding). Behaviour is fail-open: `idempotency.claimed` and `idempotency.failed_open` both proceed with processing; only `idempotency.duplicate_skipped` skips.
+
+| `event`                         | Level | Fields                                                                                                                                                                                                                   |
+| ------------------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `idempotency.claimed`           | info  | `deliveryId`. The SET-NX won the claim (first time this delivery is seen); the caller proceeds.                                                                                                                          |
+| `idempotency.duplicate_skipped` | info  | `deliveryId`. The SET-NX found an existing key (a redelivery); the caller skips.                                                                                                                                         |
+| `idempotency.failed_open`       | warn  | `deliveryId`, `reason` (`unavailable` when Valkey is unconfigured/disconnected, `error` when the SET threw), and `err` (the error message, on the `error` branch only). The caller proceeds (at-least-once degradation). |
+
 ## Output secret-guard log events
 
 `safePostToGitHub` (`src/utils/github-output-guard.ts`) is the output-side chokepoint for every byte sent to GitHub. It emits structured `warn`/`error` events when the regex pass or the optional LLM scanner acts on a body. Per the logging contract, none of these carry the matched bytes, surrounding context, or a hash, only `kinds`, counts, lengths, `callsite`, and `deliveryId`.
