@@ -1157,6 +1157,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#agent-hook-denials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Agent hook denials
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1826,6 +1837,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#agent-hook-denials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Agent hook denials
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2220,6 +2242,24 @@
 <td><code>workspace.sweep</code></td>
 <td>info</td>
 <td><code>swept</code> (entries removed), <code>retained</code> (entries kept as fresh), <code>durationMs</code> (wall-clock time for the sweep).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="agent-hook-denials">Agent hook denials<a class="headerlink" href="#agent-hook-denials" title="Permanent link">&para;</a></h3>
+<p>The <code>PreToolUse</code> destructive-Bash hook (<code>src/core/hooks/forbidden-bash.ts</code>) emits one line each time it blocks a Bash command matching the shared <code>FORBIDDEN</code> set (force-push, <code>git reset --hard</code>, branch delete, history rewrite, <code>gh pr merge</code>, GraphQL merge mutations). A sustained <code>agent.hook.denied</code> rate means the agent is repeatedly attempting destructive operations, worth investigating as a possible prompt-injection signal. The raw command is never logged (token-leak risk); only the matched rule label is.</p>
+<table>
+<thead>
+<tr>
+<th><code>event</code></th>
+<th>Level</th>
+<th>Fields</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>agent.hook.denied</code></td>
+<td>warn</td>
+<td><code>tool</code> (always <code>Bash</code>), <code>rule</code> (the matched FORBIDDEN description, e.g. <code>git push --force</code>).</td>
 </tr>
 </tbody>
 </table>
