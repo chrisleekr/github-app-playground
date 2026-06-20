@@ -1196,6 +1196,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#idempotency-log-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Idempotency log fields
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#output-secret-guard-log-events" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1876,6 +1887,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#idempotency-log-fields" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Idempotency log fields
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#output-secret-guard-log-events" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2324,6 +2346,34 @@
 <td><code>retry.succeeded_after_retry</code></td>
 <td>info</td>
 <td>The call succeeded on <code>attempt &gt; 1</code>. Weak-flake leading indicator: gated on <code>attempt &gt; 1</code> so first-try successes stay silent. Alert on <code>count(...) by op</code> over 5-minute windows. Neither <code>delay_ms</code> nor <code>status</code> are emitted on this event.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="idempotency-log-fields">Idempotency log fields<a class="headerlink" href="#idempotency-log-fields" title="Permanent link">&para;</a></h2>
+<p><code>claimDelivery</code> (<code>src/webhook/idempotency.ts</code>) is the webhook dedup chokepoint: a Valkey <code>SET key 1 NX EX</code> claim that returns <code>true</code> exactly once per <code>deliveryId</code> <strong>only on the healthy Valkey path</strong> within GitHub's 3-day redelivery window. When Valkey is unavailable or errors it fails <strong>open</strong>, returning <code>true</code> for every delivery (including redeliveries), so the exactly-once guarantee degrades to at-least-once. Its three-event family is pinned by a union of strict objects in <code>src/webhook/idempotency-log-fields.ts</code> so an emitter that mistypes an event name, drops <code>reason</code> from a fail-open line, or attaches <code>err</code> to the <code>unavailable</code> path trips the co-located test. Every event carries <code>deliveryId</code> (camelCase, the established child-logger delivery identifier binding). Behaviour is fail-open: <code>idempotency.claimed</code> and <code>idempotency.failed_open</code> both proceed with processing; only <code>idempotency.duplicate_skipped</code> skips.</p>
+<table>
+<thead>
+<tr>
+<th><code>event</code></th>
+<th>Level</th>
+<th>Fields</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>idempotency.claimed</code></td>
+<td>debug</td>
+<td><code>deliveryId</code>. The SET-NX won the claim (first time this delivery is seen); the caller proceeds. At <code>debug</code> because it fires once per non-duplicate delivery, too loud at <code>info</code> for a busy installation.</td>
+</tr>
+<tr>
+<td><code>idempotency.duplicate_skipped</code></td>
+<td>info</td>
+<td><code>deliveryId</code>. The SET-NX found an existing key (a redelivery); the caller skips.</td>
+</tr>
+<tr>
+<td><code>idempotency.failed_open</code></td>
+<td>warn</td>
+<td><code>deliveryId</code>, <code>reason</code> (<code>unavailable</code> when Valkey is unconfigured/disconnected, <code>error</code> when the SET threw), and <code>err</code> (the error message, on the <code>error</code> branch only). The caller proceeds (at-least-once degradation).</td>
 </tr>
 </tbody>
 </table>
