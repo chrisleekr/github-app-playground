@@ -109,6 +109,7 @@ export async function safePostToGitHub<R>(input: SafePostInput<R>): Promise<Safe
     try {
       const llmResult = await scanForSecretsWithLlm(body, {
         timeoutMs: config.llmOutputScannerTimeoutMs,
+        log,
       });
       // Regex is the authoritative floor. If the scanner empties a body
       // that the regex pass already accepted as non-empty, treat it as a

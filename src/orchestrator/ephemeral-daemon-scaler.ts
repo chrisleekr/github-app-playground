@@ -11,6 +11,8 @@
  */
 
 import { config } from "../config";
+import type { Logger } from "../logger";
+import { K8S_SPAWN_LOG_EVENTS } from "./k8s-spawn-log-fields";
 
 export type EphemeralSpawnVerdict =
   | { readonly spawn: true; readonly trigger: "triage-heavy" | "queue-overflow" }
@@ -32,7 +34,20 @@ export interface EphemeralSpawnInput {
  */
 let lastSpawnAtMs = 0;
 
-export function decideEphemeralSpawn(input: EphemeralSpawnInput): EphemeralSpawnVerdict {
+/**
+ * Optional observability handle for `decideEphemeralSpawn`. When supplied, a
+ * skip verdict emits one `k8s.spawn.decision_skipped` line correlated to the
+ * webhook delivery. Omitted in pure-logic unit tests.
+ */
+export interface EphemeralSpawnObservability {
+  readonly log: Logger;
+  readonly deliveryId: string;
+}
+
+export function decideEphemeralSpawn(
+  input: EphemeralSpawnInput,
+  obs?: EphemeralSpawnObservability,
+): EphemeralSpawnVerdict {
   const { heavy, queueLength, persistentFreeSlots, now } = input;
   const threshold = config.ephemeralDaemonSpawnQueueThreshold;
   const cooldownMs = config.ephemeralDaemonSpawnCooldownMs;
@@ -43,10 +58,14 @@ export function decideEphemeralSpawn(input: EphemeralSpawnInput): EphemeralSpawn
   const hasSignal = heavy || overflow;
 
   if (!hasSignal) {
+    // Debug: fires on every webhook, so it stays off the default info stream.
+    emitDecisionSkipped(obs, "no-signal", input);
     return { spawn: false, skipReason: "no-signal" };
   }
 
   if (now - lastSpawnAtMs < cooldownMs) {
+    // Info: fires only under heavy/overflow traffic, the thundering-herd guard.
+    emitDecisionSkipped(obs, "cooldown", input);
     return { spawn: false, skipReason: "cooldown" };
   }
 
@@ -57,6 +76,31 @@ export function decideEphemeralSpawn(input: EphemeralSpawnInput): EphemeralSpawn
     spawn: true,
     trigger: heavy ? "triage-heavy" : "queue-overflow",
   };
+}
+
+/**
+ * Emit one `k8s.spawn.decision_skipped` line carrying the decision-time signals.
+ * `no-signal` at debug (every webhook), `cooldown` at info (heavy traffic only).
+ */
+function emitDecisionSkipped(
+  obs: EphemeralSpawnObservability | undefined,
+  reason: "no-signal" | "cooldown",
+  input: EphemeralSpawnInput,
+): void {
+  if (obs === undefined) return;
+  const fields = {
+    event: K8S_SPAWN_LOG_EVENTS.decisionSkipped,
+    delivery_id: obs.deliveryId,
+    reason,
+    heavy: input.heavy,
+    queue_length: input.queueLength,
+    persistent_free_slots: input.persistentFreeSlots,
+  };
+  if (reason === "no-signal") {
+    obs.log.debug(fields, "Ephemeral daemon spawn skipped");
+  } else {
+    obs.log.info(fields, "Ephemeral daemon spawn skipped");
+  }
 }
 
 /**

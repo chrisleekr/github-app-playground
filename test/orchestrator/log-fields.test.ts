@@ -6,6 +6,8 @@ import {
   DISPATCHER_LOG_EVENTS,
   DispatcherNoEligibleDaemonLogSchema,
   DispatcherOfferLogSchema,
+  GITHUB_APP_TOKEN_LOG_EVENTS,
+  GithubAppTokenMintLogSchema,
 } from "../../src/orchestrator/log-fields";
 
 describe("DispatcherOfferLogSchema (#187)", () => {
@@ -280,5 +282,144 @@ describe("event key constants (#187)", () => {
       timeout: "daemon.heartbeat.timeout",
       ttl_refresh_failed: "daemon.heartbeat.ttl_refresh_failed",
     });
+  });
+
+  it("exposes the two canonical token-mint event keys (#236)", () => {
+    expect(GITHUB_APP_TOKEN_LOG_EVENTS).toEqual({
+      mintSucceeded: "github.app.token.mint.succeeded",
+      mintFailed: "github.app.token.mint.failed",
+    });
+  });
+});
+
+describe("GithubAppTokenMintLogSchema (#236)", () => {
+  it("accepts a well-formed mint.succeeded line (cache_hit true)", () => {
+    const result = GithubAppTokenMintLogSchema.safeParse({
+      event: GITHUB_APP_TOKEN_LOG_EVENTS.mintSucceeded,
+      installation_id: 12345,
+      via: "handleAccept",
+      cache_hit: true,
+      duration_ms: 0,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a well-formed mint.succeeded line (cache_hit false)", () => {
+    const result = GithubAppTokenMintLogSchema.safeParse({
+      event: GITHUB_APP_TOKEN_LOG_EVENTS.mintSucceeded,
+      installation_id: 1,
+      via: "handleScopedAccept",
+      cache_hit: false,
+      duration_ms: 187,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a well-formed mint.failed line with err", () => {
+    const result = GithubAppTokenMintLogSchema.safeParse({
+      event: GITHUB_APP_TOKEN_LOG_EVENTS.mintFailed,
+      installation_id: 99,
+      via: "schedulerRunAction",
+      duration_ms: 2003,
+      err: new Error("network"),
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts every canonical via literal", () => {
+    for (const via of [
+      "handleAccept",
+      "handleScopedAccept",
+      "postOrphanNotification",
+      "shipTickleResume",
+      "proposalPoller",
+      "schedulerRunAction",
+    ] as const) {
+      const result = GithubAppTokenMintLogSchema.safeParse({
+        event: GITHUB_APP_TOKEN_LOG_EVENTS.mintSucceeded,
+        installation_id: 1,
+        via,
+        cache_hit: true,
+        duration_ms: 1,
+      });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it("rejects cache_hit on the failed line (strict, wrong-branch field)", () => {
+    const result = GithubAppTokenMintLogSchema.safeParse({
+      event: GITHUB_APP_TOKEN_LOG_EVENTS.mintFailed,
+      installation_id: 1,
+      via: "handleAccept",
+      duration_ms: 1,
+      cache_hit: true,
+      err: new Error("x"),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a mint.succeeded line missing cache_hit", () => {
+    const result = GithubAppTokenMintLogSchema.safeParse({
+      event: GITHUB_APP_TOKEN_LOG_EVENTS.mintSucceeded,
+      installation_id: 1,
+      via: "handleAccept",
+      duration_ms: 1,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an unknown via literal", () => {
+    const result = GithubAppTokenMintLogSchema.safeParse({
+      event: GITHUB_APP_TOKEN_LOG_EVENTS.mintSucceeded,
+      installation_id: 1,
+      via: "mysterySite",
+      cache_hit: true,
+      duration_ms: 1,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a camelCase installationId (snake_case is the pinned key)", () => {
+    const result = GithubAppTokenMintLogSchema.safeParse({
+      event: GITHUB_APP_TOKEN_LOG_EVENTS.mintSucceeded,
+      installationId: 1,
+      via: "handleAccept",
+      cache_hit: true,
+      duration_ms: 1,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an unknown extra field (strict)", () => {
+    const result = GithubAppTokenMintLogSchema.safeParse({
+      event: GITHUB_APP_TOKEN_LOG_EVENTS.mintSucceeded,
+      installation_id: 1,
+      via: "handleAccept",
+      cache_hit: true,
+      duration_ms: 1,
+      token: "ghs_secret",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a non-positive installation_id and a negative duration_ms", () => {
+    expect(
+      GithubAppTokenMintLogSchema.safeParse({
+        event: GITHUB_APP_TOKEN_LOG_EVENTS.mintSucceeded,
+        installation_id: 0,
+        via: "handleAccept",
+        cache_hit: true,
+        duration_ms: 1,
+      }).success,
+    ).toBe(false);
+    expect(
+      GithubAppTokenMintLogSchema.safeParse({
+        event: GITHUB_APP_TOKEN_LOG_EVENTS.mintSucceeded,
+        installation_id: 1,
+        via: "handleAccept",
+        cache_hit: true,
+        duration_ms: -1,
+      }).success,
+    ).toBe(false);
   });
 });

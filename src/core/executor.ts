@@ -4,6 +4,7 @@ import { config } from "../config";
 import type { BotContext, ExecutionResult, McpServerConfig, ModelUsageEntry } from "../types";
 import { redactSecrets } from "../utils/sanitize";
 import { createForbiddenBashHook } from "./hooks/forbidden-bash";
+import { CORE_AGENT_LOG_EVENTS, type PendingToolCall } from "./log-fields";
 
 function isResultMessage(msg: unknown): msg is SDKResultMessage {
   return (
@@ -234,6 +235,13 @@ export async function executeAgent({
   const startTime = Date.now();
   let result: SDKResultMessage | undefined;
 
+  // Per-tool-call pairing (issue #237): an assistant `tool_use` block registers
+  // its `tool_use_id` here; the matching `user` `tool_result` drains it to emit
+  // `agent.tool.completed`. Whatever survives the loop is reported as
+  // `agent.tool.timed_out` (the wall-clock abort orphaned an in-flight call).
+  // Only metadata is held, never tool input/output bodies.
+  const pendingTools = new Map<string, PendingToolCall>();
+
   // Cancellation controller plumbed into the SDK so the wall-clock timer and
   // any caller-supplied AbortSignal actually tear down the `query()` async
   // iterator (and the underlying Claude Code subprocess + MCP servers).
@@ -369,6 +377,26 @@ export async function executeAgent({
     controller.abort(timeoutError);
   }, config.agentTimeoutMs);
 
+  // Report tool_use blocks that never received their tool_result (#237). The
+  // wall-clock abort tears down the iterator mid-call, so a slow tool is the
+  // likely cause; emitting once per orphan turns the invisible hang into a
+  // greppable event. Drains the map so re-invocation (catch then no further
+  // run) cannot double-log.
+  const drainPendingTools = (): void => {
+    for (const [id, pending] of pendingTools) {
+      log.warn(
+        {
+          event: CORE_AGENT_LOG_EVENTS.toolTimedOut,
+          tool_use_id: id,
+          tool: pending.tool,
+          delta_ms: Date.now() - pending.startedAt,
+        },
+        "Agent tool call timed out",
+      );
+    }
+    pendingTools.clear();
+  };
+
   try {
     // In cacheable layout the userMessage carries the per-call dynamic blocks;
     // the static scaffolding has already been folded into systemPrompt.append.
@@ -407,6 +435,20 @@ export async function executeAgent({
             const n = b["name"];
             return typeof n === "string" ? n : "";
           });
+          // Register each tool_use for tool_use_id pairing and emit its start
+          // event. Only the tool name + id are logged (no `input`): the input
+          // can be a Bash command or file content carrying secrets (#237).
+          for (const block of toolUses ?? []) {
+            const id = block["id"];
+            const name = block["name"];
+            if (typeof id === "string" && id !== "" && typeof name === "string" && name !== "") {
+              pendingTools.set(id, { tool: name, startedAt: Date.now() });
+              log.info(
+                { event: CORE_AGENT_LOG_EVENTS.toolStarted, tool_use_id: id, tool: name },
+                "Agent tool call started",
+              );
+            }
+          }
           log.info(
             {
               sdkMsgType: msgType,
@@ -418,6 +460,32 @@ export async function executeAgent({
             },
             "SDK assistant message",
           );
+        } else if (msgType === "user") {
+          // tool_result blocks ride on `user` messages, paired to a prior
+          // tool_use by `tool_use_id`. Emit one `agent.tool.completed` per
+          // matched result with the start-to-now duration and the error flag.
+          // The result `content` (output body) is never read into the log.
+          const userMsg = msg["message"] as Record<string, unknown> | undefined;
+          const content = userMsg?.["content"];
+          const blocks = Array.isArray(content) ? (content as Record<string, unknown>[]) : [];
+          for (const block of blocks) {
+            if (block["type"] !== "tool_result") continue;
+            const id = block["tool_use_id"];
+            if (typeof id !== "string" || id === "") continue;
+            const pending = pendingTools.get(id);
+            if (pending === undefined) continue;
+            pendingTools.delete(id);
+            log.info(
+              {
+                event: CORE_AGENT_LOG_EVENTS.toolCompleted,
+                tool_use_id: id,
+                tool: pending.tool,
+                tool_duration_ms: Date.now() - pending.startedAt,
+                is_error: block["is_error"] === true,
+              },
+              "Agent tool call completed",
+            );
+          }
         } else if (msgType === "result") {
           log.info({ sdkMsgType: msgType, subtype: msg["subtype"] }, "SDK result message");
         }
@@ -455,6 +523,10 @@ export async function executeAgent({
     if (signal !== undefined) {
       signal.removeEventListener("abort", onCallerAbort);
     }
+    // Single chokepoint for both the success and abort paths: any tool_use
+    // still pending here never got its tool_result. drain clears the map so
+    // this fires at most once per call (#237).
+    drainPendingTools();
   }
 
   const durationMs = Date.now() - startTime;

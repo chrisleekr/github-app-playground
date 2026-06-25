@@ -421,29 +421,14 @@ export async function runChatThread(input: RunChatThreadInput): Promise<RunChatT
   }
 
   // Parse + validate via the structured-output pipeline.
-  const result = parseStructuredResponse(raw, ChatThreadOutputSchema);
+  const result = parseStructuredResponse(raw, ChatThreadOutputSchema, { site: "chat-thread", log });
   if (!result.ok) {
-    log.warn(
-      {
-        stage: result.stage,
-        error: result.error,
-        rawLen: raw.length,
-        raw: raw.slice(0, 8000),
-      },
-      "chat-thread: LLM output failed structured-output pipeline",
-    );
     await postReply({
       input,
       log,
       body: "_I couldn't parse my own response, sorry. Please rephrase your ask and I'll try again._",
     });
     return { mode: "skipped", reason: "parse-error" };
-  }
-  if (result.strategy === "tolerant") {
-    log.info(
-      { rawLen: raw.length },
-      "chat-thread: structured-output recovered via tolerant parser",
-    );
   }
 
   // Dispatch on mode.

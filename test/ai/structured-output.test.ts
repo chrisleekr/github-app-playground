@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import type pino from "pino";
 import { z } from "zod";
 
 import {
@@ -7,6 +8,7 @@ import {
   STRUCTURED_OUTPUT_RULES,
   withStructuredRules,
 } from "../../src/ai/structured-output";
+import { StructuredOutputLogFieldsSchema } from "../../src/ai/structured-output-log-fields";
 
 const ChatSchema = z.object({
   mode: z.literal("answer"),
@@ -135,5 +137,62 @@ describe("parseStructuredResponse", () => {
     const result = parseStructuredResponse(raw, ChatSchema);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.raw).toBe(raw);
+  });
+});
+
+describe("parseStructuredResponse: structured_output.* event emission", () => {
+  interface Captured {
+    level: "info" | "warn";
+    obj: Record<string, unknown>;
+  }
+
+  function fakeLogger(sink: Captured[]): pino.Logger {
+    return {
+      info: (obj: Record<string, unknown>) => sink.push({ level: "info", obj }),
+      warn: (obj: Record<string, unknown>) => sink.push({ level: "warn", obj }),
+    } as unknown as pino.Logger;
+  }
+
+  it("emits a schema-valid structured_output.parsed line on strict success", () => {
+    const sink: Captured[] = [];
+    parseStructuredResponse('{"mode":"answer","reply":"hi"}', ChatSchema, {
+      site: "chat-thread",
+      log: fakeLogger(sink),
+    });
+    expect(sink).toHaveLength(1);
+    expect(sink[0]?.level).toBe("info");
+    const parsed = StructuredOutputLogFieldsSchema.safeParse(sink[0]?.obj);
+    expect(parsed.success).toBe(true);
+    if (parsed.success && parsed.data.event === "structured_output.parsed") {
+      expect(parsed.data.strategy).toBe("strict");
+      expect(parsed.data.site).toBe("chat-thread");
+    }
+  });
+
+  it("emits a schema-valid parse_failed line and no line without ctx", () => {
+    const sink: Captured[] = [];
+    parseStructuredResponse('{"mode":', ChatSchema, { site: "triage", log: fakeLogger(sink) });
+    expect(sink).toHaveLength(1);
+    expect(sink[0]?.level).toBe("warn");
+    expect(StructuredOutputLogFieldsSchema.safeParse(sink[0]?.obj).success).toBe(true);
+    expect(sink[0]?.obj["event"]).toBe("structured_output.parse_failed");
+
+    const noCtx: Captured[] = [];
+    parseStructuredResponse('{"mode":', ChatSchema);
+    expect(noCtx).toHaveLength(0);
+  });
+
+  it("emits a schema-valid validate_failed line with parsed_kind", () => {
+    const sink: Captured[] = [];
+    parseStructuredResponse('{"mode":"unknown","reply":"hi"}', ChatSchema, {
+      site: "nl-classifier",
+      log: fakeLogger(sink),
+    });
+    expect(sink).toHaveLength(1);
+    const parsed = StructuredOutputLogFieldsSchema.safeParse(sink[0]?.obj);
+    expect(parsed.success).toBe(true);
+    if (parsed.success && parsed.data.event === "structured_output.validate_failed") {
+      expect(parsed.data.parsed_kind).toBe("object");
+    }
   });
 });

@@ -197,6 +197,29 @@ function scrubResponse(response: object): Record<string, unknown> {
   return { ...resObj };
 }
 
+/**
+ * Delete the octokit `event` / `payload` / `signature` carriers from a
+ * serialized error node, then recurse into `aggregateErrors`. Also drops the
+ * raw `errors` array pino copies off an AggregateError (its elements are
+ * unserialized Errors that still carry `.event`); `aggregateErrors` is the
+ * scrubbed view. Deleting keys off the serializer's own copy never mutates the
+ * caller's error object.
+ */
+function stripSecretCarriers(node: Record<string, unknown>): void {
+  delete node["event"];
+  delete node["payload"];
+  delete node["signature"];
+  delete node["errors"];
+  const aggregate = node["aggregateErrors"];
+  if (Array.isArray(aggregate)) {
+    for (const inner of aggregate) {
+      if (inner !== null && typeof inner === "object") {
+        stripSecretCarriers(inner as Record<string, unknown>);
+      }
+    }
+  }
+}
+
 export function errSerializer(err: unknown): unknown {
   const serialized = pino.stdSerializers.err(err as Error);
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- pino types claim Error in / SerializedError out, but at runtime stdSerializers.err returns the input unchanged for non-error-likes (see pino-std-serializers/lib/err.js). Guard preserves that pass-through and lets callers feed in `unknown`.
@@ -205,6 +228,16 @@ export function errSerializer(err: unknown): unknown {
   }
 
   const out: Record<string, unknown> = { ...(serialized as unknown as SerializedError) };
+  // `@octokit/webhooks` attaches the whole inbound event to its errors as an
+  // enumerable `event = { id, name, payload, signature }`. pino's std err
+  // serializer copies every enumerable own prop (its `for (const key in err)`
+  // loop), so without this an `err:` log line would leak the raw webhook body
+  // (`event.payload`) and the `X-Hub-Signature-256` bytes (`event.signature`).
+  // Strip those carriers here at the shared chokepoint so no caller can leak
+  // them (security invariant 2). Recurse through `aggregateErrors` because a
+  // handler exception arrives wrapped in an AggregateError whose inner errors
+  // carry the event too.
+  stripSecretCarriers(out);
 
   const message = out["message"];
   if (typeof message === "string") {

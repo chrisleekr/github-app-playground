@@ -8,6 +8,8 @@ import {
   type ServerMessage,
   serverMessageSchema,
 } from "../shared/ws-messages";
+import { redactErrorMessage } from "../utils/log-redaction";
+import { DAEMON_CONNECTION_LOG_EVENTS } from "./log-fields";
 
 // Read version from package.json at module load
 const APP_VERSION: string = ((): string => {
@@ -36,8 +38,6 @@ export interface WsClientOptions {
   daemonId: string;
   capabilities: DaemonCapabilities;
   onMessage: (msg: ServerMessage) => void;
-  onConnected: () => void;
-  onDisconnected: () => void;
 }
 
 /**
@@ -51,6 +51,15 @@ export class DaemonWsClient {
   private backoffMs = 1000;
   private reconnectTimer: Timer | null = null;
 
+  // Connection-lifecycle observability (issue #218). attempt is 1 on the first
+  // connect and increments per reconnect, reset to 0 on a clean onopen.
+  // Timestamps drive the downtime / connect-time / connected-duration deltas;
+  // 0 means "not yet observed", so the first connect reports downtime_ms: 0.
+  private attempt = 0;
+  private connectStartedAt = 0;
+  private lastOpenedAt = 0;
+  private lastClosedAt = 0;
+
   private readonly BASE_BACKOFF_MS = 1000;
   private readonly CAP_BACKOFF_MS = 30_000;
 
@@ -60,6 +69,19 @@ export class DaemonWsClient {
   connect(): void {
     if (this.closed) return;
 
+    this.attempt += 1;
+    this.connectStartedAt = Date.now();
+    const downtimeMs = this.lastClosedAt > 0 ? this.connectStartedAt - this.lastClosedAt : 0;
+    logger.info(
+      {
+        event: DAEMON_CONNECTION_LOG_EVENTS.connectAttempt,
+        attempt: this.attempt,
+        downtime_ms: downtimeMs,
+        previous_backoff_ms: Math.round(this.backoffMs),
+      },
+      "Connecting to orchestrator",
+    );
+
     try {
       this.ws = new WebSocket(this.opts.orchestratorUrl, {
         headers: {
@@ -67,17 +89,33 @@ export class DaemonWsClient {
         },
       });
     } catch (err) {
-      logger.error({ err }, "Failed to create WebSocket connection");
+      logger.error(
+        {
+          event: DAEMON_CONNECTION_LOG_EVENTS.error,
+          readyState: this.ws?.readyState ?? null,
+          message: redactErrorMessage(err),
+        },
+        "Failed to create WebSocket connection",
+      );
       this.scheduleReconnect();
       return;
     }
 
     this.ws.onopen = (): void => {
-      logger.info({ orchestratorUrl: this.opts.orchestratorUrl }, "Connected to orchestrator");
+      this.lastOpenedAt = Date.now();
+      logger.info(
+        {
+          event: DAEMON_CONNECTION_LOG_EVENTS.connected,
+          attempt: this.attempt,
+          time_to_connect_ms: this.lastOpenedAt - this.connectStartedAt,
+          downtime_ms: this.lastClosedAt > 0 ? this.lastOpenedAt - this.lastClosedAt : 0,
+        },
+        "Connected to orchestrator",
+      );
       this.backoffMs = this.BASE_BACKOFF_MS;
+      this.attempt = 0;
       this.reconnecting = false;
       this.sendRegister();
-      this.opts.onConnected();
     };
 
     this.ws.onmessage = (event: MessageEvent): void => {
@@ -101,9 +139,17 @@ export class DaemonWsClient {
     };
 
     this.ws.onclose = (event: CloseEvent): void => {
-      logger.info({ code: event.code, reason: event.reason }, "Disconnected from orchestrator");
+      this.lastClosedAt = Date.now();
+      logger.info(
+        {
+          event: DAEMON_CONNECTION_LOG_EVENTS.disconnected,
+          code: event.code,
+          reason: event.reason,
+          connected_duration_ms: this.lastOpenedAt > 0 ? this.lastClosedAt - this.lastOpenedAt : 0,
+        },
+        "Disconnected from orchestrator",
+      );
       if (!this.closed) {
-        this.opts.onDisconnected();
         this.scheduleReconnect();
       }
     };
@@ -112,9 +158,11 @@ export class DaemonWsClient {
       const maybeMessage = (event as { message?: unknown }).message;
       logger.error(
         {
-          ...(typeof maybeMessage === "string" ? { message: maybeMessage } : {}),
+          event: DAEMON_CONNECTION_LOG_EVENTS.error,
           readyState: this.ws?.readyState ?? null,
-          orchestratorUrl: this.opts.orchestratorUrl,
+          ...(typeof maybeMessage === "string"
+            ? { message: redactErrorMessage(maybeMessage) }
+            : {}),
         },
         "WebSocket error",
       );
@@ -156,7 +204,15 @@ export class DaemonWsClient {
     this.reconnecting = true;
 
     this.backoffMs = nextBackoff(this.backoffMs, this.BASE_BACKOFF_MS, this.CAP_BACKOFF_MS);
-    logger.info({ backoffMs: Math.round(this.backoffMs) }, "Reconnecting to orchestrator");
+    logger.warn(
+      {
+        event: DAEMON_CONNECTION_LOG_EVENTS.reconnectScheduled,
+        // The upcoming connect() will bump `attempt` to this value.
+        attempt: this.attempt + 1,
+        backoff_ms: Math.round(this.backoffMs),
+      },
+      "Reconnecting to orchestrator",
+    );
 
     const timer = setTimeout(() => {
       this.reconnecting = false;

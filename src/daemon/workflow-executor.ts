@@ -4,6 +4,13 @@ import { logger } from "../logger";
 import type { SerializableBotContext } from "../shared/daemon-types";
 import { createMessageEnvelope, type JobPayloadMessage } from "../shared/ws-messages";
 import { addReaction, type ReactionContent } from "../utils/reactions";
+import {
+  logWorkflowRunFailed,
+  logWorkflowRunHandedOff,
+  logWorkflowRunIncomplete,
+  logWorkflowRunRunning,
+  logWorkflowRunSucceeded,
+} from "../workflows/log-fields";
 import { type CompletionResult, onStepComplete } from "../workflows/orchestrator";
 import { getByName, type WorkflowRunContext } from "../workflows/registry";
 import {
@@ -90,6 +97,12 @@ export async function executeWorkflowRun(
     const entry = getByName(workflowRun.workflowName);
     const daemonId = getDaemonId();
     await markRunning(workflowRun.runId, daemonId);
+    logWorkflowRunRunning(log, {
+      runId: workflowRun.runId,
+      workflowName: workflowRun.workflowName,
+      target,
+      deliveryId: context.deliveryId,
+    });
 
     const runCtx: WorkflowRunContext = {
       runId: workflowRun.runId,
@@ -145,6 +158,14 @@ export async function executeWorkflowRun(
         );
       }
 
+      logWorkflowRunHandedOff(log, {
+        runId: workflowRun.runId,
+        workflowName: workflowRun.workflowName,
+        target,
+        deliveryId: context.deliveryId,
+        durationMs: Date.now() - startedAt,
+        childRunId: result.childRunId,
+      });
       log.info(
         {
           durationMs: Date.now() - startedAt,
@@ -190,6 +211,13 @@ export async function executeWorkflowRun(
         );
       }
 
+      logWorkflowRunSucceeded(log, {
+        runId: workflowRun.runId,
+        workflowName: workflowRun.workflowName,
+        target,
+        deliveryId: context.deliveryId,
+        durationMs: Date.now() - startedAt,
+      });
       log.info(
         { durationMs: Date.now() - startedAt, outcome: "succeeded" },
         "Workflow run completed",
@@ -247,6 +275,14 @@ export async function executeWorkflowRun(
         );
       }
 
+      logWorkflowRunIncomplete(log, {
+        runId: workflowRun.runId,
+        workflowName: workflowRun.workflowName,
+        target,
+        deliveryId: context.deliveryId,
+        durationMs: Date.now() - startedAt,
+        reason: result.reason,
+      });
       log.warn(
         {
           durationMs: Date.now() - startedAt,
@@ -306,6 +342,14 @@ export async function executeWorkflowRun(
         );
       }
 
+      logWorkflowRunFailed(log, {
+        runId: workflowRun.runId,
+        workflowName: workflowRun.workflowName,
+        target,
+        deliveryId: context.deliveryId,
+        durationMs: Date.now() - startedAt,
+        reason: result.reason,
+      });
       log.warn(
         { durationMs: Date.now() - startedAt, outcome: "failed", reason: result.reason },
         "Workflow run reported failure",
@@ -361,6 +405,18 @@ export async function executeWorkflowRun(
       );
     }
 
+    logWorkflowRunFailed(
+      log,
+      {
+        runId: workflowRun.runId,
+        workflowName: workflowRun.workflowName,
+        target,
+        deliveryId: context.deliveryId,
+        durationMs: Date.now() - startedAt,
+        reason,
+      },
+      "error",
+    );
     log.error(
       { err, durationMs: Date.now() - startedAt, outcome: "uncaught" },
       "Workflow handler threw",

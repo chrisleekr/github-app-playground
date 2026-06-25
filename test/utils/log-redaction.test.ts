@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { redactErrorMessage } from "../../src/utils/log-redaction";
+import { errSerializer, redactErrorMessage } from "../../src/utils/log-redaction";
 
 describe("redactErrorMessage", () => {
   it("strips a ghs_ token and credentialed URL from an Octokit RequestError", () => {
@@ -78,5 +78,44 @@ describe("redactErrorMessage", () => {
     const out = redactErrorMessage(`raw string with ${token} inside`);
     expect(out).not.toContain(token);
     expect(out).not.toContain("ghs_");
+  });
+});
+
+describe("errSerializer strips octokit event carriers", () => {
+  // `@octokit/webhooks` attaches `event = { id, name, payload, signature }` to
+  // its errors; pino's std serializer would copy it wholesale, leaking the raw
+  // webhook body + HMAC signature. The serializer must drop those carriers.
+  it("removes event/payload/signature from a bare octokit-shaped error", () => {
+    const err = new Error("signature does not match event payload and secret");
+    Object.assign(err, {
+      event: {
+        id: "del-1",
+        name: "issue_comment",
+        payload: { secret_body: "xyz" },
+        signature: "sha256=deadbeef",
+      },
+    });
+    const out = errSerializer(err) as Record<string, unknown>;
+    expect(out["event"]).toBeUndefined();
+    expect(JSON.stringify(out)).not.toContain("secret_body");
+    expect(JSON.stringify(out)).not.toContain("sha256=deadbeef");
+    expect(out["message"]).toBeDefined();
+  });
+
+  it("removes event carriers from inner errors of an AggregateError", () => {
+    const inner = new Error("handler threw");
+    Object.assign(inner, {
+      event: {
+        id: "del-2",
+        name: "pull_request",
+        payload: { secret_body: "nested" },
+        signature: "sha256=cafe",
+      },
+    });
+    const agg = new AggregateError([inner], "webhook handler failed");
+    const out = errSerializer(agg) as Record<string, unknown>;
+    expect(out["errors"]).toBeUndefined();
+    expect(JSON.stringify(out)).not.toContain("secret_body");
+    expect(JSON.stringify(out)).not.toContain("sha256=cafe");
   });
 });

@@ -168,6 +168,17 @@ Operational notes:
 | Mid-run kills on rolling deploys             | `terminationGracePeriodSeconds` < `DAEMON_DRAIN_TIMEOUT_MS`.                                                  |
 | `executions.status='running'` rows piling up | A daemon died abruptly. The `LIVENESS_REAPER_INTERVAL_MS` reaper flips them to failed; check daemon pod logs. |
 
+## Diagnosing ephemeral-spawn failures by kind
+
+When `dispatch_reason=ephemeral-spawn-failed` rises, break it down with the `k8s.spawn.failed` event's `kind` field (`src/orchestrator/k8s-spawn-log-fields.ts`) instead of guessing:
+
+- `kind: "infra-absent"`, missing `DAEMON_IMAGE`, `ORCHESTRATOR_PUBLIC_URL`, or `DAEMON_AUTH_TOKEN`, or neither `KUBERNETES_SERVICE_HOST` (in-cluster) nor `KUBECONFIG` (out-of-cluster) is set. A deploy/config regression; no transient retry will help.
+- `kind: "auth-load-failed"`: a kubeconfig is present but unreadable/malformed.
+- `kind: "api-rejected"`: the K8s API returned a 4xx. Usually RBAC drift on the ServiceAccount permitted to create Pods in `EPHEMERAL_DAEMON_NAMESPACE`, or a Pod-spec validation error. Check the operator RBAC and the `daemon-secrets` reference.
+- `kind: "api-unavailable"`: the K8s API was unreachable (5xx / network). Usually transient control-plane unavailability.
+
+`api_call_ms` on `k8s.spawn.succeeded` / `k8s.spawn.failed` (api-\* kinds) gives the `createNamespacedPod` round-trip latency; a rising trend with no failures suggests control-plane pressure. A high `k8s.spawn.decision_skipped reason=cooldown` rate means the cooldown guard (`EPHEMERAL_DAEMON_SPAWN_COOLDOWN_MS`) is throttling spawns under sustained heavy traffic, consider scaling the persistent pool.
+
 ## Implementation references
 
 `src/daemon/main.ts`, `src/orchestrator/ws-server.ts`, `src/orchestrator/ephemeral-daemon-scaler.ts`, `src/k8s/ephemeral-daemon-spawner.ts`, `src/core/pipeline.ts`, `src/shared/ws-messages.ts`.

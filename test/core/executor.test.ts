@@ -518,6 +518,197 @@ describe("executeAgent: cacheable prompt layout", () => {
   });
 });
 
+// ─── per-tool-call events: agent.tool.* (issue #237) ────────────────────────
+
+/**
+ * Drive the SDK message loop with a scripted sequence so the executor pairs
+ * tool_use → tool_result by tool_use_id. Each entry is yielded verbatim as one
+ * iterator step; the final `result` message ends the run.
+ */
+function scriptedIterator(messages: unknown[]): AsyncIterableIterator<unknown> {
+  let i = 0;
+  return {
+    [Symbol.asyncIterator]() {
+      return this;
+    },
+    next: () => {
+      if (i >= messages.length) {
+        return Promise.resolve({ value: undefined, done: true });
+      }
+      const value = messages[i];
+      i += 1;
+      return Promise.resolve({ value, done: false });
+    },
+    return: () => Promise.resolve({ value: undefined, done: true }),
+  } as AsyncIterableIterator<unknown>;
+}
+
+function findToolEvents(
+  logCalls: { info: ReturnType<typeof mock>; warn: ReturnType<typeof mock> },
+  event: string,
+): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  for (const call of [...logCalls.info.mock.calls, ...logCalls.warn.mock.calls]) {
+    const fields = call[0] as Record<string, unknown> | undefined;
+    if (fields?.["event"] === event) out.push(fields);
+  }
+  return out;
+}
+
+describe("executeAgent: per-tool-call events (#237)", () => {
+  beforeEach(() => {
+    lastQueryCall = undefined;
+    nextIterator = emptyIterator;
+  });
+
+  it("emits started then completed paired by tool_use_id, carrying name + duration + is_error", async () => {
+    nextIterator = (): AsyncIterableIterator<unknown> =>
+      scriptedIterator([
+        {
+          type: "assistant",
+          message: {
+            model: "claude-opus-4-7",
+            stop_reason: "tool_use",
+            content: [
+              { type: "tool_use", id: "toolu_a", name: "Bash", input: { command: "ls" } },
+              { type: "tool_use", id: "toolu_b", name: "Read", input: { file_path: "/x" } },
+            ],
+          },
+        },
+        {
+          type: "user",
+          message: {
+            content: [
+              { type: "tool_result", tool_use_id: "toolu_a", is_error: false, content: "out" },
+              { type: "tool_result", tool_use_id: "toolu_b", is_error: true, content: "boom" },
+            ],
+          },
+        },
+        { type: "result", subtype: "success", num_turns: 1 },
+      ]);
+
+    const params = baseParams();
+    await executeAgent(params);
+
+    const logInfo = params.ctx.log.info as ReturnType<typeof mock>;
+    const logWarn = params.ctx.log.warn as ReturnType<typeof mock>;
+    const calls = { info: logInfo, warn: logWarn };
+
+    const started = findToolEvents(calls, "agent.tool.started");
+    expect(started.map((e) => e["tool_use_id"])).toEqual(["toolu_a", "toolu_b"]);
+    expect(started.map((e) => e["tool"])).toEqual(["Bash", "Read"]);
+    // No input bodies must leak into the started events.
+    for (const e of started)
+      expect(Object.keys(e).sort()).toEqual(["event", "tool", "tool_use_id"]);
+
+    const completed = findToolEvents(calls, "agent.tool.completed");
+    expect(completed.map((e) => e["tool_use_id"])).toEqual(["toolu_a", "toolu_b"]);
+    expect(completed.map((e) => e["tool"])).toEqual(["Bash", "Read"]);
+    expect(completed.map((e) => e["is_error"])).toEqual([false, true]);
+    for (const e of completed) {
+      expect(typeof e["tool_duration_ms"]).toBe("number");
+      // No output bodies must leak into the completed events.
+      expect(Object.keys(e).sort()).toEqual([
+        "event",
+        "is_error",
+        "tool",
+        "tool_duration_ms",
+        "tool_use_id",
+      ]);
+    }
+
+    // No orphans → no timed_out events.
+    expect(findToolEvents(calls, "agent.tool.timed_out")).toHaveLength(0);
+  });
+
+  it("emits timed_out for a tool_use that never received its tool_result", async () => {
+    nextIterator = (): AsyncIterableIterator<unknown> =>
+      scriptedIterator([
+        {
+          type: "assistant",
+          message: {
+            stop_reason: "tool_use",
+            content: [{ type: "tool_use", id: "toolu_hang", name: "Bash", input: {} }],
+          },
+        },
+        // run terminates with the tool still in flight (no user tool_result)
+        { type: "result", subtype: "success", num_turns: 1 },
+      ]);
+
+    const params = baseParams();
+    await executeAgent(params);
+
+    const calls = {
+      info: params.ctx.log.info as ReturnType<typeof mock>,
+      warn: params.ctx.log.warn as ReturnType<typeof mock>,
+    };
+    expect(findToolEvents(calls, "agent.tool.completed")).toHaveLength(0);
+    const timedOut = findToolEvents(calls, "agent.tool.timed_out");
+    expect(timedOut).toHaveLength(1);
+    expect(timedOut[0]?.["tool_use_id"]).toBe("toolu_hang");
+    expect(timedOut[0]?.["tool"]).toBe("Bash");
+    expect(typeof timedOut[0]?.["delta_ms"]).toBe("number");
+  });
+
+  it("drains pending tools as timed_out on the wall-clock abort path", async () => {
+    config.agentTimeoutMs = 25;
+
+    nextIterator = (): AsyncIterableIterator<unknown> => {
+      let started = false;
+      return {
+        [Symbol.asyncIterator]() {
+          return this;
+        },
+        next: () => {
+          if (!started) {
+            started = true;
+            return Promise.resolve({
+              value: {
+                type: "assistant",
+                message: {
+                  stop_reason: "tool_use",
+                  content: [{ type: "tool_use", id: "toolu_slow", name: "Bash", input: {} }],
+                },
+              },
+              done: false,
+            });
+          }
+          // After yielding the tool_use, block until the wall-clock abort fires.
+          const controller = lastQueryCall?.options.abortController;
+          if (controller === undefined) {
+            return Promise.reject(new Error("controller missing from query options"));
+          }
+          return new Promise((_, reject) => {
+            const fire = (): void => {
+              const reason = controller.signal.reason;
+              reject(reason instanceof Error ? reason : new Error("aborted"));
+            };
+            if (controller.signal.aborted) {
+              fire();
+            } else {
+              controller.signal.addEventListener("abort", fire, { once: true });
+            }
+          });
+        },
+        return: () => Promise.resolve({ value: undefined, done: true }),
+      } as AsyncIterableIterator<unknown>;
+    };
+
+    const params = baseParams();
+    const result = await executeAgent(params);
+    config.agentTimeoutMs = ORIGINAL_TIMEOUT;
+
+    expect(result.success).toBe(false);
+    const calls = {
+      info: params.ctx.log.info as ReturnType<typeof mock>,
+      warn: params.ctx.log.warn as ReturnType<typeof mock>,
+    };
+    const timedOut = findToolEvents(calls, "agent.tool.timed_out");
+    expect(timedOut).toHaveLength(1);
+    expect(timedOut[0]?.["tool_use_id"]).toBe("toolu_slow");
+  });
+});
+
 // ─── filesystem settings isolation: settingSources [] (issue #191) ──────────
 // cwd is the cloned PR head (checkout.ts), which can carry an attacker's
 // .claude/settings.json. Omitting settingSources makes the SDK load

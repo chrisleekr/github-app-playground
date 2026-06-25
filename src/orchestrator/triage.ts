@@ -38,6 +38,7 @@ import { getDb } from "../db";
 import { dispatchGithubStateTool, GITHUB_STATE_TOOLS } from "../github/state-fetchers";
 import { logger } from "../logger";
 import { CircuitBreaker } from "../utils/circuit-breaker";
+import { CIRCUIT_LOG_EVENTS } from "../utils/circuit-breaker-log-fields";
 import { sanitizeContent } from "../utils/sanitize";
 
 /**
@@ -156,6 +157,58 @@ const breaker = new CircuitBreaker({
   cooldownMs: 60_000,
   onStateChange: (from, to, reason) => {
     logger.warn({ from, to, reason }, "triage circuit breaker transition");
+  },
+  // Structured `circuit.*` family (issue #216): non-transition observability the
+  // transition hook can't see. deliveryId rides on the per-request child logger
+  // at the caller skip site; these process-level lines are greppable for
+  // incident counting (skip rate, MTTR via open_ms, pre-trip head start).
+  onEvent: (event) => {
+    switch (event.kind) {
+      case "opened":
+        logger.warn(
+          {
+            event: CIRCUIT_LOG_EVENTS.opened,
+            from: event.from,
+            consecutive_failures: event.consecutiveFailures,
+            latency_tripped: event.latencyTripped,
+          },
+          "triage circuit breaker opened",
+        );
+        break;
+      case "half-open":
+        logger.info(
+          { event: CIRCUIT_LOG_EVENTS.halfOpen, from: event.from },
+          "triage circuit breaker admitting half-open probe",
+        );
+        break;
+      case "closed":
+        logger.info(
+          { event: CIRCUIT_LOG_EVENTS.closed, open_ms: event.openMs },
+          "triage circuit breaker recovered",
+        );
+        break;
+      case "skipped":
+        logger.warn(
+          {
+            event: CIRCUIT_LOG_EVENTS.skipped,
+            open_ms: event.openMs,
+            skips_since_opened: event.skipsSinceOpened,
+          },
+          "triage short-circuited by open breaker",
+        );
+        break;
+      case "failure":
+        logger.warn(
+          {
+            event: CIRCUIT_LOG_EVENTS.failure,
+            consecutive_failures: event.consecutiveFailures,
+            max_consecutive_failures: event.maxConsecutiveFailures,
+            latency_tripped: event.latencyTripped,
+          },
+          "triage circuit breaker failure recorded",
+        );
+        break;
+    }
   },
 });
 
@@ -313,14 +366,25 @@ export async function triageRequest(input: TriageInput, client: LLMClient): Prom
   });
 
   if (breakerResult.outcome === "circuit-open") {
+    // The breaker's onEvent already emitted the `circuit.skipped` line with
+    // open_ms + skips_since_opened; this carries the deliveryId binding the
+    // process-level breaker hook can't see.
     logger.warn({ deliveryId: input.deliveryId }, "triage short-circuited by open breaker");
     return { outcome: "fallback", reason: "circuit-open" };
   }
   if (breakerResult.outcome === "error") {
     const msg = breakerResult.error?.message ?? "unknown";
     const reason: TriageFallbackReason = msg.startsWith("triage-timeout") ? "timeout" : "llm-error";
+    // `latency_tripped` distinguishes a slow-call breaker trip from a thrown
+    // upstream error, both collapse into `llm-error` for the scaler but the
+    // operator alert needs the split (issue #216).
     logger.warn(
-      { deliveryId: input.deliveryId, err: msg, reason },
+      {
+        deliveryId: input.deliveryId,
+        err: msg,
+        reason,
+        latency_tripped: breakerResult.latencyTripped,
+      },
       "triage LLM call failed; falling back",
     );
     return { outcome: "fallback", reason };
@@ -344,16 +408,12 @@ export async function triageRequest(input: TriageInput, client: LLMClient): Prom
     return { outcome: "fallback", reason: "parse-error" };
   }
 
-  const parseResult = parseStructuredResponse(jsonText, TriageResponseSchema);
+  const parseResult = parseStructuredResponse(jsonText, TriageResponseSchema, {
+    site: "triage-orchestrator",
+    log: logger.child({ deliveryId: input.deliveryId }),
+  });
   if (!parseResult.ok) {
-    logger.warn(
-      { deliveryId: input.deliveryId, stage: parseResult.stage, error: parseResult.error },
-      "triage response rejected by structured-output pipeline; falling back",
-    );
     return { outcome: "fallback", reason: "parse-error" };
-  }
-  if (parseResult.strategy === "tolerant") {
-    logger.info({ deliveryId: input.deliveryId }, "triage response recovered via tolerant parser");
   }
 
   const triage = parseResult.data;
