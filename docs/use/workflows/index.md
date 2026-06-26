@@ -25,6 +25,7 @@ Seven workflows are registered today (`src/workflows/registry.ts`). Each has a s
 - **One Markdown artifact, one tracking comment.** Each run captures `<NAME>.md` from the working tree before cleanup and embeds it verbatim in the tracking comment.
 - **Tracking comments are idempotent.** Every tracking comment carries a hidden `<!-- workflow-run:{id} -->` marker. `setState()` in `src/workflows/tracking-mirror.ts` scans for the marker before posting, adopts any pre-existing comment found (e.g. after an octokit retry that silently duplicated a `POST`, or a pod restart between create and CAS reservation), and reconciles duplicates after create, keeping a single canonical comment per run regardless of transient API failures.
 - **Cost is visible.** Every workflow records `cost_usd`, `turns`, and `wall_clock_ms` on the run row. The shepherding lifecycle exposes cumulative spend in the tracking comment header.
+- **Lifecycle is observable.** Workflow runs emit a structured `workflow.run.*` event family (`queued`, `running`, `succeeded`, `incomplete`, `failed`, `handed_off`, `dispatch_refused`, `enqueue_failed`) on each `workflow_runs` state transition. The comment-aware prefix that every structured workflow shares emits `digest.*` for the discussion-digest LLM call, and every LLM JSON parse emits `structured_output.*` (with the `strict`/`tolerant` strategy). Field contracts and alert recipes are in [observability.md](../../operate/observability.md).
 
 ## Maintainer comments steer the workflow
 

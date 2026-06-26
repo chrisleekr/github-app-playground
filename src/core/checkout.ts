@@ -5,6 +5,8 @@ import { $ } from "bun";
 
 import { config } from "../config";
 import type { BotContext, CheckoutResult } from "../types";
+import { redactErrorMessage } from "../utils/log-redaction";
+import { WORKSPACE_LOG_EVENTS } from "./workspace-events";
 
 /**
  * Clone the repository to a unique temporary directory and configure git.
@@ -56,8 +58,21 @@ export async function checkoutRepo(
       { mode: 0o700 },
     );
 
-    log.info({ branch, depth: config.cloneDepth }, "Cloning repository");
+    // Slug, not repoUrl: repoUrl embeds the install token via the credential helper path only,
+    // but log the bare owner/repo slug so no auth material can ever land on a workspace event.
+    const repoSlug = `${ctx.owner}/${ctx.repo}`;
+    log.info(
+      {
+        event: WORKSPACE_LOG_EVENTS.cloneStarted,
+        repo: repoSlug,
+        branch,
+        depth: config.cloneDepth,
+      },
+      "Cloning repository",
+    );
+    const cloneStartedAt = Date.now();
     await $`git clone --depth=${config.cloneDepth} --branch=${branch} --single-branch -c credential.helper=${helperPath} ${repoUrl} ${workDir}`;
+    const cloneMs = Date.now() - cloneStartedAt;
 
     // Persist the credential helper for subsequent git operations (push, fetch)
     await $`git -C ${workDir} config credential.helper ${helperPath}`;
@@ -74,10 +89,6 @@ export async function checkoutRepo(
     // turns or silently falls back to `git diff HEAD`. Widen the refspec and pull
     // the base ref in. Best-effort: a missing base ref shouldn't break the request.
     if (ctx.isPR && baseBranch !== undefined && baseBranch !== "" && baseBranch !== branch) {
-      log.info(
-        { baseBranch, headBranch: branch, depth: config.cloneDepth },
-        "Fetching PR base branch",
-      );
       try {
         await $`git -C ${workDir} remote set-branches --add origin ${baseBranch}`;
         // Both sides of the diff are bounded by CLONE_DEPTH. If head/base diverge by
@@ -86,15 +97,31 @@ export async function checkoutRepo(
         // shallow-boundary commit, bump CLONE_DEPTH or `git fetch --unshallow` if
         // an agent reports a noisy diff for a long-history base.
         await $`git -C ${workDir} fetch --depth=${config.cloneDepth} origin ${baseBranch}`;
+        log.info(
+          {
+            event: WORKSPACE_LOG_EVENTS.baseBranchFetched,
+            baseBranch,
+            headBranch: branch,
+          },
+          "Fetched PR base branch",
+        );
       } catch (err) {
         log.warn(
-          { baseBranch, headBranch: branch, err },
+          {
+            event: WORKSPACE_LOG_EVENTS.baseBranchFetchFailed,
+            baseBranch,
+            headBranch: branch,
+            err: redactErrorMessage(err),
+          },
           "Failed to fetch PR base branch, agent diff/rebase commands may fail",
         );
       }
     }
 
-    log.info("Repository checked out and git configured");
+    log.info(
+      { event: WORKSPACE_LOG_EVENTS.cloneCompleted, repo: repoSlug, branch, clone_ms: cloneMs },
+      "Repository checked out and git configured",
+    );
 
     return {
       workDir,
@@ -107,6 +134,17 @@ export async function checkoutRepo(
       },
     };
   } catch (error) {
+    // branch is scoped to the try; recompute from ctx (always defined) for the event.
+    const failedBranch = ctx.isPR ? ctx.headBranch : ctx.defaultBranch;
+    log.warn(
+      {
+        event: WORKSPACE_LOG_EVENTS.cloneFailed,
+        repo: `${ctx.owner}/${ctx.repo}`,
+        branch: failedBranch !== undefined && failedBranch !== "" ? failedBranch : "unknown",
+        err: redactErrorMessage(error),
+      },
+      "Clone failed, removing partial workspace",
+    );
     // Cleanup on clone failure (best-effort: swallow cleanup errors)
     await Promise.all([
       rm(workDir, { recursive: true, force: true }).catch(() => undefined),

@@ -16,6 +16,7 @@ import type {
 } from "@octokit/webhooks-types";
 import { App, Octokit } from "octokit";
 
+import { HTTP_LOG_EVENTS } from "./app-log-fields";
 import { config } from "./config";
 import { sweepStaleWorkspaces } from "./core/workspace-sweep";
 import { closeDb, getDb } from "./db";
@@ -23,6 +24,7 @@ import { runMigrations } from "./db/migrate";
 import { installFatalHandlers, logger } from "./logger";
 import { startFleetSnapshot, stopFleetSnapshot } from "./orchestrator/fleet-snapshot";
 import { recoverStaleExecutions } from "./orchestrator/history";
+import { mintInstallationToken } from "./orchestrator/installation-token";
 import { getInstanceId } from "./orchestrator/instance-id";
 import { startInstanceHeartbeat, stopInstanceHeartbeat } from "./orchestrator/instance-liveness";
 import { recoverProcessingList } from "./orchestrator/job-queue";
@@ -175,9 +177,57 @@ app.webhooks.on(
   },
 );
 
+// `@octokit/webhooks` routes BOTH HMAC verification failures and downstream
+// handler exceptions through this single callback as an AggregateError. The
+// `http.webhook.error` line splits them via `kind` so an operator can alert on
+// "signature verification failing >N/min" (a stale GITHUB_WEBHOOK_SECRET drops
+// 100% of deliveries) separately from a handler throw. NEVER logs the
+// signature bytes, the secret, or the raw body, only the FACT of failure plus
+// the GitHub-bounded delivery id / event name when present (issue #247).
 app.webhooks.onError((error) => {
-  logger.error({ err: error }, "Webhook processing error");
+  const { kind, deliveryId, eventName } = classifyWebhookError(error);
+  logger.warn(
+    {
+      event: HTTP_LOG_EVENTS.webhookError,
+      kind,
+      ...(deliveryId !== undefined ? { deliveryId } : {}),
+      ...(eventName !== undefined ? { event_name: eventName } : {}),
+      err: error,
+    },
+    "Webhook processing error",
+  );
 });
+
+/**
+ * Classify an `@octokit/webhooks` `onError` AggregateError into the bounded
+ * metadata the `http.webhook.error` line carries. Reads only the
+ * GitHub-bounded `id` / `name` off the wrapped event, never the signature or
+ * payload bytes. A signature mismatch carries the marker message
+ * "signature does not match" (see verify-and-receive.js) and HTTP status 400.
+ */
+function classifyWebhookError(error: unknown): {
+  kind: "signature_mismatch" | "handler_threw" | "other";
+  deliveryId: string | undefined;
+  eventName: string | undefined;
+} {
+  const agg = error as {
+    errors?: { message?: unknown }[];
+    event?: { id?: unknown; name?: unknown } | undefined;
+  };
+  const inner = Array.isArray(agg.errors) ? agg.errors : [];
+  const isSignatureMismatch = inner.some(
+    (e) => typeof e.message === "string" && e.message.includes("signature does not match"),
+  );
+  const ev = agg.event;
+  const deliveryId = typeof ev?.id === "string" && ev.id.length > 0 ? ev.id : undefined;
+  const eventName = typeof ev?.name === "string" && ev.name.length > 0 ? ev.name : undefined;
+  const kind = isSignatureMismatch
+    ? "signature_mismatch"
+    : eventName !== undefined
+      ? "handler_threw"
+      : "other";
+  return { kind, deliveryId, eventName };
+}
 
 // Create the webhook middleware that handles signature verification.
 // Uses @octokit/webhooks directly (not @octokit/app's wrapper) to avoid
@@ -203,9 +253,14 @@ const server = http.createServer((req, res) => {
     const valkeyHealthy = isValkeyHealthy();
     const ready = isReady && valkeyHealthy;
     if (!ready) {
-      // Debug-level so K8s probes don't swamp logs at info; flip LOG_LEVEL=debug
-      // to see exactly which flag is false during startup races.
-      logger.debug({ isReady, valkeyHealthy }, "/readyz returning 503");
+      // Info-level (issue #247): a 503 means we are refusing traffic, an
+      // operator wants this at the LOG_LEVEL=info baseline to see startup
+      // races / Valkey reconnect storms. /healthz stays silent (k8s liveness
+      // hammers it). The two flags name which gate is false.
+      logger.info(
+        { event: HTTP_LOG_EVENTS.readyzUnready, is_ready: isReady, valkey_healthy: valkeyHealthy },
+        "/readyz returning 503",
+      );
     }
     res
       .writeHead(ready ? 200 : 503, { "Content-Type": "text/plain" })
@@ -239,8 +294,34 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  void webhookMiddleware(req, res);
+  // Webhook entry (issue #247). `http.webhook.received` records the inbound
+  // delivery with its GitHub-bounded delivery id + event name (header values,
+  // not body) and the HTTP-handler wall-clock around the middleware, which
+  // verifies HMAC and dispatches. A signature mismatch surfaces separately via
+  // `onError` -> `http.webhook.error`; this line is the per-receipt access log.
+  const deliveryId = headerString(req.headers["x-github-delivery"]);
+  const eventName = headerString(req.headers["x-github-event"]);
+  const startedAt = Date.now();
+  void webhookMiddleware(req, res).finally(() => {
+    if (deliveryId !== undefined && eventName !== undefined) {
+      logger.info(
+        {
+          event: HTTP_LOG_EVENTS.webhookReceived,
+          deliveryId,
+          event_name: eventName,
+          duration_ms: Date.now() - startedAt,
+        },
+        "Webhook received",
+      );
+    }
+  });
 });
+
+/** Narrow a Node header value (string | string[] | undefined) to a non-empty string. */
+function headerString(value: string | string[] | undefined): string | undefined {
+  const v = Array.isArray(value) ? value[0] : value;
+  return typeof v === "string" && v.length > 0 ? v : undefined;
+}
 
 server.listen(config.port, () => {
   logger.info({ port: config.port }, "Server started");
@@ -444,10 +525,17 @@ async function runStartupChecks(): Promise<void> {
         // to honour the contract documented in CLAUDE.md.
         // Otherwise reuse the App singleton; cached installation tokens
         // save a JWT mint per resume.
-        octokitFactory: (installationId) =>
+        octokitFactory: async (installationId) =>
           config.githubPersonalAccessToken !== undefined
-            ? Promise.resolve(new Octokit({ auth: config.githubPersonalAccessToken }))
-            : app.getInstallationOctokit(installationId),
+            ? new Octokit({ auth: config.githubPersonalAccessToken })
+            : (
+                await mintInstallationToken({
+                  app,
+                  installationId,
+                  via: "shipTickleResume",
+                  log: logger,
+                })
+              ).octokit,
       }),
   });
   await shipTickleScheduler.start();
@@ -459,7 +547,8 @@ async function runStartupChecks(): Promise<void> {
   // chat_proposals does not carry installation_id.
   proposalPoller = startProposalPoller({
     resolveOctokit: async (installationId) =>
-      (await app.getInstallationOctokit(installationId)) as unknown as Octokit,
+      (await mintInstallationToken({ app, installationId, via: "proposalPoller", log: logger }))
+        .octokit,
     resolveInstallationId: async (q) => {
       try {
         const r = await app.octokit.rest.apps.getRepoInstallation({
@@ -532,10 +621,19 @@ async function handleSchedulerRun(
   res: http.ServerResponse,
 ): Promise<void> {
   if (!config.schedulerEnabled || scheduledActionScheduler === null) {
+    logger.warn(
+      { event: HTTP_LOG_EVENTS.schedulerRunRejectedDisabled, status: 404 },
+      "scheduler: manual run rejected (disabled)",
+    );
     res.writeHead(404, { "Content-Type": "text/plain" }).end("not found");
     return;
   }
   if (!schedulerBearerOk(req.headers.authorization)) {
+    // Logs the FACT of rejection only, never the provided token.
+    logger.warn(
+      { event: HTTP_LOG_EVENTS.schedulerRunRejectedUnauth, status: 401 },
+      "scheduler: manual run rejected (unauthorized)",
+    );
     res.writeHead(401, { "Content-Type": "text/plain" }).end("unauthorized");
     return;
   }
@@ -551,6 +649,14 @@ async function handleSchedulerRun(
         if (res.headersSent) return;
         size += chunk.length;
         if (size > MAX_SCHEDULER_BODY_BYTES) {
+          logger.warn(
+            {
+              event: HTTP_LOG_EVENTS.schedulerRunRejectedPayload,
+              status: 413,
+              reason: "body_too_large",
+            },
+            "scheduler: manual run rejected (body too large)",
+          );
           res
             .writeHead(413, { "Content-Type": "application/json" })
             .end(JSON.stringify({ error: "request body too large" }));
@@ -571,6 +677,10 @@ async function handleSchedulerRun(
       parsed = JSON.parse(body);
     } catch {
       // Malformed client input is a 400, not a 500.
+      logger.warn(
+        { event: HTTP_LOG_EVENTS.schedulerRunRejectedPayload, status: 400, reason: "invalid_json" },
+        "scheduler: manual run rejected (invalid JSON)",
+      );
       res
         .writeHead(400, { "Content-Type": "application/json" })
         .end(JSON.stringify({ error: "request body is not valid JSON" }));
@@ -579,6 +689,10 @@ async function handleSchedulerRun(
     if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
       // A valid JSON literal that is not an object (null, number, string) is
       // still malformed input for this endpoint: 400, not 500.
+      logger.warn(
+        { event: HTTP_LOG_EVENTS.schedulerRunRejectedPayload, status: 400, reason: "not_object" },
+        "scheduler: manual run rejected (not a JSON object)",
+      );
       res
         .writeHead(400, { "Content-Type": "application/json" })
         .end(JSON.stringify({ error: "request body must be a JSON object" }));
@@ -590,6 +704,14 @@ async function handleSchedulerRun(
       typeof payload.repo !== "string" ||
       typeof payload.action !== "string"
     ) {
+      logger.warn(
+        {
+          event: HTTP_LOG_EVENTS.schedulerRunRejectedPayload,
+          status: 400,
+          reason: "missing_field",
+        },
+        "scheduler: manual run rejected (missing field)",
+      );
       res
         .writeHead(400, { "Content-Type": "application/json" })
         .end(JSON.stringify({ error: "owner, repo, and action are required" }));
@@ -600,11 +722,17 @@ async function handleSchedulerRun(
       repo: payload.repo,
       actionName: payload.action,
     });
-    res
-      .writeHead(result.enqueued ? 202 : 409, { "Content-Type": "application/json" })
-      .end(JSON.stringify(result));
+    const status = result.enqueued ? 202 : 409;
+    logger.info(
+      { event: HTTP_LOG_EVENTS.schedulerRunEnqueued, status, enqueued: result.enqueued },
+      "scheduler: manual run accepted",
+    );
+    res.writeHead(status, { "Content-Type": "application/json" }).end(JSON.stringify(result));
   } catch (err) {
-    logger.error({ err }, "scheduler: manual run endpoint failed");
+    logger.error(
+      { event: HTTP_LOG_EVENTS.schedulerRunFailed, status: 500, err },
+      "scheduler: manual run endpoint failed",
+    );
     res
       .writeHead(500, { "Content-Type": "application/json" })
       .end(JSON.stringify({ error: "internal error" }));

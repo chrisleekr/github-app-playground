@@ -11,6 +11,7 @@ import { requireValkeyClient } from "../orchestrator/valkey";
 import { isSessionTerminalState } from "../shared/ship-types";
 import { addReaction, type ReactionContent } from "../utils/reactions";
 import { recordWorkflowExecution } from "./execution-row";
+import { logWorkflowRunEnqueueFailed } from "./log-fields";
 import { getByName, type WorkflowName } from "./registry";
 import { findById, markFailed, type WorkflowRunRow } from "./runs-store";
 import { TICKLE_KEY } from "./ship/webhook-reactor";
@@ -334,6 +335,13 @@ export async function onStepComplete(
       // BEFORE returning so the index releases and the operator gets a
       // breadcrumb on the tracking comment.
       const reason = `enqueue failed: ${err instanceof Error ? err.message : String(err)}`;
+      logWorkflowRunEnqueueFailed(logger, {
+        runId: job.runId,
+        workflowName: job.workflowName,
+        target: job.target,
+        deliveryId: job.deliveryId,
+        reason,
+      });
       logger.error(
         { err, nextRunId: job.runId, parentId: job.parentRunId },
         "orchestrator post-commit enqueue failed, compensating by marking child and parent failed",

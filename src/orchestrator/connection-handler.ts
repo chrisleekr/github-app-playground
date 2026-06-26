@@ -2,13 +2,13 @@ import type { ServerWebSocket } from "bun";
 import { App, Octokit } from "octokit";
 
 import { config } from "../config";
-import { resolveGithubToken } from "../core/github-token";
 import { clearInFlightByJobId } from "../db/queries/scheduled-actions-store";
 import { logger } from "../logger";
 import { observableOctokit } from "../utils/octokit-observability";
 import { addReaction } from "../utils/reactions";
 import { findById, findInflightByOwner, type WorkflowRunRow } from "../workflows/runs-store";
 import { setState } from "../workflows/tracking-mirror";
+import { mintInstallationToken } from "./installation-token";
 import { DAEMON_HEARTBEAT_LOG_EVENTS, DISPATCHER_LOG_EVENTS } from "./log-fields";
 import type {
   loadReviewLearnings as LoadReviewLearningsFn,
@@ -286,7 +286,14 @@ async function postOrphanNotification(ancestor: WorkflowRunRow): Promise<void> {
       owner: ancestor.target_owner,
       repo: ancestor.target_repo,
     });
-    octokit = await app.getInstallationOctokit(installation.id);
+    octokit = (
+      await mintInstallationToken({
+        app,
+        installationId: installation.id,
+        via: "postOrphanNotification",
+        log: logger,
+      })
+    ).octokit;
   }
 
   const humanMessage = [
@@ -922,8 +929,12 @@ async function handleAccept(
         repo,
       });
       installationId = installation.id;
-      acceptOctokit = await app.getInstallationOctokit(installation.id);
-      token = await resolveGithubToken(acceptOctokit);
+      ({ octokit: acceptOctokit, token } = await mintInstallationToken({
+        app,
+        installationId: installation.id,
+        via: "handleAccept",
+        log: logger,
+      }));
     }
 
     // No turn cap by default: workflows must run end-to-end without losing
@@ -1045,8 +1056,12 @@ async function handleScopedAccept(
       token = config.githubPersonalAccessToken;
     } else {
       const app = getOrCreateApp();
-      const octokit = await app.getInstallationOctokit(scopedJob.installationId);
-      token = await resolveGithubToken(octokit);
+      ({ token } = await mintInstallationToken({
+        app,
+        installationId: scopedJob.installationId,
+        via: "handleScopedAccept",
+        log: logger,
+      }));
     }
 
     handleJobAccept({

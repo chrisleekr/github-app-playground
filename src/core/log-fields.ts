@@ -23,6 +23,76 @@ export const CORE_PIPELINE_LOG_EVENTS = {
 } as const;
 
 /**
+ * Per-tool-call agent event family (issue #237). Emitted from the executor's
+ * SDK message loop: `started` on each `assistant.tool_use` block, `completed`
+ * on the paired `user.tool_result`, `timed_out` for any call still pending when
+ * the run terminates (the wall-clock abort orphans unfinished tool_use blocks).
+ *
+ * SECURITY: tool input and output BODIES are never logged. A Bash command, a
+ * file's contents, or a tool result can carry secrets or attacker-injected
+ * text, so these events carry only bounded metadata: the tool name, the
+ * Anthropic-protocol `tool_use_id` correlation key, and a duration.
+ */
+export const CORE_AGENT_LOG_EVENTS = {
+  toolStarted: "agent.tool.started",
+  toolCompleted: "agent.tool.completed",
+  toolTimedOut: "agent.tool.timed_out",
+} as const;
+
+/**
+ * Shape of `agent.tool.started`. `tool_use_id` is the protocol id that pairs
+ * this start with its later `tool_result`; `tool` is the tool name (e.g.
+ * `Bash`, `mcp__github_comment__update`). `.strict()` pins drift.
+ */
+export const AgentToolStartedLogSchema = z.strictObject({
+  event: z.literal(CORE_AGENT_LOG_EVENTS.toolStarted),
+  tool_use_id: z.string().min(1),
+  tool: z.string().min(1),
+});
+
+export type AgentToolStartedLog = z.infer<typeof AgentToolStartedLogSchema>;
+
+/**
+ * Shape of `agent.tool.completed`. `tool_duration_ms` is wall-clock from the
+ * paired start to this result; `is_error` flags an errored `tool_result`. No
+ * output bytes: `is_error` is the only result-derived signal carried.
+ */
+export const AgentToolCompletedLogSchema = z.strictObject({
+  event: z.literal(CORE_AGENT_LOG_EVENTS.toolCompleted),
+  tool_use_id: z.string().min(1),
+  tool: z.string().min(1),
+  tool_duration_ms: z.number().int().nonnegative(),
+  is_error: z.boolean(),
+});
+
+export type AgentToolCompletedLog = z.infer<typeof AgentToolCompletedLogSchema>;
+
+/**
+ * Shape of `agent.tool.timed_out`. Emitted at run termination for a tool_use
+ * that never received its tool_result (typically the wall-clock abort tore down
+ * the iterator mid-call). `delta_ms` is start-to-termination wall-clock.
+ */
+export const AgentToolTimedOutLogSchema = z.strictObject({
+  event: z.literal(CORE_AGENT_LOG_EVENTS.toolTimedOut),
+  tool_use_id: z.string().min(1),
+  tool: z.string().min(1),
+  delta_ms: z.number().int().nonnegative(),
+});
+
+export type AgentToolTimedOutLog = z.infer<typeof AgentToolTimedOutLogSchema>;
+
+/**
+ * Per-pipeline pairing map: a `tool_use_id` keyed cursor that the executor's
+ * `assistant` branch populates on a `tool_use` block and the `user` branch
+ * drains on the matching `tool_result`. Entries surviving to run termination
+ * become `agent.tool.timed_out`. Carries only metadata, never tool I/O.
+ */
+export interface PendingToolCall {
+  tool: string;
+  startedAt: number;
+}
+
+/**
  * Shape of the structured per-stage timing event. `.strict()` so an emitter
  * that adds an unpinned field, or mistypes `delta_ms`, trips the test.
  */

@@ -17,10 +17,16 @@
  * `warn` fires only when `remaining` crosses `RATE_LIMIT_LOW_WATER` or on a
  * rate-limit error, which is the operational signal. `LOG_LEVEL=debug` turns on
  * full per-call visibility without a separate sampling knob.
+ *
+ * Latency (issue #223): a `hook.wrap` closure captures the request start so the
+ * after-side can thread `duration_ms` onto every line and fire a `warn`
+ * `github.api.slow` once duration crosses `GITHUB_API_SLOW_REQUEST_MS` (default
+ * 3000ms). The slow line is independent of rate-limit headers.
  */
 import { Octokit } from "octokit";
 import { z } from "zod";
 
+import { config } from "../config";
 import { logger } from "../logger";
 
 /** Emit a `rate_limit_low` warn once remaining drops below this floor. */
@@ -30,6 +36,7 @@ export const GITHUB_API_LOG_EVENTS = {
   request: "github.api.request",
   rateLimitLow: "github.api.rate_limit_low",
   rateLimitWarning: "github.api.rate_limit_warning",
+  slow: "github.api.slow",
 } as const;
 
 /**
@@ -42,9 +49,14 @@ export const GithubApiLogFieldsSchema = z
       GITHUB_API_LOG_EVENTS.request,
       GITHUB_API_LOG_EVENTS.rateLimitLow,
       GITHUB_API_LOG_EVENTS.rateLimitWarning,
+      GITHUB_API_LOG_EVENTS.slow,
     ]),
     route: z.string().min(1),
     status: z.number().int(),
+    // Wall-clock request duration measured across the octokit `hook.wrap`
+    // boundary. Optional because the rate-limit-warning error line is built
+    // before the duration is known on some throw paths.
+    duration_ms: z.number().int().nonnegative().optional(),
     rate_limit_limit: z.number().int().nonnegative().optional(),
     rate_limit_remaining: z.number().int().nonnegative().optional(),
     rate_limit_reset_in_s: z.number().int().optional(),
@@ -77,6 +89,7 @@ export function rateLimitFields(
   headers: Headers,
   route: string,
   nowSeconds: number,
+  durationMs?: number,
 ): GithubApiLogFields | null {
   const remaining = intHeader(headers, "x-ratelimit-remaining");
   if (remaining === undefined) return null;
@@ -90,6 +103,7 @@ export function rateLimitFields(
         : GITHUB_API_LOG_EVENTS.request,
     route,
     status,
+    ...(durationMs !== undefined ? { duration_ms: durationMs } : {}),
     ...(limit !== undefined ? { rate_limit_limit: limit } : {}),
     rate_limit_remaining: remaining,
     ...(reset !== undefined ? { rate_limit_reset_in_s: reset - nowSeconds } : {}),
@@ -98,43 +112,93 @@ export function rateLimitFields(
 }
 
 /**
- * Octokit plugin: log GitHub rate-limit context on every response and warn on
- * rate-limit errors. Use via `Octokit.plugin(installRateLimitHooks)`.
+ * Build a `github.api.slow` warn line when `durationMs` crosses the threshold,
+ * else null. Pure and threshold-injected so the decision is unit testable
+ * without reading config. The slow line is independent of rate-limit headers so
+ * header-less endpoints still surface latency degradation.
+ */
+export function slowRequestFields(
+  status: number,
+  route: string,
+  durationMs: number,
+  slowThresholdMs: number,
+): GithubApiLogFields | null {
+  if (durationMs < slowThresholdMs) return null;
+  return {
+    event: GITHUB_API_LOG_EVENTS.slow,
+    route,
+    status,
+    duration_ms: durationMs,
+  };
+}
+
+/**
+ * Octokit plugin: log GitHub rate-limit context + per-request latency on every
+ * response and warn on rate-limit errors. Use via
+ * `Octokit.plugin(installRateLimitHooks)`.
  */
 export function installRateLimitHooks(octokit: Pick<Octokit, "hook">): void {
-  octokit.hook.after("request", (response, options) => {
+  // `hook.wrap` exposes the before-side start time to the after-side, the
+  // pattern before-after-hook recommends when the after-side needs before state.
+  octokit.hook.wrap("request", async (request, options) => {
     const route = `${options.method} ${options.url}`;
-    const fields = rateLimitFields(
-      response.status,
-      response.headers as Headers,
-      route,
-      Math.floor(Date.now() / 1000),
-    );
-    if (fields === null) return;
+    const start = Date.now();
+    try {
+      const response = await request(options);
+      const durationMs = Date.now() - start;
+      emitResponseLines(response.status, response.headers as Headers, route, durationMs);
+      return response;
+    } catch (error) {
+      const durationMs = Date.now() - start;
+      emitErrorLines(error, route, durationMs);
+      throw error;
+    }
+  });
+}
+
+/** Emit the per-request line (+ optional slow line) for a successful response. */
+function emitResponseLines(
+  status: number,
+  headers: Headers,
+  route: string,
+  durationMs: number,
+): void {
+  const fields = rateLimitFields(status, headers, route, Math.floor(Date.now() / 1000), durationMs);
+  if (fields !== null) {
     if (fields.event === GITHUB_API_LOG_EVENTS.rateLimitLow) {
       logger.warn(fields, "GitHub API rate limit low");
     } else {
       logger.debug(fields, "GitHub API request completed");
     }
-  });
+  }
+  // Independent of rate-limit headers: a slow header-less response still warns.
+  const slow = slowRequestFields(status, route, durationMs, config.githubApiSlowRequestMs);
+  if (slow !== null) logger.warn(slow, "GitHub API request slow");
+}
 
-  octokit.hook.error("request", (error, options) => {
-    const err = error as { status?: number; response?: { headers?: Headers } };
-    const status = err.status;
-    const retryAfter = intHeader(err.response?.headers ?? {}, "retry-after");
-    // 429, or 403 secondary-rate-limit (which carries Retry-After).
-    if (status === 429 || (status === 403 && retryAfter !== undefined)) {
-      const fields: GithubApiLogFields = {
-        event: GITHUB_API_LOG_EVENTS.rateLimitWarning,
-        route: `${options.method} ${options.url}`,
-        status,
-        ...(retryAfter !== undefined ? { retry_after_s: retryAfter } : {}),
-      };
-      logger.warn(fields, "GitHub API rate limit hit");
-    }
-    // Preserve behaviour: the hook only observes, the caller still sees the error.
-    throw error;
-  });
+/** Emit rate-limit-warning (+ optional slow line) when a request throws. */
+function emitErrorLines(error: unknown, route: string, durationMs: number): void {
+  const err = error as { status?: number; response?: { headers?: Headers } };
+  const status = err.status;
+  const retryAfter = intHeader(err.response?.headers ?? {}, "retry-after");
+  // 429, or 403 secondary-rate-limit (which carries Retry-After).
+  if (status === 429 || (status === 403 && retryAfter !== undefined)) {
+    const fields: GithubApiLogFields = {
+      event: GITHUB_API_LOG_EVENTS.rateLimitWarning,
+      route,
+      status,
+      duration_ms: durationMs,
+      ...(retryAfter !== undefined ? { retry_after_s: retryAfter } : {}),
+    };
+    logger.warn(fields, "GitHub API rate limit hit");
+  }
+  // Emit the slow line even when the request failed with no HTTP status
+  // (network error / socket hang-up / client timeout): a multi-second hang
+  // before the failure is the worst latency case the floor exists to catch.
+  // status 0 is a valid int for the schema (`z.number().int()`, no positivity).
+  const slowStatus = typeof status === "number" ? status : 0;
+  const slow = slowRequestFields(slowStatus, route, durationMs, config.githubApiSlowRequestMs);
+  if (slow !== null) logger.warn(slow, "GitHub API request slow");
 }
 
 let observableOctokitClass: typeof Octokit | undefined;

@@ -40,7 +40,36 @@ export interface CircuitBreakerOptions {
     to: CircuitBreakerState,
     reason: string,
   ) => void;
+  /**
+   * Optional structured-event observer (issue #216). Fires for the events the
+   * transition hook cannot see: every short-circuited skip while open, and
+   * every recorded failure short of tripping. Lets the caller emit the
+   * `circuit.*` log family without reaching into private breaker state.
+   */
+  readonly onEvent?: (event: CircuitBreakerEvent) => void;
 }
+
+/**
+ * Structured observability event (issue #216), distinct from `onStateChange`
+ * which fires only on transitions. `openMs` is trip→now wall-clock: emitted on
+ * the close transition (MTTR) and on each skip (incident duration so far).
+ */
+export type CircuitBreakerEvent =
+  | {
+      readonly kind: "opened";
+      readonly from: CircuitBreakerState;
+      readonly consecutiveFailures: number;
+      readonly latencyTripped: boolean;
+    }
+  | { readonly kind: "half-open"; readonly from: CircuitBreakerState }
+  | { readonly kind: "closed"; readonly openMs: number }
+  | { readonly kind: "skipped"; readonly openMs: number; readonly skipsSinceOpened: number }
+  | {
+      readonly kind: "failure";
+      readonly consecutiveFailures: number;
+      readonly maxConsecutiveFailures: number;
+      readonly latencyTripped: boolean;
+    };
 
 export interface CircuitBreakerExecuteResult<T> {
   /** The wrapped function's return value, if it ran to completion. */
@@ -51,6 +80,13 @@ export interface CircuitBreakerExecuteResult<T> {
   readonly error?: Error;
   /** Wall-clock latency of the wrapped call. 0 when short-circuited. */
   readonly latencyMs: number;
+  /**
+   * True when `outcome === "error"` because the call ran to completion but
+   * exceeded `latencyTripMs` (issue #216), false otherwise. Lets the caller
+   * distinguish "upstream is slow" from "upstream threw" instead of collapsing
+   * both into one error reason.
+   */
+  readonly latencyTripped: boolean;
 }
 
 /**
@@ -63,6 +99,8 @@ export class CircuitBreaker {
   private state: CircuitBreakerState = "closed";
   private consecutiveFailures = 0;
   private openedAt = 0;
+  /** Running count of skips in the current open window; reset on each trip. */
+  private skipsSinceOpened = 0;
 
   private readonly maxConsecutiveFailures: number;
   private readonly latencyTripMs: number;
@@ -73,6 +111,7 @@ export class CircuitBreaker {
     to: CircuitBreakerState,
     reason: string,
   ) => void;
+  private readonly onEvent: (event: CircuitBreakerEvent) => void;
 
   constructor(opts: CircuitBreakerOptions = {}) {
     this.maxConsecutiveFailures = opts.maxConsecutiveFailures ?? 5;
@@ -80,6 +119,7 @@ export class CircuitBreaker {
     this.cooldownMs = opts.cooldownMs ?? 60_000;
     this.now = opts.now ?? Date.now;
     this.onStateChange = opts.onStateChange ?? ((): void => undefined);
+    this.onEvent = opts.onEvent ?? ((): void => undefined);
   }
 
   /** Current state, used by tests and telemetry. */
@@ -97,6 +137,7 @@ export class CircuitBreaker {
     this.state = "closed";
     this.consecutiveFailures = 0;
     this.openedAt = 0;
+    this.skipsSinceOpened = 0;
   }
 
   /**
@@ -107,7 +148,13 @@ export class CircuitBreaker {
   async execute<T>(fn: () => Promise<T>): Promise<CircuitBreakerExecuteResult<T>> {
     if (this.state === "open") {
       if (this.now() - this.openedAt < this.cooldownMs) {
-        return { outcome: "circuit-open", latencyMs: 0 };
+        this.skipsSinceOpened += 1;
+        this.onEvent({
+          kind: "skipped",
+          openMs: this.now() - this.openedAt,
+          skipsSinceOpened: this.skipsSinceOpened,
+        });
+        return { outcome: "circuit-open", latencyMs: 0, latencyTripped: false };
       }
       this.transition("open", "half-open", "cooldown elapsed");
     }
@@ -117,7 +164,7 @@ export class CircuitBreaker {
       const value = await fn();
       const latencyMs = this.now() - start;
       if (latencyMs > this.latencyTripMs) {
-        this.recordFailure(`latency ${latencyMs}ms exceeded ${this.latencyTripMs}ms`);
+        this.recordFailure(`latency ${latencyMs}ms exceeded ${this.latencyTripMs}ms`, true);
         return {
           value,
           outcome: "error",
@@ -125,41 +172,59 @@ export class CircuitBreaker {
             `Circuit breaker: latency ${latencyMs}ms > trip ${this.latencyTripMs}ms`,
           ),
           latencyMs,
+          latencyTripped: true,
         };
       }
       this.recordSuccess();
-      return { value, outcome: "ok", latencyMs };
+      return { value, outcome: "ok", latencyMs, latencyTripped: false };
     } catch (err) {
       const latencyMs = this.now() - start;
       const error = err instanceof Error ? err : new Error(String(err));
-      this.recordFailure(error.message);
-      return { outcome: "error", error, latencyMs };
+      this.recordFailure(error.message, false);
+      return { outcome: "error", error, latencyMs, latencyTripped: false };
     }
   }
 
   private recordSuccess(): void {
     this.consecutiveFailures = 0;
     if (this.state === "half-open") {
+      const openMs = this.now() - this.openedAt;
       this.transition("half-open", "closed", "probe succeeded");
+      this.onEvent({ kind: "closed", openMs });
     }
   }
 
-  private recordFailure(reason: string): void {
+  private recordFailure(reason: string, latencyTripped: boolean): void {
     this.consecutiveFailures += 1;
     if (this.state === "half-open") {
-      this.trip(`probe failed: ${reason}`);
+      this.trip(`probe failed: ${reason}`, latencyTripped);
       return;
     }
     if (this.consecutiveFailures >= this.maxConsecutiveFailures) {
-      this.trip(`${String(this.consecutiveFailures)} consecutive failures; last: ${reason}`);
+      this.trip(
+        `${String(this.consecutiveFailures)} consecutive failures; last: ${reason}`,
+        latencyTripped,
+      );
+      return;
     }
+    // Pre-trip progress: one warn per failure short of tripping so an operator
+    // gets a head start before the breaker opens (issue #216).
+    this.onEvent({
+      kind: "failure",
+      consecutiveFailures: this.consecutiveFailures,
+      maxConsecutiveFailures: this.maxConsecutiveFailures,
+      latencyTripped,
+    });
   }
 
-  private trip(reason: string): void {
-    this.openedAt = this.now();
+  private trip(reason: string, latencyTripped: boolean): void {
     const from = this.state;
+    const consecutiveFailures = this.consecutiveFailures;
+    this.openedAt = this.now();
+    this.skipsSinceOpened = 0;
     this.state = "open";
     this.onStateChange(from, "open", reason);
+    this.onEvent({ kind: "opened", from, consecutiveFailures, latencyTripped });
   }
 
   private transition(from: CircuitBreakerState, to: CircuitBreakerState, reason: string): void {
@@ -168,5 +233,8 @@ export class CircuitBreaker {
       this.consecutiveFailures = 0;
     }
     this.onStateChange(from, to, reason);
+    if (to === "half-open") {
+      this.onEvent({ kind: "half-open", from });
+    }
   }
 }

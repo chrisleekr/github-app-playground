@@ -28,6 +28,7 @@ import { appendIteration, type ShipIntentRow } from "../../db/queries/ship";
 import { logger as rootLogger } from "../../logger";
 import { enqueueJob } from "../../orchestrator/job-queue";
 import { recordWorkflowExecution } from "../execution-row";
+import { logWorkflowRunQueued } from "../log-fields";
 import type { WorkflowName } from "../registry";
 import { insertQueued } from "../runs-store";
 import { transitionToTerminal } from "./intent";
@@ -167,10 +168,16 @@ export async function runIteration(input: RunIterationInput): Promise<RunIterati
   //    written through `serializeShipWorkflowContext` so producer-side
   //    validation matches the orchestrator's `extractShipIntentId` reader
   //    (workflow-context.ts owns the contract).
+  const shipTarget = {
+    type: "pr" as const,
+    owner: intent.owner,
+    repo: intent.repo,
+    number: intent.pr_number,
+  };
   const run = await insertQueued(
     {
       workflowName: nextWorkflowName,
-      target: { type: "pr", owner: intent.owner, repo: intent.repo, number: intent.pr_number },
+      target: shipTarget,
       ownerKind: "orchestrator",
       ownerId: `ship-intent:${intent.id}`,
       initialState: {
@@ -180,6 +187,7 @@ export async function runIteration(input: RunIterationInput): Promise<RunIterati
     },
     sql,
   );
+  logWorkflowRunQueued(log, { runId: run.id, workflowName: nextWorkflowName, target: shipTarget });
 
   // 7. Persist the `executions` row BEFORE enqueueing so the daemon's
   //    accept handler can resolve `context_json` via this `deliveryId`.

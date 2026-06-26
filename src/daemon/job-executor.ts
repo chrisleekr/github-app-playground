@@ -2,6 +2,7 @@ import { Octokit } from "octokit";
 
 import { config } from "../config";
 import { runPipeline } from "../core/pipeline";
+import { WORKSPACE_LOG_EVENTS } from "../core/workspace-events";
 import { removeWorkspaceTripleSync } from "../core/workspace-sweep";
 import { createChildLogger, logger } from "../logger";
 import type { ActiveJob, DaemonCapabilities, SerializableBotContext } from "../shared/daemon-types";
@@ -14,6 +15,7 @@ import {
   type ScopedJobOfferMessage,
   WS_REJECT_REASONS,
 } from "../shared/ws-messages";
+import { DAEMON_JOB_LOG_EVENTS } from "./log-fields";
 import { executeWorkflowRun } from "./workflow-executor";
 
 // Active job tracking (FM-9)
@@ -37,12 +39,27 @@ export function getActiveJobCount(): number {
  */
 export function registerExitCleanup(): void {
   process.on("exit", () => {
-    for (const job of activeJobs.values()) {
-      // Scoped jobs never own a workspace path; skip the rm so we do not
-      // accidentally target `.cred.sh` in the daemon's CWD.
-      if (job.workDir === "") continue;
+    // One greppable crashloop fingerprint per exit: how many in-flight
+    // workspaces the exit path is reclaiming, and their offerIds. Emitted
+    // before the loop so it lands even if an rm below throws.
+    const workspaceJobs = [...activeJobs.values()].filter((job) => job.workDir !== "");
+    if (workspaceJobs.length > 0) {
+      logger.warn(
+        {
+          event: WORKSPACE_LOG_EVENTS.cleanupExit,
+          count: workspaceJobs.length,
+          // Same `workspaceJobs` filter as `count`, so `jobIds.length === count`.
+          // Scoped jobs with `workDir === ""` own no workspace and are excluded.
+          jobIds: workspaceJobs.map((job) => job.offerId),
+        },
+        "Exit handler reclaiming in-flight workspaces",
+      );
+    }
+    for (const job of workspaceJobs) {
       // Removes the clone, the `.cred.sh` token helper, and the `-artifacts`
       // sibling. The artifacts dir was previously leaked on crash exit.
+      // No logger passed: synchronous exit handler, per-target events would
+      // race the process teardown; the cleanup.exit summary above is the signal.
       removeWorkspaceTripleSync(job.workDir);
     }
   });
@@ -701,7 +718,12 @@ export function handleJobCancel(cancel: JobCancelMessage, send: (msg: unknown) =
   }
 
   logger.info(
-    { offerId, deliveryId: job.deliveryId, reason: cancel.payload.reason },
+    {
+      event: DAEMON_JOB_LOG_EVENTS.cancelled,
+      offerId,
+      deliveryId: job.deliveryId,
+      reason: cancel.payload.reason,
+    },
     "Job cancelled",
   );
 
@@ -721,9 +743,13 @@ export function handleJobCancel(cancel: JobCancelMessage, send: (msg: unknown) =
   }
 
   if (job.workDir !== "") {
+    logger.info(
+      { event: WORKSPACE_LOG_EVENTS.cleanupCancel, workDir: job.workDir },
+      "Reclaiming cancelled job workspace",
+    );
     // Clone + `.cred.sh` + `-artifacts` sibling; the artifacts dir was
-    // previously leaked on cancel.
-    removeWorkspaceTripleSync(job.workDir);
+    // previously leaked on cancel. Logger forwards per-target rm failures.
+    removeWorkspaceTripleSync(job.workDir, logger);
   }
 
   activeJobs.delete(offerId);

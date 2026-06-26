@@ -19,6 +19,7 @@
  * Off-switched via `LLM_OUTPUT_SCANNER_ENABLED=false`.
  */
 
+import type pino from "pino";
 import { z } from "zod";
 
 import { createLLMClient, type LLMClient, resolveModelId } from "../ai/llm-client";
@@ -36,6 +37,8 @@ export interface LlmScanResult {
 
 export interface LlmScanOptions {
   timeoutMs: number;
+  /** Optional logger so the structured-output chokepoint can emit per-parse events. */
+  log?: pino.Logger;
 }
 
 let cachedClient: LLMClient | undefined;
@@ -90,12 +93,16 @@ const ScannerResponseSchema = z.object({
 
 type ParsedResponse = z.infer<typeof ScannerResponseSchema>;
 
-function parseScannerJson(raw: string): ParsedResponse | undefined {
-  const result = parseStructuredResponse(raw, ScannerResponseSchema);
+function parseScannerJson(raw: string, log?: pino.Logger): ParsedResponse | undefined {
+  const result = parseStructuredResponse(
+    raw,
+    ScannerResponseSchema,
+    log ? { site: "llm-output-scanner", log } : undefined,
+  );
   return result.ok ? result.data : undefined;
 }
 
-async function invokeScanner(body: string): Promise<ParsedResponse> {
+async function invokeScanner(body: string, log?: pino.Logger): Promise<ParsedResponse> {
   const client = getScannerClient();
   const modelId = resolveModelId(config.llmOutputScannerModel, config.provider);
   // Spotlighting nonce: 8 hex chars (~32 bits), sufficient unpredictability
@@ -119,7 +126,7 @@ async function invokeScanner(body: string): Promise<ParsedResponse> {
     maxTokens: Math.min(8_000, Math.max(512, body.length * 2 + 256)),
     temperature: 0,
   });
-  const parsed = parseScannerJson(response.text);
+  const parsed = parseScannerJson(response.text, log);
   if (parsed === undefined) {
     throw new Error("llm_output_scanner: malformed JSON response");
   }
@@ -145,7 +152,7 @@ export async function scanForSecretsWithLlm(
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([
-        invokeScanner(body),
+        invokeScanner(body, options.log),
         new Promise<ParsedResponse>((_resolve, reject) => {
           timer = setTimeout(() => {
             reject(new Error(`llm_output_scanner: timed out after ${timeoutMs}ms`));

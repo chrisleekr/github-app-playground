@@ -2,6 +2,8 @@ import { CoreV1Api, KubeConfig, type V1Pod } from "@kubernetes/client-node";
 
 import { config } from "../config";
 import { logger } from "../logger";
+import { K8S_SPAWN_LOG_EVENTS } from "../orchestrator/k8s-spawn-log-fields";
+import { redactErrorMessage } from "../utils/log-redaction";
 
 /**
  * Typed errors the ephemeral-daemon spawner can throw. Distinguishing
@@ -86,6 +88,12 @@ export interface SpawnEphemeralDaemonInput {
    * daemon can't outlive its installation-token budget.
    */
   readonly activeDeadlineSeconds?: number;
+  /**
+   * The scaler verdict that drove this spawn. Observability-only: carried on
+   * the `k8s.spawn.*` events so an operator can break spawn outcomes down by
+   * trigger.
+   */
+  readonly trigger?: "triage-heavy" | "queue-overflow";
 }
 
 /**
@@ -212,13 +220,35 @@ function buildEphemeralDaemonPodSpec(input: SpawnEphemeralDaemonInput): V1Pod {
  *         `ephemeral-spawn-failed` dispatch reason.
  */
 export async function spawnEphemeralDaemon(input: SpawnEphemeralDaemonInput): Promise<string> {
-  const client = loadKubernetesClient();
+  // Both client load failures (infra-absent / auth-load-failed) and API
+  // failures (api-rejected / api-unavailable) emit a single k8s.spawn.failed
+  // line keyed by kind. `api_call_ms` is attached only when the K8s API was
+  // actually called (the load-failure kinds throw before it).
+  let client: { core: CoreV1Api };
+  try {
+    client = loadKubernetesClient();
+  } catch (err) {
+    emitSpawnFailed(input, err, undefined);
+    throw err;
+  }
+
   const pod = buildEphemeralDaemonPodSpec(input);
   const namespace = config.ephemeralDaemonNamespace;
+
+  const t0 = Date.now();
+  logger.info(
+    {
+      event: K8S_SPAWN_LOG_EVENTS.attempted,
+      delivery_id: input.deliveryId,
+      ...(input.trigger !== undefined && { trigger: input.trigger }),
+    },
+    "Ephemeral daemon spawn attempted",
+  );
 
   try {
     await client.core.createNamespacedPod({ namespace, body: pod });
   } catch (err) {
+    const apiCallMs = Date.now() - t0;
     const message = err instanceof Error ? err.message : String(err);
     const status =
       (err as { statusCode?: number; response?: { statusCode?: number } })?.statusCode ??
@@ -227,10 +257,52 @@ export async function spawnEphemeralDaemon(input: SpawnEphemeralDaemonInput): Pr
       typeof status === "number" && status >= 400 && status < 500
         ? "api-rejected"
         : "api-unavailable";
-    throw new EphemeralSpawnError(kind, `Failed to create ephemeral-daemon Pod: ${message}`);
+    const spawnErr = new EphemeralSpawnError(
+      kind,
+      `Failed to create ephemeral-daemon Pod: ${message}`,
+    );
+    emitSpawnFailed(input, spawnErr, apiCallMs);
+    throw spawnErr;
   }
 
+  const apiCallMs = Date.now() - t0;
   const podName = pod.metadata?.name ?? "<unknown>";
-  logger.info({ podName, namespace, deliveryId: input.deliveryId }, "Ephemeral daemon Pod created");
+  logger.info(
+    {
+      event: K8S_SPAWN_LOG_EVENTS.succeeded,
+      delivery_id: input.deliveryId,
+      ...(input.trigger !== undefined && { trigger: input.trigger }),
+      pod_name: podName,
+      namespace,
+      api_call_ms: apiCallMs,
+    },
+    "Ephemeral daemon Pod created",
+  );
   return podName;
+}
+
+/**
+ * Emit one k8s.spawn.failed line. `kind` falls back to `api-unavailable` for a
+ * non-EphemeralSpawnError throw (should not happen, but keeps the field present).
+ * Never logs the raw error text: `redactErrorMessage` strips secrets, and the
+ * structured line carries only bounded metadata.
+ */
+function emitSpawnFailed(
+  input: SpawnEphemeralDaemonInput,
+  err: unknown,
+  apiCallMs: number | undefined,
+): void {
+  const kind: EphemeralSpawnErrorKind =
+    err instanceof EphemeralSpawnError ? err.kind : "api-unavailable";
+  logger.error(
+    {
+      event: K8S_SPAWN_LOG_EVENTS.failed,
+      delivery_id: input.deliveryId,
+      kind,
+      ...(input.trigger !== undefined && { trigger: input.trigger }),
+      ...(apiCallMs !== undefined && { api_call_ms: apiCallMs }),
+      err: redactErrorMessage(err),
+    },
+    "Ephemeral daemon spawn failed",
+  );
 }

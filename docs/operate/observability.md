@@ -160,7 +160,7 @@ Alerts worth having: `queue_depth` rising while `persistent_free_slots > 0` for 
 
 ## Dispatcher log fields
 
-The job dispatcher (`src/orchestrator/job-dispatcher.ts`) and the accept handler in `src/orchestrator/connection-handler.ts` emit the offer lifecycle as structured events. The four `dispatcher.offer.*` keys are pinned per-event by a `z.discriminatedUnion` (`src/orchestrator/log-fields.ts:55#DispatcherOfferLogSchema`), so each event carries exactly its own fields; `dispatcher.no_eligible_daemon` has its own shape. Event-key constants live in `src/orchestrator/log-fields.ts:28#DISPATCHER_LOG_EVENTS`, and the co-located test rejects field drift.
+The job dispatcher (`src/orchestrator/job-dispatcher.ts`) and the accept handler in `src/orchestrator/connection-handler.ts` emit the offer lifecycle as structured events. The four `dispatcher.offer.*` keys are pinned per-event by a `z.discriminatedUnion` (`src/orchestrator/log-fields.ts:75#DispatcherOfferLogSchema`), so each event carries exactly its own fields; `dispatcher.no_eligible_daemon` has its own shape. Event-key constants live in `src/orchestrator/log-fields.ts:28#DISPATCHER_LOG_EVENTS`, and the co-located test rejects field drift.
 
 | `event`                         | Level | Meaning                                                                                                                                                                                                                                                                                                                                               |
 | ------------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -176,7 +176,7 @@ The job dispatcher (`src/orchestrator/job-dispatcher.ts`) and the accept handler
 
 ## Daemon heartbeat fields
 
-The orchestrator pings each connected daemon every `HEARTBEAT_INTERVAL_MS` (default 30s) and evicts one that misses pongs past `HEARTBEAT_TIMEOUT_MS` (default 90s). The heartbeat lifecycle in `src/orchestrator/connection-handler.ts` emits three structured events pinned per-event by a `z.discriminatedUnion` (`src/orchestrator/log-fields.ts:122#DaemonHeartbeatLogSchema`), so `missedPongs` is pinned to `pong_missed` and `ttl_refresh_failed` carries its `err`; constants live in `src/orchestrator/log-fields.ts:36#DAEMON_HEARTBEAT_LOG_EVENTS`.
+The orchestrator pings each connected daemon every `HEARTBEAT_INTERVAL_MS` (default 30s) and evicts one that misses pongs past `HEARTBEAT_TIMEOUT_MS` (default 90s). The heartbeat lifecycle in `src/orchestrator/connection-handler.ts` emits three structured events pinned per-event by a `z.discriminatedUnion` (`src/orchestrator/log-fields.ts:142#DaemonHeartbeatLogSchema`), so `missedPongs` is pinned to `pong_missed` and `ttl_refresh_failed` carries its `err`; constants live in `src/orchestrator/log-fields.ts:36#DAEMON_HEARTBEAT_LOG_EVENTS`.
 
 | `event`                               | Level | Meaning                                                                                              |
 | ------------------------------------- | ----- | ---------------------------------------------------------------------------------------------------- |
@@ -259,6 +259,164 @@ daemon executor.
 The scheduler logs action metadata (`name`, `cron`, `owner`, `repo`,
 `deliveryId`) only, never the resolved prompt text.
 
+## Structured-output log fields
+
+The `parseStructuredResponse` chokepoint (`src/ai/structured-output.ts#parseStructuredResponse`) emits one `structured_output.*` event per call when a caller passes `{ site, log }`. The field contract is pinned by `StructuredOutputLogFieldsSchema` (`src/ai/structured-output-log-fields.ts#StructuredOutputLogFieldsSchema`). `site` is the call-site discriminator; a rising `strategy: "tolerant"` share per site is the leading indicator of a model JSON-quality regression. `raw_len` is the model output length (never the bytes); `error` is redacted via `redactErrorMessage`.
+
+| Event                               | Level | Fields                                                                                     |
+| ----------------------------------- | ----- | ------------------------------------------------------------------------------------------ |
+| `structured_output.parsed`          | info  | `site`, `raw_len`, `parse_ms`, `strategy` (`strict` \| `tolerant`)                         |
+| `structured_output.parse_failed`    | warn  | `site`, `raw_len`, `parse_ms`, `error`                                                     |
+| `structured_output.validate_failed` | warn  | `site`, `raw_len`, `parse_ms`, `error`, `parsed_kind` (`object` \| `array` \| `primitive`) |
+
+Wired sites (`site` value): `triage-orchestrator`, `intent-classifier`, `chat-thread`, `discussion-digest`, `nl-classifier`, `triage-handler`, `llm-output-scanner`. (`meta-issue-classifier` is a pure function with no logger in scope and omits the context.)
+
+## Triage circuit breaker events
+
+The triage circuit breaker caps the blast radius of a Claude/Bedrock outage. It emits a structured `circuit.*` event family in addition to the existing `triage circuit breaker transition` line. The schema is pinned by `circuit-breaker-log-fields.ts#CircuitLogFieldsSchema`; emit wiring lives in `triage.ts` on the shared breaker's `onEvent` hook. `deliveryId` appears on the paired caller-side short-circuit / fallback lines via the per-request child logger.
+
+| Event               | Level | Fields                                                                | Meaning                                                                                              |
+| ------------------- | ----- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `circuit.opened`    | warn  | `from`, `consecutive_failures`, `latency_tripped`                     | Breaker tripped to open. `latency_tripped:true` is a slow-call trip; `false` is a thrown-error trip. |
+| `circuit.half_open` | info  | `from`                                                                | Cooldown elapsed; the next call is admitted as the half-open probe.                                  |
+| `circuit.closed`    | info  | `open_ms`                                                             | A probe succeeded and the breaker recovered. `open_ms` is trip→recovery wall-clock (MTTR).           |
+| `circuit.skipped`   | warn  | `open_ms`, `skips_since_opened`                                       | A request was short-circuited while open. `skips_since_opened` resets on each trip.                  |
+| `circuit.failure`   | warn  | `consecutive_failures`, `max_consecutive_failures`, `latency_tripped` | A failure recorded but the breaker did not trip.                                                     |
+
+## Discussion digest log fields
+
+`src/workflows/discussion-digest.ts#buildDiscussionDigest` runs on the forced prefix of every comment-aware workflow (`triage`, `plan`, `implement`, `review`, `resolve`, `remember`) and issues ≥1 LLM call per event against `config.digestModel`. The `digest.*` family makes that call observable: skip rate, per-call token spend and latency, and the owner-directive trust-boundary outcome. Field shapes are pinned by `src/workflows/digest-log-fields.ts#DigestLogFieldsSchema`. No comment content is ever logged (counts, lengths, durations, and bounded enums only).
+
+| `event`                 | Level | Fields                                                                                                                                                 |
+| ----------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `digest.skipped`        | info  | `comment_counts` `{ owner, other, bot }`                                                                                                               |
+| `digest.call.completed` | info  | `phase` (`extract` \| `reduce`), `input_tokens`, `output_tokens`, `latency_ms`, `strategy` (`strict` \| `tolerant`)                                    |
+| `digest.completed`      | info  | `chunks`, `total_latency_ms`, `directives_kept`, `directives_dropped`, `has_prior_bot_output`, `untrusted_context_count`, `conversation_summary_chars` |
+| `digest.failed`         | warn  | `reason` (`no-comments` \| `llm-error` \| `parse-error`)                                                                                               |
+
+`directives_dropped > 0` means `enforceOwnerDirectives` discarded a directive attributed to a non-owner-block author (the signature of a prompt-injection or model-regression event the trust boundary exists to catch).
+
+## GitHub API latency
+
+Every octokit request is timed across the `hook.wrap` boundary in `octokit-observability.ts#installRateLimitHooks`. The measured wall-clock duration is threaded as `duration_ms` onto every `github.api.*` line (`github.api.request`, `github.api.rate_limit_low`, `github.api.rate_limit_warning`), so per-route p50/p95/p99 GitHub-side latency is queryable at `LOG_LEVEL=debug`. When a request's `duration_ms` reaches `GITHUB_API_SLOW_REQUEST_MS` (default `3000`), a separate `warn` line fires regardless of log level:
+
+| Event             | Level | Fields                           |
+| ----------------- | ----- | -------------------------------- |
+| `github.api.slow` | warn  | `route`, `status`, `duration_ms` |
+
+The slow line is independent of rate-limit headers, so a slow response from an endpoint with no `x-ratelimit-*` headers still surfaces. This is the GitHub-side counterpart to the dispatcher's `offer_latency_ms`. Tune the floor with `GITHUB_API_SLOW_REQUEST_MS` (`config.ts#githubApiSlowRequestMs`).
+
+## GitHub App installation-token mints
+
+The orchestrator mints App installation tokens at six call sites, all routed through `mintInstallationToken` (`src/orchestrator/installation-token.ts#mintInstallationToken`). Each mint emits one structured line. Schema pinned by `GithubAppTokenMintLogSchema` (`src/orchestrator/log-fields.ts#GithubAppTokenMintLogSchema`). `cache_hit` is exact, not a latency heuristic: `@octokit/auth-app` serves cached tokens synchronously and only issues `POST /app/installations/{id}/access_tokens` on a miss.
+
+| Event                             | Level | Fields                                               | Meaning                                                                                |
+| --------------------------------- | ----- | ---------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `github.app.token.mint.succeeded` | info  | `installation_id`, `via`, `cache_hit`, `duration_ms` | A token was returned (cache when `cache_hit:true`, else fresh mint).                   |
+| `github.app.token.mint.failed`    | warn  | `installation_id`, `via`, `duration_ms`, `err`       | The mint threw; `duration_ms` distinguishes a fast failure from a GitHub-edge timeout. |
+
+`via` is one of `handleAccept`, `handleScopedAccept`, `postOrphanNotification`, `shipTickleResume`, `proposalPoller`, `schedulerRunAction`. The token, App JWT, and private key are never logged (security invariant 2); `err` is serialized through the secret-scrubbing pino error serializer.
+
+## Inbound HTTP boundary
+
+Structured access-log family for the webhook server's inbound HTTP surface (webhook entry, HMAC verification failure, readiness probe, operator scheduler endpoint). Schema pinned in `src/app-log-fields.ts#HttpLogFieldsSchema`; emit sites in `src/app.ts`. All lines carry bounded metadata only, never the webhook secret, the `X-Hub-Signature-256` bytes, the raw request body, or `Authorization` headers.
+
+| Event                                  | Level | Fields                                      | Meaning                                                                                             |
+| -------------------------------------- | ----- | ------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `http.webhook.received`                | info  | `deliveryId`, `event_name`, `duration_ms`   | A delivery entered the webhook middleware (header values, not body).                                |
+| `http.webhook.error`                   | warn  | `kind`, `deliveryId?`, `event_name?`, `err` | `kind: "signature_mismatch"` (HMAC failure), `"handler_threw"`, or `"other"`. Fact of failure only. |
+| `http.readyz.unready`                  | info  | `is_ready`, `valkey_healthy`                | `/readyz` returned 503. `/healthz` is intentionally silent.                                         |
+| `http.scheduler.run.rejected_disabled` | warn  | `status` (404)                              | Scheduler disabled.                                                                                 |
+| `http.scheduler.run.rejected_unauth`   | warn  | `status` (401)                              | Bad operator bearer token (never logged).                                                           |
+| `http.scheduler.run.rejected_payload`  | warn  | `status` (413 \| 400), `reason`             | `body_too_large`, `invalid_json`, `not_object`, `missing_field`.                                    |
+| `http.scheduler.run.enqueued`          | info  | `status` (202 \| 409), `enqueued`           | `enqueued:true` → 202 fresh; `false` → 409 dedup.                                                   |
+| `http.scheduler.run.failed`            | error | `status` (500), `err`                       | Operator endpoint threw; `err` secret-scrubbed.                                                     |
+
+The `kind` discriminator on `http.webhook.error` separates signature-verification failures (botched webhook-secret rotation) from downstream handler exceptions.
+
+## Scheduler scan lifecycle events
+
+The scheduled-actions scheduler (`src/scheduler/scheduler.ts#createScheduler`) emits a `scheduler.scan.*` lifecycle on every timer tick. These are scan-level signals (heartbeat, duration, traffic, saturation), orthogonal to the per-action `scheduler.action.*` transitions. Schema pinned in `src/scheduler/log-fields.ts#SCHEDULER_LOG_EVENTS`. Scheduler lines carry no `deliveryId` (the scan is timer-driven, not request-scoped).
+
+| Event                            | Level | Fields                                                                                                          | Meaning                                                              |
+| -------------------------------- | ----- | --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `scheduler.scan.started`         | info  | _none_                                                                                                          | A scan tick began. Heartbeat proving the timer is alive.             |
+| `scheduler.scan.completed`       | info  | `duration_ms`, `repos_enumerated`, `actions_evaluated`, `actions_claimed`, `actions_advanced`, `actions_failed` | A scan finished cleanly.                                             |
+| `scheduler.scan.skipped_overlap` | warn  | `since_started_ms`                                                                                              | A tick fired while the previous scan was still running (saturation). |
+| `scheduler.scan.failed`          | error | `duration_ms`, `err`                                                                                            | The scan tick threw.                                                 |
+
+## Workflow run lifecycle events
+
+Structured lifecycle events for `workflow_runs` state transitions, emitted at the transition call sites (the `runs-store` mutators stay log-free because they are reused under transactions). Pinned by `src/workflows/log-fields.ts#WorkflowRunLogFieldsSchema`. Common fields: `runId`, `workflowName`, `target` (`{ type, owner, repo, number }`), and `deliveryId` (omitted for system-spawned runs). Terminal events add `duration_ms`.
+
+| `event`                         | Level        | Extra fields                | Meaning                                                                                     |
+| ------------------------------- | ------------ | --------------------------- | ------------------------------------------------------------------------------------------- |
+| `workflow.run.queued`           | info         | _none_                      | A `queued` row was inserted.                                                                |
+| `workflow.run.running`          | info         | _none_                      | Daemon flipped the row to `running`.                                                        |
+| `workflow.run.succeeded`        | info         | `duration_ms`               | Terminal success.                                                                           |
+| `workflow.run.incomplete`       | warn         | `duration_ms`, `reason`     | Agent ran cleanly but a handler gate left work outstanding.                                 |
+| `workflow.run.failed`           | warn / error | `duration_ms`, `reason`     | Terminal failure. `warn` for handler-reported, `error` for uncaught throw.                  |
+| `workflow.run.handed_off`       | info         | `duration_ms`, `childRunId` | Composite parent handed off to a child; row stays `running`.                                |
+| `workflow.run.dispatch_refused` | info         | `reason` (no `runId`)       | Refused before any row inserted.                                                            |
+| `workflow.run.enqueue_failed`   | error        | `reason`                    | Post-insert enqueue/publish failed; compensating `markFailed` released the in-flight guard. |
+
+## Workspace lifecycle events
+
+The `workspace.*` family makes the non-success workspace-cleanup paths greppable, complementing the success-path `pipeline.stage stage=workspace.cleanup` row and the startup `workspace.sweep` reaper. Schema pinned by `WorkspaceLogFieldsSchema` (`src/core/workspace-events.ts#WorkspaceLogFieldsSchema`). `workDir` is a process-local temp path and safe to log; the authenticated clone URL embeds the install token and is never logged (clone events carry the `owner/repo` slug and branch only). All `err` fields routed through `redactErrorMessage`.
+
+| Event                                | Level | Fields                                                          |
+| ------------------------------------ | ----- | --------------------------------------------------------------- |
+| `workspace.clone.started`            | info  | `repo`, `branch`, `depth`                                       |
+| `workspace.clone.completed`          | info  | `repo`, `branch`, `clone_ms`                                    |
+| `workspace.clone.failed`             | warn  | `repo`, `branch`, `err`                                         |
+| `workspace.base_branch.fetched`      | info  | `baseBranch`, `headBranch`                                      |
+| `workspace.base_branch.fetch_failed` | warn  | `baseBranch`, `headBranch`, `err`                               |
+| `workspace.cleanup.completed`        | info  | `workDir`                                                       |
+| `workspace.cleanup.failed`           | warn  | `workDir`, `target` (`clone` \| `helper` \| `artifacts`), `err` |
+| `workspace.cleanup.exit`             | warn  | `count`, `jobIds`                                               |
+| `workspace.cleanup.cancel`           | info  | `workDir`                                                       |
+
+`workspace.cleanup.exit` is one line per daemon exit with in-flight workspaces: a non-zero `count` is a crashloop fingerprint.
+
+## Agent tool-call events
+
+The executor's Agent SDK message loop emits one structured event per tool call, pairing the SDK's `assistant` `tool_use` block with its later `user` `tool_result` block by the Anthropic-protocol `tool_use_id`. Emitted by `executeAgent` in `src/core/executor.ts#executeAgent`; schemas pinned in `src/core/log-fields.ts#CORE_AGENT_LOG_EVENTS`.
+
+| Event                  | Level | Fields                                                | When                                                                             |
+| ---------------------- | ----- | ----------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `agent.tool.started`   | info  | `tool_use_id`, `tool`                                 | A `tool_use` block appears in an assistant message.                              |
+| `agent.tool.completed` | info  | `tool_use_id`, `tool`, `tool_duration_ms`, `is_error` | The paired `tool_result` arrives.                                                |
+| `agent.tool.timed_out` | warn  | `tool_use_id`, `tool`, `delta_ms`                     | The run terminates with a `tool_use` still unpaired (wall-clock abort mid-call). |
+
+All three carry only bounded metadata. Tool **input** (e.g. a Bash command) and **output** (a result body) are deliberately never logged: both can carry secrets or attacker-injected text. These events share the per-request child-logger bindings (`deliveryId`, `owner`, `repo`, `entityNumber`).
+
+## Daemon connection events
+
+The daemon's outbound WebSocket client (`src/daemon/ws-client.ts#DaemonWsClient`) emits one structured pino line per connection-lifecycle transition, pinned by `src/daemon/log-fields.ts#DaemonConnectionLogSchema`. Daemon-side companion to the orchestrator-side `daemon.heartbeat.*` events.
+
+| `event`                                 | Level | Fields                                          | When                                                             |
+| --------------------------------------- | ----- | ----------------------------------------------- | ---------------------------------------------------------------- |
+| `daemon.connection.connect_attempt`     | info  | `attempt`, `downtime_ms`, `previous_backoff_ms` | A `connect()` call is starting. `attempt` is 1 on first connect. |
+| `daemon.connection.connected`           | info  | `attempt`, `time_to_connect_ms`, `downtime_ms`  | `onopen` fired. `attempt` resets to 0 after this line.           |
+| `daemon.connection.disconnected`        | info  | `code`, `reason`, `connected_duration_ms`       | `onclose` fired. `code`/`reason` are the close frame.            |
+| `daemon.connection.reconnect_scheduled` | warn  | `attempt`, `backoff_ms`                         | Backoff timer armed; `attempt` is the upcoming attempt.          |
+| `daemon.connection.error`               | error | `readyState`, `message?`                        | `onerror` fired or `connect()` threw. `message` scrubbed.        |
+
+Per security invariant 2 the `DAEMON_AUTH_TOKEN`, `Authorization` header, and orchestrator URL never appear; `message` is scrubbed via `redactErrorMessage`.
+
+## K8s spawn log fields
+
+The ephemeral-daemon spawn lifecycle (the orchestrator's only horizontal-scaling vector) emits a `k8s.spawn.*` structured event family. Schema pinned by `K8sSpawnLogFieldsSchema` (`src/orchestrator/k8s-spawn-log-fields.ts#K8sSpawnLogFieldsSchema`). Only bounded metadata is logged: never a K8s service-account token, kubeconfig contents, or the Pod env.
+
+| Event                        | Level                                   | Fields                                                                                                |
+| ---------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `k8s.spawn.decision_skipped` | debug (`no-signal`) / info (`cooldown`) | `delivery_id`, `reason` (`no-signal` \| `cooldown`), `heavy`, `queue_length`, `persistent_free_slots` |
+| `k8s.spawn.attempted`        | info                                    | `delivery_id`, `trigger` (`triage-heavy` \| `queue-overflow`)                                         |
+| `k8s.spawn.succeeded`        | info                                    | `delivery_id`, `trigger`, `pod_name`, `namespace`, `api_call_ms`                                      |
+| `k8s.spawn.failed`           | error                                   | `delivery_id`, `kind`, `trigger?`, `api_call_ms?`                                                     |
+
+`api_call_ms` is the `createNamespacedPod` round-trip wall-clock; present on `succeeded` and on `api-rejected`/`api-unavailable` failures, absent on `infra-absent`/`auth-load-failed` (which throw before any K8s call). `kind` (`EphemeralSpawnErrorKind`): `infra-absent`, `auth-load-failed`, `api-rejected` (4xx), `api-unavailable` (5xx/network). These events add the by-kind and by-latency breakdown that the `dispatch_reason=ephemeral-spawn-failed` aggregate lacks.
+
 ## Aggregate reporting
 
 When `DATABASE_URL` is set, helpers in `src/db/queries/dispatch-stats.ts` expose the most operator-relevant aggregates:
@@ -281,6 +439,17 @@ Call them from an internal admin endpoint, a scheduled job, or `bun repl`.
 - **Offer round-trip latency.** A p99 regression on `offer_latency_ms` for `event:"dispatcher.offer.accepted"` flags a daemon that is responding but slow (GC pause, capability rescan stall, WebSocket back-pressure), eating dispatch headroom without tripping the heartbeat timeout.
 - **OOM / crash loops.** Standard infra alerts. Durable idempotency means a restart will not replay a processed event.
 - **Ship terminal-blocker rate.** A spike in `ship.intent.transition` events with `to_status:human_took_over` and `terminal_blocker_category:flake-cap` points at PR-flake regressions, not bot misbehaviour.
+- **Circuit breaker trips.** Alert on `event:"circuit.failure" AND consecutive_failures >= 3` for a pre-trip head start; facet `circuit.opened` by `latency_tripped` (`true` ⇒ raise timeouts, `false` ⇒ page on-call); chart `open_ms` from `circuit.closed` for MTTR.
+- **Model JSON-quality regression.** A rising `count(event="structured_output.parsed" AND strategy="tolerant") / count(event="structured_output.parsed") by site`, or any `event:"digest.failed" AND reason:"parse-error"`, signals the model is drifting from the strict JSON contract.
+- **Digest trust-boundary drops.** `event:"digest.completed" AND directives_dropped > 0` is the signature of a prompt-injection or model regression the owner-directive boundary caught; steady state is zero.
+- **GitHub API latency.** A `github.api.slow` rate above baseline (or a `duration_ms` p99 regression) tells you the bottleneck is GitHub-side, not the daemon.
+- **Token-mint cache misses.** A drop in `github.app.token.mint.succeeded` `cache_hit:true` rate means a regression is bypassing the cached App singleton and paying a network mint per dispatch.
+- **Webhook signature failures.** Any sustained `event:"http.webhook.error" AND kind:"signature_mismatch"` rate is a botched `GITHUB_WEBHOOK_SECRET` rotation dropping deliveries.
+- **Scheduler saturation.** A gap in `scheduler.scan.started` longer than the scan interval means the timer stalled; any `scheduler.scan.skipped_overlap` over a 5m window means scans are saturating the interval (precursor to drifting cron slots).
+- **Workflow enqueue failures.** Any `event:"workflow.run.enqueue_failed"` means a row was inserted but never reached a daemon; the compensating `markFailed` ran, but a sustained rate points at a broker outage.
+- **Daemon reconnect storms.** `event:"daemon.connection.reconnect_scheduled" AND attempt >= 5` flags a daemon stuck in backoff.
+- **Workspace crashloop fingerprint.** A non-zero `count` on `event:"workspace.cleanup.exit"` means a daemon exited with in-flight workspaces.
+- **Ephemeral-spawn failures by kind.** Break `dispatch_reason=ephemeral-spawn-failed` down with `event:"k8s.spawn.failed"` `kind`: `infra-absent` (deploy regression), `api-rejected` (RBAC/validation), `api-unavailable` (control-plane). A sustained `k8s.spawn.decision_skipped reason:"cooldown"` rate means the fleet is under-scaled.
 
 ## Data fetching safety caps
 

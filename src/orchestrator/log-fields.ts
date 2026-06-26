@@ -39,6 +39,26 @@ export const DAEMON_HEARTBEAT_LOG_EVENTS = {
   ttl_refresh_failed: "daemon.heartbeat.ttl_refresh_failed",
 } as const;
 
+export const GITHUB_APP_TOKEN_LOG_EVENTS = {
+  mintSucceeded: "github.app.token.mint.succeeded",
+  mintFailed: "github.app.token.mint.failed",
+} as const;
+
+/**
+ * Stable per-call-site literal forwarded as `via` so token churn can be grouped
+ * by origin. One entry per mint site in `mintInstallationToken` callers (#236).
+ */
+export const TOKEN_MINT_VIA = [
+  "handleAccept",
+  "handleScopedAccept",
+  "postOrphanNotification",
+  "shipTickleResume",
+  "proposalPoller",
+  "schedulerRunAction",
+] as const;
+
+export type TokenMintVia = (typeof TOKEN_MINT_VIA)[number];
+
 // Correlation ids carried by every `dispatcher.offer.*` line.
 const offerIds = {
   deliveryId: z.string().min(1),
@@ -143,3 +163,40 @@ export const DaemonHeartbeatLogSchema = z.discriminatedUnion("event", [
 ]);
 
 export type DaemonHeartbeatLog = z.infer<typeof DaemonHeartbeatLogSchema>;
+
+/**
+ * Installation-token mint lifecycle (issue #236). Discriminated on `event` so
+ * `cache_hit` is pinned to the success line only and the failure line carries
+ * the standard pino `err` instead. `installation_id` is snake_case (a new
+ * numeric metric field, not the camelCase `installationId` child-logger
+ * binding); `via` is the call-site literal; `duration_ms` is the integer-ms
+ * wall-clock across getInstallationOctokit + resolveGithubToken. Each branch is
+ * `.strict()` so an emitter that adds an unpinned field, mistypes one, or puts
+ * `cache_hit` on the failure line trips the co-located test. Per security
+ * invariant 2 the token, App JWT, and private key never appear here.
+ */
+const tokenMintVia = z.enum(TOKEN_MINT_VIA);
+
+export const GithubAppTokenMintLogSchema = z.discriminatedUnion("event", [
+  z
+    .object({
+      event: z.literal(GITHUB_APP_TOKEN_LOG_EVENTS.mintSucceeded),
+      installation_id: z.number().int().positive(),
+      via: tokenMintVia,
+      cache_hit: z.boolean(),
+      duration_ms: z.number().int().nonnegative(),
+    })
+    .strict(),
+  z
+    .object({
+      event: z.literal(GITHUB_APP_TOKEN_LOG_EVENTS.mintFailed),
+      installation_id: z.number().int().positive(),
+      via: tokenMintVia,
+      duration_ms: z.number().int().nonnegative(),
+      // The caught error, serialized by the secret-scrubbing pino errSerializer.
+      err: z.unknown(),
+    })
+    .strict(),
+]);
+
+export type GithubAppTokenMintLog = z.infer<typeof GithubAppTokenMintLogSchema>;

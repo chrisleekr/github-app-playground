@@ -409,13 +409,9 @@ async function main(): Promise<void> {
     authToken,
     daemonId,
     capabilities,
+    // Connect/disconnect transitions are logged as structured
+    // daemon.connection.* events by DaemonWsClient (issue #218).
     onMessage: handleMessage,
-    onConnected: (): void => {
-      logger.info("Connected to orchestrator");
-    },
-    onDisconnected: (): void => {
-      logger.info("Disconnected from orchestrator");
-    },
   });
 
   wsClient.connect();

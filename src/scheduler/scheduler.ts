@@ -26,12 +26,14 @@ import {
 } from "../db/queries/scheduled-actions-store";
 import { logger as rootLogger } from "../logger";
 import { createExecution, markExecutionFailed } from "../orchestrator/history";
+import { mintInstallationToken } from "../orchestrator/installation-token";
 import { enqueueJob } from "../orchestrator/job-queue";
 import { isOwnerAllowed } from "../webhook/authorize";
 import { fetchRepoConfig } from "./config-fetcher";
 import type { ScheduledAction } from "./config-schema";
 import { computeDueDecision } from "./due-evaluator";
 import { enumerateScheduledRepos, type ScheduledRepo } from "./installation-enumerator";
+import { createScanCounters, type ScanCounters, SCHEDULER_LOG_EVENTS } from "./log-fields";
 import { resolvePrompt } from "./prompt-resolver";
 
 /**
@@ -153,6 +155,7 @@ async function processAction(
     contentSha: string;
     now: Date;
   },
+  counters: ScanCounters,
 ): Promise<void> {
   const { repo, action, docTimezone, contentSha, now } = item;
   const tz = action.timezone ?? docTimezone;
@@ -174,6 +177,7 @@ async function processAction(
 
   if (decision.action === "advance") {
     await advanceScheduleSlot({ ...key, slotTime: decision.slotTime, contentSha });
+    counters.actions_advanced += 1;
     ctx.log.info(
       {
         event: "scheduler.action.skipped_missed",
@@ -229,6 +233,7 @@ async function processAction(
       promptText,
       deliveryId,
     });
+    counters.actions_claimed += 1;
   } catch (err) {
     // The slot is claimed but no job landed; release the in-flight lock and
     // fail the executions row `enqueueRun` created, so it does not linger
@@ -242,10 +247,12 @@ async function processAction(
   }
 }
 
-/** One full scan over every installed repo. */
-async function scanOnce(ctx: SchedulerCtx): Promise<void> {
+/** One full scan over every installed repo. Returns per-scan traffic counters. */
+async function scanOnce(ctx: SchedulerCtx): Promise<ScanCounters> {
   const now = new Date();
+  const counters = createScanCounters();
   for await (const repo of enumerateScheduledRepos(ctx.app, ctx.log)) {
+    counters.repos_enumerated += 1;
     const fetched = await fetchRepoConfig({
       octokit: repo.octokit,
       owner: repo.owner,
@@ -256,18 +263,24 @@ async function scanOnce(ctx: SchedulerCtx): Promise<void> {
     if (fetched === null) continue;
     for (const action of fetched.config.scheduled_actions) {
       if (!action.enabled) continue;
+      counters.actions_evaluated += 1;
       try {
         // eslint-disable-next-line no-await-in-loop -- sequential to keep the slot-claim race window small
-        await processAction(ctx, {
-          repo,
-          action,
-          docTimezone: fetched.config.config.timezone,
-          contentSha: fetched.sha,
-          now,
-        });
+        await processAction(
+          ctx,
+          {
+            repo,
+            action,
+            docTimezone: fetched.config.config.timezone,
+            contentSha: fetched.sha,
+            now,
+          },
+          counters,
+        );
       } catch (err) {
         // One action's failure (e.g. a transient DB error) must not abort the
         // scan for the remaining repos/actions this tick.
+        counters.actions_failed += 1;
         ctx.log.error(
           { err, owner: repo.owner, repo: repo.repo, action: action.name },
           "scheduler: processAction failed, continuing scan",
@@ -275,6 +288,7 @@ async function scanOnce(ctx: SchedulerCtx): Promise<void> {
       }
     }
   }
+  return counters;
 }
 
 /** Force a single named action to run now, bypassing the cron check. */
@@ -297,7 +311,14 @@ async function runAction(
       repo: input.repo,
     });
     installationId = inst.data.id;
-    octokit = (await ctx.app.getInstallationOctokit(installationId)) as unknown as Octokit;
+    octokit = (
+      await mintInstallationToken({
+        app: ctx.app,
+        installationId,
+        via: "schedulerRunAction",
+        log: ctx.log,
+      })
+    ).octokit;
   } catch (err) {
     // Detail logged server-side only: an octokit error stringifies with the
     // request URL, which carries the installation token.
@@ -383,6 +404,10 @@ export function createScheduler(deps: SchedulerDeps): SchedulerHandle {
   const ctx: SchedulerCtx = { app: deps.app, log, graceMs: intervalMs * 2 };
   let timer: ReturnType<typeof setInterval> | null = null;
   let scanning = false;
+  // Wall-clock start of the in-flight scan; lets the overlap branch report how
+  // long the running scan has been going (saturation signal) and brackets the
+  // started/completed/failed lines.
+  let scanStartedAt = 0;
 
   /*
    * Reentrancy guard against overlapping `setInterval` invocations. The
@@ -392,12 +417,34 @@ export function createScheduler(deps: SchedulerDeps): SchedulerHandle {
    */
   /* eslint-disable require-atomic-updates */
   const guardedScan = async (): Promise<void> => {
-    if (scanning) return;
+    if (scanning) {
+      log.warn(
+        {
+          event: SCHEDULER_LOG_EVENTS.scanSkippedOverlap,
+          since_started_ms: Date.now() - scanStartedAt,
+        },
+        "scheduler: scan still running, skipping overlapping tick",
+      );
+      return;
+    }
     scanning = true;
+    scanStartedAt = Date.now();
+    log.info({ event: SCHEDULER_LOG_EVENTS.scanStarted }, "scheduler: scan started");
     try {
-      await scanOnce(ctx);
+      const counters = await scanOnce(ctx);
+      log.info(
+        {
+          event: SCHEDULER_LOG_EVENTS.scanCompleted,
+          duration_ms: Date.now() - scanStartedAt,
+          ...counters,
+        },
+        "scheduler: scan completed",
+      );
     } catch (err) {
-      log.error({ err }, "scheduler: scan tick failed");
+      log.error(
+        { event: SCHEDULER_LOG_EVENTS.scanFailed, duration_ms: Date.now() - scanStartedAt, err },
+        "scheduler: scan tick failed",
+      );
     } finally {
       scanning = false;
     }

@@ -152,19 +152,12 @@ export async function classify(
 }
 
 function parseResponse(rawText: string, log: pino.Logger): ClassifyResult {
-  const result = parseStructuredResponse(rawText, ClassifyResultSchema);
+  const result = parseStructuredResponse(rawText, ClassifyResultSchema, {
+    site: "intent-classifier",
+    log,
+  });
   if (!result.ok) {
-    log.warn(
-      { stage: result.stage, error: result.error, rawTextLength: rawText.length },
-      "intent-classifier: structured-output pipeline rejected response, returning clarify",
-    );
     return FALLBACK_CLARIFY;
-  }
-  if (result.strategy === "tolerant") {
-    log.info(
-      { rawTextLength: rawText.length },
-      "intent-classifier: response recovered via tolerant parser",
-    );
   }
   return result.data;
 }

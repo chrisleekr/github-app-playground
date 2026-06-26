@@ -17,9 +17,13 @@ import { rmSync } from "node:fs";
 import { mkdir, readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 
-/** Minimal structural logger; only `.info(obj, msg)` is used. */
+import { redactErrorMessage } from "../utils/log-redaction";
+import { WORKSPACE_LOG_EVENTS } from "./workspace-events";
+
+/** Minimal structural logger; `.info` for the existing sweep, `.warn` for per-target failures. */
 interface Logger {
   info: (obj: object, msg: string) => void;
+  warn: (obj: object, msg: string) => void;
 }
 
 /**
@@ -28,25 +32,61 @@ interface Logger {
  * to call when paths are absent (`force: true`). Used on the process-exit and
  * cancel paths where async cleanup is not an option.
  */
-export function removeWorkspaceTripleSync(workDir: string): void {
+export function removeWorkspaceTripleSync(workDir: string, log?: Logger): void {
   // Self-enforce the scoped-job invariant: an empty workDir would make the
   // calls below target CWD-relative `.cred.sh` / `-artifacts`. Callers also
   // guard, but a force-rm helper must not depend on every caller remembering.
   if (workDir === "") return;
+  // Track per-target rm failures so a leaked `.cred.sh` (token surface) or
+  // `-artifacts` dir is greppable, not silent until the next-restart sweep.
+  let failed = false;
   try {
     rmSync(workDir, { recursive: true, force: true });
-  } catch {
-    // Best effort: leak is acceptable, blocking exit is not.
+  } catch (err) {
+    failed = true;
+    log?.warn(
+      {
+        event: WORKSPACE_LOG_EVENTS.cleanupFailed,
+        workDir,
+        target: "clone",
+        err: redactErrorMessage(err),
+      },
+      "Failed to remove clone dir",
+    );
   }
   try {
     rmSync(`${workDir}.cred.sh`, { force: true });
-  } catch {
-    // Best effort.
+  } catch (err) {
+    failed = true;
+    log?.warn(
+      {
+        event: WORKSPACE_LOG_EVENTS.cleanupFailed,
+        workDir,
+        target: "helper",
+        err: redactErrorMessage(err),
+      },
+      "Failed to remove credential helper",
+    );
   }
   try {
     rmSync(`${workDir}-artifacts`, { recursive: true, force: true });
-  } catch {
-    // Best effort.
+  } catch (err) {
+    failed = true;
+    log?.warn(
+      {
+        event: WORKSPACE_LOG_EVENTS.cleanupFailed,
+        workDir,
+        target: "artifacts",
+        err: redactErrorMessage(err),
+      },
+      "Failed to remove artifacts dir",
+    );
+  }
+  if (!failed) {
+    log?.info(
+      { event: WORKSPACE_LOG_EVENTS.cleanupCompleted, workDir },
+      "Removed workspace triple",
+    );
   }
 }
 

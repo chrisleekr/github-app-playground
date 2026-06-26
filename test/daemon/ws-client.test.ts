@@ -64,8 +64,6 @@ function makeClient(): DaemonWsClient {
     daemonId: "test-daemon",
     capabilities: capabilitiesStub,
     onMessage: (): void => {},
-    onConnected: (): void => {},
-    onDisconnected: (): void => {},
   });
 }
 

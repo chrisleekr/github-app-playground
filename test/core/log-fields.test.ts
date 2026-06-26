@@ -1,6 +1,10 @@
 import { describe, expect, it } from "bun:test";
 
 import {
+  AgentToolCompletedLogSchema,
+  AgentToolStartedLogSchema,
+  AgentToolTimedOutLogSchema,
+  CORE_AGENT_LOG_EVENTS,
   CORE_PIPELINE_LOG_EVENTS,
   createStageTracker,
   PipelineCompletedLogSchema,
@@ -194,6 +198,138 @@ describe("PipelineFailedLogSchema (#226)", () => {
       event: CORE_PIPELINE_LOG_EVENTS.failed,
       failed_stage_delta_ms: 42,
       pipeline_wall_clock_ms: 5,
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("CORE_AGENT_LOG_EVENTS (#237)", () => {
+  it("pins the three canonical event strings", () => {
+    expect(CORE_AGENT_LOG_EVENTS).toEqual({
+      toolStarted: "agent.tool.started",
+      toolCompleted: "agent.tool.completed",
+      toolTimedOut: "agent.tool.timed_out",
+    });
+  });
+});
+
+describe("AgentToolStartedLogSchema (#237)", () => {
+  it("accepts a well-formed started record", () => {
+    const result = AgentToolStartedLogSchema.safeParse({
+      event: CORE_AGENT_LOG_EVENTS.toolStarted,
+      tool_use_id: "toolu_1",
+      tool: "Bash",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects an unknown extra field (no input/output bytes allowed)", () => {
+    const result = AgentToolStartedLogSchema.safeParse({
+      event: CORE_AGENT_LOG_EVENTS.toolStarted,
+      tool_use_id: "toolu_1",
+      tool: "Bash",
+      input: "rm -rf /", // must never be carried
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an empty tool_use_id", () => {
+    const result = AgentToolStartedLogSchema.safeParse({
+      event: CORE_AGENT_LOG_EVENTS.toolStarted,
+      tool_use_id: "",
+      tool: "Bash",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects the wrong event literal", () => {
+    const result = AgentToolStartedLogSchema.safeParse({
+      event: CORE_AGENT_LOG_EVENTS.toolCompleted,
+      tool_use_id: "toolu_1",
+      tool: "Bash",
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("AgentToolCompletedLogSchema (#237)", () => {
+  it("accepts a well-formed completed record", () => {
+    const result = AgentToolCompletedLogSchema.safeParse({
+      event: CORE_AGENT_LOG_EVENTS.toolCompleted,
+      tool_use_id: "toolu_1",
+      tool: "mcp__github_comment__update",
+      tool_duration_ms: 1234,
+      is_error: false,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects an output body field (security: no result bytes)", () => {
+    const result = AgentToolCompletedLogSchema.safeParse({
+      event: CORE_AGENT_LOG_EVENTS.toolCompleted,
+      tool_use_id: "toolu_1",
+      tool: "Bash",
+      tool_duration_ms: 1,
+      is_error: false,
+      output: "secret in stdout",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a non-integer / negative tool_duration_ms", () => {
+    const base = {
+      event: CORE_AGENT_LOG_EVENTS.toolCompleted,
+      tool_use_id: "toolu_1",
+      tool: "Bash",
+      is_error: false,
+    };
+    expect(AgentToolCompletedLogSchema.safeParse({ ...base, tool_duration_ms: -1 }).success).toBe(
+      false,
+    );
+    expect(AgentToolCompletedLogSchema.safeParse({ ...base, tool_duration_ms: 1.5 }).success).toBe(
+      false,
+    );
+  });
+
+  it("rejects a missing is_error", () => {
+    const result = AgentToolCompletedLogSchema.safeParse({
+      event: CORE_AGENT_LOG_EVENTS.toolCompleted,
+      tool_use_id: "toolu_1",
+      tool: "Bash",
+      tool_duration_ms: 1,
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("AgentToolTimedOutLogSchema (#237)", () => {
+  it("accepts a well-formed timed_out record", () => {
+    const result = AgentToolTimedOutLogSchema.safeParse({
+      event: CORE_AGENT_LOG_EVENTS.toolTimedOut,
+      tool_use_id: "toolu_1",
+      tool: "Bash",
+      delta_ms: 60000,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects an unknown extra field (strict)", () => {
+    const result = AgentToolTimedOutLogSchema.safeParse({
+      event: CORE_AGENT_LOG_EVENTS.toolTimedOut,
+      tool_use_id: "toolu_1",
+      tool: "Bash",
+      delta_ms: 1,
+      surprise: "boo",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a negative delta_ms", () => {
+    const result = AgentToolTimedOutLogSchema.safeParse({
+      event: CORE_AGENT_LOG_EVENTS.toolTimedOut,
+      tool_use_id: "toolu_1",
+      tool: "Bash",
+      delta_ms: -1,
     });
     expect(result.success).toBe(false);
   });

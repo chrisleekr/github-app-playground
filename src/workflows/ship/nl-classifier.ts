@@ -104,7 +104,10 @@ export async function classifyComment(input: ClassifyInput): Promise<NlClassifie
     return { intent: "none" };
   }
 
-  const result = parseStructuredResponse(raw, NL_CLASSIFIER_RESULT);
+  const result = parseStructuredResponse(raw, NL_CLASSIFIER_RESULT, {
+    site: "nl-classifier",
+    log: logger,
+  });
   if (!result.ok) {
     logger.warn(
       { event: "ship.nl.parse_error", stage: result.stage, error: result.error },

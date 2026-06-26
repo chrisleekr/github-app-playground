@@ -12,6 +12,11 @@ import { getTriageLLMClient } from "../webhook/triage-client-factory";
 import { recordWorkflowExecution } from "./execution-row";
 import { classify } from "./intent-classifier";
 import { enforceSingleBotLabel } from "./label-mutex";
+import {
+  logWorkflowRunDispatchRefused,
+  logWorkflowRunEnqueueFailed,
+  logWorkflowRunQueued,
+} from "./log-fields";
 import { getByLabel, getByName, type WorkflowName } from "./registry";
 import { findLatestSucceededForTarget, insertQueued, markFailed } from "./runs-store";
 import { runChatThread } from "./ship/scoped/chat-thread";
@@ -68,6 +73,7 @@ export async function dispatchByLabel(params: DispatchByLabelParams): Promise<Di
 
   if (!contextMatches) {
     const reason = `workflow '${entry.name}' only accepts ${entry.context} targets (this is a ${target.type})`;
+    logWorkflowRunDispatchRefused(logger, { workflowName: entry.name, target, deliveryId, reason });
     await postRefusalComment({ octokit, logger }, target, entry.name, reason);
     return { status: "refused", workflowName: entry.name, reason };
   }
@@ -76,6 +82,12 @@ export async function dispatchByLabel(params: DispatchByLabelParams): Promise<Di
     const prior = await findLatestSucceededForTarget(entry.requiresPrior, target);
     if (prior === null) {
       const reason = `requires a successful '${entry.requiresPrior}' run before '${entry.name}'`;
+      logWorkflowRunDispatchRefused(logger, {
+        workflowName: entry.name,
+        target,
+        deliveryId,
+        reason,
+      });
       await postRefusalComment({ octokit, logger }, target, entry.name, reason);
       return { status: "refused", workflowName: entry.name, reason };
     }
@@ -99,8 +111,20 @@ export async function dispatchByLabel(params: DispatchByLabelParams): Promise<Di
       ownerKind: "orchestrator",
       ownerId: getInstanceId(),
     });
+    logWorkflowRunQueued(logger, {
+      runId: runRow.id,
+      workflowName: entry.name,
+      target,
+      deliveryId,
+    });
   } catch (err) {
     if (isInflightCollision(err)) {
+      logWorkflowRunDispatchRefused(logger, {
+        workflowName: entry.name,
+        target,
+        deliveryId,
+        reason: "workflow-dispatch-inflight",
+      });
       logger.info(
         {
           workflowName: entry.name,
@@ -148,6 +172,13 @@ export async function dispatchByLabel(params: DispatchByLabelParams): Promise<Di
     // `markFailed` on the workflow_runs row is what matters for the partial
     // unique index. The capacity slot is owned by handleAccept/handleResult
     //, nothing to release here.
+    logWorkflowRunEnqueueFailed(logger, {
+      runId: runRow.id,
+      workflowName: entry.name,
+      target,
+      deliveryId,
+      reason: err instanceof Error ? err.message : String(err),
+    });
     logger.error(
       {
         runId: runRow.id,
@@ -341,6 +372,7 @@ export async function dispatchWorkflowByName(input: {
 
   if (!contextMatches) {
     const reason = `workflow '${entry.name}' only accepts ${entry.context} targets (this is a ${target.type})`;
+    logWorkflowRunDispatchRefused(logger, { workflowName: entry.name, target, deliveryId, reason });
     await postRefusalComment({ octokit, logger }, target, entry.name, reason);
     return { status: "refused", workflowName: entry.name, reason };
   }
@@ -349,6 +381,12 @@ export async function dispatchWorkflowByName(input: {
     const prior = await findLatestSucceededForTarget(entry.requiresPrior, target);
     if (prior === null) {
       const reason = `requires a successful '${entry.requiresPrior}' run before '${entry.name}'`;
+      logWorkflowRunDispatchRefused(logger, {
+        workflowName: entry.name,
+        target,
+        deliveryId,
+        reason,
+      });
       await postRefusalComment({ octokit, logger }, target, entry.name, reason);
       return { status: "refused", workflowName: entry.name, reason };
     }
@@ -374,8 +412,20 @@ export async function dispatchWorkflowByName(input: {
       triggerCommentId,
       triggerEventType,
     });
+    logWorkflowRunQueued(logger, {
+      runId: runRow.id,
+      workflowName: entry.name,
+      target,
+      deliveryId,
+    });
   } catch (err) {
     if (isInflightCollision(err)) {
+      logWorkflowRunDispatchRefused(logger, {
+        workflowName: entry.name,
+        target,
+        deliveryId,
+        reason: "workflow-dispatch-inflight",
+      });
       logger.info(
         {
           workflowName: entry.name,
@@ -421,6 +471,13 @@ export async function dispatchWorkflowByName(input: {
       workflowRun: { runId: runRow.id, workflowName: entry.name },
     });
   } catch (err) {
+    logWorkflowRunEnqueueFailed(logger, {
+      runId: runRow.id,
+      workflowName: entry.name,
+      target,
+      deliveryId,
+      reason: err instanceof Error ? err.message : String(err),
+    });
     logger.error(
       {
         runId: runRow.id,

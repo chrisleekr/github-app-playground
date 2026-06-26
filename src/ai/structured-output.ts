@@ -1,6 +1,9 @@
+import type pino from "pino";
 import type { ZodType } from "zod";
 
+import { redactErrorMessage } from "../utils/log-redaction";
 import { parseTolerantJson } from "../utils/tolerant-json";
+import { STRUCTURED_OUTPUT_EVENTS } from "./structured-output-log-fields";
 
 /**
  * Structured-output pipeline.
@@ -83,6 +86,24 @@ export function withStructuredRules(systemPrompt: string): string {
 }
 
 /**
+ * Optional emit context. When supplied, the chokepoint fires one
+ * `structured_output.*` event per call so every site reports the same field
+ * shape (issue #233); `site` is the call-site discriminator. Sites that omit
+ * it still get a `StructuredResult` with no log line.
+ */
+export interface StructuredOutputLogContext {
+  readonly site: string;
+  readonly log: pino.Logger;
+}
+
+/** JSON shape of a parsed value, for the `validate_failed` event. */
+function parsedKind(value: unknown): "object" | "array" | "primitive" {
+  if (Array.isArray(value)) return "array";
+  if (value !== null && typeof value === "object") return "object";
+  return "primitive";
+}
+
+/**
  * Parse and validate an LLM string response as a typed structured object.
  *
  * Strips a single leading/trailing markdown code fence (``` or ```json)
@@ -91,7 +112,12 @@ export function withStructuredRules(systemPrompt: string): string {
  *
  * Returns a discriminated result; never throws.
  */
-export function parseStructuredResponse<T>(raw: string, schema: ZodType<T>): StructuredResult<T> {
+export function parseStructuredResponse<T>(
+  raw: string,
+  schema: ZodType<T>,
+  ctx?: StructuredOutputLogContext,
+): StructuredResult<T> {
+  const startedAt = Date.now();
   const candidate = stripJsonFence(raw.trim());
 
   let parsed: unknown;
@@ -105,17 +131,34 @@ export function parseStructuredResponse<T>(raw: string, schema: ZodType<T>): Str
       parsed = parseTolerantJson(candidate);
       strategy = "tolerant";
     } catch (err) {
-      return {
-        ok: false,
-        stage: "parse",
-        raw,
-        error: err instanceof Error ? err.message : String(err),
-      };
+      const error = err instanceof Error ? err.message : String(err);
+      ctx?.log.warn(
+        {
+          event: STRUCTURED_OUTPUT_EVENTS.parseFailed,
+          site: ctx.site,
+          raw_len: raw.length,
+          parse_ms: Date.now() - startedAt,
+          error: redactErrorMessage(error),
+        },
+        "structured-output: parse failed",
+      );
+      return { ok: false, stage: "parse", raw, error };
     }
   }
 
   const validated = schema.safeParse(parsed);
   if (!validated.success) {
+    ctx?.log.warn(
+      {
+        event: STRUCTURED_OUTPUT_EVENTS.validateFailed,
+        site: ctx.site,
+        raw_len: raw.length,
+        parse_ms: Date.now() - startedAt,
+        error: redactErrorMessage(validated.error.message),
+        parsed_kind: parsedKind(parsed),
+      },
+      "structured-output: validation failed",
+    );
     return {
       ok: false,
       stage: "validate",
@@ -125,6 +168,16 @@ export function parseStructuredResponse<T>(raw: string, schema: ZodType<T>): Str
     };
   }
 
+  ctx?.log.info(
+    {
+      event: STRUCTURED_OUTPUT_EVENTS.parsed,
+      site: ctx.site,
+      raw_len: raw.length,
+      parse_ms: Date.now() - startedAt,
+      strategy,
+    },
+    "structured-output: parsed",
+  );
   return { ok: true, data: validated.data, raw, strategy };
 }
 

@@ -181,7 +181,10 @@ export const handler: WorkflowHandler = async (ctx) => {
       return { status: "failed", reason: "triage agent did not produce TRIAGE_VERDICT.json" };
     }
 
-    const verdictResult = parseStructuredResponse(verdictRaw, verdictSchema);
+    const verdictResult = parseStructuredResponse(verdictRaw, verdictSchema, {
+      site: "triage-handler",
+      log,
+    });
     if (!verdictResult.ok) {
       return {
         status: "failed",

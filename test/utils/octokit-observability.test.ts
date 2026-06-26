@@ -6,6 +6,7 @@ import {
   observableOctokit,
   RATE_LIMIT_LOW_WATER,
   rateLimitFields,
+  slowRequestFields,
 } from "../../src/utils/octokit-observability";
 
 // A fetch stub returning a fixed status/headers/body, so the hooks run against
@@ -84,6 +85,31 @@ describe("rateLimitFields (#170)", () => {
     expect(f?.rate_limit_reset_in_s).toBeUndefined();
     expect(f?.rate_limit_resource).toBeUndefined();
   });
+
+  it("threads duration_ms through when provided (#223)", () => {
+    const f = rateLimitFields(200, { "x-ratelimit-remaining": "4800" }, "GET /x", NOW_S, 1234);
+    expect(f?.duration_ms).toBe(1234);
+  });
+
+  it("omits duration_ms when not provided (#223)", () => {
+    const f = rateLimitFields(200, { "x-ratelimit-remaining": "4800" }, "GET /x", NOW_S);
+    expect(f?.duration_ms).toBeUndefined();
+  });
+});
+
+describe("slowRequestFields (#223)", () => {
+  it("returns a slow event once duration crosses the threshold", () => {
+    const f = slowRequestFields(200, "GET /x", 3000, 3000);
+    expect(f).not.toBeNull();
+    expect(f?.event).toBe(GITHUB_API_LOG_EVENTS.slow);
+    expect(f?.duration_ms).toBe(3000);
+    expect(f?.route).toBe("GET /x");
+    expect(f?.status).toBe(200);
+  });
+
+  it("returns null below the threshold (boundary)", () => {
+    expect(slowRequestFields(200, "GET /x", 2999, 3000)).toBeNull();
+  });
 });
 
 describe("GithubApiLogFieldsSchema (#170)", () => {
@@ -113,6 +139,40 @@ describe("GithubApiLogFieldsSchema (#170)", () => {
         route: "GET /x",
         status: 200,
         ratelimit_remaining: 4800, // typo'd field name
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts a request line carrying duration_ms (#223)", () => {
+    expect(
+      GithubApiLogFieldsSchema.safeParse({
+        event: GITHUB_API_LOG_EVENTS.request,
+        route: "GET /x",
+        status: 200,
+        duration_ms: 42,
+        rate_limit_remaining: 4800,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("accepts a github.api.slow line (#223)", () => {
+    expect(
+      GithubApiLogFieldsSchema.safeParse({
+        event: GITHUB_API_LOG_EVENTS.slow,
+        route: "GET /x",
+        status: 200,
+        duration_ms: 5000,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects a latency_ms typo (strict pins the duration field name) (#223)", () => {
+    expect(
+      GithubApiLogFieldsSchema.safeParse({
+        event: GITHUB_API_LOG_EVENTS.slow,
+        route: "GET /x",
+        status: 200,
+        latency_ms: 5000, // typo'd field name
       }).success,
     ).toBe(false);
   });

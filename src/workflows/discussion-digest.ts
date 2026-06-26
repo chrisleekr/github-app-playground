@@ -8,6 +8,7 @@ import { parseStructuredResponse, withStructuredRules } from "../ai/structured-o
 import { config } from "../config";
 import { type Logger, logger as rootLogger } from "../logger";
 import { sanitizeContent } from "../utils/sanitize";
+import { DIGEST_LOG_EVENTS } from "./digest-log-fields";
 import type { WorkflowName } from "./registry";
 
 /**
@@ -309,34 +310,54 @@ interface CallContext {
 /** A failed `runDigestCall`, mapped 1:1 to the `DigestResult` failure reason. */
 type DigestCallError = "llm-error" | "parse-error";
 
-/** One LLM call returning a parsed `Digest`, or a typed failure reason. */
+/** Which LLM-call role this is: single-pass / per-chunk extract, or the merge. */
+type DigestPhase = "extract" | "reduce";
+
+/**
+ * One LLM call returning a parsed `Digest`, or a typed failure reason. On the
+ * success path emits one `digest.call.completed` carrying the provider's token
+ * usage, the call wall-clock, and the parse strategy (strict vs tolerant). The
+ * failure paths stay free-form (the `digest.failed` summary at the caller
+ * carries the reason); a per-call failure event would double-count.
+ */
 async function runDigestCall(
   cc: CallContext,
+  phase: DigestPhase,
   system: string,
   userMessage: string,
 ): Promise<Digest | DigestCallError> {
-  let rawText: string;
+  const startedAt = Date.now();
+  let response: Awaited<ReturnType<LLMClient["create"]>>;
   try {
-    const response = await cc.client.create({
+    response = await cc.client.create({
       model: cc.model,
       system: withStructuredRules(system),
       messages: [{ role: "user", content: userMessage }],
       maxTokens: DIGEST_MAX_TOKENS,
       temperature: 0,
     });
-    rawText = response.text;
   } catch (err) {
     cc.log.warn({ err }, "discussion-digest LLM call failed");
     return "llm-error";
   }
-  const parsed = parseStructuredResponse(rawText, DigestSchema);
+  const parsed = parseStructuredResponse(response.text, DigestSchema, {
+    site: "discussion-digest",
+    log: cc.log,
+  });
   if (!parsed.ok) {
-    cc.log.warn(
-      { stage: parsed.stage, error: parsed.error },
-      "discussion-digest structured-output pipeline rejected response",
-    );
     return "parse-error";
   }
+  cc.log.info(
+    {
+      event: DIGEST_LOG_EVENTS.callCompleted,
+      phase,
+      input_tokens: response.usage.inputTokens,
+      output_tokens: response.usage.outputTokens,
+      latency_ms: Date.now() - startedAt,
+      strategy: parsed.strategy,
+    },
+    "discussion-digest LLM call completed",
+  );
   return parsed.data;
 }
 
@@ -352,16 +373,17 @@ function enforceOwnerDirectives(
   digest: Digest,
   ownerAuthors: ReadonlySet<string>,
   log: Logger,
-): Digest {
+): { digest: Digest; kept: number; dropped: number } {
   const kept = digest.authoritativeDirectives.filter((d) =>
     ownerAuthors.has(d.author.toLowerCase()),
   );
-  if (kept.length === digest.authoritativeDirectives.length) return digest;
+  const dropped = digest.authoritativeDirectives.length - kept.length;
+  if (dropped === 0) return { digest, kept: kept.length, dropped: 0 };
   log.warn(
-    { dropped: digest.authoritativeDirectives.length - kept.length },
+    { dropped },
     "discussion-digest dropped directives not attributable to an owner-block author",
   );
-  return { ...digest, authoritativeDirectives: kept };
+  return { digest: { ...digest, authoritativeDirectives: kept }, kept: kept.length, dropped };
 }
 
 /**
@@ -372,11 +394,23 @@ export async function buildDiscussionDigest(
   deps: DigestDeps = {},
 ): Promise<DigestResult> {
   const log = rootLogger.child({ module: "discussion-digest" });
+  const startedAt = Date.now();
 
   const classified = classifyComments(input.comments, input.allowedOwners);
   const humanCount = classified.filter((c) => c.cls !== "bot").length;
   if (humanCount === 0) {
     // Bot-only or empty threads carry no human guidance: skip the LLM call.
+    log.info(
+      {
+        event: DIGEST_LOG_EVENTS.skipped,
+        comment_counts: {
+          owner: classified.filter((c) => c.cls === "owner").length,
+          other: classified.filter((c) => c.cls === "other").length,
+          bot: classified.filter((c) => c.cls === "bot").length,
+        },
+      },
+      "discussion-digest skipped: no human comments",
+    );
     return { ok: false, reason: "no-comments" };
   }
   // Authors who actually commented in the owner block. Used to deterministically
@@ -397,25 +431,46 @@ export async function buildDiscussionDigest(
       ? [classified]
       : chunkComments(classified);
 
+  // Emit the terminal `digest.completed` summary: shape metrics + the
+  // trust-boundary outcome (kept/dropped). Counts and lengths only, no content.
+  const complete = (
+    enforced: { digest: Digest; kept: number; dropped: number },
+    chunkCount: number,
+  ): DigestResult => {
+    const d = enforced.digest;
+    log.info(
+      {
+        event: DIGEST_LOG_EVENTS.completed,
+        chunks: chunkCount,
+        total_latency_ms: Date.now() - startedAt,
+        directives_kept: enforced.kept,
+        directives_dropped: enforced.dropped,
+        has_prior_bot_output: d.priorBotOutput.trim().length > 0,
+        untrusted_context_count: d.untrustedContext.length,
+        conversation_summary_chars: d.conversationSummary.length,
+      },
+      "discussion-digest completed",
+    );
+    return { ok: true, digest: d };
+  };
+
   if (chunks.length === 1) {
     const digest = await runDigestCall(
       cc,
+      "extract",
       EXTRACT_SYSTEM,
       buildUserMessage(input.title, input.body, input.workflowName, classified, nonce),
     );
     if (typeof digest === "string") return { ok: false, reason: digest };
-    return { ok: true, digest: enforceOwnerDirectives(digest, ownerAuthors, log) };
+    return complete(enforceOwnerDirectives(digest, ownerAuthors, log), 1);
   }
 
   // Map: one partial digest per chunk.
-  log.info(
-    { chunkCount: chunks.length, totalComments: classified.length },
-    "discussion-digest map-reduce",
-  );
   const partials: Digest[] = [];
   for (const chunk of chunks) {
     const partial = await runDigestCall(
       cc,
+      "extract",
       EXTRACT_SYSTEM,
       buildUserMessage(input.title, input.body, input.workflowName, chunk, nonce),
     );
@@ -426,11 +481,12 @@ export async function buildDiscussionDigest(
   // Reduce: merge the partials (already compact) into the final digest.
   const reduced = await runDigestCall(
     cc,
+    "reduce",
     REDUCE_SYSTEM,
     `Partial digests, oldest slice first:\n\n\`\`\`json\n${JSON.stringify(partials)}\n\`\`\`\n\nMerge them into one final digest.`,
   );
   if (typeof reduced === "string") return { ok: false, reason: reduced };
-  return { ok: true, digest: enforceOwnerDirectives(reduced, ownerAuthors, log) };
+  return complete(enforceOwnerDirectives(reduced, ownerAuthors, log), chunks.length);
 }
 
 /**
@@ -565,16 +621,33 @@ export async function fetchAndBuildDigest(params: FetchDigestParams): Promise<Di
     }
   } catch (err) {
     log.warn({ err }, "discussion-digest comment fetch failed, proceeding without digest");
+    log.warn(
+      { event: DIGEST_LOG_EVENTS.failed, reason: "no-comments" },
+      "discussion-digest failed",
+    );
     return { ok: false, reason: "no-comments" };
   }
 
-  return buildDiscussionDigest({
+  const result = await buildDiscussionDigest({
     title: params.title,
     body: params.body,
     comments,
     allowedOwners: config.allowedOwners,
     workflowName: params.workflowName,
   });
+  // Single chokepoint for the terminal failure event: a propagated `ok: false`
+  // for `llm-error` / `parse-error` is surfaced once here. `no-comments` is a
+  // routine skip already reported by the info `digest.skipped` line inside the
+  // build, so it is excluded here to keep `digest.failed` a true failure signal
+  // (a warn on every bot-only thread would inflate failure-rate alerts).
+  // `digest.completed` covers the success path inside the build.
+  if (!result.ok && result.reason !== "no-comments") {
+    log.warn(
+      { event: DIGEST_LOG_EVENTS.failed, reason: result.reason },
+      "discussion-digest failed",
+    );
+  }
+  return result;
 }
 
 /**

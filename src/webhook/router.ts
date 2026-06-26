@@ -11,6 +11,7 @@ import {
 import { createExecution } from "../orchestrator/history";
 import { dispatchJob } from "../orchestrator/job-dispatcher";
 import { enqueueJob, getQueueLength, type QueuedJob } from "../orchestrator/job-queue";
+import { K8S_SPAWN_LOG_EVENTS } from "../orchestrator/k8s-spawn-log-fields";
 import { triageRequest, type TriageResult } from "../orchestrator/triage";
 import { isValkeyHealthy } from "../orchestrator/valkey";
 import type { DispatchReason, DispatchTarget } from "../shared/dispatch-types";
@@ -161,12 +162,15 @@ export async function decideDispatch(ctx: BotContext): Promise<DispatchDecision>
   const queueLength = await getQueueLength();
   const persistentFreeSlots = await getPersistentPoolFreeSlots();
 
-  const verdict = decideEphemeralSpawn({
-    heavy,
-    queueLength,
-    persistentFreeSlots,
-    now: Date.now(),
-  });
+  const verdict = decideEphemeralSpawn(
+    {
+      heavy,
+      queueLength,
+      persistentFreeSlots,
+      now: Date.now(),
+    },
+    { log: ctx.log, deliveryId: ctx.deliveryId },
+  );
 
   if (!verdict.spawn) {
     return {
@@ -195,9 +199,17 @@ export async function decideDispatch(ctx: BotContext): Promise<DispatchDecision>
     ]
       .filter((v): v is string => v !== null)
       .join(", ");
+    // `missing` (which env vars are unset) goes in the human message + the
+    // returned `spawnError`, not the structured event: the k8s.spawn.failed
+    // schema is strict and pins only kind/trigger/api_call_ms.
     ctx.log.error(
-      { deliveryId: ctx.deliveryId, missing },
-      "Ephemeral daemon spawn required but scaler config is incomplete",
+      {
+        event: K8S_SPAWN_LOG_EVENTS.failed,
+        delivery_id: ctx.deliveryId,
+        kind: "infra-absent",
+        trigger: verdict.trigger,
+      },
+      `Ephemeral daemon spawn required but scaler config is incomplete: missing ${missing}`,
     );
     return {
       target: "daemon",
@@ -219,6 +231,7 @@ export async function decideDispatch(ctx: BotContext): Promise<DispatchDecision>
       deliveryId: ctx.deliveryId,
       image,
       orchestratorUrl,
+      trigger: verdict.trigger,
     });
     return {
       target: "daemon",
@@ -235,17 +248,15 @@ export async function decideDispatch(ctx: BotContext): Promise<DispatchDecision>
     // that already won the cooldown race while this call was in flight,
     // reopening the thundering-herd window the cooldown exists to close.
     rollbackSpawn(spawnAttemptAt);
-    const kind = err instanceof EphemeralSpawnError ? err.kind : undefined;
+    // The structured k8s.spawn.failed line (kind + api_call_ms) is emitted by
+    // spawnEphemeralDaemon itself; here we only roll back cooldown and surface
+    // the message on the executions row via `spawnError`.
     const message =
       err instanceof EphemeralSpawnError
         ? `${err.kind}: ${err.message}`
         : err instanceof Error
           ? err.message
           : String(err);
-    ctx.log.error(
-      { err, deliveryId: ctx.deliveryId, spawnErrorKind: kind },
-      "Ephemeral daemon spawn failed, rejecting request",
-    );
     return {
       target: "daemon",
       reason: "ephemeral-spawn-failed",

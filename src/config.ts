@@ -680,6 +680,14 @@ const configSchema = z
     // Filename the scheduler reads from each installed repo's default
     // branch root. Default `.github-app.yaml`.
     schedulerConfigFile: z.string().default(".github-app.yaml"),
+
+    // --- 15. GitHub API observability (issue #223) ---
+
+    // Latency floor (ms) above which an octokit request emits a `warn`
+    // `github.api.slow` line in addition to the per-request debug line.
+    // Default 3000: ~3x typical REST latency, well below GitHub's 10s
+    // abuse-detection ceiling, so it flags real degradation not noise.
+    githubApiSlowRequestMs: z.coerce.number().int().positive().default(3_000),
   })
   .superRefine((data, ctx) => {
     validateServerModeCredentials(data, ctx);
@@ -1037,6 +1045,9 @@ function loadConfig(): Config {
       process.env["SCHEDULER_ALLOW_AUTO_MERGE"],
     ),
     schedulerConfigFile: process.env["SCHEDULER_CONFIG_FILE"],
+
+    // Group 15, GitHub API observability
+    githubApiSlowRequestMs: process.env["GITHUB_API_SLOW_REQUEST_MS"],
   });
 
   assertOauthRequiresAllowlist(cfg);
