@@ -20,7 +20,7 @@ scheduled_actions:
     # research.yml runs `0 17 * * *` UTC. This runs at 19:00 UTC, a fixed
     # 2h later, so the in-App and Actions runs never overlap.
     cron: "0 19 * * *"
-    enabled: true
+    enabled: false
     model: "opus"
     max_turns: 200
     timeout: 60m
