@@ -18,7 +18,7 @@ Direct link: <https://github.com/settings/apps/new>.
 | Field           | Value                                                                                 | Notes                                                            |
 | --------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
 | GitHub App name | `chrisleekr-bot`                                                                      | Globally unique, ≤ 34 chars, slugified to lowercase-with-dashes. |
-| Homepage URL    | `https://github.com/chrisleekr/github-app-playground`                                 | Required; any valid HTTPS URL.                                   |
+| Homepage URL    | `https://github.com/chrisleekr/github-app`                                            | Required; any valid HTTPS URL.                                   |
 | Description     | `AI-powered code review bot, responds to @chrisleekr-bot mentions on PRs and issues.` | Optional.                                                        |
 
 ### 1.3 Webhook configuration

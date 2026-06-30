@@ -44,7 +44,7 @@ const baseInsert = (): {
 } => ({
   installation_id: 12345,
   owner: "chrisleekr",
-  repo: "github-app-playground",
+  repo: "github-app",
   pr_number: 6001,
   target_base_sha: "a".repeat(40),
   target_head_sha: "b".repeat(40),
@@ -99,12 +99,7 @@ describe.skipIf(sql === null)("restart safety, T048", () => {
 
     // Process #2, restart, look up the intent by (owner, repo, pr) and
     // resume the continuation.
-    const found = await findActiveIntent(
-      "chrisleekr",
-      "github-app-playground",
-      6001,
-      requireConn(),
-    );
+    const found = await findActiveIntent("chrisleekr", "github-app", 6001, requireConn());
     expect(found).not.toBeNull();
     expect(found?.id).toBe(intentInsert.id);
     // Critical: tracking_comment_id is preserved so the restart attaches

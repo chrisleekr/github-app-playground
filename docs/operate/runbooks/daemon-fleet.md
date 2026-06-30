@@ -70,22 +70,22 @@ The full list lives at [`../configuration.md`](../configuration.md#orchestrator-
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: github-app-playground-daemon
+  name: github-app-daemon
   namespace: default
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: github-app-playground-daemon
+      app: github-app-daemon
   template:
     metadata:
       labels:
-        app: github-app-playground-daemon
+        app: github-app-daemon
     spec:
       terminationGracePeriodSeconds: 300
       containers:
         - name: daemon
-          image: chrisleekr/github-app-playground:latest-daemon
+          image: chrisleekr/github-app:latest-daemon
           envFrom:
             - secretRef:
                 name: daemon-secrets
@@ -149,7 +149,7 @@ Step-by-step:
 
 1. **Generate** a new secret: `openssl rand -hex 32`. Persist it in your secret store next to the existing value.
 2. **Stage the overlap.** Update the orchestrator Deployment's `daemon-secrets` to set `DAEMON_AUTH_TOKEN=<NEW>` **and** `DAEMON_AUTH_TOKEN_PREVIOUS=<OLD>`. Roll the orchestrator. Existing daemon connections (still presenting the old token) keep authenticating, and any daemons that come up with the new token also pass.
-3. **Roll daemons.** Update the daemon Deployment's `daemon-secrets` to set `DAEMON_AUTH_TOKEN=<NEW>` (no `_PREVIOUS` needed, daemons only ever send the primary). Roll daemons one by one (`kubectl rollout restart deployment/github-app-playground-daemon`). Watch `auth-failed` warn-logs in the orchestrator, they should stay flat.
+3. **Roll daemons.** Update the daemon Deployment's `daemon-secrets` to set `DAEMON_AUTH_TOKEN=<NEW>` (no `_PREVIOUS` needed, daemons only ever send the primary). Roll daemons one by one (`kubectl rollout restart deployment/github-app-daemon`). Watch `auth-failed` warn-logs in the orchestrator, they should stay flat.
 4. **Drop the previous slot.** Once every connected daemon presents the new token, redeploy the orchestrator with `DAEMON_AUTH_TOKEN_PREVIOUS` removed (or empty). The old secret is now dead.
 5. **Verify.** A `curl` with the old Bearer should now return `401`; a curl with the new Bearer should hit the upgrade-failed path (`500 WebSocket upgrade failed`).
 

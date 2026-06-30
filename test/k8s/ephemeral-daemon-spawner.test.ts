@@ -115,7 +115,7 @@ describe("spawnEphemeralDaemon: Pod spec", () => {
     const call = createNamespacedPod.mock.calls[0] as [CapturedCall];
     const labels = (call[0].body as { metadata: { labels: Record<string, string> } }).metadata
       .labels;
-    const value = labels["github-app-playground/delivery-id"] ?? "";
+    const value = labels["github-app/delivery-id"] ?? "";
     expect(value).toMatch(/^[a-z0-9]([-a-z0-9._]*[a-z0-9])?$/);
     expect(value.length).toBeLessThanOrEqual(63);
   });

@@ -150,7 +150,7 @@ The `triggerUsername` is rejected (not silently stripped) if it contains whitesp
 
 ## Documentation
 
-The `docs/` tree is published as a MkDocs Material site at <https://chrisleekr.github.io/github-app-playground/>. Local preview: `bun run docs:install` once, then `bun run docs:serve` for live reload or `bun run docs:build` for the strict build CI runs.
+The `docs/` tree is published as a MkDocs Material site at <https://chrisleekr.github.io/github-app/>. Local preview: `bun run docs:install` once, then `bun run docs:serve` for live reload or `bun run docs:build` for the strict build CI runs.
 
 **Keep docs in sync with code.** When a PR changes any of these surfaces, update the matching page in `docs/` in the same PR:
 

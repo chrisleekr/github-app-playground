@@ -1,4 +1,4 @@
-# Scheduled research workflow for github-app-playground.
+# Scheduled research workflow for github-app.
 # Runs daily + on-demand; produces at most one research-labelled GitHub issue per run.
 
 name: Scheduled Research
@@ -126,7 +126,7 @@ jobs:
             ## Mission
 
             You are a principal software engineer improving the
-            **github-app-playground** GitHub App (a TypeScript/Bun webhook
+            **github-app** GitHub App (a TypeScript/Bun webhook
             server that responds to `@chrisleekr-bot` mentions on PRs and
             issues using the Claude Agent SDK). Your mission this run:
             research how an existing feature within the **FOCUS_AREA**

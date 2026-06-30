@@ -1,8 +1,8 @@
-# GitHub App Playground: @chrisleekr-bot
+# GitHub App: @chrisleekr-bot
 
 A GitHub App that responds to `@chrisleekr-bot` mentions on pull requests and issues, powered by the Claude Agent SDK. Every event is handed to a daemon for execution; when triage flags a job as heavy or the queue overflows, the orchestrator spawns an ephemeral daemon Pod on demand so one deployment can serve both trivial chores and long-running refactors.
 
-📖 **Documentation:** <https://chrisleekr.github.io/github-app-playground/>
+📖 **Documentation:** <https://chrisleekr.github.io/github-app/>
 
 ## What it does
 
@@ -33,7 +33,7 @@ flowchart LR
     classDef done fill:#2da44e,stroke:#0b4a1e,color:#ffffff
 ```
 
-See [Architecture](https://chrisleekr.github.io/github-app-playground/build/architecture/) for the full flow, including idempotency, triage, and the pipeline stages.
+See [Architecture](https://chrisleekr.github.io/github-app/build/architecture/) for the full flow, including idempotency, triage, and the pipeline stages.
 
 ## Quick start
 
@@ -44,7 +44,7 @@ bun run dev:deps                # Local Valkey + Postgres (required for the orch
 bun run dev                     # Watch mode
 ```
 
-Full setup, configuration reference, architecture diagrams, and deployment recipes live in the [documentation site](https://chrisleekr.github.io/github-app-playground/).
+Full setup, configuration reference, architecture diagrams, and deployment recipes live in the [documentation site](https://chrisleekr.github.io/github-app/).
 
 ## Documentation
 

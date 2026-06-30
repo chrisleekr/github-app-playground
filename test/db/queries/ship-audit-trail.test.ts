@@ -43,7 +43,7 @@ const baseInsert = (): {
 } => ({
   installation_id: 12345,
   owner: "chrisleekr",
-  repo: "github-app-playground",
+  repo: "github-app",
   pr_number: 5500,
   target_base_sha: "a".repeat(40),
   target_head_sha: "b".repeat(40),

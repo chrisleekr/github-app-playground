@@ -47,7 +47,7 @@ const noopLog = {
 function ctx(overrides: Partial<BotContext> = {}): BotContext {
   return {
     owner: "chrisleekr",
-    repo: "github-app-playground",
+    repo: "github-app",
     entityNumber: 1,
     isPR: true,
     eventName: "issue_comment",

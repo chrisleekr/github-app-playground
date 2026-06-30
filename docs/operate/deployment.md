@@ -39,8 +39,8 @@ Tool versions are parameterised by `ARG` (`KUBECTL_VERSION`, `HELM_VERSION`, etc
 ## Build
 
 ```bash
-bun run docker:build:orchestrator   # → chrisleekr/github-app-playground:local-orchestrator
-bun run docker:build:daemon         # → chrisleekr/github-app-playground:local-daemon
+bun run docker:build:orchestrator   # → chrisleekr/github-app:local-orchestrator
+bun run docker:build:daemon         # → chrisleekr/github-app:local-daemon
 bun run docker:build                # both
 ```
 
@@ -65,7 +65,7 @@ Daemon-only:
 docker build -f Dockerfile.orchestrator \
   --build-arg PACKAGE_VERSION=$(bun -e "console.log(require('./package.json').version)") \
   --build-arg GIT_HASH=$(git rev-parse --short HEAD) \
-  -t chrisleekr/github-app-playground:$(git rev-parse --short HEAD)-orchestrator \
+  -t chrisleekr/github-app:$(git rev-parse --short HEAD)-orchestrator \
   .
 ```
 
@@ -85,14 +85,14 @@ Verify before pulling into production. `gh attestation verify` checks the attest
 ```bash
 # Provenance: fails if missing or signed by anything other than this repo's workflow
 gh attestation verify \
-  oci://chrisleekr/github-app-playground:1.3.0-orchestrator \
-  --repo chrisleekr/github-app-playground \
+  oci://chrisleekr/github-app:<version>-orchestrator \
+  --repo chrisleekr/github-app \
   --predicate-type https://slsa.dev/provenance/v1
 
 # SBOM: same shape, different predicate
 gh attestation verify \
-  oci://chrisleekr/github-app-playground:1.3.0-orchestrator \
-  --repo chrisleekr/github-app-playground \
+  oci://chrisleekr/github-app:<version>-orchestrator \
+  --repo chrisleekr/github-app \
   --predicate-type https://cyclonedx.org/bom
 ```
 
@@ -102,11 +102,11 @@ You can also pull the BuildKit-emitted SPDX SBOM and SLSA provenance attached to
 
 ```bash
 # Provenance JSON (per platform)
-docker buildx imagetools inspect chrisleekr/github-app-playground:1.3.0-orchestrator \
+docker buildx imagetools inspect chrisleekr/github-app:<version>-orchestrator \
   --format '{{ json .Provenance }}'
 
 # SBOM JSON (per platform: SPDX 2.3, distinct from the CycloneDX one above)
-docker buildx imagetools inspect chrisleekr/github-app-playground:1.3.0-orchestrator \
+docker buildx imagetools inspect chrisleekr/github-app:<version>-orchestrator \
   --format '{{ json .SBOM }}'
 ```
 
@@ -121,7 +121,7 @@ docker run \
   --env-file .env \
   -p 3000:3000 \
   -p 3002:3002 \
-  chrisleekr/github-app-playground:local-orchestrator
+  chrisleekr/github-app:local-orchestrator
 ```
 
 - `3000`: HTTP: webhook listener, `/healthz`, `/readyz`.
@@ -137,7 +137,7 @@ docker run \
   -e ORCHESTRATOR_URL=ws://orchestrator-host:3002 \
   -e DAEMON_AUTH_TOKEN=... \
   -v $HOME/.aws:/home/bun/.aws:ro \
-  chrisleekr/github-app-playground:local-daemon
+  chrisleekr/github-app:local-daemon
 ```
 
 The daemon does **not** expose any HTTP port and does **not** need GitHub App credentials: the orchestrator mints installation tokens and hands them off per job.
@@ -221,7 +221,7 @@ volumes:
     emptyDir:
       sizeLimit: 5Gi
 containers:
-  - name: github-app-playground
+  - name: github-app
     env:
       - name: CLONE_BASE_DIR
         value: /workspaces
@@ -240,7 +240,7 @@ If you want the orchestrator to spawn ephemeral daemon Pods on demand, two thing
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: github-app-playground-ephemeral-spawner
+  name: github-app-ephemeral-spawner
   namespace: ${EPHEMERAL_DAEMON_NAMESPACE}
 rules:
   - apiGroups: [""]
@@ -250,15 +250,15 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: github-app-playground-ephemeral-spawner
+  name: github-app-ephemeral-spawner
   namespace: ${EPHEMERAL_DAEMON_NAMESPACE}
 subjects:
   - kind: ServiceAccount
-    name: github-app-playground
+    name: github-app
     namespace: ${ORCHESTRATOR_NAMESPACE}
 roleRef:
   kind: Role
-  name: github-app-playground-ephemeral-spawner
+  name: github-app-ephemeral-spawner
   apiGroup: rbac.authorization.k8s.io
 ```
 

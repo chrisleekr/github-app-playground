@@ -1,4 +1,4 @@
-# github-app-playground scheduled actions.
+# github-app scheduled actions.
 #
 # Read by the bot's internal scheduler (src/scheduler/) when SCHEDULER_ENABLED
 # is true. See docs/use/scheduled-actions.md for the full schema.

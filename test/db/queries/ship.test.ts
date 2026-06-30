@@ -40,7 +40,7 @@ const baseInsert = (
 } => ({
   installation_id: 12345,
   owner: "chrisleekr",
-  repo: "github-app-playground",
+  repo: "github-app",
   pr_number: 1000,
   target_base_sha: "a".repeat(40),
   target_head_sha: "b".repeat(40),
@@ -73,7 +73,7 @@ describe.skipIf(sql === null)("src/db/queries/ship.ts", () => {
     const row = await insertIntent(baseInsert(), requireConn());
     expect(row.status).toBe("active");
     expect(row.owner).toBe("chrisleekr");
-    expect(row.repo).toBe("github-app-playground");
+    expect(row.repo).toBe("github-app");
     expect(row.pr_number).toBe(1000);
     expect(row.terminated_at).toBeNull();
     expect(row.terminal_blocker_category).toBeNull();
@@ -95,21 +95,11 @@ describe.skipIf(sql === null)("src/db/queries/ship.ts", () => {
   it("findActiveIntent returns the in-flight row when status='active' or 'paused'", async () => {
     const { insertIntent, findActiveIntent } = await import("../../../src/db/queries/ship");
     const inserted = await insertIntent(baseInsert(), requireConn());
-    const active = await findActiveIntent(
-      "chrisleekr",
-      "github-app-playground",
-      1000,
-      requireConn(),
-    );
+    const active = await findActiveIntent("chrisleekr", "github-app", 1000, requireConn());
     expect(active?.id).toBe(inserted.id);
 
     await requireConn()`UPDATE ship_intents SET status = 'paused' WHERE id = ${inserted.id}`;
-    const paused = await findActiveIntent(
-      "chrisleekr",
-      "github-app-playground",
-      1000,
-      requireConn(),
-    );
+    const paused = await findActiveIntent("chrisleekr", "github-app", 1000, requireConn());
     expect(paused?.id).toBe(inserted.id);
   });
 
