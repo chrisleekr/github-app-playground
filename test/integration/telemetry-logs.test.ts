@@ -58,7 +58,7 @@ function makeCtx(log: BotContext["log"]): BotContext {
   deliveryCounter++;
   return {
     owner: "chrisleekr",
-    repo: "github-app-playground",
+    repo: "github-app",
     entityNumber: deliveryCounter,
     isPR: false,
     eventName: "issue_comment.created",

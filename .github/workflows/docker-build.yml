@@ -2,10 +2,10 @@
 # via workflow_call after gating on ci.yml + semantic-release.
 #
 # Ships TWO images per release:
-#   - chrisleekr/github-app-playground:<tag>-orchestrator  (lean, webhook server)
-#   - chrisleekr/github-app-playground:<tag>-daemon        (rich, Claude worker)
+#   - chrisleekr/github-app:<tag>-orchestrator  (lean, webhook server)
+#   - chrisleekr/github-app:<tag>-daemon        (rich, Claude worker)
 # Orchestrator additionally publishes a bare `<tag>` alias so existing
-# consumers that pull `chrisleekr/github-app-playground:<version>` keep working.
+# consumers that pull `chrisleekr/github-app:<version>` keep working.
 # `:latest` is published on prod releases only, on the orchestrator variant.
 #
 # Multi-platform via the documented split-and-merge pattern:
@@ -62,7 +62,7 @@ permissions:
   # attestations: read
 
 env:
-  IMAGE_NAME: chrisleekr/github-app-playground
+  IMAGE_NAME: chrisleekr/github-app
 
 jobs:
   build:

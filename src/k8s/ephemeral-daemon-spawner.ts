@@ -149,9 +149,9 @@ function buildEphemeralDaemonPodSpec(input: SpawnEphemeralDaemonInput): V1Pod {
       name: podName,
       namespace,
       labels: {
-        "app.kubernetes.io/name": "github-app-playground",
+        "app.kubernetes.io/name": "github-app",
         "app.kubernetes.io/component": "ephemeral-daemon",
-        "github-app-playground/delivery-id": sanitizeLabelValue(input.deliveryId),
+        "github-app/delivery-id": sanitizeLabelValue(input.deliveryId),
       },
     },
     spec: {

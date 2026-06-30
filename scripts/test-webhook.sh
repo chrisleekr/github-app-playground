@@ -15,7 +15,7 @@
 # Environment overrides:
 #   SERVER_URL  : base URL of the webhook server (default: http://localhost:3000)
 #   OWNER       : repo owner (default: chrisleekr)
-#   REPO        : repo name  (default: github-app-playground)
+#   REPO        : repo name  (default: github-app)
 #   ENTITY      : issue/PR number (default: 1)
 #   IS_PR       : true/false (default: false)
 #   DRY_RUN     : true/false (default: true). When true, pipeline returns synthetic
@@ -67,7 +67,7 @@ set -euo pipefail
 
 SERVER_URL="${SERVER_URL:-http://localhost:3000}"
 OWNER="${OWNER:-chrisleekr}"
-REPO="${REPO:-github-app-playground}"
+REPO="${REPO:-github-app}"
 ENTITY="${ENTITY:-1}"
 IS_PR="${IS_PR:-false}"
 DRY_RUN="${DRY_RUN:-true}"

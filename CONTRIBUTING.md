@@ -19,8 +19,8 @@ the development workflow, and the conventions enforced by the tooling.
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/chrisleekr/github-app-playground.git
-cd github-app-playground
+git clone https://github.com/chrisleekr/github-app.git
+cd github-app
 
 # 2. Install dependencies (also installs Husky pre-commit hooks)
 bun install

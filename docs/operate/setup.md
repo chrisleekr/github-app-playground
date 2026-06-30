@@ -16,8 +16,8 @@ This page covers running the bot on your laptop against a real GitHub App. For f
 ## First run
 
 ```bash
-git clone https://github.com/chrisleekr/github-app-playground.git
-cd github-app-playground
+git clone https://github.com/chrisleekr/github-app.git
+cd github-app
 bun install
 
 # Start Postgres + Valkey in the background

@@ -126,7 +126,7 @@ Operators can force one action to run immediately, bypassing the cron check:
 curl -X POST https://<bot-host>/api/scheduler/run \
   -H "Authorization: Bearer $DAEMON_AUTH_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"owner":"chrisleekr","repo":"github-app-playground","action":"research"}'
+  -d '{"owner":"chrisleekr","repo":"github-app","action":"research"}'
 ```
 
 Returns `202` when enqueued, `409` when a run is already in-flight, `404` when

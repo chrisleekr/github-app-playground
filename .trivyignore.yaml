@@ -1,4 +1,4 @@
-# Trivy ignore policy for github-app-playground.
+# Trivy ignore policy for github-app.
 #
 # Format reference (YAML schema):
 #   https://trivy.dev/latest/docs/configuration/filtering/#trivyignoreyaml

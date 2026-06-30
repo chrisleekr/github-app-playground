@@ -1,8 +1,8 @@
 site_name: GitHub App Playground
 site_description: A GitHub App webhook server powered by the Claude Agent SDK.
-site_url: https://chrisleekr.github.io/github-app-playground/
-repo_url: https://github.com/chrisleekr/github-app-playground
-repo_name: chrisleekr/github-app-playground
+site_url: https://chrisleekr.github.io/github-app/
+repo_url: https://github.com/chrisleekr/github-app
+repo_name: chrisleekr/github-app
 edit_uri: edit/main/docs/
 strict: true
 

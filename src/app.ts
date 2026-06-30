@@ -362,7 +362,7 @@ async function handleTestWebhook(
     };
 
     const owner = payload.owner ?? "chrisleekr";
-    const repo = payload.repo ?? "github-app-playground";
+    const repo = payload.repo ?? "github-app";
     const entityNumber = payload.entityNumber ?? 1;
     const isPR = payload.isPR ?? false;
     const triggerBody =

@@ -81,7 +81,7 @@ describe("checkEligibility", () => {
     const v = await checkEligibility({
       octokit: makeOctokit(okPr),
       owner: "chrisleekr",
-      repo: "github-app-playground",
+      repo: "github-app",
       pr_number: 1,
       triggeringUserLogin: "alice",
     });
@@ -92,7 +92,7 @@ describe("checkEligibility", () => {
     const v = await checkEligibility({
       octokit: makeOctokit({ ...okPr, headRepoId: "repo-fork" }),
       owner: "chrisleekr",
-      repo: "github-app-playground",
+      repo: "github-app",
       pr_number: 1,
       triggeringUserLogin: "alice",
     });
@@ -104,7 +104,7 @@ describe("checkEligibility", () => {
     const v = await checkEligibility({
       octokit: makeOctokit({ ...okPr, state: "CLOSED" }),
       owner: "chrisleekr",
-      repo: "github-app-playground",
+      repo: "github-app",
       pr_number: 1,
       triggeringUserLogin: "alice",
     });
@@ -116,7 +116,7 @@ describe("checkEligibility", () => {
     const v = await checkEligibility({
       octokit: makeOctokit({ ...okPr, state: "MERGED", merged: true }),
       owner: "chrisleekr",
-      repo: "github-app-playground",
+      repo: "github-app",
       pr_number: 1,
       triggeringUserLogin: "alice",
     });
@@ -129,7 +129,7 @@ describe("checkEligibility", () => {
     const v = await checkEligibility({
       octokit: makeOctokit(okPr),
       owner: "chrisleekr",
-      repo: "github-app-playground",
+      repo: "github-app",
       pr_number: 1,
       triggeringUserLogin: "alice",
     });
@@ -142,7 +142,7 @@ describe("checkEligibility", () => {
     const v = await checkEligibility({
       octokit: makeOctokit({ ...okPr, baseRefName: "main" }),
       owner: "chrisleekr",
-      repo: "github-app-playground",
+      repo: "github-app",
       pr_number: 1,
       triggeringUserLogin: "alice",
     });

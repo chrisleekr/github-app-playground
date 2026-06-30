@@ -42,7 +42,7 @@ const baseInput = (
 } => ({
   installation_id: 12345,
   owner: "chrisleekr",
-  repo: "github-app-playground",
+  repo: "github-app",
   pr_number: 7777,
   target_base_sha: "a".repeat(40),
   target_head_sha: "b".repeat(40),
@@ -74,12 +74,7 @@ describe.skipIf(sql === null)("intent.ts state machine", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.intent.status).toBe("active");
-    const byActive = await getActiveIntent(
-      "chrisleekr",
-      "github-app-playground",
-      7777,
-      requireConn(),
-    );
+    const byActive = await getActiveIntent("chrisleekr", "github-app", 7777, requireConn());
     expect(byActive?.id).toBe(result.intent.id);
     const byId = await getIntentById(result.intent.id, requireConn());
     expect(byId?.id).toBe(result.intent.id);
