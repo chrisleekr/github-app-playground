@@ -15,8 +15,9 @@
 # future occurrences of the same CVE in a different location (e.g. if the
 # Claude Code CLI later ships its own vulnerable copy).
 
-vulnerabilities:
-  # No active ignores.
+vulnerabilities: []
+  # No active ignores. Explicit empty list (not bare `vulnerabilities:`, which
+  # parses as null) so the key unambiguously represents "no ignores".
   #
   # Retired 2026-06-30 (all expired AND fixed upstream, per each entry's own
   # "delete when fixed" instruction):
