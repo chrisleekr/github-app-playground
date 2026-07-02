@@ -152,23 +152,13 @@ publish-dev-docker:
       --build-arg PACKAGE_VERSION=$PACKAGE_VERSION --build-arg GIT_HASH=$GIT_HASH
       --build-arg NODE_ENV=production --target production --pull --tag
       $CI_REGISTRY/chrisleekr/${CI_PROJECT_NAME}:dev-${CI_COMMIT_SHORT_SHA} --push .
-# Disabled to avoid releasing multiple repository.
-# semantic-release:
-#   stage: release
-#   <<: *main_branch
-#   needs:
-#     - build
-#   script:
-#     - apk add --no-cache git
-#     - echo "@chrislee:registry=https://${CI_SERVER_HOST}/api/v4/projects/${CI_PROJECT_ID}/packages/npm/" > .npmrc
-#     - echo "//${CI_SERVER_HOST}/api/v4/projects/${CI_PROJECT_ID}/packages/npm/:_authToken=${CI_JOB_TOKEN}" >> .npmrc
-#     - bunx semantic-release
+# Versioned releases are cut on GitHub by release-please (see
+# .github/workflows/release-please.yml), not from this GitLab mirror, to avoid
+# releasing the same repository twice.
 
 publish-tag-docker:
   stage: release
   <<: *main_branch
-  # needs:
-  #   - semantic-release
   image: docker:29-dind
   services:
     - name: docker:29-dind

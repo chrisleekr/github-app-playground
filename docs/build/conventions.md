@@ -78,22 +78,21 @@ bun run check
 
 ## CI pipeline
 
-Five workflow files form the pipeline; each owns one responsibility.
+Four workflow files form the pipeline; each owns one responsibility.
 
-| Workflow                             | Trigger                                                   | Owns                                                                                                              |
-| ------------------------------------ | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `.github/workflows/ci.yml`           | `pull_request` + `push: main` + `workflow_call`           | Quality gates only: typecheck, lint, format, audit:ci, test, build                                                |
-| `.github/workflows/secrets-scan.yml` | `push: branches-ignore: [gh-pages]` + `workflow_dispatch` | Standalone gitleaks scan, decoupled so every push (incl. chore/docs) is gated                                     |
-| `.github/workflows/dev-release.yml`  | `push: branches-ignore: [main, v*]` + `workflow_dispatch` | Calls `ci.yml` → semantic-release dev (pre-release tag) → `docker-build.yml`                                      |
-| `.github/workflows/release.yml`      | `workflow_dispatch` only (manual)                         | Calls `ci.yml` → semantic-release prod → `docker-build.yml`                                                       |
-| `.github/workflows/docker-build.yml` | `workflow_call` + `workflow_dispatch`                     | Reusable image builder: matrix split-and-merge (amd64 on `ubuntu-24.04`, arm64 on `ubuntu-24.04-arm`), Trivy scan |
+| Workflow                               | Trigger                                                   | Owns                                                                                                              |
+| -------------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `.github/workflows/ci.yml`             | `pull_request` + `push: main` + `workflow_call`           | Quality gates only: typecheck, lint, format, audit:ci, test, build                                                |
+| `.github/workflows/secrets-scan.yml`   | `push: branches-ignore: [gh-pages]` + `workflow_dispatch` | Standalone gitleaks scan, decoupled so every push (incl. chore/docs) is gated                                     |
+| `.github/workflows/release-please.yml` | `push: [main, beta]`                                      | release-please maintains a Release PR per branch; merging it cuts the release then calls `docker-build.yml`       |
+| `.github/workflows/docker-build.yml`   | `workflow_call` + `workflow_dispatch`                     | Reusable image builder: matrix split-and-merge (amd64 on `ubuntu-24.04`, arm64 on `ubuntu-24.04-arm`), Trivy scan |
 
 Notes:
 
 - **Multi-arch images.** amd64 builds on `ubuntu-24.04`, arm64 builds natively on `ubuntu-24.04-arm` (free for public repos). Both runners are explicitly pinned (not `ubuntu-latest`) so the rolling alias cannot silently flip to a new major. Manifest assembled by `docker buildx imagetools create`. GHA cache scoped per arch.
 - **Runners pinned repo-wide.** Every `runs-on:` across `.github/workflows/` targets an explicit image (`ubuntu-24.04`), never a `*-latest` rolling alias. `ci.yml` runs `bun run check:runner-pins` (`scripts/check-runner-pins.ts`), which fails the build if any `runs-on:` is on a `*-latest` alias; matrix expressions are exempt. See issue #173.
 - **Defense in depth.** Every dynamic input flowing into a `run:` block is passed via `env:` first.
-- **Prod releases are manual.** Push to main triggers only `ci.yml`. Cut a release with `gh workflow run release.yml`.
+- **Releases run on release-please.** Push to `main` opens/updates a stable Release PR; merging it tags `v<x.y.z>`, updates `CHANGELOG.md` + `package.json`, creates the GitHub release, and builds the prod image (`latest`). The `beta` branch does the same for prereleases (`v<x.y.z>-beta`, no `latest`). Only `feat`/`fix`/`!` commits bump the version. Branch selection uses two source-controlled config + manifest pairs (`release-please-config.json` / `.release-please-manifest.json` on main, the `.beta` variants on beta); `release-please-action` runs with the `RELEASE_TOKEN` PAT so Release PRs trigger CI.
 
 ## Documentation discipline
 
