@@ -1173,6 +1173,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#chat-thread-executor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Chat-thread executor
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#ship" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1814,6 +1825,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#chat-thread-executor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Chat-thread executor
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#ship" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2373,8 +2395,13 @@
 <td>Kill-switch. When <code>false</code>, triage returns <code>heavy=false</code> and the job routes to <code>persistent-daemon</code>.</td>
 </tr>
 <tr>
+<td><code>TRIAGE_TOOLS_ENABLED</code></td>
+<td><code>true</code></td>
+<td>Kill-switch for the tool-driven triage classifier. When <code>false</code>, triage runs without the on-demand state-fetch tools.</td>
+</tr>
+<tr>
 <td><code>TRIAGE_MODEL</code></td>
-<td><code>haiku-3-5</code></td>
+<td><code>sonnet-4-6</code></td>
 <td>Alias resolved at runtime.</td>
 </tr>
 <tr>
@@ -2421,6 +2448,39 @@ structured workflow: it summarises the comment thread into a guidance digest the
 workflow prompt consumes in place of the raw thread. It is fail-open (any LLM or
 parse error falls back to body-only / raw-comment context) and has no comment-count
 cap, so there is nothing else to tune.</p>
+<h2 id="chat-thread-executor">Chat-thread executor<a class="headerlink" href="#chat-thread-executor" title="Permanent link">&para;</a></h2>
+<p>Tunables for the conversational scoped-intent path (<code>src/workflows/ship/scoped/chat-thread.ts</code>).</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CHAT_THREAD_EXECUTE_THRESHOLD</code></td>
+<td><code>0.8</code></td>
+<td>Range <code>[0, 1]</code>. Minimum classifier confidence before a chat-thread proposal is auto-executed rather than left pending.</td>
+</tr>
+<tr>
+<td><code>CHAT_THREAD_PROPOSAL_TTL_HOURS</code></td>
+<td><code>24</code></td>
+<td>Hours a pending chat-thread proposal stays valid before it expires.</td>
+</tr>
+<tr>
+<td><code>CHAT_THREAD_MAX_TURNS</code></td>
+<td><code>8</code></td>
+<td>Cap on conversational turns within a single chat-thread session.</td>
+</tr>
+<tr>
+<td><code>CHAT_THREAD_TOOLS_ENABLED</code></td>
+<td><code>true</code></td>
+<td>Kill-switch for the chat-thread agent's on-demand state-fetch tools.</td>
+</tr>
+</tbody>
+</table>
 <h2 id="ship">Ship<a class="headerlink" href="#ship" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -2465,6 +2525,11 @@ cap, so there is nothing else to tune.</p>
 <td><code>SHIP_FORBIDDEN_TARGET_BRANCHES</code></td>
 <td>empty</td>
 <td>Comma-separated branches the bot refuses to shepherd PRs against.</td>
+</tr>
+<tr>
+<td><code>REVIEW_RESOLVE_MAX_ITERATIONS</code></td>
+<td><code>2</code></td>
+<td>Range <code>[1, 5]</code>. Max review/resolve loop iterations in the composite ship flow before the intent yields.</td>
 </tr>
 </tbody>
 </table>
