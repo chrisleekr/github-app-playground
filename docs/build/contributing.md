@@ -4,10 +4,11 @@ Short version: open a PR, keep `bun run check` green, update the matching docs p
 
 ## Branching
 
-| Branch           | Purpose                                                                                                                   |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `main`           | Always green. Push triggers `ci.yml` only, production releases are manual.                                                |
-| Feature branches | Any name **other** than `main` and `v*`. Triggers `dev-release.yml` (CI → dev semantic-release → multi-arch image build). |
+| Branch           | Purpose                                                                                                                                |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `main`           | Always green. Stable channel: release-please opens a Release PR on push; merging it cuts the release.                                  |
+| `beta`           | Long-lived prerelease channel. release-please opens a beta Release PR; merging it cuts `v<x.y.z>-beta` and a beta image.               |
+| Feature branches | Any name **other** than `main`, `beta`, and `v*`. CI runs on the PR; no per-branch release (the semantic-release dev rail is retired). |
 
 ## Commit format
 

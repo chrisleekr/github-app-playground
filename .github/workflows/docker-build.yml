@@ -1,5 +1,5 @@
 # Reusable image builder. No checks, no release: orchestrators invoke this
-# via workflow_call after gating on ci.yml + semantic-release.
+# via workflow_call after release-please cuts a tag (release-please.yml).
 #
 # Ships TWO images per release:
 #   - chrisleekr/github-app:<tag>-orchestrator  (lean, webhook server)
@@ -39,6 +39,15 @@ on:
         required: false
         type: boolean
         default: false
+    secrets:
+      # Only the Docker Hub push credentials are needed. Declared explicitly so
+      # callers pass least-privilege secrets instead of `secrets: inherit`
+      # (which would forward the RELEASE_TOKEN PAT and every other repo secret
+      # into this build graph). GITHUB_TOKEN is provided implicitly.
+      DOCKER_USERNAME:
+        required: true
+      DOCKER_PASSWORD:
+        required: true
   workflow_dispatch:
     inputs:
       tag-name:
@@ -111,11 +120,13 @@ jobs:
         env:
           TAG_NAME: ${{ inputs.tag-name }}
         run: |
-          # Prod release: v1.2.3
-          # Dev pre-release: v1.2.3-<sanitized-branch>.N: branch name is
-          # alphanumerics+hyphens (release.config.mjs strips slashes), and N
-          # is the prerelease counter semantic-release auto-increments.
-          if ! [[ "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z][a-zA-Z0-9-]*\.[0-9]+)?$ ]]; then
+          # Stable release: v1.2.3
+          # Beta prerelease from release-please: the prerelease strategy sets
+          # the suffix to the prerelease type (v1.2.3-beta) and appends/bumps a
+          # zero-padded counter only once one exists (v1.2.3-beta01). Matched
+          # permissively: a hyphen, a leading letter, then alphanumerics / dots
+          # / hyphens.
+          if ! [[ "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z][a-zA-Z0-9.-]*)?$ ]]; then
             echo "ERROR: tag-name input does not match the expected format." >&2
             exit 1
           fi

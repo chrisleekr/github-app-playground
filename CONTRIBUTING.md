@@ -213,21 +213,21 @@ Commit messages are validated by
 
 ### Allowed types
 
-| Type       | When to use                                           |
-| ---------- | ----------------------------------------------------- |
-| `feat`     | A new feature                                         |
-| `fix`      | A bug fix                                             |
-| `docs`     | Documentation changes only                            |
-| `style`    | Formatting, whitespace, no logic change               |
-| `refactor` | Code change that is neither a fix nor a feature       |
-| `test`     | Adding or updating tests                              |
-| `chore`    | Build scripts, dependency updates, tooling            |
-| `perf`     | Performance improvement                               |
-| `build`    | Build system or external dependency changes           |
-| `ci`       | CI/CD configuration changes                           |
-| `revert`   | Reverts a previous commit                             |
-| `localize` | Internationalisation / translation changes            |
-| `bump`     | Version bump (typically automated by release tooling) |
+| Type       | When to use                                                                   |
+| ---------- | ----------------------------------------------------------------------------- |
+| `feat`     | A new feature                                                                 |
+| `fix`      | A bug fix                                                                     |
+| `docs`     | Documentation changes only                                                    |
+| `style`    | Formatting, whitespace, no logic change                                       |
+| `refactor` | Code change that is neither a fix nor a feature                               |
+| `test`     | Adding or updating tests                                                      |
+| `chore`    | Build scripts, dependency updates, tooling                                    |
+| `perf`     | Performance improvement                                                       |
+| `build`    | Build system or external dependency changes                                   |
+| `ci`       | CI/CD configuration changes                                                   |
+| `revert`   | Reverts a previous commit                                                     |
+| `localize` | Internationalisation / translation changes                                    |
+| `bump`     | Manual version bump (rarely needed; releases are automated by release-please) |
 
 ### Examples
 
@@ -250,6 +250,24 @@ chore: upgrade @anthropic-ai/claude-agent-sdk to 0.3.0
   - `bun run typecheck`: no type errors
   - `bun run lint`: no lint errors
   - `bun run format`: no formatting violations
+
+---
+
+## Releases
+
+Releases are automated by [release-please](https://github.com/googleapis/release-please); there
+is no manual publish step and no `gh workflow run`.
+
+- **Stable (`main`).** When a `feat`/`fix`/`!`(breaking) commit lands on `main`, release-please
+  opens or updates a **Release PR** that bumps `package.json`, prepends the new section to
+  `CHANGELOG.md`, and shows the proposed version. Merging that PR tags `v<x.y.z>`, publishes the
+  GitHub release, and builds the production image. `refactor`/`perf`/`revert` alone do not trigger
+  a release, use `fix:` if the change is release-worthy.
+- **Beta (`beta`).** The long-lived `beta` branch works the same way via a separate Release PR and
+  cuts `v<x.y.z>-beta` prereleases with a beta image (no `latest`). Promote by merging
+  `beta` into `main`.
+- Never hand-edit `CHANGELOG.md`, `package.json` version, or the `.release-please-manifest*.json`
+  files, release-please owns them.
 
 ---
 

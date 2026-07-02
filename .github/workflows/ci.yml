@@ -2,9 +2,11 @@
 #
 # Triggers:
 #   - pull_request: fast feedback on every PR
-#   - push to main: post-merge sanity (catches squash-regressions; release is manual)
-#   - workflow_call: invoked by dev-release.yml and release.yml so an image
-#     is never published without these checks passing.
+#   - push to main: post-merge sanity (catches squash-regressions). Releases
+#     are cut by merging the release-please Release PR, which these same PR
+#     checks gate.
+#   - workflow_call: retained for reuse; release-please.yml relies on the PR
+#     checks above rather than calling this workflow.
 name: CI
 
 on:
@@ -64,9 +66,8 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          # Full history kept for parity with dev-release/release workflows
-          # and to give semantic-release accurate diff context when this
-          # workflow is invoked via workflow_call. Secret scanning lives
+          # Full history kept so release-please can walk tags/commits for
+          # accurate version + changelog inference. Secret scanning lives
           # in .github/workflows/secrets-scan.yml now.
           fetch-depth: 0
 
