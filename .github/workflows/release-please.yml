@@ -29,16 +29,20 @@ concurrency:
   group: release-please-${{ github.ref_name }}
   cancel-in-progress: false
 
-permissions:
-  contents: write # release commit, tag, GitHub release
-  pull-requests: write # maintain the Release PR
-  issues: write # release-please label management
+# No workflow-level grant: each job requests only what it needs (least
+# privilege). The docker job in particular must NOT inherit the release-please
+# job's write scopes.
+permissions: {}
 
 jobs:
   release-please:
     name: Release Please (${{ github.ref_name }})
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: write # release commit, tag, GitHub release
+      pull-requests: write # maintain the Release PR
+      issues: write # release-please label management
     outputs:
       release_created: ${{ steps.rp.outputs.release_created }}
       tag_name: ${{ steps.rp.outputs.tag_name }}
@@ -56,6 +60,14 @@ jobs:
     name: Docker
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true'
+    # Ceiling for the reusable docker-build.yml: it needs security-events:write
+    # (Trivy SARIF upload) and id-token:write (Sigstore/attestations). Matches
+    # the grant the retired release.yml gave this path; the release-please job's
+    # PR/issues write scopes are deliberately NOT granted here.
+    permissions:
+      contents: read
+      security-events: write
+      id-token: write
     uses: ./.github/workflows/docker-build.yml
     with:
       tag-name: ${{ needs.release-please.outputs.tag_name }}
